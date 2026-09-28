@@ -42,10 +42,19 @@ impl Command for KeyTest {
     fn run<'a>(
         &'a self,
         _app: &'a App,
-        _args: &'a [String],
+        args: &'a [String],
     ) -> BoxFuture<'a, anyhow::Result<String>> {
-        Box::pin(async {
-            let report = tokio::task::spawn_blocking(probe).await??;
+        Box::pin(async move {
+            let only = args.first().cloned();
+            if let Some(label) = &only
+                && !STEPS
+                    .step
+                    .iter()
+                    .any(|s| s.label.eq_ignore_ascii_case(label))
+            {
+                anyhow::bail!("usage: {}", SPEC.usage);
+            }
+            let report = tokio::task::spawn_blocking(move || probe(only.as_deref())).await??;
             Ok(format!(
                 "Report (paste this back):\n\n```\n{}\n```",
                 report.join("\n")
@@ -54,10 +63,15 @@ impl Command for KeyTest {
     }
 }
 
-fn probe() -> std::io::Result<Vec<String>> {
+/// Runs every step, or only the one labelled `only`.
+fn probe(only: Option<&str>) -> std::io::Result<Vec<String>> {
     let raw = term::Raw::enter()?;
     let mut report = vec![format!("keyboard enhancement: {}", raw.enhanced())];
-    for step in &STEPS.step {
+    let steps = STEPS
+        .step
+        .iter()
+        .filter(|s| only.is_none_or(|o| s.label.eq_ignore_ascii_case(o)));
+    for step in steps {
         term::out(&format!("\r\n{}\r\n", step.prompt));
         if let Some(sample) = &step.sample {
             term::out(&format!("{}\r\n", sample.replace('\n', "\r\n")));
@@ -75,10 +89,19 @@ fn probe() -> std::io::Result<Vec<String>> {
 }
 
 fn first_press() -> std::io::Result<String> {
+    Ok(match next_input()? {
+        Event::Key(key) => describe(&key),
+        Event::Paste(text) => format!("paste event ({} chars)", text.len()),
+        other => format!("{other:?}"),
+    })
+}
+
+/// The next key press or paste, skipping releases left over from the previous step.
+fn next_input() -> std::io::Result<Event> {
     loop {
         match term::read_event()? {
-            Event::Key(key) if key.kind != KeyEventKind::Release => return Ok(describe(&key)),
-            Event::Paste(text) => return Ok(format!("paste event ({} chars)", text.len())),
+            Event::Key(key) if key.kind == KeyEventKind::Release => {}
+            event @ (Event::Key(_) | Event::Paste(_)) => return Ok(event),
             _ => {}
         }
     }
@@ -86,7 +109,7 @@ fn first_press() -> std::io::Result<String> {
 
 /// Collects one paste: everything from the first event until the input goes quiet.
 fn burst() -> std::io::Result<String> {
-    let mut first = term::read_event()?;
+    let mut first = next_input()?;
     let start = io::clock::instant();
     let (mut presses, mut enters, mut pastes) = (0, 0, 0);
     let mut last_press = start;
