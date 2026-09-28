@@ -106,3 +106,7 @@ hint = "Run `crowbot login` again for a fresh code."
 [pow_required]
 title = "The proof of work expired before it was used"
 retry = true
+
+[tool_unavailable]
+title = "That crowbot tool is off right now"
+retry = true

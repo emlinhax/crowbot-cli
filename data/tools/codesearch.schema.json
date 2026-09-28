@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Identifiers and exact phrases, optionally with file:/type:symbol/patterntype:regexp filters"
+    },
+    "lang": {
+      "type": "string",
+      "description": "Language filter, e.g. python, c++, typescript, go"
+    },
+    "repo": {
+      "type": "string",
+      "description": "Repository: org/name (anchored to that repo) or a regexp over full names like github.com/org/name"
+    },
+    "count": {
+      "type": "integer",
+      "description": "Maximum results, capped by the server"
+    }
+  },
+  "required": [
+    "query"
+  ]
+}

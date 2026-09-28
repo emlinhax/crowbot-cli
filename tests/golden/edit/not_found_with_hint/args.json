@@ -1,0 +1,6 @@
+[
+  {
+    "old_text": "fn compute_totl() {}",
+    "new_text": "fn x() {}"
+  }
+]

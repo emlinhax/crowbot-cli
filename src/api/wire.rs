@@ -39,6 +39,10 @@ pub enum WireMessage {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         tool_calls: Vec<WireToolCall>,
     },
+    Tool {
+        tool_call_id: String,
+        content: String,
+    },
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -69,11 +73,18 @@ impl WireMessage {
                 content: parts
                     .iter()
                     .filter_map(|p| match p {
-                        Part::Text { text } => Some(text.as_str()),
-                        _ => None,
+                        Part::Text { text } => Some(text.clone()),
+                        Part::Reminder { text } => {
+                            Some(format!("<system-reminder>\n{text}\n</system-reminder>"))
+                        }
+                        Part::Reasoning { .. } | Part::ToolCall(_) => None,
                     })
                     .collect::<Vec<_>>()
                     .join("\n\n"),
+            },
+            Message::Tool(result) => Self::Tool {
+                tool_call_id: result.call_id.clone(),
+                content: result.content.clone(),
             },
             Message::Assistant(a) => {
                 let mut text = String::new();
@@ -91,6 +102,7 @@ impl WireMessage {
                                 arguments: call.arguments.clone(),
                             },
                         }),
+                        Part::Reminder { .. } => {}
                     }
                 }
                 // A trace only means something to the model that wrote it.

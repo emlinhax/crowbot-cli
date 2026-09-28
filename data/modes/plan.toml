@@ -1,0 +1,96 @@
+id = "plan"
+label = "PLAN"
+order = 2
+summary = "Read-only: investigates and writes a plan, changes nothing"
+reminder = "plan_mode"
+
+[verdicts]
+ask = "ask"
+deny = "deny"
+doom_loop = "ask"
+
+# Locks apply after every other rule, so no config or approval can lift them.
+[[lock]]
+permission = "edit"
+pattern = "*"
+action = "deny"
+
+[[lock]]
+permission = "edit"
+pattern = "{plan_file}"
+action = "allow"
+
+[[lock]]
+permission = "external_directory"
+pattern = "{plan_file}"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "*"
+action = "deny"
+
+[[lock]]
+permission = "bash_complex"
+pattern = "*"
+action = "deny"
+
+[[lock]]
+permission = "bash_write"
+pattern = "*"
+action = "deny"
+
+[[lock]]
+permission = "bash"
+pattern = "git status*"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "git log*"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "git diff*"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "git show*"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "ls*"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "pwd"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "cat *"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "head *"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "tail *"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "wc *"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "rg *"
+action = "allow"

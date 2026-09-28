@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "properties": {
+    "command": { "type": "string", "description": "The command line to run" },
+    "timeout": { "type": "integer", "description": "Seconds to wait before stopping it" }
+  },
+  "required": ["command"]
+}

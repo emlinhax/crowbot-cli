@@ -19,7 +19,7 @@ pub const ACCOUNT_NUMBER: &str = "1234567890123456";
 /// One scripted reply to a chat request.
 pub enum Reply {
     /// An SSE fixture from tests/fixtures/sse/.
-    Sse(&'static str),
+    Sse(String),
     /// A JSON error envelope with this status and `error.type`.
     Error {
         status: u16,
@@ -45,6 +45,12 @@ type Shared = Arc<Mutex<Inner>>;
 pub struct Fake {
     pub url: String,
     inner: Shared,
+}
+
+impl Reply {
+    pub fn sse(name: &str) -> Self {
+        Self::Sse(name.to_owned())
+    }
 }
 
 impl Fake {

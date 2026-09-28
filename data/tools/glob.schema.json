@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "properties": {
+    "pattern": { "type": "string", "description": "Glob pattern relative to the search directory" },
+    "path": { "type": "string", "description": "Directory to search; defaults to the working directory" }
+  },
+  "required": ["pattern"]
+}

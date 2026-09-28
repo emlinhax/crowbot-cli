@@ -1,2 +1,40 @@
-# Built-in settings; ~/.crowbot/config.toml, .crowbot/config.toml and flags override them in that order.
+# Built-in settings; ~/.crowbot/config.toml, .crowbot/config.toml and flags override them in that
+# order. `[[permission]]` rules are appended instead, and the last matching rule wins.
 model = "crow-2"
+mode = "manual"
+
+[[permission]]
+permission = "*"
+pattern = "*"
+action = "ask"
+
+[[permission]]
+permission = "read"
+pattern = "*"
+action = "allow"
+
+# Secrets: reading them still asks.
+[[permission]]
+permission = "read"
+pattern = "*.env"
+action = "ask"
+
+[[permission]]
+permission = "read"
+pattern = "*.env.*"
+action = "ask"
+
+[[permission]]
+permission = "search"
+pattern = "*"
+action = "allow"
+
+[[permission]]
+permission = "codesearch"
+pattern = "*"
+action = "allow"
+
+[[permission]]
+permission = "todo"
+pattern = "*"
+action = "allow"

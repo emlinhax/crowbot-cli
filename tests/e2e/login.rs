@@ -19,7 +19,7 @@ async fn pairing_saves_a_device_key_that_chat_then_uses() {
     let status = sandbox.run(&fake.url, &["login", "--status"], &[]).await;
     assert!(status.success().stdout().contains("device key …9999"));
 
-    fake.script([Reply::Sse("hello.sse")]);
+    fake.script([Reply::sse("hello.sse")]);
     let chat = sandbox.run(&fake.url, &["-p", "hi"], &[]).await;
     assert_eq!(chat.success().stdout(), "Hello there!\n");
 }

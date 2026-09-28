@@ -25,6 +25,10 @@ struct Cli {
     #[arg(long, global = true)]
     effort: Option<String>,
 
+    /// Permission mode: manual (asks), auto (allows everything) or plan (read-only).
+    #[arg(long, global = true)]
+    mode: Option<String>,
+
     /// Send the prompt, print the reply, exit.
     #[arg(short, long)]
     print: bool,
@@ -58,6 +62,7 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
     let app = App::load(&Overrides {
         model: cli.model,
         effort: cli.effort,
+        mode: cli.mode,
     })?;
     let words = match cli.command {
         Some(Sub::Words(words)) => words,

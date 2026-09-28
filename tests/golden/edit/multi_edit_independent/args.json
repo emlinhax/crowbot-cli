@@ -1,0 +1,10 @@
+[
+  {
+    "old_text": "a = 1",
+    "new_text": "a = 10"
+  },
+  {
+    "old_text": "b = 2",
+    "new_text": "b = 20"
+  }
+]

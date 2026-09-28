@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "properties": {
+    "path": { "type": "string", "description": "File to edit" },
+    "edits": {
+      "type": "array",
+      "description": "Replacements, all matched against the original file",
+      "items": {
+        "type": "object",
+        "properties": {
+          "old_text": { "type": "string", "description": "Exact text to replace" },
+          "new_text": { "type": "string", "description": "Replacement text" },
+          "replace_all": { "type": "boolean", "description": "Replace every occurrence instead of exactly one" }
+        },
+        "required": ["old_text", "new_text"]
+      }
+    }
+  },
+  "required": ["path", "edits"]
+}

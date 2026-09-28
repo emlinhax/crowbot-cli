@@ -12,6 +12,7 @@ use crate::api::error::ErrorInfo;
 pub enum Message {
     User { parts: Vec<Part> },
     Assistant(Assistant),
+    Tool(ToolResult),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -25,6 +26,10 @@ pub enum Part {
         text: String,
     },
     ToolCall(ToolCall),
+    /// Context crowbot adds for the model (mode changes and the like); not the user's words.
+    Reminder {
+        text: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -33,6 +38,19 @@ pub struct ToolCall {
     pub name: String,
     /// Raw JSON text exactly as the model produced it, echoed back byte for byte.
     pub arguments: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ToolResult {
+    pub call_id: String,
+    pub name: String,
+    /// What the model sees.
+    pub content: String,
+    #[serde(default)]
+    pub is_error: bool,
+    /// For display only (diffs, exit codes, spill paths); never sent to the model.
+    #[serde(default)]
+    pub details: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -77,9 +95,19 @@ pub struct Usage {
 }
 
 impl Message {
+    #[cfg(test)]
     pub fn user_text(text: impl Into<String>) -> Self {
         Self::User {
             parts: vec![Part::Text { text: text.into() }],
         }
+    }
+}
+
+impl Assistant {
+    pub fn tool_calls(&self) -> impl Iterator<Item = &ToolCall> {
+        self.parts.iter().filter_map(|p| match p {
+            Part::ToolCall(call) => Some(call),
+            _ => None,
+        })
     }
 }

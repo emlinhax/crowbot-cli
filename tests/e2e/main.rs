@@ -6,6 +6,7 @@ mod chat;
 mod fake_crowbot;
 mod login;
 mod models;
+mod scenarios;
 mod signup;
 
 use std::path::{Path, PathBuf};
@@ -52,6 +53,14 @@ impl Sandbox {
         Run(command.output().await.expect("crowbot binary runs"))
     }
 
+    /// Copies tests/fixtures/projects/<name> into the project directory.
+    pub fn copy_project(&self, name: &str) {
+        let from = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/projects")
+            .join(name);
+        copy_dir(&from, self.project.path());
+    }
+
     /// Every session file written so far.
     pub fn sessions(&self) -> Vec<PathBuf> {
         let mut found = Vec::new();
@@ -66,6 +75,18 @@ impl Sandbox {
             }
         }
         found
+    }
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap().flatten() {
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
     }
 }
 

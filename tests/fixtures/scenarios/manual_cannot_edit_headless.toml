@@ -1,0 +1,15 @@
+description = "MANUAL asks before editing; a headless run cannot answer, so the edit is declined"
+args = ["-p", "fix the sum"]
+project = "calc"
+replies = ["scenarios/manual_edit/1.sse", "scenarios/manual_edit/2.sse", "scenarios/manual_edit/3.sse"]
+
+[expect]
+exit = 0
+stderr_contains = ["needs permission", "--mode auto"]
+files = { "src/calc.txt" = "2 + 2 = 5\n" }
+
+[[expect.requests]]
+index = 2
+message = -1
+role = "tool"
+contains = "nobody can answer"

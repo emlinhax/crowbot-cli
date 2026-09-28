@@ -1,0 +1,20 @@
+description = "PLAN reminds the model it is read-only and refuses a destructive command"
+args = ["--mode", "plan", "-p", "clean up"]
+project = "calc"
+replies = ["scenarios/plan_refuses/1.sse", "scenarios/plan_refuses/2.sse"]
+
+[expect]
+exit = 0
+files = { "src/calc.txt" = "2 + 2 = 5\n" }
+
+[[expect.requests]]
+index = 0
+message = -1
+role = "user"
+contains = "PLAN mode"
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "Not allowed"

@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "todos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "content": { "type": "string", "description": "What needs doing" },
+          "status": { "type": "string", "enum": ["pending", "in_progress", "completed"] }
+        },
+        "required": ["content", "status"]
+      }
+    }
+  },
+  "required": ["todos"]
+}

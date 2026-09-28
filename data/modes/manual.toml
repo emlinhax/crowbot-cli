@@ -1,0 +1,10 @@
+id = "manual"
+label = "MANUAL"
+order = 0
+summary = "Asks before edits, commands and fetches"
+
+# What a rule's verdict turns into in this mode.
+[verdicts]
+ask = "ask"
+deny = "deny"
+doom_loop = "ask"

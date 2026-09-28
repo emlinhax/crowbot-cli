@@ -1,0 +1,14 @@
+# What crowbot says to the model on the user's behalf. `{name}` placeholders are filled in.
+
+no_result = "No result: this call was interrupted before it finished."
+cancelled = "Cancelled by the user before it finished."
+truncated_tool_call = "Not run: your reply hit its output limit, so these arguments may be cut off. Make the call again with less in it."
+unknown_tool = "There is no tool named `{name}`. Available tools: {available}."
+bad_json = "The arguments are not valid JSON: {error}"
+invalid_arguments = "Invalid arguments for {name}: {error}"
+denied = "Not allowed by the user's permission rules: {what}."
+rejected = "The user declined this call."
+rejected_with_feedback = "The user declined this call and said: {feedback}"
+non_interactive = "This needs the user's permission ({what}), and nobody can answer in this non-interactive run. Tell the user to rerun with --mode auto if they want it allowed."
+doom_loop = "You have made this exact call {count} times in a row. Stop repeating it and change approach."
+max_turns = "Stopped after {count} model turns in one run; the user can continue if more is needed."

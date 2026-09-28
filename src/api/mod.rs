@@ -17,9 +17,13 @@ use std::time::Duration;
 use crate::io::http::{Http, Request, Response, Streaming};
 use error::ApiError;
 
+#[derive(Clone)]
 pub struct Api {
     http: Http,
     key: Option<String>,
+    /// Replaces every origin; lets unit tests talk to a local fake.
+    #[cfg(test)]
+    base: Option<String>,
 }
 
 /// One call: the endpoint id from data/endpoints.toml and what fills it in.
@@ -33,14 +37,28 @@ pub struct Call<'a> {
 
 impl Api {
     pub fn new(http: Http, key: Option<String>) -> Self {
-        Self { http, key }
+        Self {
+            http,
+            key,
+            #[cfg(test)]
+            base: None,
+        }
     }
 
     /// The same client acting as another key, e.g. to check a key before saving it.
     pub fn with_key(&self, key: String) -> Self {
         Self {
-            http: self.http.clone(),
             key: Some(key),
+            ..self.clone()
+        }
+    }
+
+    #[cfg(test)]
+    pub fn redirected(http: Http, key: &str, base: &str) -> Self {
+        Self {
+            http,
+            key: Some(key.to_owned()),
+            base: Some(base.to_owned()),
         }
     }
 
@@ -93,9 +111,16 @@ impl Api {
             (true, Some(key)) => Some(key.as_str()),
             (true, None) => return Err(ApiError::not_logged_in()),
         };
+        #[cfg(test)]
+        let url = match &self.base {
+            Some(base) => format!("{base}{}", endpoints::path(endpoint, call.args)),
+            None => endpoints::url(endpoint, call.args),
+        };
+        #[cfg(not(test))]
+        let url = endpoints::url(endpoint, call.args);
         Ok(Request {
             method: endpoint.method,
-            url: endpoints::url(endpoint, call.args),
+            url,
             bearer,
             headers: call.headers,
             json: call.body,

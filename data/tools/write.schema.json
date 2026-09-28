@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "properties": {
+    "path": { "type": "string", "description": "File to write" },
+    "content": { "type": "string", "description": "The complete new contents" }
+  },
+  "required": ["path", "content"]
+}

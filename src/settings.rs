@@ -1,8 +1,9 @@
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use serde::Deserialize;
 
 use crate::paths::Paths;
-use crate::{effort, io};
+use crate::permission::rule::Rule;
+use crate::{effort, io, mode};
 
 const DEFAULTS: &str = include_str!("../data/defaults.toml");
 
@@ -12,6 +13,13 @@ pub struct Settings {
     /// `None` leaves effort to the model's own default.
     #[serde(default)]
     pub effort: Option<String>,
+    pub mode: String,
+    /// Every layer's rules, in layer order; the last match wins.
+    #[serde(default)]
+    pub permission: Vec<Rule>,
+    /// A shell to run commands in, overriding the search in data/shells.toml.
+    #[serde(default)]
+    pub shell: Option<String>,
 }
 
 /// Values from command-line flags: the last and strongest layer.
@@ -19,6 +27,7 @@ pub struct Settings {
 pub struct Overrides {
     pub model: Option<String>,
     pub effort: Option<String>,
+    pub mode: Option<String>,
 }
 
 pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
@@ -37,21 +46,38 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
     if flags.effort.is_some() {
         settings.effort.clone_from(&flags.effort);
     }
+    if let Some(mode) = &flags.mode {
+        settings.mode.clone_from(mode);
+    }
     if let Some(level) = &settings.effort {
         effort::validate(level)?;
     }
+    mode::find(&settings.mode).map_err(|e| anyhow!(e))?;
     Ok(settings)
 }
 
+/// Later layers win; arrays of tables (`[[permission]]`) append, because their order is their
+/// meaning: a later rule overrides an earlier one.
 fn merge(base: &mut toml::Table, layer: toml::Table) {
     for (key, value) in layer {
         match (base.get_mut(&key), value) {
             (Some(toml::Value::Table(inner)), toml::Value::Table(over)) => merge(inner, over),
+            (Some(toml::Value::Array(inner)), toml::Value::Array(over))
+                if over.iter().all(toml::Value::is_table) =>
+            {
+                inner.extend(over);
+            }
             (_, value) => {
                 base.insert(key, value);
             }
         }
     }
+}
+
+/// The built-in rules alone, for tests that need a realistic rule stack.
+#[cfg(test)]
+pub fn default_rules() -> Vec<Rule> {
+    toml::from_str::<Settings>(DEFAULTS).unwrap().permission
 }
 
 /// The one place the process environment is read; empty variables count as unset.
@@ -68,18 +94,27 @@ mod tests {
     fn defaults_parse() {
         let settings: Settings = toml::from_str(DEFAULTS).unwrap();
         assert!(!settings.model.is_empty());
+        assert!(mode::get(&settings.mode).is_some());
+        assert!(!settings.permission.is_empty());
     }
 
     #[test]
-    fn later_layers_win_and_tables_merge() {
-        let mut base: toml::Table = toml::from_str("model = 'a'\n[t]\nx = 1\ny = 2").unwrap();
+    fn later_layers_win_tables_merge_and_rule_lists_append() {
+        let mut base: toml::Table = toml::from_str(
+            "model = 'a'\n[t]\nx = 1\ny = 2\n[[permission]]\npermission='bash'\npattern='*'\naction='ask'",
+        )
+        .unwrap();
         merge(
             &mut base,
-            toml::from_str("model = 'b'\n[t]\ny = 3").unwrap(),
+            toml::from_str(
+                "model = 'b'\n[t]\ny = 3\n[[permission]]\npermission='bash'\npattern='ls'\naction='allow'",
+            )
+            .unwrap(),
         );
         assert_eq!(base["model"].as_str(), Some("b"));
         assert_eq!(base["t"]["x"].as_integer(), Some(1));
         assert_eq!(base["t"]["y"].as_integer(), Some(3));
+        assert_eq!(base["permission"].as_array().unwrap().len(), 2);
     }
 
     #[test]
@@ -87,19 +122,12 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
         let paths = Paths::at(home.path().into(), project.path().into());
-        io::fs::write_atomic(
-            &paths.user_config(),
-            b"model = 'user'",
-            io::fs::Access::Shared,
-        )
-        .unwrap();
+        let write = |path: &std::path::Path, text: &str| {
+            io::fs::write_atomic(path, text.as_bytes(), io::fs::Access::Shared).unwrap();
+        };
+        write(&paths.user_config(), "model = 'user'");
         assert_eq!(load(&paths, &Overrides::default()).unwrap().model, "user");
-        io::fs::write_atomic(
-            &paths.project_config(),
-            b"model = 'project'",
-            io::fs::Access::Shared,
-        )
-        .unwrap();
+        write(&paths.project_config(), "model = 'project'");
         assert_eq!(
             load(&paths, &Overrides::default()).unwrap().model,
             "project"
@@ -109,5 +137,17 @@ mod tests {
             ..Overrides::default()
         };
         assert_eq!(load(&paths, &flags).unwrap().model, "flag");
+    }
+
+    #[test]
+    fn unknown_modes_are_refused() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = Paths::at(home.path().into(), home.path().into());
+        let flags = Overrides {
+            mode: Some("yolo".into()),
+            ..Overrides::default()
+        };
+        let err = load(&paths, &flags).unwrap_err().to_string();
+        assert!(err.contains("unknown mode"), "{err}");
     }
 }

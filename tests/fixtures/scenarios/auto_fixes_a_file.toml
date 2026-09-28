@@ -1,0 +1,22 @@
+description = "AUTO reads, edits and checks a file without asking"
+args = ["--mode", "auto", "-p", "fix the sum"]
+project = "calc"
+replies = ["scenarios/auto_fix/1.sse", "scenarios/auto_fix/2.sse", "scenarios/auto_fix/3.sse", "scenarios/auto_fix/4.sse"]
+
+[expect]
+exit = 0
+stdout_contains = ["Fixed: 2 + 2 = 4."]
+stderr_contains = ["› read src/calc.txt", "› edit src/calc.txt", "› bash cat src/calc.txt"]
+files = { "src/calc.txt" = "2 + 2 = 4\n" }
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "2 + 2 = 5"
+
+[[expect.requests]]
+index = 3
+message = -1
+role = "tool"
+contains = "2 + 2 = 4"

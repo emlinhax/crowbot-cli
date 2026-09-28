@@ -28,6 +28,14 @@ impl Store {
         Ok(store)
     }
 
+    /// The file name without extension, unique per session.
+    pub fn stem(&self) -> String {
+        self.path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    }
+
     pub fn append(&mut self, message: &Message) -> anyhow::Result<()> {
         let id = entry::new_id();
         let parent = self.last.take();

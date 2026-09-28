@@ -1,0 +1,1 @@
+Keep a short task list for multi-step work, so you and the user can see progress. Send the whole list each time. Keep exactly one item `in_progress` while working, and mark items `completed` as soon as they are done. Skip it for simple one-step requests.

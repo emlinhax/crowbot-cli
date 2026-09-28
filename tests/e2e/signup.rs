@@ -14,7 +14,7 @@ async fn signup_solves_the_challenge_and_saves_the_account() {
     // The first proof was refused as stale, so a fresh challenge was fetched.
     assert_eq!(fake.hits("/api/pow"), 2);
 
-    fake.script([Reply::Sse("hello.sse")]);
+    fake.script([Reply::sse("hello.sse")]);
     let chat = sandbox.run(&fake.url, &["-p", "hi"], &[]).await;
     assert_eq!(chat.success().stdout(), "Hello there!\n");
 }

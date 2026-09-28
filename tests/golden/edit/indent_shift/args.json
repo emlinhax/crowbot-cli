@@ -1,0 +1,6 @@
+[
+  {
+    "old_text": "def f(self):\n    return 1",
+    "new_text": "def f(self):\n    return 2"
+  }
+]

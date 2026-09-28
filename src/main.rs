@@ -8,10 +8,13 @@ mod effort;
 mod frontend;
 mod io;
 mod limits;
+mod mode;
 mod paths;
+mod permission;
 mod session;
 mod settings;
 mod text;
+mod tools;
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {

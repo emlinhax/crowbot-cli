@@ -49,3 +49,9 @@ path = "/api/pow?kind={kind}"
 origin = "chat"
 method = "POST"
 path = "/api/signup"
+
+[endpoints.codesearch]
+origin = "api"
+method = "POST"
+path = "/v1/tools/codesearch"
+auth = true

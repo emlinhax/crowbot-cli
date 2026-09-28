@@ -1,2 +1,4 @@
 * text=auto eol=lf
 *.png binary
+# Edit goldens test line endings and BOMs byte for byte.
+tests/golden/** -text

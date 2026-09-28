@@ -53,12 +53,15 @@ pub fn origin(name: &str) -> String {
 }
 
 pub fn url(endpoint: &Endpoint, args: &[(&str, &str)]) -> String {
-    let path = args
-        .iter()
+    format!("{}{}", origin(&endpoint.origin), path(endpoint, args))
+}
+
+/// The endpoint's path with its `{placeholders}` filled.
+pub fn path(endpoint: &Endpoint, args: &[(&str, &str)]) -> String {
+    args.iter()
         .fold(endpoint.path.clone(), |path, (key, value)| {
             path.replace(&format!("{{{key}}}"), value)
-        });
-    format!("{}{path}", origin(&endpoint.origin))
+        })
 }
 
 #[cfg(test)]

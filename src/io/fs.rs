@@ -30,7 +30,55 @@ pub fn write_atomic(path: &Path, bytes: &[u8], access: Access) -> io::Result<()>
     file.write_all(bytes)?;
     file.sync_all()?;
     drop(file);
+    // Replacing a file must not drop its mode bits (an executable script stays executable).
+    if access == Access::Shared
+        && let Ok(old) = std::fs::metadata(path)
+    {
+        let _ = std::fs::set_permissions(&tmp, old.permissions());
+    }
     std::fs::rename(&tmp, path)
+}
+
+pub fn read_bytes(path: &Path) -> io::Result<Vec<u8>> {
+    std::fs::read(path)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    Missing,
+    File,
+    Dir,
+}
+
+pub fn kind(path: &Path) -> Kind {
+    match std::fs::metadata(path) {
+        Ok(m) if m.is_dir() => Kind::Dir,
+        Ok(_) => Kind::File,
+        Err(_) => Kind::Missing,
+    }
+}
+
+/// Last modification time, or `None` if the file is gone.
+pub fn modified(path: &Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+pub struct Entry {
+    pub name: String,
+    pub is_dir: bool,
+}
+
+/// A directory's entries, sorted by name.
+pub fn list_dir(path: &Path) -> io::Result<Vec<Entry>> {
+    let mut entries: Vec<Entry> = std::fs::read_dir(path)?
+        .filter_map(Result::ok)
+        .map(|e| Entry {
+            name: e.file_name().to_string_lossy().into_owned(),
+            is_dir: e.file_type().is_ok_and(|t| t.is_dir()),
+        })
+        .collect();
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(entries)
 }
 
 /// Appends one line, creating the file and its directory on first use.

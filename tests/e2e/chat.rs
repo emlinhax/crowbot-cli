@@ -6,7 +6,7 @@ use crate::{Sandbox, WITH_KEY};
 #[tokio::test(flavor = "multi_thread")]
 async fn print_streams_the_reply_and_records_the_session() {
     let fake = Fake::start().await;
-    fake.script([Reply::Sse("hello.sse")]);
+    fake.script([Reply::sse("hello.sse")]);
     let sandbox = Sandbox::default();
 
     let run = sandbox
@@ -40,7 +40,7 @@ async fn print_streams_the_reply_and_records_the_session() {
 #[tokio::test(flavor = "multi_thread")]
 async fn json_mode_emits_one_event_per_line() {
     let fake = Fake::start().await;
-    fake.script([Reply::Sse("hello.sse")]);
+    fake.script([Reply::sse("hello.sse")]);
     let sandbox = Sandbox::default();
 
     let run = sandbox.run(&fake.url, &["--json", "hi"], WITH_KEY).await;
@@ -52,9 +52,11 @@ async fn json_mode_emits_one_event_per_line() {
         .collect();
     assert_eq!(events[0]["type"], "delta");
     assert_eq!(events[0]["kind"], "reasoning");
+    let end = events.iter().find(|e| e["type"] == "message_end").unwrap();
+    assert_eq!(end["message"]["finish"], "done");
     let last = events.last().unwrap();
-    assert_eq!(last["type"], "message_end");
-    assert_eq!(last["message"]["finish"], "done");
+    assert_eq!(last["type"], "run_end");
+    assert_eq!(last["outcome"], "done");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -66,7 +68,7 @@ async fn rate_limits_are_retried_before_anything_streams() {
             kind: "rate_limited",
             retry_after: Some(0),
         },
-        Reply::Sse("hello.sse"),
+        Reply::sse("hello.sse"),
     ]);
     let sandbox = Sandbox::default();
 
@@ -98,7 +100,7 @@ async fn billing_errors_fail_with_a_hint_and_no_retry() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_mid_stream_error_keeps_the_partial_reply() {
     let fake = Fake::start().await;
-    fake.script([Reply::Sse("error_midstream.sse")]);
+    fake.script([Reply::sse("error_midstream.sse")]);
     let sandbox = Sandbox::default();
 
     let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
@@ -112,7 +114,7 @@ async fn a_mid_stream_error_keeps_the_partial_reply() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_length_stop_explains_the_cut() {
     let fake = Fake::start().await;
-    fake.script([Reply::Sse("length.sse")]);
+    fake.script([Reply::sse("length.sse")]);
     let sandbox = Sandbox::default();
 
     let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
@@ -122,7 +124,7 @@ async fn a_length_stop_explains_the_cut() {
 #[tokio::test(flavor = "multi_thread")]
 async fn effort_is_forwarded_and_validated() {
     let fake = Fake::start().await;
-    fake.script([Reply::Sse("hello.sse")]);
+    fake.script([Reply::sse("hello.sse")]);
     let sandbox = Sandbox::default();
 
     sandbox

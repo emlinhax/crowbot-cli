@@ -59,3 +59,71 @@ reason = "pause after crowbot rate-limits the polling"
 [signup.max_attempts]
 value = 3
 reason = "crowbot raises the difficulty per address; a third stale challenge means something else is wrong"
+
+[agent.max_turns]
+value = 100
+reason = "a runaway loop on crow-2 costs real money; a run that needs more should be continued deliberately"
+
+[agent.doom_loop_repeats]
+value = 3
+reason = "the same call three times in a row is a loop, not persistence (opencode's threshold)"
+
+[tools.max_lines]
+value = 2000
+reason = "about what a model can use from one read; more is noise that costs input tokens"
+
+[tools.max_bytes]
+value = 51200
+reason = "caps one tool result near 12k tokens however long the lines are"
+
+[tools.max_line_chars]
+value = 2000
+reason = "one minified line would otherwise use the whole budget"
+
+[tools.max_results]
+value = 100
+reason = "more matches than this means the search should be narrower"
+
+[tools.grep_line_chars]
+value = 500
+reason = "a match line is context, not content; read the file for the rest"
+
+[tools.list_entries]
+value = 500
+reason = "a directory listing past this is better explored with glob"
+
+[tools.binary_sniff_bytes]
+value = 8192
+reason = "a NUL byte this early means the file is not text (git uses the same window)"
+
+[tools.bash_timeout_secs]
+value = 120
+reason = "default wait for a command; long builds pass a larger timeout"
+
+[tools.bash_max_timeout_secs]
+value = 600
+reason = "the longest a model may ask to wait on one command"
+
+[tools.bash_drain_ms]
+value = 250
+reason = "after the shell exits, output still in flight gets this long before the pipes close"
+
+[tools.webfetch_max_bytes]
+value = 5242880
+reason = "larger pages are rarely text a model can use"
+
+[tools.webfetch_timeout_secs]
+value = 30
+reason = "a page slower than this is not worth holding the turn for"
+
+[edit.anchor_similarity_pct]
+value = 65
+reason = "how alike the middle of a block must be when only its first and last lines match exactly"
+
+[edit.size_tolerance_pct]
+value = 25
+reason = "a fuzzy match this much longer or shorter than the text it replaces is a different block"
+
+[edit.similarity_max_chars]
+value = 20000
+reason = "edit distance is quadratic; beyond this the closest-match hint is skipped"

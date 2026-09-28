@@ -1,0 +1,25 @@
+# How many leading words identify "the same command" when the user picks "always allow".
+# `git commit -m x` with git = 2 suggests `git commit *`. Longest matching prefix wins;
+# anything unlisted keeps one word.
+[arity]
+git = 2
+cargo = 2
+npm = 2
+"npm run" = 3
+pnpm = 2
+"pnpm run" = 3
+yarn = 2
+bun = 2
+"bun run" = 3
+make = 2
+go = 2
+docker = 2
+"docker compose" = 3
+kubectl = 2
+gh = 3
+python = 2
+"python -m" = 3
+uv = 2
+pip = 2
+dotnet = 2
+rustup = 2

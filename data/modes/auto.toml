@@ -1,0 +1,10 @@
+id = "auto"
+label = "AUTO"
+order = 1
+summary = "Runs everything without asking, deny rules included"
+
+# Deliberately total: AUTO bypasses every permission, with no classifier.
+[verdicts]
+ask = "allow"
+deny = "allow"
+doom_loop = "tell_model"

@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "path": { "type": "string", "description": "File or directory to read" },
+    "offset": { "type": "integer", "description": "First line to show, 1-based" },
+    "limit": { "type": "integer", "description": "Number of lines to show" }
+  },
+  "required": ["path"]
+}

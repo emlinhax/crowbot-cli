@@ -40,6 +40,9 @@ pub struct Limits {
     pub retry: RetryLimits,
     pub pair: PairLimits,
     pub signup: SignupLimits,
+    pub agent: AgentLimits,
+    pub tools: ToolLimits,
+    pub edit: EditLimits,
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,6 +88,38 @@ pub struct PairLimits {
 #[serde(deny_unknown_fields)]
 pub struct SignupLimits {
     pub max_attempts: Limit<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentLimits {
+    pub max_turns: Limit<u32>,
+    pub doom_loop_repeats: Limit<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolLimits {
+    pub max_lines: Limit<usize>,
+    pub max_bytes: Limit<usize>,
+    pub max_line_chars: Limit<usize>,
+    pub max_results: Limit<usize>,
+    pub grep_line_chars: Limit<usize>,
+    pub list_entries: Limit<usize>,
+    pub binary_sniff_bytes: Limit<usize>,
+    pub bash_timeout_secs: Limit<u64>,
+    pub bash_max_timeout_secs: Limit<u64>,
+    pub bash_drain_ms: Limit<u64>,
+    pub webfetch_max_bytes: Limit<usize>,
+    pub webfetch_timeout_secs: Limit<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EditLimits {
+    pub anchor_similarity_pct: Limit<u64>,
+    pub size_tolerance_pct: Limit<u64>,
+    pub similarity_max_chars: Limit<usize>,
 }
 
 #[cfg(test)]

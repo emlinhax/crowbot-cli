@@ -41,6 +41,15 @@ impl Paths {
         self.home.join("cache").join("models.json")
     }
 
+    /// Full tool output too long to show, kept for the model to read.
+    pub fn tmp_dir(&self) -> PathBuf {
+        self.home.join("tmp")
+    }
+
+    pub fn plans_dir(&self) -> PathBuf {
+        self.home.join("plans")
+    }
+
     pub fn auth(&self) -> PathBuf {
         self.home.join("auth.json")
     }

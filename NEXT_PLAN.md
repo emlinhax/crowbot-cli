@@ -11,7 +11,7 @@ Record what each phase taught us under **Learned**.
 - [x] `io/{http,fs,clock,term}`, `paths`, `settings` (defaults → user → project → flags), `limits`
 - [x] `crowbot models` (fresh cache → live → stale cache → bundled snapshot), `crowbot help`
 - [x] Fake crowbot (axum) + first e2e suite
-- [ ] `crowbot keytest` on Windows Terminal: Shift+Tab, Shift+Enter, multi-line paste, key release
+- [x] `crowbot keytest` on Windows Terminal: Shift+Tab, Shift+Enter, multi-line paste, key release
 - [ ] CI green on all three OSes (needs the GitHub remote)
 
 **Learned**
@@ -19,6 +19,13 @@ Record what each phase taught us under **Learned**.
   cmake) plus `rustls-platform-verifier` for OS roots. The ring/webpki plan item was moot.
 - Static-CRT release build on Windows: 4.5 MB.
 - Binary crates warn on unread `pub` fields, so data fields are added only when read.
+- Windows Terminal via crossterm (no kitty enhancement): every key also sends a Release event
+  (filter to Press/Repeat); Shift+Tab is `BackTab`+SHIFT; Shift+Enter keeps SHIFT; Ctrl+J is
+  `Char('j')`+CONTROL. A paste is plain key presses (13 for "one
+two
+three", 2 of them Enter)
+  all queued at once, never `Event::Paste`: the TUI must treat an Enter with more input already
+  pending as a newline.
 
 ## M1 — Auth + streaming chat, headless
 - [x] `api/sse.rs` with chunk-split fuzz tests
@@ -37,6 +44,21 @@ Record what each phase taught us under **Learned**.
 - Clippy rejects an enum variant named like its enum (`Stop::Stop`), hence `Finish::Done`.
 
 ## M2 — Tools + loop
+- [x] Messages gain tool results and reminders; `context.rs` answers orphaned calls and trims cut-off turns
+- [x] `agent/run.rs` loop: steer after tools, follow-ups at the end, turn limit, length-stop never runs calls
+- [x] `agent/batch.rs`: clear in call order, run in parallel, results in call order; doom-loop guard
+- [x] Tools: read, write, edit (+ `edit_match` cascade, 17 goldens), bash (Job Object / process group), glob, grep (embedded ripgrep), webfetch, codesearch, todowrite
+- [x] Permissions: rules (last match wins), gate layering defaults → config → approvals → mode locks; `shell_split`, arity; mode × tool matrix test
+- [x] Modes as data: MANUAL asks, AUTO allows everything (denies too), PLAN read-only with a plan file and reminder
+- [x] Loop unit tests (steer, follow-up, reject, feedback, always, auto-approve, length, doom loop, plan) and 4 e2e scenarios
+- [ ] A real run on the user's machine: `crowbot --mode auto -p "..."` against a scratch repo
+
+**Learned**
+- The shell tool that drives this repo turns `\\` into `\` inside heredocs; files with backslashes are
+  written with the editor, never through a heredoc.
+- Headless runs answer every prompt `Unavailable`, so the model hears why and carries on instead of
+  the run hanging; the TUI will answer them for real.
+- `Reply`/`steer`/`follow_up`/`set_mode` carry `allow(dead_code)` outside tests until M3 wires them.
 ## M3 — TUI core
 ## M4 — Account UX in the TUI
 ## M5 — Context + sessions (compaction, shadow-git /undo)

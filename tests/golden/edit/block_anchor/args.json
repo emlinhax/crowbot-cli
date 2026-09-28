@@ -1,0 +1,6 @@
+[
+  {
+    "old_text": "fn a() {\n    one();\n    twoo();\n    three();\n}",
+    "new_text": "fn a() {}"
+  }
+]

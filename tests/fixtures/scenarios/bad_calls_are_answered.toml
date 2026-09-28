@@ -1,0 +1,18 @@
+description = "Unknown tools and malformed arguments get error results instead of failing the run"
+args = ["--mode", "auto", "-p", "do it"]
+replies = ["scenarios/bad_calls/1.sse", "scenarios/bad_calls/2.sse"]
+
+[expect]
+exit = 0
+
+[[expect.requests]]
+index = 1
+message = -2
+role = "tool"
+contains = "no tool named `frobnicate`"
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "not valid JSON"

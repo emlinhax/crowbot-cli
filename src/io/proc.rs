@@ -53,6 +53,30 @@ pub fn open_url(url: &str) -> io::Result<()> {
     }
 }
 
+/// The first `name` on PATH (trying PATHEXT extensions on Windows), or `name` itself when it is
+/// already a path to a file.
+pub fn which(name: &str) -> Option<std::path::PathBuf> {
+    let direct = std::path::Path::new(name);
+    if direct.components().count() > 1 {
+        return direct.is_file().then(|| direct.to_path_buf());
+    }
+    let path = crate::settings::env("PATH")?;
+    let exts: Vec<String> = if cfg!(windows) && direct.extension().is_none() {
+        crate::settings::env("PATHEXT")
+            .unwrap_or_else(|| ".EXE;.CMD;.BAT".into())
+            .split(';')
+            .map(str::to_owned)
+            .collect()
+    } else {
+        vec![String::new()]
+    };
+    std::env::split_paths(&path).find_map(|dir| {
+        exts.iter()
+            .map(|ext| dir.join(format!("{name}{ext}")))
+            .find(|candidate| candidate.is_file())
+    })
+}
+
 /// This machine's name, shown on crowbot's key list after pairing.
 pub fn hostname() -> String {
     ["COMPUTERNAME", "HOSTNAME"]

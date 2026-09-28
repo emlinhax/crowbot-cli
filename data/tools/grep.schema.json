@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "pattern": { "type": "string", "description": "Regular expression" },
+    "path": { "type": "string", "description": "File or directory to search; defaults to the working directory" },
+    "glob": { "type": "string", "description": "Only files whose path matches this glob" },
+    "ignore_case": { "type": "boolean", "description": "Case-insensitive matching" }
+  },
+  "required": ["pattern"]
+}
