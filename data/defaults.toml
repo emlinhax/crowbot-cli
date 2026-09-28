@@ -1,0 +1,2 @@
+# Built-in settings; ~/.crowbot/config.toml, .crowbot/config.toml and flags override them in that order.
+model = "crow-2"

@@ -1,0 +1,4 @@
+name = "keytest"
+summary = "Print raw key events to check how this terminal reports keys"
+usage = "keytest"
+hidden = true

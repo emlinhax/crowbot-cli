@@ -1,0 +1,4 @@
+/target/
+/reference/
+*.snap.new
+*.pending-snap

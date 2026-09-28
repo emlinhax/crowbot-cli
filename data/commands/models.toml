@@ -1,0 +1,3 @@
+name = "models"
+summary = "List crowbot's live models with prices and limits"
+usage = "models [--refresh]"

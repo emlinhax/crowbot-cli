@@ -1,0 +1,33 @@
+# Only src/io/ may touch the outside world; everything else goes through it (see AGENTS.md).
+disallowed-methods = [
+  { path = "std::fs::read", reason = "use io::fs" },
+  { path = "std::fs::read_to_string", reason = "use io::fs" },
+  { path = "std::fs::write", reason = "use io::fs" },
+  { path = "std::fs::create_dir_all", reason = "use io::fs" },
+  { path = "std::fs::remove_file", reason = "use io::fs" },
+  { path = "std::fs::remove_dir_all", reason = "use io::fs" },
+  { path = "std::fs::rename", reason = "use io::fs" },
+  { path = "std::fs::read_dir", reason = "use io::fs" },
+  { path = "std::fs::metadata", reason = "use io::fs" },
+  { path = "std::fs::File::open", reason = "use io::fs" },
+  { path = "std::fs::File::create", reason = "use io::fs" },
+  { path = "std::process::Command::new", reason = "use io::proc" },
+  { path = "tokio::process::Command::new", reason = "use io::proc" },
+  { path = "reqwest::Client::new", reason = "use io::http" },
+  { path = "reqwest::Client::builder", reason = "use io::http" },
+  { path = "reqwest::get", reason = "use io::http" },
+  { path = "std::time::SystemTime::now", reason = "use io::clock" },
+  { path = "jiff::Timestamp::now", reason = "use io::clock" },
+  { path = "jiff::Zoned::now", reason = "use io::clock" },
+  { path = "crossterm::terminal::enable_raw_mode", reason = "use io::term" },
+  { path = "crossterm::event::read", reason = "use io::term" },
+  { path = "crossterm::event::poll", reason = "use io::term" },
+  { path = "std::env::var", reason = "use settings::env" },
+  { path = "std::env::var_os", reason = "use settings::env" },
+]
+disallowed-macros = [
+  { path = "std::print", reason = "use io::term::out" },
+  { path = "std::println", reason = "use io::term::out" },
+  { path = "std::eprint", reason = "use io::term::err" },
+  { path = "std::eprintln", reason = "use io::term::err" },
+]

@@ -1,0 +1,13 @@
+# Where crowbot lives. `env` names the variable that overrides an origin (tests point it at a fake).
+[origins.api]
+url = "https://api.crowbot.sh"
+env = "CROWBOT_API_URL"
+
+[origins.chat]
+url = "https://chat.crowbot.sh"
+env = "CROWBOT_CHAT_URL"
+
+[endpoints.models]
+origin = "api"
+method = "GET"
+path = "/v1/models"

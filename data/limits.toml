@@ -1,0 +1,13 @@
+# Every number the program is bound by, with the reason it is that number.
+
+[http.connect_timeout_ms]
+value = 10000
+reason = "a dead network should fail fast; slow responses are bounded separately"
+
+[models.fetch_timeout_ms]
+value = 2500
+reason = "on the startup path a stale model list beats a slow start (same bound as crowbot's opencode plugin)"
+
+[models.cache_ttl_secs]
+value = 3600
+reason = "prices and limits change without a deploy, but not by the minute"

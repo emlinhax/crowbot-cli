@@ -1,0 +1,27 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "crow-2",
+      "object": "model",
+      "owned_by": "crowbot",
+      "display_name": "GLM 5.3",
+      "description": "Fixture copy of the flagship.",
+      "context_window": 1000000,
+      "max_output_tokens": 32768,
+      "pricing": { "input_per_1m_usd": 6.0, "cached_input_per_1m_usd": 0.6, "output_per_1m_usd": 10.0 },
+      "capabilities": { "streaming": true, "reasoning": true, "tool_calling": true, "temperature": true, "caching": false }
+    },
+    {
+      "id": "fake-coder",
+      "object": "model",
+      "owned_by": "crowbot",
+      "display_name": "Fake Coder",
+      "description": "Only exists in tests.",
+      "context_window": 131072,
+      "max_output_tokens": 8192,
+      "pricing": { "input_per_1m_usd": 0.1, "cached_input_per_1m_usd": 0.01, "output_per_1m_usd": 0.5 },
+      "capabilities": { "streaming": true, "reasoning": false, "tool_calling": true, "temperature": true, "caching": true }
+    }
+  ]
+}
