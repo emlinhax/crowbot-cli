@@ -4,4 +4,6 @@
 pub mod clock;
 pub mod fs;
 pub mod http;
+pub mod proc;
+pub mod secret;
 pub mod term;

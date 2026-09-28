@@ -1,0 +1,104 @@
+# How the client treats each error. Keys are crowbot's `error.type`, plus our own kinds for
+# failures that never reached crowbot. `retry` marks errors worth trying again automatically.
+
+[unknown]
+title = "Request failed"
+
+[http_error]
+title = "crowbot answered with an error"
+retry = true
+
+[network]
+title = "Could not reach crowbot"
+hint = "Check your connection; crowbot is at https://api.crowbot.sh."
+retry = true
+
+[timeout]
+title = "crowbot took too long to answer"
+retry = true
+
+[idle_timeout]
+title = "The response stalled"
+retry = true
+
+[stream_ended]
+title = "The response ended early"
+retry = true
+
+[bad_stream]
+title = "crowbot sent something unreadable"
+
+[not_logged_in]
+title = "Not logged in"
+hint = "Run `crowbot login` to pair this machine, or set CROWBOT_API_KEY."
+
+[bad_request]
+title = "crowbot rejected the request"
+
+[invalid_api_key]
+title = "Your key was not accepted"
+hint = "It may have been revoked. Run `crowbot login` again."
+
+[account_disabled]
+title = "This account is frozen"
+hint = "A card refund or chargeback froze it. Contact admin@crowbot.sh."
+
+[insufficient_balance]
+title = "Out of funds"
+hint = "Top up with `crowbot topup`."
+
+[plan_allowance_spent]
+title = "Your plan's allowance is used up for now"
+hint = "It refills over the day, or allow balance fallback in `crowbot plans`."
+
+[model_not_found]
+title = "That model is not being served"
+hint = "Pick a live one from `crowbot models`."
+
+[body_too_large]
+title = "The request is over crowbot's 16 MiB limit"
+hint = "Compact the conversation or drop large attachments."
+
+[rate_limited]
+title = "Too many requests at once"
+retry = true
+
+[tool_error]
+title = "A crowbot tool failed upstream"
+
+[no_model]
+title = "No models are live right now"
+retry = true
+
+[no_provider]
+title = "That model's upstream is not configured"
+hint = "Pick another model from `crowbot models`."
+
+[no_price]
+title = "That model has no price quote yet"
+retry = true
+
+[price_fault]
+title = "That model is off sale while its price settles"
+hint = "Pick another model from `crowbot models`."
+
+[upstream_unavailable]
+title = "The model's upstream is unavailable"
+hint = "crowbot's side, not yours; try again or pick another model."
+retry = true
+
+[upstream_error]
+title = "The model's vendor refused the request"
+retry = true
+
+[content_filter]
+title = "The model's content filter stopped the reply"
+hint = "Rephrase, or try a crow model."
+
+[bad_response]
+title = "crowbot sent a reply this version cannot read"
+hint = "Update crowbot; the API may have moved on."
+
+[pair_expired]
+title = "The pairing code expired or was already used"
+hint = "Run `crowbot login` again for a fresh code."

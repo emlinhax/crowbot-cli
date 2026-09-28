@@ -1,0 +1,18 @@
+# Reasoning effort levels crowbot accepts as `reasoning_effort`. Reasoning tokens bill as output,
+# so effort is a spend control as much as a quality one. Omitting it uses the model's default.
+
+[[level]]
+id = "low"
+summary = "Quick answers, least reasoning spend"
+
+[[level]]
+id = "medium"
+summary = "Balanced"
+
+[[level]]
+id = "high"
+summary = "Think harder on tricky problems"
+
+[[level]]
+id = "max"
+summary = "The model's ceiling; crowbot maps it down for models with fewer tiers"

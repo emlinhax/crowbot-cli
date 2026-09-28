@@ -36,12 +36,16 @@ impl Limit<u64> {
 pub struct Limits {
     pub http: HttpLimits,
     pub models: ModelLimits,
+    pub chat: ChatLimits,
+    pub retry: RetryLimits,
+    pub pair: PairLimits,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HttpLimits {
     pub connect_timeout_ms: Limit<u64>,
+    pub request_timeout_ms: Limit<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,6 +53,31 @@ pub struct HttpLimits {
 pub struct ModelLimits {
     pub fetch_timeout_ms: Limit<u64>,
     pub cache_ttl_secs: Limit<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChatLimits {
+    pub headers_timeout_secs: Limit<u64>,
+    pub idle_timeout_secs: Limit<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetryLimits {
+    pub max_attempts: Limit<u32>,
+    pub initial_delay_ms: Limit<u64>,
+    pub factor: Limit<u32>,
+    pub max_delay_ms: Limit<u64>,
+    pub jitter_pct: Limit<u64>,
+    pub max_retry_after_secs: Limit<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PairLimits {
+    pub poll_interval_ms: Limit<u64>,
+    pub backoff_ms: Limit<u64>,
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
 
+use crate::api::Call;
 use crate::app::App;
 use crate::io;
 use crate::limits;
@@ -56,6 +57,12 @@ pub struct Catalog {
     pub note: Option<String>,
 }
 
+impl Catalog {
+    pub fn get(&self, id: &str) -> Option<&Model> {
+        self.models.iter().find(|m| m.id == id)
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 struct Listing {
     data: Vec<Model>,
@@ -93,7 +100,7 @@ pub async fn load(app: &App, refresh: bool) -> Catalog {
             };
             // A cache that fails to write only costs a fetch next time.
             if let Ok(json) = serde_json::to_vec_pretty(&cache) {
-                let _ = io::fs::write_atomic(&path, &json);
+                let _ = io::fs::write_atomic(&path, &json, io::fs::Access::Shared);
             }
             return Catalog {
                 models: cache.data,
@@ -120,7 +127,7 @@ async fn fetch(app: &App) -> Result<Vec<Model>, String> {
     let timeout = limits::get().models.fetch_timeout_ms.ms();
     let resp = app
         .api
-        .call("models", &[], None, timeout)
+        .call("models", Call::default(), timeout)
         .await
         .map_err(|e| e.to_string())?;
     let listing: Listing =

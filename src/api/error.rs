@@ -1,72 +1,126 @@
+use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::LazyLock;
+use std::time::Duration;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::io::http::{HttpError, Response};
 
-#[derive(Debug, thiserror::Error)]
-pub enum ApiError {
-    #[error(transparent)]
-    Http(#[from] HttpError),
-    /// crowbot's `{"error": {"message", "type"}}` envelope; `kind` is the field to branch on.
-    #[error("{}", StatusText { status: *status, kind, message, request_id: request_id.as_deref() })]
-    Status {
-        status: u16,
-        kind: String,
-        message: String,
-        request_id: Option<String>,
-    },
+const CATALOG_SRC: &str = include_str!("../../data/errors.toml");
+
+static CATALOG: LazyLock<BTreeMap<String, Entry>> =
+    LazyLock::new(|| toml::from_str(CATALOG_SRC).expect("data/errors.toml is checked by tests"));
+
+/// How the client treats one `error.type`; see data/errors.toml.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Entry {
+    pub title: String,
+    #[serde(default)]
+    pub hint: Option<String>,
+    #[serde(default)]
+    pub retry: bool,
 }
 
-/// The request id is what crowbot support needs, so it rides along whenever there is one.
-struct StatusText<'a> {
-    status: u16,
-    kind: &'a str,
-    message: &'a str,
-    request_id: Option<&'a str>,
+/// An error as stored in sessions and shown to the user. `kind` is crowbot's `error.type`, or
+/// one of our own for failures that never reached crowbot (see data/errors.toml).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ErrorInfo {
+    #[serde(rename = "type", default)]
+    pub kind: String,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default)]
+    pub status: Option<u16>,
+    #[serde(default)]
+    pub request_id: Option<String>,
 }
 
-impl fmt::Display for StatusText<'_> {
+impl ErrorInfo {
+    pub fn local(kind: &str, message: impl Into<String>) -> Self {
+        Self {
+            kind: kind.to_owned(),
+            message: message.into(),
+            status: None,
+            request_id: None,
+        }
+    }
+
+    pub fn entry(&self) -> &'static Entry {
+        CATALOG
+            .get(&self.kind)
+            .unwrap_or_else(|| &CATALOG["unknown"])
+    }
+}
+
+impl fmt::Display for ErrorInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ({}, HTTP {}", self.message, self.kind, self.status)?;
-        if let Some(id) = self.request_id {
+        write!(f, "{} ({}", self.message, self.kind)?;
+        if let Some(status) = self.status {
+            write!(f, ", HTTP {status}")?;
+        }
+        // The request id is what crowbot support needs to find the call.
+        if let Some(id) = &self.request_id {
             write!(f, ", request {id}")?;
         }
         write!(f, ")")
     }
 }
 
-#[derive(Deserialize)]
-struct Envelope {
-    error: Body,
+#[derive(Debug, thiserror::Error)]
+#[error("{info}")]
+pub struct ApiError {
+    pub info: ErrorInfo,
+    pub retry_after: Option<Duration>,
 }
 
 #[derive(Deserialize)]
-struct Body {
-    #[serde(default)]
-    message: String,
-    #[serde(rename = "type", default)]
-    kind: String,
+struct Envelope {
+    error: ErrorInfo,
 }
 
 impl ApiError {
     pub fn from_response(resp: &Response) -> Self {
-        let (kind, message) = match serde_json::from_slice::<Envelope>(&resp.body) {
-            Ok(Envelope { error }) => (error.kind, error.message),
-            Err(_) => (
-                "http_error".to_owned(),
+        let mut info = match serde_json::from_slice::<Envelope>(&resp.body) {
+            Ok(envelope) => envelope.error,
+            Err(_) => ErrorInfo::local(
+                "http_error",
                 String::from_utf8_lossy(&resp.body)
                     .chars()
                     .take(200)
-                    .collect(),
+                    .collect::<String>(),
             ),
         };
-        Self::Status {
-            status: resp.status,
-            kind,
-            message,
-            request_id: resp.request_id.clone(),
+        info.status = Some(resp.status);
+        info.request_id.clone_from(&resp.request_id);
+        Self {
+            info,
+            retry_after: resp.retry_after,
         }
+    }
+
+    pub fn not_logged_in() -> Self {
+        ErrorInfo::local("not_logged_in", "no crowbot key on this machine").into()
+    }
+}
+
+impl From<ErrorInfo> for ApiError {
+    fn from(info: ErrorInfo) -> Self {
+        Self {
+            info,
+            retry_after: None,
+        }
+    }
+}
+
+impl From<HttpError> for ApiError {
+    fn from(e: HttpError) -> Self {
+        let kind = match e {
+            HttpError::Timeout => "timeout",
+            HttpError::Connect(_) | HttpError::Other(_) => "network",
+        };
+        ErrorInfo::local(kind, e.to_string()).into()
     }
 }
 
@@ -78,8 +132,18 @@ mod tests {
         Response {
             status,
             request_id: Some("req_1".into()),
+            retry_after: Some(Duration::from_secs(3)),
             body: body.as_bytes().to_vec(),
         }
+    }
+
+    #[test]
+    fn catalog_parses_and_has_a_fallback() {
+        assert!(CATALOG.contains_key("unknown"));
+        assert_eq!(
+            ErrorInfo::local("no_such_kind", "x").entry().title,
+            CATALOG["unknown"].title
+        );
     }
 
     #[test]
@@ -88,28 +152,18 @@ mod tests {
             402,
             r#"{"error":{"message":"top up","type":"insufficient_balance"}}"#,
         ));
-        let ApiError::Status {
-            kind,
-            message,
-            request_id,
-            ..
-        } = err
-        else {
-            panic!("expected a status error");
-        };
-        assert_eq!(kind, "insufficient_balance");
-        assert_eq!(message, "top up");
-        assert_eq!(request_id.as_deref(), Some("req_1"));
+        assert_eq!(err.info.kind, "insufficient_balance");
+        assert_eq!(err.info.message, "top up");
+        assert_eq!(err.info.status, Some(402));
+        assert_eq!(err.info.request_id.as_deref(), Some("req_1"));
+        assert_eq!(err.retry_after, Some(Duration::from_secs(3)));
+        assert!(err.to_string().contains("request req_1"));
     }
 
     #[test]
     fn non_json_body_still_reports() {
-        let ApiError::Status { kind, message, .. } =
-            ApiError::from_response(&response(502, "Bad Gateway"))
-        else {
-            panic!("expected a status error");
-        };
-        assert_eq!(kind, "http_error");
-        assert_eq!(message, "Bad Gateway");
+        let err = ApiError::from_response(&response(502, "Bad Gateway"));
+        assert_eq!(err.info.kind, "http_error");
+        assert_eq!(err.info.message, "Bad Gateway");
     }
 }

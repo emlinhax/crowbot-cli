@@ -1,8 +1,8 @@
 use crate::api::Api;
 use crate::io::http::Http;
-use crate::limits;
 use crate::paths::Paths;
 use crate::settings::{self, Overrides, Settings};
+use crate::{auth, limits};
 
 /// What every command and the agent run against, built once at startup.
 pub struct App {
@@ -16,10 +16,11 @@ impl App {
         let paths = Paths::resolve()?;
         let settings = settings::load(&paths, flags)?;
         let http = Http::new(limits::get().http.connect_timeout_ms.ms())?;
+        let key = auth::load(&paths)?.map(|k| k.secret);
         Ok(Self {
+            api: Api::new(http, key),
             paths,
             settings,
-            api: Api::new(http),
         })
     }
 }

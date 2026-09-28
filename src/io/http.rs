@@ -2,6 +2,8 @@
 
 use std::time::Duration;
 
+use futures_util::StreamExt;
+use futures_util::stream::BoxStream;
 use serde::Deserialize;
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
@@ -15,14 +17,25 @@ pub struct Request<'a> {
     pub method: Method,
     pub url: String,
     pub bearer: Option<&'a str>,
+    pub headers: &'a [(&'a str, &'a str)],
     pub json: Option<&'a serde_json::Value>,
+    /// Whole-request bound for `send`; for `open` it bounds only the wait for headers.
     pub timeout: Duration,
 }
 
 pub struct Response {
     pub status: u16,
     pub request_id: Option<String>,
+    pub retry_after: Option<Duration>,
     pub body: Vec<u8>,
+}
+
+/// A response whose body is still arriving.
+pub struct Streaming {
+    pub status: u16,
+    pub request_id: Option<String>,
+    pub retry_after: Option<Duration>,
+    pub body: BoxStream<'static, Result<Vec<u8>, HttpError>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -51,30 +64,80 @@ impl Http {
     }
 
     pub async fn send(&self, req: Request<'_>) -> Result<Response, HttpError> {
+        let resp = self
+            .builder(&req)
+            .timeout(req.timeout)
+            .send()
+            .await
+            .map_err(classify)?;
+        let head = Head::of(&resp);
+        let body = resp.bytes().await.map_err(classify)?.to_vec();
+        Ok(Response {
+            status: head.status,
+            request_id: head.request_id,
+            retry_after: head.retry_after,
+            body,
+        })
+    }
+
+    /// Sends and returns as soon as headers arrive; the caller bounds each read of the body.
+    pub async fn open(&self, req: Request<'_>) -> Result<Streaming, HttpError> {
+        let resp = tokio::time::timeout(req.timeout, self.builder(&req).send())
+            .await
+            .map_err(|_| HttpError::Timeout)?
+            .map_err(classify)?;
+        let head = Head::of(&resp);
+        Ok(Streaming {
+            status: head.status,
+            request_id: head.request_id,
+            retry_after: head.retry_after,
+            body: resp
+                .bytes_stream()
+                .map(|chunk| chunk.map(|b| b.to_vec()).map_err(classify))
+                .boxed(),
+        })
+    }
+
+    fn builder(&self, req: &Request<'_>) -> reqwest::RequestBuilder {
         let mut builder = match req.method {
             Method::Get => self.client.get(&req.url),
             Method::Post => self.client.post(&req.url),
-        }
-        .timeout(req.timeout);
+        };
         if let Some(key) = req.bearer {
             builder = builder.bearer_auth(key);
+        }
+        for (name, value) in req.headers {
+            builder = builder.header(*name, *value);
         }
         if let Some(body) = req.json {
             builder = builder.json(body);
         }
-        let resp = builder.send().await.map_err(classify)?;
-        let status = resp.status().as_u16();
-        let request_id = resp
-            .headers()
-            .get("x-request-id")
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_owned);
-        let body = resp.bytes().await.map_err(classify)?.to_vec();
-        Ok(Response {
-            status,
-            request_id,
-            body,
-        })
+        builder
+    }
+}
+
+struct Head {
+    status: u16,
+    request_id: Option<String>,
+    retry_after: Option<Duration>,
+}
+
+impl Head {
+    fn of(resp: &reqwest::Response) -> Self {
+        let header = |name: &str| {
+            resp.headers()
+                .get(name)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_owned)
+        };
+        Self {
+            status: resp.status().as_u16(),
+            request_id: header("x-request-id"),
+            // CEILING: only the delta-seconds form; an HTTP-date Retry-After is ignored.
+            retry_after: header("retry-after")
+                .and_then(|v| v.trim().parse().ok())
+                .map(Duration::from_secs),
+        }
     }
 }
 

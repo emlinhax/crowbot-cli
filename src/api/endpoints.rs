@@ -31,6 +31,9 @@ pub struct Endpoint {
     pub origin: String,
     pub method: Method,
     pub path: String,
+    /// Whether the call needs the account key.
+    #[serde(default)]
+    pub auth: bool,
 }
 
 /// Endpoint ids are fixed strings in feature code, so an unknown one is a programming error.
@@ -79,6 +82,7 @@ mod tests {
             origin: "api".into(),
             method: Method::Get,
             path: "/api/pair/{code}".into(),
+            auth: false,
         };
         assert!(url(&endpoint, &[("code", "abc")]).ends_with("/api/pair/abc"));
     }

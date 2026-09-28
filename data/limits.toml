@@ -4,6 +4,10 @@
 value = 10000
 reason = "a dead network should fail fast; slow responses are bounded separately"
 
+[http.request_timeout_ms]
+value = 30000
+reason = "account calls are small; anything slower is a stuck connection"
+
 [models.fetch_timeout_ms]
 value = 2500
 reason = "on the startup path a stale model list beats a slow start (same bound as crowbot's opencode plugin)"
@@ -11,3 +15,43 @@ reason = "on the startup path a stale model list beats a slow start (same bound 
 [models.cache_ttl_secs]
 value = 3600
 reason = "prices and limits change without a deploy, but not by the minute"
+
+[chat.headers_timeout_secs]
+value = 120
+reason = "crowbot may hold a request while it sizes it against the balance and waits for an upstream slot"
+
+[chat.idle_timeout_secs]
+value = 120
+reason = "crowbot sends keepalives during long thinking, so two silent minutes means a dead stream"
+
+[retry.max_attempts]
+value = 5
+reason = "enough to ride out a brief upstream blip without hiding a real outage"
+
+[retry.initial_delay_ms]
+value = 2000
+reason = "long enough for a rate limit or upstream hiccup to clear"
+
+[retry.factor]
+value = 2
+reason = "exponential backoff"
+
+[retry.max_delay_ms]
+value = 30000
+reason = "cap on the backoff when crowbot gives no Retry-After"
+
+[retry.jitter_pct]
+value = 25
+reason = "spreads retries from parallel clients apart"
+
+[retry.max_retry_after_secs]
+value = 120
+reason = "a longer wait is better shown to the user than slept through"
+
+[pair.poll_interval_ms]
+value = 2000
+reason = "the same cadence crowbot's own installer uses; approval is a human action"
+
+[pair.backoff_ms]
+value = 5000
+reason = "pause after crowbot rate-limits the polling"

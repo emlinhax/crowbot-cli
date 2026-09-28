@@ -1,20 +1,24 @@
 use anyhow::Context;
 use serde::Deserialize;
 
-use crate::io;
 use crate::paths::Paths;
+use crate::{effort, io};
 
 const DEFAULTS: &str = include_str!("../data/defaults.toml");
 
 #[derive(Debug, Deserialize)]
 pub struct Settings {
     pub model: String,
+    /// `None` leaves effort to the model's own default.
+    #[serde(default)]
+    pub effort: Option<String>,
 }
 
 /// Values from command-line flags: the last and strongest layer.
 #[derive(Debug, Default)]
 pub struct Overrides {
     pub model: Option<String>,
+    pub effort: Option<String>,
 }
 
 pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
@@ -29,6 +33,12 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
     let mut settings: Settings = toml::Value::Table(merged).try_into()?;
     if let Some(model) = &flags.model {
         settings.model.clone_from(model);
+    }
+    if flags.effort.is_some() {
+        settings.effort.clone_from(&flags.effort);
+    }
+    if let Some(level) = &settings.effort {
+        effort::validate(level)?;
     }
     Ok(settings)
 }
@@ -77,15 +87,26 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
         let paths = Paths::at(home.path().into(), project.path().into());
-        io::fs::write_atomic(&paths.user_config(), b"model = 'user'").unwrap();
+        io::fs::write_atomic(
+            &paths.user_config(),
+            b"model = 'user'",
+            io::fs::Access::Shared,
+        )
+        .unwrap();
         assert_eq!(load(&paths, &Overrides::default()).unwrap().model, "user");
-        io::fs::write_atomic(&paths.project_config(), b"model = 'project'").unwrap();
+        io::fs::write_atomic(
+            &paths.project_config(),
+            b"model = 'project'",
+            io::fs::Access::Shared,
+        )
+        .unwrap();
         assert_eq!(
             load(&paths, &Overrides::default()).unwrap().model,
             "project"
         );
         let flags = Overrides {
             model: Some("flag".into()),
+            ..Overrides::default()
         };
         assert_eq!(load(&paths, &flags).unwrap().model, "flag");
     }

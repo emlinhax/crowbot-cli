@@ -21,6 +21,26 @@ pub fn err(text: &str) {
     let _ = stderr.flush();
 }
 
+/// Piped input, if stdin is not a terminal; lets `git diff | crowbot -p review` work.
+pub fn piped_stdin() -> io::Result<Option<String>> {
+    use std::io::{IsTerminal, Read};
+    let mut stdin = io::stdin();
+    if stdin.is_terminal() {
+        return Ok(None);
+    }
+    let mut text = String::new();
+    stdin.read_to_string(&mut text)?;
+    Ok(Some(text).filter(|t| !t.trim().is_empty()))
+}
+
+/// Resolves on Ctrl+C.
+pub async fn interrupted() {
+    if tokio::signal::ctrl_c().await.is_err() {
+        // No signal handler available: never resolve rather than cancel spuriously.
+        std::future::pending::<()>().await;
+    }
+}
+
 /// Raw mode while the guard lives; dropping it restores the terminal, even on an early return.
 pub struct Raw {
     enhanced: bool,

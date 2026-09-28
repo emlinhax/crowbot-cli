@@ -1,0 +1,6 @@
+data: {"choices":[{"index":0,"delta":{"content":"Cut"},"finish_reason":"length"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":1}}
+
+data: [DONE]
+

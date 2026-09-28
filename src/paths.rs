@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 
@@ -39,5 +39,38 @@ impl Paths {
 
     pub fn models_cache(&self) -> PathBuf {
         self.home.join("cache").join("models.json")
+    }
+
+    pub fn auth(&self) -> PathBuf {
+        self.home.join("auth.json")
+    }
+
+    /// Grouped per project directory so resuming can list this project's sessions first.
+    pub fn sessions_dir(&self) -> PathBuf {
+        self.home.join("sessions").join(slug(&self.project))
+    }
+}
+
+fn slug(path: &Path) -> String {
+    let text: String = path
+        .display()
+        .to_string()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    text.trim_matches('-').chars().take(96).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slug_is_filesystem_safe() {
+        assert_eq!(
+            slug(Path::new(r"C:\Users\jacob\proj")),
+            "C--Users-jacob-proj"
+        );
+        assert_eq!(slug(Path::new("/home/j/p.rs")), "home-j-p-rs");
     }
 }

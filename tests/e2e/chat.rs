@@ -1,0 +1,163 @@
+use serde_json::Value;
+
+use crate::fake_crowbot::{Fake, Reply};
+use crate::{Sandbox, WITH_KEY};
+
+#[tokio::test(flavor = "multi_thread")]
+async fn print_streams_the_reply_and_records_the_session() {
+    let fake = Fake::start().await;
+    fake.script([Reply::Sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+
+    let run = sandbox
+        .run(&fake.url, &["-p", "hi", "there"], WITH_KEY)
+        .await;
+    assert_eq!(run.success().stdout(), "Hello there!\n");
+
+    let body = &fake.chat_bodies()[0];
+    assert_eq!(body["model"], "crow-2");
+    assert_eq!(body["stream"], true);
+    assert_eq!(body["messages"][0]["role"], "system");
+    assert_eq!(body["messages"][1]["content"], "hi there");
+
+    let sessions = sandbox.sessions();
+    assert_eq!(sessions.len(), 1);
+    let lines: Vec<Value> = std::fs::read_to_string(&sessions[0])
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 3);
+    assert_eq!(lines[0]["type"], "session");
+    let reply = &lines[2]["message"];
+    assert_eq!(reply["role"], "assistant");
+    assert_eq!(reply["parts"][0]["type"], "reasoning");
+    assert_eq!(reply["request_id"], "req_fake");
+    // 600 uncached * $6 + 400 cached * $0.60 + 100 out * $10, in micro-dollars
+    assert_eq!(reply["usage"]["cost_micros"], 4840);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn json_mode_emits_one_event_per_line() {
+    let fake = Fake::start().await;
+    fake.script([Reply::Sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+
+    let run = sandbox.run(&fake.url, &["--json", "hi"], WITH_KEY).await;
+    let events: Vec<Value> = run
+        .success()
+        .stdout()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(events[0]["type"], "delta");
+    assert_eq!(events[0]["kind"], "reasoning");
+    let last = events.last().unwrap();
+    assert_eq!(last["type"], "message_end");
+    assert_eq!(last["message"]["finish"], "done");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rate_limits_are_retried_before_anything_streams() {
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::Error {
+            status: 429,
+            kind: "rate_limited",
+            retry_after: Some(0),
+        },
+        Reply::Sse("hello.sse"),
+    ]);
+    let sandbox = Sandbox::default();
+
+    let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
+    assert_eq!(run.success().stdout(), "Hello there!\n");
+    assert!(run.stderr().contains("retrying"), "{}", run.stderr());
+    assert_eq!(fake.hits("/v1/chat/completions"), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn billing_errors_fail_with_a_hint_and_no_retry() {
+    let fake = Fake::start().await;
+    fake.script([Reply::Error {
+        status: 402,
+        kind: "insufficient_balance",
+        retry_after: None,
+    }]);
+    let sandbox = Sandbox::default();
+
+    let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
+    assert_eq!(run.code(), Some(1));
+    let err = run.stderr();
+    assert!(err.contains("Out of funds"), "{err}");
+    assert!(err.contains("req_fake"), "{err}");
+    assert!(err.contains("topup"), "{err}");
+    assert_eq!(fake.hits("/v1/chat/completions"), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_mid_stream_error_keeps_the_partial_reply() {
+    let fake = Fake::start().await;
+    fake.script([Reply::Sse("error_midstream.sse")]);
+    let sandbox = Sandbox::default();
+
+    let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
+    assert_eq!(run.code(), Some(1));
+    assert_eq!(run.stdout(), "Partial answ\n");
+    assert!(run.stderr().contains("vendor refused"), "{}", run.stderr());
+    // Output already streamed (and billed), so it is not retried.
+    assert_eq!(fake.hits("/v1/chat/completions"), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_length_stop_explains_the_cut() {
+    let fake = Fake::start().await;
+    fake.script([Reply::Sse("length.sse")]);
+    let sandbox = Sandbox::default();
+
+    let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
+    assert!(run.success().stderr().contains("output limit"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn effort_is_forwarded_and_validated() {
+    let fake = Fake::start().await;
+    fake.script([Reply::Sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+
+    sandbox
+        .run(&fake.url, &["--effort", "high", "-p", "hi"], WITH_KEY)
+        .await
+        .success();
+    assert_eq!(fake.chat_bodies()[0]["reasoning_effort"], "high");
+
+    let bad = sandbox
+        .run(&fake.url, &["--effort", "ludicrous", "-p", "hi"], WITH_KEY)
+        .await;
+    assert_eq!(bad.code(), Some(1));
+    assert!(bad.stderr().contains("unknown effort"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn unknown_models_are_refused_before_spending() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+
+    let run = sandbox
+        .run(&fake.url, &["--model", "nope", "-p", "hi"], WITH_KEY)
+        .await;
+    assert_eq!(run.code(), Some(1));
+    assert!(run.stderr().contains("unknown model"), "{}", run.stderr());
+    assert_eq!(fake.hits("/v1/chat/completions"), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn without_a_key_it_says_how_to_log_in() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+
+    let run = sandbox.run(&fake.url, &["-p", "hi"], &[]).await;
+    assert_eq!(run.code(), Some(1));
+    assert!(run.stderr().contains("crowbot login"), "{}", run.stderr());
+    assert_eq!(fake.hits("/v1/chat/completions"), 0);
+}

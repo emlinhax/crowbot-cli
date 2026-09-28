@@ -11,3 +11,31 @@ env = "CROWBOT_CHAT_URL"
 origin = "api"
 method = "GET"
 path = "/v1/models"
+
+[endpoints.chat]
+origin = "api"
+method = "POST"
+path = "/v1/chat/completions"
+auth = true
+
+[endpoints.me]
+origin = "api"
+method = "GET"
+path = "/api/me"
+auth = true
+
+[endpoints.pair_start]
+origin = "api"
+method = "POST"
+path = "/api/pair/start"
+
+[endpoints.pair_poll]
+origin = "api"
+method = "GET"
+path = "/api/pair/{code}"
+
+# A web page, not an API: where a person approves a pairing code.
+[endpoints.pair_page]
+origin = "chat"
+method = "GET"
+path = "/pair"

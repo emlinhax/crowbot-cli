@@ -2,6 +2,8 @@
 
 mod help;
 mod keytest;
+mod login;
+mod logout;
 mod models;
 
 use futures_util::future::BoxFuture;
@@ -33,7 +35,13 @@ pub trait Command: Sync {
     -> BoxFuture<'a, anyhow::Result<String>>;
 }
 
-pub static COMMANDS: &[&dyn Command] = &[&help::Help, &models::Models, &keytest::KeyTest];
+pub static COMMANDS: &[&dyn Command] = &[
+    &help::Help,
+    &login::Login,
+    &logout::Logout,
+    &models::Models,
+    &keytest::KeyTest,
+];
 
 pub fn find(name: &str) -> Option<&'static dyn Command> {
     COMMANDS.iter().copied().find(|c| c.spec().name == name)

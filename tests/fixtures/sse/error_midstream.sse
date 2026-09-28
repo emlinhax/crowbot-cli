@@ -1,0 +1,6 @@
+data: {"choices":[{"index":0,"delta":{"content":"Partial answ"}}]}
+
+data: {"error":{"message":"vendor dropped the connection","type":"upstream_error"}}
+
+data: [DONE]
+
