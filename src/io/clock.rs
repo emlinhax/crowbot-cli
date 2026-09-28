@@ -14,3 +14,8 @@ pub fn now() -> Timestamp {
 pub fn today() -> String {
     now().to_zoned(TimeZone::system()).date().to_string()
 }
+
+/// A monotonic instant, for measuring durations.
+pub fn instant() -> std::time::Instant {
+    std::time::Instant::now()
+}

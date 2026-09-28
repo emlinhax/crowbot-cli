@@ -1,4 +1,26 @@
 name = "keytest"
-summary = "Print raw key events to check how this terminal reports keys"
+summary = "Walk through the keys the TUI relies on and report how this terminal sends them"
 usage = "keytest"
 hidden = true
+
+# One prompt per key to check; the report lists what actually arrived.
+[[step]]
+label = "Shift+Tab"
+prompt = "Press Shift+Tab"
+
+[[step]]
+label = "Shift+Enter"
+prompt = "Press Shift+Enter"
+
+[[step]]
+label = "Ctrl+J"
+prompt = "Press Ctrl+J"
+
+[[step]]
+label = "Esc"
+prompt = "Press Esc"
+
+[[step]]
+label = "paste"
+prompt = "Copy the three lines below, then paste them here (Ctrl+V or right-click)"
+sample = "one\ntwo\nthree"

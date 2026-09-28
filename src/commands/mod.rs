@@ -12,9 +12,9 @@ use serde::Deserialize;
 
 use crate::app::App;
 
-/// A command's user-facing metadata, from `data/commands/<name>.toml`.
+/// A command's user-facing metadata, from `data/commands/<name>.toml`. A command may keep
+/// its own extra data in the same file, so unknown fields are allowed here.
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Spec {
     pub name: String,
     pub summary: String,

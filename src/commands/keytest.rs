@@ -1,13 +1,36 @@
 use std::sync::LazyLock;
+use std::time::Duration;
 
 use futures_util::future::BoxFuture;
+use serde::Deserialize;
 
 use super::{Command, Spec};
 use crate::app::App;
-use crate::io::term::{self, Event, KeyCode, KeyEventKind};
+use crate::io;
+use crate::io::term::{self, Event, KeyEvent, KeyEventKind};
 
-static SPEC: LazyLock<Spec> =
-    LazyLock::new(|| Spec::parse(include_str!("../../data/commands/keytest.toml")));
+const SRC: &str = include_str!("../../data/commands/keytest.toml");
+
+static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec::parse(SRC));
+static STEPS: LazyLock<Steps> =
+    LazyLock::new(|| toml::from_str(SRC).expect("keytest steps are checked by tests"));
+
+/// Silence that ends a paste burst; generous, since this only measures.
+const BURST_END: Duration = Duration::from_millis(400);
+
+#[derive(Deserialize)]
+struct Steps {
+    step: Vec<Step>,
+}
+
+#[derive(Deserialize)]
+struct Step {
+    label: String,
+    prompt: String,
+    /// Text to paste back; its presence makes this a paste step.
+    #[serde(default)]
+    sample: Option<String>,
+}
 
 pub struct KeyTest;
 
@@ -22,35 +45,91 @@ impl Command for KeyTest {
         _args: &'a [String],
     ) -> BoxFuture<'a, anyhow::Result<String>> {
         Box::pin(async {
-            tokio::task::spawn_blocking(probe).await??;
-            Ok(String::new())
+            let report = tokio::task::spawn_blocking(probe).await??;
+            Ok(format!(
+                "Report (paste this back):\n\n```\n{}\n```",
+                report.join("\n")
+            ))
         })
     }
 }
 
-/// Echoes every terminal event until Esc is pressed twice in a row.
-fn probe() -> std::io::Result<()> {
+fn probe() -> std::io::Result<Vec<String>> {
     let raw = term::Raw::enter()?;
-    // Raw mode turns off newline translation, hence the explicit carriage returns.
-    term::out(&format!(
-        "keyboard enhancement: {}\r\nPress keys (try Shift+Tab, Shift+Enter, a multi-line paste). Esc twice quits.\r\n",
-        raw.enhanced()
-    ));
-    let mut escapes = 0;
-    loop {
-        let event = term::read_event()?;
-        term::out(&format!("{event:?}\r\n"));
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-        {
-            escapes = if key.code == KeyCode::Esc {
-                escapes + 1
-            } else {
-                0
-            };
-            if escapes == 2 {
-                return Ok(());
-            }
+    let mut report = vec![format!("keyboard enhancement: {}", raw.enhanced())];
+    for step in &STEPS.step {
+        term::out(&format!("\r\n{}\r\n", step.prompt));
+        if let Some(sample) = &step.sample {
+            term::out(&format!("{}\r\n", sample.replace('\n', "\r\n")));
         }
+        let got = match &step.sample {
+            Some(_) => burst()?,
+            None => first_press()?,
+        };
+        term::out(&format!("  got: {got}\r\n"));
+        report.push(format!("{}: {got}", step.label));
+    }
+    drop(raw);
+    term::out("\n");
+    Ok(report)
+}
+
+fn first_press() -> std::io::Result<String> {
+    loop {
+        match term::read_event()? {
+            Event::Key(key) if key.kind != KeyEventKind::Release => return Ok(describe(&key)),
+            Event::Paste(text) => return Ok(format!("paste event ({} chars)", text.len())),
+            _ => {}
+        }
+    }
+}
+
+/// Collects one paste: everything from the first event until the input goes quiet.
+fn burst() -> std::io::Result<String> {
+    let mut first = term::read_event()?;
+    let start = io::clock::instant();
+    let (mut presses, mut enters, mut pastes) = (0, 0, 0);
+    let mut last_press = start;
+    let mut max_gap = Duration::ZERO;
+    loop {
+        match &first {
+            Event::Key(key) if key.kind != KeyEventKind::Release => {
+                let now = io::clock::instant();
+                if presses > 0 {
+                    max_gap = max_gap.max(now - last_press);
+                }
+                last_press = now;
+                presses += 1;
+                if key.code == term::KeyCode::Enter {
+                    enters += 1;
+                }
+            }
+            Event::Paste(_) => pastes += 1,
+            _ => {}
+        }
+        match term::poll_event(BURST_END)? {
+            Some(next) => first = next,
+            None => break,
+        }
+    }
+    Ok(format!(
+        "{presses} key presses ({enters} Enter), {pastes} paste events, {}ms total, max gap {}ms",
+        (last_press - start).as_millis(),
+        max_gap.as_millis()
+    ))
+}
+
+fn describe(key: &KeyEvent) -> String {
+    format!("{:?} {:?} {:?}", key.code, key.modifiers, key.kind)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn steps_parse() {
+        assert!(STEPS.step.iter().any(|s| s.sample.is_some()));
+        assert!(STEPS.step.iter().all(|s| !s.label.is_empty()));
     }
 }

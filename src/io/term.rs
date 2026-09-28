@@ -6,7 +6,7 @@ use crossterm::event::{
     DisableBracketedPaste, EnableBracketedPaste, KeyboardEnhancementFlags,
     PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
-pub use crossterm::event::{Event, KeyCode, KeyEventKind};
+pub use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
 
 /// Writes to stdout, ignoring a closed pipe (`crowbot models | head`) where `print!` would panic.
 pub fn out(text: &str) {
@@ -98,4 +98,13 @@ impl Drop for Raw {
 
 pub fn read_event() -> io::Result<Event> {
     crossterm::event::read()
+}
+
+/// The next event if one arrives within `timeout`.
+pub fn poll_event(timeout: std::time::Duration) -> io::Result<Option<Event>> {
+    if crossterm::event::poll(timeout)? {
+        crossterm::event::read().map(Some)
+    } else {
+        Ok(None)
+    }
 }

@@ -17,6 +17,7 @@ disallowed-methods = [
   { path = "reqwest::Client::builder", reason = "use io::http" },
   { path = "reqwest::get", reason = "use io::http" },
   { path = "std::time::SystemTime::now", reason = "use io::clock" },
+  { path = "std::time::Instant::now", reason = "use io::clock" },
   { path = "jiff::Timestamp::now", reason = "use io::clock" },
   { path = "jiff::Zoned::now", reason = "use io::clock" },
   { path = "crossterm::terminal::enable_raw_mode", reason = "use io::term" },
