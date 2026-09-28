@@ -39,3 +39,13 @@ path = "/api/pair/{code}"
 origin = "chat"
 method = "GET"
 path = "/pair"
+
+[endpoints.pow]
+origin = "chat"
+method = "GET"
+path = "/api/pow?kind={kind}"
+
+[endpoints.signup]
+origin = "chat"
+method = "POST"
+path = "/api/signup"

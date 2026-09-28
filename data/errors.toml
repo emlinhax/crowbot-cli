@@ -102,3 +102,7 @@ hint = "Update crowbot; the API may have moved on."
 [pair_expired]
 title = "The pairing code expired or was already used"
 hint = "Run `crowbot login` again for a fresh code."
+
+[pow_required]
+title = "The proof of work expired before it was used"
+retry = true

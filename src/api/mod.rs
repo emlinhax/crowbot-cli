@@ -8,6 +8,7 @@ pub mod error;
 pub mod models;
 pub mod pair;
 pub mod retry;
+pub mod signup;
 pub mod sse;
 pub mod wire;
 

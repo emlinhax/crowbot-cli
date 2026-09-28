@@ -1,0 +1,3 @@
+name = "signup"
+summary = "Create a crowbot account on this machine (no email, no password)"
+usage = "signup [--force]"

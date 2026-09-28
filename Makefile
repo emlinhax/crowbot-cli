@@ -3,7 +3,7 @@ SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 CARGO ?= cargo
 
-.PHONY: lint test e2e check build
+.PHONY: lint test e2e smoke check build
 
 lint:
 	$(CARGO) fmt --all -- --check
@@ -14,6 +14,11 @@ test:
 
 e2e:
 	$(CARGO) test --locked --test e2e
+
+# Real API, real (tiny) spend; never in CI.
+smoke:
+	@test -n "$${CROWBOT_SMOKE_KEY:-}" || { echo "set CROWBOT_SMOKE_KEY (smoke spends real money)"; exit 1; }
+	$(CARGO) test --locked --test smoke -- --ignored --test-threads=1
 
 check: lint test e2e
 

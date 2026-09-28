@@ -6,6 +6,7 @@ mod chat;
 mod fake_crowbot;
 mod login;
 mod models;
+mod signup;
 
 use std::path::{Path, PathBuf};
 use std::process::Output;
@@ -42,7 +43,9 @@ impl Sandbox {
             .env("CROWBOT_API_URL", api_url)
             .env("CROWBOT_CHAT_URL", api_url)
             .env("CROWBOT_NO_BROWSER", "1")
-            .env_remove("CROWBOT_API_KEY");
+            .env_remove("CROWBOT_API_KEY")
+            // An inherited stdin pipe that never closes would look like piped input forever.
+            .stdin(std::process::Stdio::null());
         for (name, value) in env {
             command.env(name, value);
         }

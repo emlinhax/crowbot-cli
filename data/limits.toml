@@ -55,3 +55,7 @@ reason = "the same cadence crowbot's own installer uses; approval is a human act
 [pair.backoff_ms]
 value = 5000
 reason = "pause after crowbot rate-limits the polling"
+
+[signup.max_attempts]
+value = 3
+reason = "crowbot raises the difficulty per address; a third stale challenge means something else is wrong"

@@ -5,6 +5,7 @@ mod keytest;
 mod login;
 mod logout;
 mod models;
+mod signup;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
@@ -39,6 +40,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &help::Help,
     &login::Login,
     &logout::Logout,
+    &signup::Signup,
     &models::Models,
     &keytest::KeyTest,
 ];

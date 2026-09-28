@@ -35,6 +35,8 @@ struct Inner {
     script: VecDeque<Reply>,
     pair_pending: usize,
     pair_collected: bool,
+    /// Signups to refuse with 428 before accepting one.
+    stale_proofs: usize,
 }
 
 type Shared = Arc<Mutex<Inner>>;
@@ -54,6 +56,8 @@ impl Fake {
             .route("/api/me", get(me))
             .route("/api/pair/start", post(pair_start))
             .route("/api/pair/{code}", get(pair_poll))
+            .route("/api/pow", get(pow))
+            .route("/api/signup", post(signup))
             .layer(middleware::from_fn_with_state(inner.clone(), record))
             .with_state(inner.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -69,6 +73,10 @@ impl Fake {
     /// How many polls answer "pending" before the pairing is approved.
     pub fn pair_after(&self, pending: usize) {
         self.inner.lock().unwrap().pair_pending = pending;
+    }
+
+    pub fn stale_proofs(&self, count: usize) {
+        self.inner.lock().unwrap().stale_proofs = count;
     }
 
     pub fn hits(&self, path: &str) -> usize {
@@ -175,4 +183,41 @@ async fn pair_poll(State(inner): State<Shared>, Path(code): Path<String>) -> Res
     }
     inner.pair_collected = true;
     axum::Json(json!({"status": "ready", "api_key": DEVICE_KEY})).into_response()
+}
+
+const POW_BITS: u32 = 8;
+
+async fn pow() -> impl IntoResponse {
+    axum::Json(json!({"challenge": "fakechallenge", "bits": POW_BITS, "ttl": 60}))
+}
+
+async fn signup(State(inner): State<Shared>, headers: HeaderMap) -> Response {
+    use sha2::{Digest, Sha256};
+    let proof = headers
+        .get("x-pow")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    let Some((challenge, nonce)) = proof.split_once('.') else {
+        return error(428, "pow_required", None);
+    };
+    let hash = Sha256::digest(format!("{challenge}:{nonce}"));
+    let zeros = hash
+        .iter()
+        .scan(true, |counting, b| {
+            let bits = if *counting { b.leading_zeros() } else { 0 };
+            *counting &= *b == 0;
+            Some(bits)
+        })
+        .sum::<u32>();
+    let mut inner = inner.lock().unwrap();
+    if challenge != "fakechallenge" || zeros < POW_BITS || inner.stale_proofs > 0 {
+        inner.stale_proofs = inner.stale_proofs.saturating_sub(1);
+        return error(428, "pow_required", None);
+    }
+    axum::Json(json!({
+        "account_number": ACCOUNT_NUMBER,
+        "formatted": "1234 5678 9012 3456",
+        "api_base": "https://api.crowbot.sh/v1"
+    }))
+    .into_response()
 }

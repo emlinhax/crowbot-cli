@@ -33,6 +33,20 @@ pub fn piped_stdin() -> io::Result<Option<String>> {
     Ok(Some(text).filter(|t| !t.trim().is_empty()))
 }
 
+pub fn stdin_is_terminal() -> bool {
+    use std::io::IsTerminal;
+    io::stdin().is_terminal()
+}
+
+/// One line from stdin without its newline; `None` at end of input.
+pub fn read_line() -> io::Result<Option<String>> {
+    let mut line = String::new();
+    if io::stdin().read_line(&mut line)? == 0 {
+        return Ok(None);
+    }
+    Ok(Some(line.trim_end_matches(['\n', '\r']).to_owned()))
+}
+
 /// Resolves on Ctrl+C.
 pub async fn interrupted() {
     if tokio::signal::ctrl_c().await.is_err() {

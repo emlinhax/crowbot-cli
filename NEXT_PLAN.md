@@ -21,13 +21,20 @@ Record what each phase taught us under **Learned**.
 - Binary crates warn on unread `pub` fields, so data fields are added only when read.
 
 ## M1 — Auth + streaming chat, headless
-- [ ] `api/sse.rs` with chunk-split fuzz tests over `.sse` fixtures
-- [ ] `api/wire.rs` + `api/chat.rs`: reasoning echo, tool-call assembly, usage chunk, error frames, request id
-- [ ] `data/errors.toml` + `data/overflow.toml`, `api/retry.rs`
-- [ ] `io/secret.rs` (DPAPI / 0600), `auth.rs`, `crowbot login` (pairing) / `logout`
-- [ ] `crowbot signup` (PoW)
-- [ ] `-p` / `--json`, session JSONL writer, stdin piping
-- [ ] `make smoke` (opt-in, real API, deepseek-v4.1-flash)
+- [x] `api/sse.rs` with chunk-split fuzz tests
+- [x] `api/wire.rs`, `api/assemble.rs`, `api/chat.rs`: reasoning echo, tool calls by index, usage + cost, error frames, request id
+- [x] `data/errors.toml`, `api/retry.rs` (only before any output streamed; honours Retry-After)
+- [x] `io/secret.rs` (DPAPI / 0600), `auth.rs`, `crowbot login` (pairing, `--key`, `--status`) / `logout`
+- [x] `crowbot signup` (PoW on all cores, refetch on 428, refuses to replace a stored key)
+- [x] `-p` / `--json`, session JSONL writer, stdin piping
+- [x] `make smoke` (opt-in, real API, deepseek-v4.1-flash, asserts < $0.001)
+- [ ] Real paired chat on Windows (needs the user to pair once)
+- [ ] `data/overflow.toml` moved to M5 with compaction, where it is first used
+
+**Learned**
+- Tests must give the binary a null stdin: an inherited pipe that never closes looks like piped
+  input and blocks. Real users hit the same with odd task runners; `< /dev/null` is the escape.
+- Clippy rejects an enum variant named like its enum (`Stop::Stop`), hence `Finish::Done`.
 
 ## M2 — Tools + loop
 ## M3 — TUI core
