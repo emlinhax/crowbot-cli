@@ -10,19 +10,21 @@ const GUTTER: usize = 3;
 /// Narrowest text column worth putting beside the raven rather than under it.
 const MIN_TEXT: usize = 28;
 
-pub struct Info<'a> {
-    pub version: &'a str,
-    pub cwd: &'a str,
-    pub model: &'a str,
-    pub effort: Option<&'a str>,
-    pub mode_label: &'a str,
-    pub mode_color: &'a str,
+/// Kept by the transcript, which redraws the welcome at every width.
+#[derive(Clone)]
+pub struct Info {
+    pub version: &'static str,
+    pub cwd: String,
+    pub model: String,
+    pub effort: Option<String>,
+    pub mode_label: String,
+    pub mode_color: String,
     pub logged_in: bool,
     /// Braille glyphs render (Windows Terminal, any Unix terminal); legacy conhost does not.
     pub braille: bool,
 }
 
-pub fn render(info: &Info<'_>, width: usize) -> Vec<Line> {
+pub fn render(info: &Info, width: usize) -> Vec<Line> {
     let raven: Vec<&str> = RAVEN.lines().collect();
     let raven_width = raven.iter().map(|l| self::width(l)).max().unwrap_or(0);
     let text = text(info);
@@ -52,21 +54,21 @@ pub fn render(info: &Info<'_>, width: usize) -> Vec<Line> {
     out.into_iter().map(|l| l.truncate(width)).collect()
 }
 
-fn text(info: &Info<'_>) -> Vec<Line> {
+fn text(info: &Info) -> Vec<Line> {
     let ui = ui::get();
     let mut name = Line::styled("crowbot", Style::fg("accent").bold());
     name.push(format!(" v{}", info.version), Style::fg("muted"));
 
-    let mut model = Line::plain(info.model);
-    if let Some(effort) = info.effort {
+    let mut model = Line::plain(&info.model);
+    if let Some(effort) = &info.effort {
         model.push(format!(" · {effort}"), Style::fg("muted"));
     }
     model.push(" · ", Style::fg("muted"));
-    model.push(info.mode_label, Style::fg(info.mode_color).bold());
+    model.push(&info.mode_label, Style::fg(&info.mode_color).bold());
 
     let mut lines = vec![
         name,
-        Line::styled(info.cwd, Style::fg("muted")),
+        Line::styled(&info.cwd, Style::fg("muted")),
         model,
         Line::default(),
     ];
@@ -81,14 +83,14 @@ fn text(info: &Info<'_>) -> Vec<Line> {
 mod tests {
     use super::*;
 
-    fn info(braille: bool) -> Info<'static> {
+    fn info(braille: bool) -> Info {
         Info {
             version: "0.1.0",
-            cwd: "~/src/proj",
-            model: "crow-2",
-            effort: Some("high"),
-            mode_label: "MANUAL",
-            mode_color: "mode_manual",
+            cwd: "~/src/proj".into(),
+            model: "crow-2".into(),
+            effort: Some("high".into()),
+            mode_label: "MANUAL".into(),
+            mode_color: "mode_manual".into(),
             logged_in: true,
             braille,
         }

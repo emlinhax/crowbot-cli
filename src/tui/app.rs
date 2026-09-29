@@ -34,7 +34,7 @@ use crate::text::units;
 use crate::tools::Registry;
 use crate::tui::choice::{self, Choice};
 use crate::tui::editor::Editor;
-use crate::tui::feed::Feed;
+use crate::tui::feed::{Block, Feed};
 use crate::tui::input::Burst;
 use crate::tui::keymap::{self, Action};
 use crate::tui::login::{self, Login};
@@ -42,7 +42,8 @@ use crate::tui::palette::{self, Palette};
 use crate::tui::queue::{self, Kind};
 use crate::tui::screen::Screen;
 use crate::tui::status::{self, Status};
-use crate::tui::{frame, ui, welcome};
+use crate::tui::view::View;
+use crate::tui::{frame, layout, ui, welcome};
 
 type Turn<'a> = Pin<Box<dyn Future<Output = (Transcript, anyhow::Result<Outcome>)> + 'a>>;
 
@@ -90,10 +91,10 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
         emit: &emit,
     };
 
-    let raw = term::Raw::enter()?;
+    let raw = term::Raw::fullscreen()?;
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        term::restore();
+        term::restore_fullscreen();
         default_hook(info);
     }));
     let mut tui = Tui::new(app, &model, &shared, initial);
@@ -123,6 +124,9 @@ struct Tui<'a> {
     shared: &'a Shared,
     screen: Screen,
     feed: Feed,
+    view: View,
+    /// The transcript block on each screen row of the last frame, for clicks.
+    blocks: Vec<Option<usize>>,
     editor: Editor,
     palette: Palette,
     burst: Burst,
@@ -131,7 +135,6 @@ struct Tui<'a> {
     cards: VecDeque<Choice>,
     /// The `/login` card, on screen in place of the editor while open.
     login: Option<Login>,
-    height: usize,
     turn_started: Option<Instant>,
     last_ctrl_c: Option<Instant>,
     cost_micros: u64,
@@ -142,22 +145,18 @@ impl<'a> Tui<'a> {
     fn new(app: &'a App, model: &'a Model, shared: &'a Shared, initial: Option<String>) -> Self {
         let limits = &limits::get().tui;
         let (width, height) = term::size();
-        let mut feed = Feed::new(width);
+        let mut feed = Feed::new();
         let mode = shared.mode();
-        let cwd = app.paths.project.display().to_string();
-        feed.raw(welcome::render(
-            &welcome::Info {
-                version: env!("CARGO_PKG_VERSION"),
-                cwd: &cwd,
-                model: &model.id,
-                effort: app.settings.effort.as_deref(),
-                mode_label: &mode.label,
-                mode_color: &mode.color,
-                logged_in: app.api.has_key(),
-                braille: term::braille(),
-            },
-            width,
-        ));
+        feed.push(Block::Welcome(welcome::Info {
+            version: env!("CARGO_PKG_VERSION"),
+            cwd: app.paths.project.display().to_string(),
+            model: model.id.clone(),
+            effort: app.settings.effort.clone(),
+            mode_label: mode.label.clone(),
+            mode_color: mode.color.clone(),
+            logged_in: app.api.has_key(),
+            braille: term::braille(),
+        }));
         let mut editor = Editor::new(limits.history_max.value);
         if let Some(text) = initial {
             editor.set_text(&text);
@@ -166,21 +165,16 @@ impl<'a> Tui<'a> {
             app,
             model,
             shared,
-            screen: Screen::new(
-                width,
-                height,
-                term::cursor_row(),
-                theme::get(),
-                term::color_depth(),
-            ),
+            screen: Screen::new(width, height, theme::get(), term::color_depth()),
             feed,
+            view: View::default(),
+            blocks: Vec::new(),
             editor,
             palette: Palette::default(),
             burst: Burst::new(limits.paste_gap_ms.ms(), limits.paste_min_keys.value),
             queue: Vec::new(),
             cards: VecDeque::new(),
             login: None,
-            height,
             turn_started: None,
             last_ctrl_c: None,
             cost_micros: 0,
@@ -255,9 +249,6 @@ impl<'a> Tui<'a> {
                 job = None;
             }
         }
-        // Leave nothing half-drawn: clear the live region before the terminal is handed back.
-        let bytes = self.screen.frame(&self.feed.take_commits(), &[]);
-        term::out(&bytes);
         self.cost_micros
     }
 
@@ -265,8 +256,28 @@ impl<'a> Tui<'a> {
         match input {
             Input::Resize(width, height) => {
                 self.screen.resize(width, height);
-                self.feed.set_width(width);
-                self.height = height;
+                Step::Continue
+            }
+            Input::Scroll(notches) => {
+                let lines = limits::get().tui.scroll_lines.value as isize;
+                self.view.scroll(notches * lines);
+                Step::Continue
+            }
+            Input::Click { row } => {
+                if let Some(Some(block)) = self.blocks.get(row) {
+                    self.feed.toggle(*block);
+                }
+                Step::Continue
+            }
+            Input::Key(key)
+                if matches!(
+                    keymap::get().action(&key),
+                    Some(Action::PageUp | Action::PageDown)
+                ) =>
+            {
+                let page = self.view.page();
+                let up = keymap::get().action(&key) == Some(Action::PageUp);
+                self.view.scroll(if up { -page } else { page });
                 Step::Continue
             }
             Input::Paste(text) => {
@@ -409,15 +420,7 @@ impl<'a> Tui<'a> {
             }
             Action::Quit if self.editor.is_empty() => return Step::Quit,
             Action::Quit => {}
-            Action::ToggleReasoning => {
-                let text = &ui::get().text;
-                let note = if self.feed.toggle_reasoning() {
-                    &text.reasoning_shown
-                } else {
-                    &text.reasoning_hidden
-                };
-                self.feed.notice(note, "muted");
-            }
+            Action::ToggleReasoning => self.feed.toggle_all(),
             editing => {
                 self.editor.apply(editing);
             }
@@ -559,7 +562,7 @@ impl<'a> Tui<'a> {
             }
             AgentEvent::Prompt { id, prompt, .. } => {
                 self.cards
-                    .push_back(Choice::from_prompt(*id, prompt, term::size().0));
+                    .push_back(Choice::from_prompt(*id, prompt, self.screen.width()));
             }
             _ => {}
         }
@@ -568,14 +571,14 @@ impl<'a> Tui<'a> {
 
     fn draw(&mut self, running: bool) {
         let now = clock::instant();
-        let width = self.screen_width();
+        let (width, height) = (self.screen.width(), self.screen.height());
         let mode = self.shared.mode();
-        let commits = self.feed.take_commits();
-        let mut live = self.feed.live(now);
-        live.extend(queue::render(&self.queue, width));
+        // The bar, pinned to the bottom of the screen.
+        let mut live = Vec::new();
         if running {
             live.push(self.status(now, width));
         }
+        live.extend(queue::render(&self.queue, width));
         if let Some(at) = self.last_ctrl_c
             && now.duration_since(at) <= limits::get().tui.quit_window_ms.ms()
             && !running
@@ -601,7 +604,7 @@ impl<'a> Tui<'a> {
                 }
                 let ui = ui::get();
                 let prompt = Line::styled(&ui.prompt, Style::fg(&mode.color).bold());
-                let rows = (self.height * limits::get().tui.editor_max_rows_pct.value / 100).max(3);
+                let rows = (height * limits::get().tui.editor_max_rows_pct.value / 100).max(3);
                 live.extend(self.editor.render(width, rows, &prompt, &ui.placeholder));
             }
         }
@@ -615,7 +618,9 @@ impl<'a> Tui<'a> {
             },
             width,
         ));
-        let bytes = self.screen.frame(&commits, &live);
+        let frame = layout::compose(&mut self.feed, &mut self.view, &live, (width, height), now);
+        self.blocks = frame.blocks;
+        let bytes = self.screen.frame(&frame.rows);
         if !bytes.is_empty() {
             term::out(&bytes);
         }
@@ -631,10 +636,6 @@ impl<'a> Tui<'a> {
         let frame = ui::get().spinner_frame(elapsed, limits::get().tui.spinner_ms.value);
         let secs = (elapsed / 1000) as u64;
         status::render(&Status::Working { secs, frame }, width)
-    }
-
-    fn screen_width(&self) -> usize {
-        term::size().0
     }
 }
 

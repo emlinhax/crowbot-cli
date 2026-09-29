@@ -168,6 +168,10 @@ reason = "prompts kept for Up/Down in one session"
 value = 16
 reason = "a permission preview shows this much of a diff before cutting it short"
 
+[tui.scroll_lines]
+value = 3
+reason = "rows one wheel notch scrolls the transcript; terminals scroll their own buffers by three"
+
 [tui.palette_rows]
 value = 8
 reason = "the command popup lists this many before it scrolls; the editor stays in view"

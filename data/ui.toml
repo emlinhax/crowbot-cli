@@ -21,7 +21,6 @@ interrupt = "esc to interrupt"
 retrying = "retrying in"
 queued = "queued"
 steering = "steering"
-thought = "thought"
 cost_estimate = "est"
 not_logged_in = "Not logged in: type /login"
 interrupted = "Interrupted."
@@ -29,10 +28,17 @@ declined = "Stopped: you declined a call."
 cut_off = "The reply hit its output limit (a low balance lowers that limit)."
 ctrl_c_again = "Press Ctrl+C again to quit"
 unknown_command = "Unknown command /{name}. /help lists them."
-reasoning_shown = "Thinking will be shown in full."
-reasoning_hidden = "Thinking will be collapsed."
+more_below = "↓ {n} more · PgDn"
 saved = "Session saved to {path}"
 spent = "Spent about {cost} this session."
+
+# Thinking blocks: a click opens or closes one, Ctrl+T all of them.
+[thinking]
+closed = "▸"
+open = "▾"
+done = "Thought for {secs}s"
+live = "Thinking… {secs}s"
+gutter = "│ "
 
 # The popup listing commands while a `/name` is typed.
 [palette]

@@ -3,10 +3,12 @@
 use std::io::{self, IsTerminal, Write};
 
 use crossterm::event::{
-    DisableBracketedPaste, EnableBracketedPaste, EventStream, KeyboardEnhancementFlags,
+    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    EventStream, KeyboardEnhancementFlags, MouseButton, MouseEventKind,
     PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 pub use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use futures_util::{Stream, StreamExt};
 
 use crate::settings;
@@ -48,11 +50,6 @@ pub fn stdout_is_terminal() -> bool {
 /// Columns and rows; a conventional 80×24 when the size cannot be read.
 pub fn size() -> (usize, usize) {
     crossterm::terminal::size().map_or((80, 24), |(w, h)| (w as usize, h as usize))
-}
-
-/// The row the cursor is on, counted from the top of the screen.
-pub fn cursor_row() -> usize {
-    crossterm::cursor::position().map_or(0, |(_, row)| row as usize)
 }
 
 /// What the terminal can colour, from the conventions terminals advertise themselves by.
@@ -97,13 +94,28 @@ pub async fn interrupted() {
     }
 }
 
+/// Auto-wrap off: a line whose width was misjudged is clipped instead of pushing rows down.
+const WRAP_OFF: &str = "\x1b[?7l";
+const WRAP_ON: &str = "\x1b[?7h";
+
 /// Raw mode while the guard lives; dropping it restores the terminal, even on an early return.
 pub struct Raw {
     enhanced: bool,
+    fullscreen: bool,
 }
 
 impl Raw {
     pub fn enter() -> io::Result<Self> {
+        Self::open(false)
+    }
+
+    /// Raw mode on the alternate screen, with mouse reports and without auto-wrap: the whole
+    /// screen is the application's until the guard drops.
+    pub fn fullscreen() -> io::Result<Self> {
+        Self::open(true)
+    }
+
+    fn open(fullscreen: bool) -> io::Result<Self> {
         #[cfg(windows)]
         // SAFETY: plain Win32 call; UTF-8 output is what every line we write is.
         unsafe {
@@ -111,6 +123,11 @@ impl Raw {
         }
         crossterm::terminal::enable_raw_mode()?;
         let mut stdout = io::stdout();
+        // Before the keyboard flags: kitty keeps a separate flag stack per screen.
+        if fullscreen {
+            crossterm::execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+            let _ = stdout.write_all(WRAP_OFF.as_bytes());
+        }
         // Best effort: terminals that lack bracketed paste simply ignore the sequence.
         let _ = crossterm::execute!(stdout, EnableBracketedPaste, crossterm::cursor::Hide);
         let enhanced = crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
@@ -123,7 +140,10 @@ impl Raw {
                 )
             )?;
         }
-        Ok(Self { enhanced })
+        Ok(Self {
+            enhanced,
+            fullscreen,
+        })
     }
 
     /// Whether the terminal speaks the kitty keyboard protocol (tells Shift+Enter from Enter).
@@ -137,8 +157,23 @@ impl Drop for Raw {
         if self.enhanced {
             let _ = crossterm::execute!(io::stdout(), PopKeyboardEnhancementFlags);
         }
+        if self.fullscreen {
+            leave_fullscreen();
+        }
         restore();
     }
+}
+
+fn leave_fullscreen() {
+    let mut stdout = io::stdout();
+    let _ = stdout.write_all(WRAP_ON.as_bytes());
+    let _ = crossterm::execute!(stdout, DisableMouseCapture, LeaveAlternateScreen);
+}
+
+/// `restore` for a full-screen session, for the panic hook.
+pub fn restore_fullscreen() {
+    leave_fullscreen();
+    restore();
 }
 
 /// Puts the terminal back to normal; also used by the panic hook, which has no guard to drop.
@@ -166,16 +201,30 @@ pub enum Input {
     Key(KeyEvent),
     Paste(String),
     Resize(usize, usize),
+    /// Wheel notches: negative is up.
+    Scroll(isize),
+    /// A left click on a screen row, zero-based.
+    Click {
+        row: usize,
+    },
 }
 
-/// Terminal input as a stream. Key releases are dropped: Windows reports one for every key,
-/// which would otherwise act twice.
+/// Terminal input as a stream. Key releases are dropped (Windows reports one for every key,
+/// which would otherwise act twice), and so are mouse moves and drags.
 pub fn inputs() -> impl Stream<Item = Input> {
     EventStream::new().filter_map(|event| async move {
         match event.ok()? {
             Event::Key(key) if key.kind != KeyEventKind::Release => Some(Input::Key(key)),
             Event::Paste(text) => Some(Input::Paste(text)),
             Event::Resize(w, h) => Some(Input::Resize(w as usize, h as usize)),
+            Event::Mouse(mouse) => match mouse.kind {
+                MouseEventKind::ScrollUp => Some(Input::Scroll(-1)),
+                MouseEventKind::ScrollDown => Some(Input::Scroll(1)),
+                MouseEventKind::Down(MouseButton::Left) => Some(Input::Click {
+                    row: mouse.row as usize,
+                }),
+                _ => None,
+            },
             _ => None,
         }
     })

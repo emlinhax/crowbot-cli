@@ -135,6 +135,21 @@ impl Session {
         panic!("{text:?} never went away; screen:\n{}", self.contents());
     }
 
+    /// The screen row showing `text`, zero-based.
+    #[track_caller]
+    fn row_of(&self, text: &str) -> usize {
+        self.screen
+            .screen()
+            .rows(0, COLS)
+            .position(|r| r.contains(text))
+            .unwrap_or_else(|| panic!("no row shows {text:?}; screen:\n{}", self.contents()))
+    }
+
+    /// A left click as a terminal reports it (SGR mouse encoding, one-based).
+    fn click(&mut self, row: usize) {
+        self.send(&format!("\x1b[<0;3;{0}M\x1b[<0;3;{0}m", row + 1));
+    }
+
     fn wait_exit(&mut self) -> bool {
         let deadline = Instant::now() + Duration::from_secs(10);
         while Instant::now() < deadline {
@@ -223,6 +238,8 @@ async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
         // Tab completes the first match and leaves room for arguments; the popup closes.
         s.send("\t");
         s.wait_gone("╭ commands");
+        // The bar never leaves the bottom row, whatever opened and closed above it.
+        assert!(s.bottom_row().contains("crow-2"), "{}", s.contents());
         s.send("\r");
         s.wait_for("AUTO");
         // Down picks the second match and Enter runs it.
@@ -232,9 +249,11 @@ async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
         s.send("\r");
         s.wait_for("fake-coder");
         s.wait_gone("╭ commands");
+        // The session screen goes when crowbot exits, so read it first.
+        let screen = s.contents();
         s.send("\x04");
         s.wait_exit();
-        s.contents()
+        screen
     })
     .await
     .unwrap();
@@ -261,9 +280,10 @@ async fn slash_login_pairs_this_device_and_the_session_chats_at_once() {
         s.type_text("hi");
         s.send("\r");
         s.wait_for("Hello there!");
+        let screen = s.contents();
         s.send("\x04");
         s.wait_exit();
-        (s.contents(), sandbox)
+        (screen, sandbox)
     })
     .await
     .unwrap();
@@ -292,12 +312,43 @@ async fn slash_login_takes_a_masked_account_number_and_retries_a_wrong_one() {
         assert!(!s.contents().contains("1234 5678"), "{}", s.contents());
         s.send("\r");
         s.wait_for("Logged in with account number …3456");
+        let screen = s.contents();
         s.send("\x04");
         s.wait_exit();
-        (s.contents(), sandbox)
+        (screen, sandbox)
     })
     .await
     .unwrap();
     assert!(!screen.contains("1234 5678"), "{screen}");
     assert!(sandbox.home().join("auth.json").exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn thinking_collapses_opens_on_click_and_ctrl_t_toggles_it_all() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    let url = fake.url.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut s = Session::start(&sandbox, &url);
+        s.wait_for("MANUAL");
+        s.type_text("hi");
+        s.send("\r");
+        s.wait_for("Hello there!");
+        s.wait_for("▸ Thought for");
+        assert!(!s.contents().contains("The user greets me."));
+        s.send("\x14");
+        s.wait_for("The user greets me.");
+        s.send("\x14");
+        s.wait_gone("The user greets me.");
+        let row = s.row_of("▸ Thought for");
+        s.click(row);
+        s.wait_for("The user greets me.");
+        s.click(row);
+        s.wait_gone("The user greets me.");
+        s.send("\x04");
+        s.wait_exit();
+    })
+    .await
+    .unwrap();
 }

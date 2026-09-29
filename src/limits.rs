@@ -137,6 +137,7 @@ pub struct TuiLimits {
     pub history_max: Limit<usize>,
     pub prompt_body_lines: Limit<usize>,
     pub palette_rows: Limit<usize>,
+    pub scroll_lines: Limit<usize>,
 }
 
 #[cfg(test)]

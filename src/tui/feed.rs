@@ -1,15 +1,56 @@
-//! The conversation as it appears on screen. Agent events arrive here; finished blocks come out
-//! as lines to commit, and whatever is still in flight is the live part.
+//! The conversation as it appears on screen. Agent events arrive here and become blocks, kept as
+//! their source so any width can redraw them and thinking can be opened and closed; whatever is
+//! still in flight is drawn fresh after them.
 
 use std::time::{Duration, Instant};
 
 use crate::agent::event::{AgentEvent, DeltaKind, Outcome};
-use crate::agent::message::{Assistant, Finish};
+use crate::agent::message::{Assistant, Finish, ToolResult};
+use crate::api::error::ErrorInfo;
 use crate::limits;
 use crate::text::markdown;
 use crate::text::styled::{Line, Style};
+use crate::text::template::fill;
 use crate::tui::cards::{self, State};
-use crate::tui::ui;
+use crate::tui::{ui, welcome};
+
+pub enum Block {
+    Welcome(welcome::Info),
+    User(String),
+    Markdown(String),
+    Notice {
+        text: String,
+        role: String,
+    },
+    Tool {
+        arguments: String,
+        result: ToolResult,
+    },
+    Thinking {
+        text: String,
+        secs: u64,
+    },
+    Error(ErrorInfo),
+}
+
+struct Entry {
+    block: Block,
+    /// A thinking block shows its text.
+    open: bool,
+    /// The block drawn at a width; cleared when it is toggled.
+    drawn: Option<(usize, Vec<Line>)>,
+}
+
+impl Entry {
+    fn lines(&mut self, width: usize) -> &[Line] {
+        if self.drawn.as_ref().is_none_or(|(w, _)| *w != width) {
+            self.drawn = Some((width, render(&self.block, self.open, width)));
+        }
+        self.drawn
+            .as_ref()
+            .map_or(&[], |(_, lines)| lines.as_slice())
+    }
+}
 
 struct Running {
     call_id: String,
@@ -19,78 +60,94 @@ struct Running {
 }
 
 pub struct Feed {
-    width: usize,
-    commits: Vec<Line>,
-    /// A block was committed, so the next one starts after a blank line.
-    spaced: bool,
-    /// The assistant text of the reply in flight, and how much of it is committed.
+    entries: Vec<Entry>,
+    /// From the last `measure`: the row each entry starts on, the live part and where it starts.
+    starts: Vec<usize>,
+    live: Vec<Line>,
+    live_start: usize,
+    total: usize,
+    /// New thinking blocks start open.
+    open_thinking: bool,
+    /// The assistant text of the reply in flight, and how much of it is already a block.
     text: String,
     committed: usize,
     reasoning: String,
     reasoning_since: Option<Instant>,
-    show_reasoning: bool,
     running: Vec<Running>,
     retry: Option<(Instant, String)>,
 }
 
 impl Feed {
-    pub fn new(width: usize) -> Self {
+    pub fn new() -> Self {
         Self {
-            width,
-            commits: Vec::new(),
-            spaced: false,
+            entries: Vec::new(),
+            starts: Vec::new(),
+            live: Vec::new(),
+            live_start: 0,
+            total: 0,
+            open_thinking: false,
             text: String::new(),
             committed: 0,
             reasoning: String::new(),
             reasoning_since: None,
-            show_reasoning: false,
             running: Vec::new(),
             retry: None,
         }
     }
 
-    pub fn set_width(&mut self, width: usize) {
-        self.width = width;
-    }
-
-    /// Lines ready to go into scrollback, oldest first.
-    pub fn take_commits(&mut self) -> Vec<Line> {
-        std::mem::take(&mut self.commits)
-    }
-
-    /// Commits lines exactly as given (the welcome screen).
-    pub fn raw(&mut self, lines: Vec<Line>) {
-        self.commits.extend(lines);
+    pub fn push(&mut self, block: Block) {
+        let open = self.open_thinking;
+        self.entries.push(Entry {
+            block,
+            open,
+            drawn: None,
+        });
     }
 
     pub fn user(&mut self, text: &str) {
-        let prompt = Line::styled(&ui::get().prompt, Style::fg("user").bold());
-        let indent = Line::plain(" ".repeat(prompt.width()));
-        let mut lines = Vec::new();
-        for (i, raw) in text.lines().enumerate() {
-            let mut line = if i == 0 {
-                prompt.clone()
-            } else {
-                indent.clone()
-            };
-            line.push(raw, Style::default());
-            lines.extend(line.wrap(self.width, &indent));
-        }
-        self.block(lines);
+        self.push(Block::User(text.to_owned()));
     }
 
     pub fn markdown(&mut self, md: &str) {
-        self.block(markdown::render(md, self.width));
+        self.push(Block::Markdown(md.to_owned()));
     }
 
     pub fn notice(&mut self, text: &str, role: &str) {
-        self.block(Line::styled(text, Style::fg(role)).wrap(self.width, &Line::default()));
+        self.push(Block::Notice {
+            text: text.to_owned(),
+            role: role.to_owned(),
+        });
     }
 
-    /// Whether reasoning is committed in full from now on.
-    pub fn toggle_reasoning(&mut self) -> bool {
-        self.show_reasoning = !self.show_reasoning;
-        self.show_reasoning
+    /// Opens or closes the thinking block at `index`; `false` when it is not one.
+    pub fn toggle(&mut self, index: usize) -> bool {
+        match self.entries.get_mut(index) {
+            Some(entry) if matches!(entry.block, Block::Thinking { .. }) => {
+                entry.open = !entry.open;
+                entry.drawn = None;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Opens every thinking block, or closes them all when all are open; new ones follow suit.
+    pub fn toggle_all(&mut self) {
+        let thinking = self
+            .entries
+            .iter_mut()
+            .filter(|e| matches!(e.block, Block::Thinking { .. }));
+        let mut all: Vec<&mut Entry> = thinking.collect();
+        let open = if all.is_empty() {
+            !self.open_thinking
+        } else {
+            !all.iter().all(|e| e.open)
+        };
+        for entry in &mut all {
+            entry.open = open;
+            entry.drawn = None;
+        }
+        self.open_thinking = open;
     }
 
     pub fn event(&mut self, event: &AgentEvent, now: Instant) {
@@ -133,8 +190,10 @@ impl Feed {
                     .position(|r| r.call_id == result.call_id)
                     .map(|i| self.running.remove(i).arguments)
                     .unwrap_or_default();
-                let card = cards::finished(&result.name, &arguments, result, self.width);
-                self.block(card);
+                self.push(Block::Tool {
+                    arguments,
+                    result: result.clone(),
+                });
             }
             AgentEvent::Retry {
                 delay_ms, error, ..
@@ -162,36 +221,45 @@ impl Feed {
         }
     }
 
-    /// The part still in flight: the reply's unfinished tail, the thinking tail, running tools.
-    pub fn live(&self, now: Instant) -> Vec<Line> {
-        let mut lines = Vec::new();
-        if !self.reasoning.is_empty() {
-            let tail_len = limits::get().tui.reasoning_tail_lines.value;
-            let wrapped: Vec<Line> = Line::styled(
-                self.reasoning.replace('\n', " "),
-                Style::fg("reasoning").italic(),
-            )
-            .wrap(self.width, &Line::default());
-            let skip = wrapped.len().saturating_sub(tail_len);
-            lines.extend(wrapped.into_iter().skip(skip));
-        }
-        let tail = markdown::trim_partial_fence(&self.text[self.committed..]);
-        if !tail.trim().is_empty() {
-            if self.committed > 0 || self.spaced {
-                lines.push(Line::default());
+    /// Lays the transcript out at `width` and returns its height in rows: blocks one blank
+    /// row apart, then the part still in flight.
+    pub fn measure(&mut self, width: usize, now: Instant) -> usize {
+        let mut row = 0;
+        self.starts.clear();
+        for (i, entry) in self.entries.iter_mut().enumerate() {
+            if i > 0 {
+                row += 1;
             }
-            lines.extend(markdown::render(tail, self.width));
+            self.starts.push(row);
+            row += entry.lines(width).len();
         }
-        let limits = &limits::get().tui;
-        for tool in &self.running {
-            let elapsed = now.duration_since(tool.since).as_millis();
-            let frame = ui::get().spinner_frame(elapsed, limits.spinner_ms.value);
-            lines.push(
-                cards::header(&tool.name, &tool.arguments, State::Running(frame))
-                    .truncate(self.width),
-            );
+        self.live = self.live_lines(width, now);
+        if !self.live.is_empty() && !self.entries.is_empty() {
+            row += 1;
         }
-        lines
+        self.live_start = row;
+        self.total = row + self.live.len();
+        self.total
+    }
+
+    /// Rows `from..to` of the last `measure`, each with the block it belongs to.
+    pub fn rows(&self, from: usize, to: usize) -> Vec<(Line, Option<usize>)> {
+        (from..to.min(self.total))
+            .map(|row| {
+                if row >= self.live_start {
+                    return (self.live[row - self.live_start].clone(), None);
+                }
+                let i = self.starts.partition_point(|&s| s <= row) - 1;
+                let lines = self.entries[i]
+                    .drawn
+                    .as_ref()
+                    .map_or(&[][..], |(_, l)| l.as_slice());
+                match lines.get(row - self.starts[i]) {
+                    Some(line) => (line.clone(), Some(i)),
+                    None => (Line::default(), None),
+                }
+            })
+            .collect()
     }
 
     /// Seconds left before a retry, and why it is needed.
@@ -204,15 +272,49 @@ impl Feed {
         })
     }
 
-    fn block(&mut self, lines: Vec<Line>) {
-        if lines.is_empty() {
-            return;
+    /// The part still in flight: thinking, the reply's unfinished tail, running tools.
+    fn live_lines(&self, width: usize, now: Instant) -> Vec<Line> {
+        let mut groups: Vec<Vec<Line>> = Vec::new();
+        if !self.reasoning.is_empty() {
+            let secs = self
+                .reasoning_since
+                .map_or(0, |since| now.duration_since(since).as_secs());
+            let text = &ui::get().thinking;
+            let header = fill(&text.live, &[("secs", &secs.to_string())]);
+            let mut lines = thinking_lines(&text.open, &header, &self.reasoning, width);
+            if !self.open_thinking {
+                let tail = limits::get().tui.reasoning_tail_lines.value;
+                let skip = (lines.len() - 1).saturating_sub(tail);
+                lines.drain(1..1 + skip);
+            }
+            groups.push(lines);
         }
-        if self.spaced {
-            self.commits.push(Line::default());
+        let tail = markdown::trim_partial_fence(&self.text[self.committed..]);
+        if !tail.trim().is_empty() {
+            groups.push(markdown::render(tail, width));
         }
-        self.commits.extend(lines);
-        self.spaced = true;
+        let limits = &limits::get().tui;
+        if !self.running.is_empty() {
+            groups.push(
+                self.running
+                    .iter()
+                    .map(|tool| {
+                        let elapsed = now.duration_since(tool.since).as_millis();
+                        let frame = ui::get().spinner_frame(elapsed, limits.spinner_ms.value);
+                        cards::header(&tool.name, &tool.arguments, State::Running(frame))
+                            .truncate(width)
+                    })
+                    .collect(),
+            );
+        }
+        let mut lines = Vec::new();
+        for (i, group) in groups.into_iter().enumerate() {
+            if i > 0 {
+                lines.push(Line::default());
+            }
+            lines.extend(group);
+        }
+        lines
     }
 
     fn commit_complete(&mut self) {
@@ -221,14 +323,14 @@ impl Feed {
         if cut > 0 {
             let chunk = pending[..cut].to_owned();
             self.committed += cut;
-            self.block(markdown::render(&chunk, self.width));
+            self.markdown(&chunk);
         }
     }
 
     fn finish_text(&mut self) {
         let rest = self.text[self.committed..].to_owned();
         if !rest.trim().is_empty() {
-            self.block(markdown::render(&rest, self.width));
+            self.markdown(&rest);
         }
         self.text.clear();
         self.committed = 0;
@@ -241,48 +343,98 @@ impl Feed {
         let secs = self
             .reasoning_since
             .map_or(0, |since| now.duration_since(since).as_secs());
-        let reasoning = std::mem::take(&mut self.reasoning);
+        let text = std::mem::take(&mut self.reasoning);
         self.reasoning_since = None;
-        let style = Style::fg("reasoning").italic();
-        if self.show_reasoning {
-            let lines = reasoning
-                .lines()
-                .flat_map(|l| Line::styled(l, style.clone()).wrap(self.width, &Line::default()))
-                .collect();
-            self.block(lines);
-        } else {
-            let text = format!("∴ {} {secs}s", ui::get().text.thought);
-            self.block(vec![Line::styled(text, style)]);
-        }
+        self.push(Block::Thinking { text, secs });
     }
 
     fn outcome_of(&mut self, message: &Assistant) {
         if let Some(error) = &message.error {
-            let entry = error.entry();
-            let mut lines = vec![Line::styled(
-                format!("● {}", entry.title),
-                Style::fg("error").bold(),
-            )];
-            let indent = Line::plain("  ");
-            let mut detail = indent.clone();
-            detail.push(&error.message, Style::default().dim());
-            lines.extend(detail.wrap(self.width, &indent));
-            if let Some(hint) = &entry.hint {
-                let mut line = indent.clone();
-                line.push(hint, Style::fg("muted"));
-                lines.extend(line.wrap(self.width, &indent));
-            }
-            if let Some(id) = &error.request_id {
-                let mut line = indent.clone();
-                line.push(format!("request {id}"), Style::fg("muted"));
-                lines.push(line);
-            }
-            self.block(lines);
+            self.push(Block::Error(error.clone()));
         } else if message.finish == Finish::Length {
             let text = &ui::get().text.cut_off;
             self.notice(text, "warn");
         }
     }
+}
+
+fn render(block: &Block, open: bool, width: usize) -> Vec<Line> {
+    match block {
+        Block::Welcome(info) => welcome::render(info, width),
+        Block::User(text) => user_lines(text, width),
+        Block::Markdown(md) => markdown::render(md, width),
+        Block::Notice { text, role } => {
+            Line::styled(text, Style::fg(role)).wrap(width, &Line::default())
+        }
+        Block::Tool { arguments, result } => {
+            cards::finished(&result.name, arguments, result, width)
+        }
+        Block::Thinking { text, secs } => {
+            let words = &ui::get().thinking;
+            let header = fill(&words.done, &[("secs", &secs.to_string())]);
+            let mark = if open { &words.open } else { &words.closed };
+            let mut lines = thinking_lines(mark, &header, text, width);
+            if !open {
+                lines.truncate(1);
+            }
+            lines
+        }
+        Block::Error(error) => error_lines(error, width),
+    }
+}
+
+/// A thinking header, then the text under a gutter.
+fn thinking_lines(mark: &str, header: &str, text: &str, width: usize) -> Vec<Line> {
+    let words = &ui::get().thinking;
+    let muted = Style::fg("muted");
+    let mut lines = vec![Line::styled(format!("{mark} {header}"), muted.clone()).truncate(width)];
+    let gutter = Line::styled(&words.gutter, muted);
+    let style = Style::fg("reasoning").italic();
+    for raw in text.trim().lines() {
+        let mut line = gutter.clone();
+        line.push(raw, style.clone());
+        lines.extend(line.wrap(width, &gutter));
+    }
+    lines
+}
+
+fn user_lines(text: &str, width: usize) -> Vec<Line> {
+    let prompt = Line::styled(&ui::get().prompt, Style::fg("user").bold());
+    let indent = Line::plain(" ".repeat(prompt.width()));
+    let mut lines = Vec::new();
+    for (i, raw) in text.lines().enumerate() {
+        let mut line = if i == 0 {
+            prompt.clone()
+        } else {
+            indent.clone()
+        };
+        line.push(raw, Style::default());
+        lines.extend(line.wrap(width, &indent));
+    }
+    lines
+}
+
+fn error_lines(error: &ErrorInfo, width: usize) -> Vec<Line> {
+    let entry = error.entry();
+    let mut lines = vec![Line::styled(
+        format!("● {}", entry.title),
+        Style::fg("error").bold(),
+    )];
+    let indent = Line::plain("  ");
+    let mut detail = indent.clone();
+    detail.push(&error.message, Style::default().dim());
+    lines.extend(detail.wrap(width, &indent));
+    if let Some(hint) = &entry.hint {
+        let mut line = indent.clone();
+        line.push(hint, Style::fg("muted"));
+        lines.extend(line.wrap(width, &indent));
+    }
+    if let Some(id) = &error.request_id {
+        let mut line = indent.clone();
+        line.push(format!("request {id}"), Style::fg("muted"));
+        lines.push(line);
+    }
+    lines
 }
 
 #[cfg(test)]
@@ -314,47 +466,84 @@ mod tests {
         }
     }
 
-    fn texts(lines: &[Line]) -> Vec<String> {
-        lines.iter().map(Line::text).collect()
+    fn shown(feed: &mut Feed, width: usize, now: Instant) -> Vec<(String, Option<usize>)> {
+        let total = feed.measure(width, now);
+        feed.rows(0, total)
+            .into_iter()
+            .map(|(line, block)| (line.text(), block))
+            .collect()
+    }
+
+    fn texts(feed: &mut Feed, now: Instant) -> Vec<String> {
+        shown(feed, 60, now).into_iter().map(|(t, _)| t).collect()
     }
 
     #[test]
-    fn finished_paragraphs_commit_while_the_tail_stays_live() {
+    fn finished_paragraphs_become_blocks_while_the_tail_stays_live() {
         let now = crate::io::clock::instant();
-        let mut feed = Feed::new(60);
+        let mut feed = Feed::new();
         feed.event(&delta(DeltaKind::Text, "First para"), now);
-        assert!(feed.take_commits().is_empty());
-        assert_eq!(texts(&feed.live(now)), vec!["First para"]);
+        assert_eq!(shown(&mut feed, 60, now), [("First para".into(), None)]);
         feed.event(&delta(DeltaKind::Text, "graph.\n\nSecond"), now);
-        assert_eq!(texts(&feed.take_commits()), vec!["First paragraph."]);
-        assert_eq!(texts(&feed.live(now)), vec!["", "Second"]);
-        feed.event(&end(None, Finish::Done), now);
-        assert_eq!(texts(&feed.take_commits()), vec!["", "Second"]);
-        assert!(feed.live(now).is_empty());
-    }
-
-    #[test]
-    fn reasoning_collapses_to_one_line_unless_shown() {
-        let t0 = crate::io::clock::instant();
-        let mut feed = Feed::new(60);
-        feed.event(&delta(DeltaKind::Reasoning, "let me think"), t0);
-        assert_eq!(texts(&feed.live(t0)), vec!["let me think"]);
-        feed.event(
-            &delta(DeltaKind::Text, "Answer"),
-            t0 + Duration::from_secs(4),
+        assert_eq!(
+            shown(&mut feed, 60, now),
+            [
+                ("First paragraph.".into(), Some(0)),
+                (String::new(), None),
+                ("Second".into(), None)
+            ]
         );
-        assert_eq!(texts(&feed.take_commits()), vec!["∴ thought 4s"]);
-        feed.toggle_reasoning();
-        feed.event(&delta(DeltaKind::Reasoning, "more"), t0);
-        feed.event(&end(None, Finish::Done), t0);
-        let committed = texts(&feed.take_commits());
-        assert!(committed.contains(&"more".to_owned()), "{committed:?}");
+        feed.event(&end(None, Finish::Done), now);
+        assert_eq!(
+            shown(&mut feed, 60, now),
+            [
+                ("First paragraph.".into(), Some(0)),
+                (String::new(), None),
+                ("Second".into(), Some(1))
+            ]
+        );
     }
 
     #[test]
-    fn tools_run_live_and_commit_as_cards() {
+    fn thinking_streams_live_then_collapses_and_opens_on_toggle() {
+        let t0 = crate::io::clock::instant();
+        let mut feed = Feed::new();
+        feed.event(&delta(DeltaKind::Reasoning, "let me think"), t0);
+        assert_eq!(texts(&mut feed, t0), ["▾ Thinking… 0s", "│ let me think"]);
+        let t4 = t0 + Duration::from_secs(4);
+        feed.event(&delta(DeltaKind::Text, "Answer"), t4);
+        assert_eq!(texts(&mut feed, t4), ["▸ Thought for 4s", "", "Answer"]);
+        assert!(feed.toggle(0));
+        assert_eq!(
+            texts(&mut feed, t4)[..2],
+            ["▾ Thought for 4s", "│ let me think"]
+        );
+        assert!(!feed.toggle(5));
+    }
+
+    #[test]
+    fn toggling_all_opens_every_block_and_the_next_ones() {
+        let t0 = crate::io::clock::instant();
+        let mut feed = Feed::new();
+        for word in ["one", "two"] {
+            feed.event(&delta(DeltaKind::Reasoning, word), t0);
+            feed.event(&end(None, Finish::Done), t0);
+        }
+        feed.toggle(0);
+        feed.toggle_all();
+        let rows = texts(&mut feed, t0);
+        assert!(rows.contains(&"│ one".to_owned()) && rows.contains(&"│ two".to_owned()));
+        feed.event(&delta(DeltaKind::Reasoning, "three"), t0);
+        feed.event(&end(None, Finish::Done), t0);
+        assert!(texts(&mut feed, t0).contains(&"│ three".to_owned()));
+        feed.toggle_all();
+        assert!(!texts(&mut feed, t0).iter().any(|r| r.starts_with('│')));
+    }
+
+    #[test]
+    fn tools_run_live_and_become_cards() {
         let now = crate::io::clock::instant();
-        let mut feed = Feed::new(60);
+        let mut feed = Feed::new();
         feed.event(
             &AgentEvent::ToolStart {
                 call_id: "c1".into(),
@@ -363,7 +552,7 @@ mod tests {
             },
             now,
         );
-        assert!(feed.live(now)[0].text().ends_with("bash ls"));
+        assert!(texts(&mut feed, now)[0].ends_with("bash ls"));
         feed.event(
             &AgentEvent::ToolEnd {
                 result: ToolResult {
@@ -376,31 +565,35 @@ mod tests {
             },
             now,
         );
-        assert!(feed.live(now).is_empty());
-        assert_eq!(texts(&feed.take_commits()), vec!["● bash ls", "  a.txt"]);
+        assert_eq!(texts(&mut feed, now), ["● bash ls", "  a.txt"]);
     }
 
     #[test]
     fn errors_become_cards_with_hint_and_request_id() {
         let now = crate::io::clock::instant();
-        let mut feed = Feed::new(80);
+        let mut feed = Feed::new();
         let error = ErrorInfo {
             request_id: Some("req_9".into()),
             ..ErrorInfo::local("insufficient_balance", "top up")
         };
         feed.event(&end(Some(error), Finish::Error), now);
-        let lines = texts(&feed.take_commits());
+        let lines = texts(&mut feed, now);
         assert_eq!(lines[0], "● Out of funds");
         assert!(lines.iter().any(|l| l.contains("req_9")));
     }
 
     #[test]
-    fn blocks_are_separated_by_one_blank_line() {
+    fn blocks_are_one_blank_row_apart_and_rewrap_with_the_width() {
         let now = crate::io::clock::instant();
-        let mut feed = Feed::new(60);
+        let mut feed = Feed::new();
         feed.user("hi");
         feed.event(&delta(DeltaKind::Text, "hello"), now);
         feed.event(&end(None, Finish::Done), now);
-        assert_eq!(texts(&feed.take_commits()), vec!["› hi", "", "hello"]);
+        assert_eq!(texts(&mut feed, now), ["› hi", "", "hello"]);
+        feed.markdown(&"word ".repeat(20));
+        let wide = feed.measure(60, now);
+        let narrow = feed.measure(20, now);
+        assert!(narrow > wide, "{narrow} vs {wide}");
+        assert_eq!(feed.rows(1, 3).len(), 2);
     }
 }

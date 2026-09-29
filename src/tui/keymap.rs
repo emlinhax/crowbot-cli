@@ -23,6 +23,8 @@ pub enum Action {
     CtrlC,
     Quit,
     ToggleReasoning,
+    PageUp,
+    PageDown,
     Up,
     Down,
     Left,

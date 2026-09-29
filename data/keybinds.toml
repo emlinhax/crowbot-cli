@@ -14,7 +14,11 @@ escape = ["esc"]
 # Clears the editor, else interrupts, else quits on a second press.
 ctrl_c = ["ctrl+c"]
 quit = ["ctrl+d"]
+# Opens every thinking block, or closes them all when all are open.
 toggle_reasoning = ["ctrl+t"]
+# Scroll the transcript; the mouse wheel does too.
+page_up = ["pageup"]
+page_down = ["pagedown"]
 
 up = ["up", "ctrl+p"]
 down = ["down", "ctrl+n"]

@@ -24,6 +24,7 @@ pub struct Ui {
     pub text: Text,
     pub card: CardText,
     pub palette: PaletteText,
+    pub thinking: ThinkingText,
     pub login: LoginText,
 }
 
@@ -40,6 +41,16 @@ pub struct LoginText {
     pub checking: String,
     pub failed: String,
     pub hint: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThinkingText {
+    pub closed: String,
+    pub open: String,
+    pub done: String,
+    pub live: String,
+    pub gutter: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -90,7 +101,6 @@ pub struct Text {
     pub retrying: String,
     pub queued: String,
     pub steering: String,
-    pub thought: String,
     pub cost_estimate: String,
     pub not_logged_in: String,
     pub interrupted: String,
@@ -98,8 +108,7 @@ pub struct Text {
     pub cut_off: String,
     pub ctrl_c_again: String,
     pub unknown_command: String,
-    pub reasoning_shown: String,
-    pub reasoning_hidden: String,
+    pub more_below: String,
     pub saved: String,
     pub spent: String,
 }
