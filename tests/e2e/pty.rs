@@ -135,6 +135,15 @@ impl Session {
         panic!("{text:?} never went away; screen:\n{}", self.contents());
     }
 
+    /// Row `i` of the screen, zero-based.
+    fn row(&self, i: usize) -> String {
+        self.screen
+            .screen()
+            .rows(0, COLS)
+            .nth(i)
+            .unwrap_or_default()
+    }
+
     /// The screen row showing `text`, zero-based.
     #[track_caller]
     fn row_of(&self, text: &str) -> usize {
@@ -383,4 +392,46 @@ async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
     .await
     .unwrap();
     assert_eq!(fake.chat_bodies()[0]["model"], "fake-coder");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_command_popup_floats_over_the_conversation_without_moving_it() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    let url = fake.url.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut s = Session::start(&sandbox, &url);
+        s.wait_for("MANUAL");
+        // More output than the screen holds, so the conversation fills every row above the bar.
+        for _ in 0..3 {
+            s.type_text("/help");
+            s.send("\r");
+            s.wait_gone("╭ commands");
+        }
+        std::thread::sleep(Duration::from_millis(300));
+        s.pump();
+        let top: Vec<String> = (0..8).map(|i| s.row(i)).collect();
+        s.send("/");
+        s.wait_for("╭ commands");
+        let with_popup: Vec<String> = (0..8).map(|i| s.row(i)).collect();
+        assert_eq!(
+            with_popup,
+            top,
+            "the conversation moved; screen:\n{}",
+            s.contents()
+        );
+        s.send("\x7f");
+        s.wait_gone("╭ commands");
+        let after: Vec<String> = (0..8).map(|i| s.row(i)).collect();
+        assert_eq!(
+            after,
+            top,
+            "the conversation moved; screen:\n{}",
+            s.contents()
+        );
+        s.send("\x04");
+        s.wait_exit();
+    })
+    .await
+    .unwrap();
 }

@@ -673,6 +673,8 @@ impl<'a> Tui<'a> {
         // Prompts answered elsewhere (AUTO approved them, the run was interrupted) go away.
         let shared = self.shared;
         self.cards.retain(|card| shared.waiting(card.id));
+        // The command popup floats over the conversation instead of growing the bar.
+        let mut floating = Vec::new();
         match (&self.login, &self.picker, self.cards.front()) {
             (Some(login), _, _) => live.extend(login.render(width)),
             (None, Some(picker), _) => live.extend(picker.render(width)),
@@ -682,7 +684,7 @@ impl<'a> Tui<'a> {
                 if !running {
                     let found = self.palette.open(&self.editor.text());
                     if !found.is_empty() {
-                        live.extend(self.palette.render(&found, width));
+                        floating = self.palette.render(&found, width);
                     }
                 }
                 let ui = ui::get();
@@ -701,7 +703,14 @@ impl<'a> Tui<'a> {
             },
             width,
         ));
-        let frame = layout::compose(&mut self.feed, &mut self.view, &live, (width, height), now);
+        let frame = layout::compose(
+            &mut self.feed,
+            &mut self.view,
+            &live,
+            &floating,
+            (width, height),
+            now,
+        );
         self.blocks = frame.blocks;
         let bytes = self.screen.frame(&frame.rows);
         if !bytes.is_empty() {

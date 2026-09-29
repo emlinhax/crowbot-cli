@@ -139,6 +139,8 @@ never move and thinking blocks can be clicked; a crow working line; an aligned `
 - ConPTY forwards SGR mouse reports as console mouse events, so clicks are testable end to end.
 - Shrinking every column evenly makes a narrow table useless; dropping low-priority columns
   first (data) keeps it readable.
+- A popup that grows the bar shrinks the transcript's viewport, so the whole conversation jumps
+  up and reads as a cleared screen. Floating cards overlay the rows above the bar instead.
 
 ## M3.10 — webfetch on cffetch
 Plan: webfetch fetches through the user's cffetch (browser TLS via wreq/BoringSSL, another
