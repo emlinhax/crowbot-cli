@@ -1,1 +1,1 @@
-Fetch a web page and return it as Markdown (HTML is converted; other text is returned as is). For reading documentation or an issue the user linked; not for searching.
+Fetch a web page and return it as Markdown (HTML is converted; other text is returned as is). For reading documentation or an issue the user linked; not for searching. Pages are fetched the way a browser fetches them; a page that still needs a real browser (an interactive check) comes back as an error saying so, and retrying it will not help.

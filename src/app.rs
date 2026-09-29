@@ -1,4 +1,5 @@
 use crate::api::Api;
+use crate::io::fetch::Fetch;
 use crate::io::http::Http;
 use crate::paths::Paths;
 use crate::settings::{self, Overrides, Settings};
@@ -11,7 +12,7 @@ pub struct App {
     /// crowbot's endpoints.
     pub api: Api,
     /// Everything else on the web (the webfetch tool).
-    pub http: Http,
+    pub fetch: Fetch,
 }
 
 impl App {
@@ -21,8 +22,8 @@ impl App {
         let http = Http::new(limits::get().http.connect_timeout_ms.ms())?;
         let key = auth::load(&paths)?.map(|k| k.secret);
         Ok(Self {
-            api: Api::new(http.clone(), key),
-            http,
+            api: Api::new(http, key),
+            fetch: Fetch::new(limits::get().tools.webfetch_timeout_secs.secs())?,
             paths,
             settings,
         })
@@ -35,8 +36,9 @@ impl App {
         let settings = settings::load(&paths, &Overrides::default()).expect("defaults load");
         let http = Http::new(limits::get().http.connect_timeout_ms.ms()).expect("http client");
         Self {
-            api: Api::new(http.clone(), None),
-            http,
+            api: Api::new(http, None),
+            fetch: Fetch::new(limits::get().tools.webfetch_timeout_secs.secs())
+                .expect("fetch client"),
             paths,
             settings,
         }

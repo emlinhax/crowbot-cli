@@ -2,6 +2,7 @@
 //! calls everywhere else, so a transport change, retry or cache is one edit here.
 
 pub mod clock;
+pub mod fetch;
 pub mod fs;
 pub mod http;
 pub mod proc;

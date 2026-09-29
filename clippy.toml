@@ -16,6 +16,8 @@ disallowed-methods = [
   { path = "reqwest::Client::new", reason = "use io::http" },
   { path = "reqwest::Client::builder", reason = "use io::http" },
   { path = "reqwest::get", reason = "use io::http" },
+  { path = "cffetch::CfClient::builder", reason = "use io::fetch" },
+  { path = "cffetch::get", reason = "use io::fetch" },
   { path = "std::time::SystemTime::now", reason = "use io::clock" },
   { path = "std::time::Instant::now", reason = "use io::clock" },
   { path = "jiff::Timestamp::now", reason = "use io::clock" },

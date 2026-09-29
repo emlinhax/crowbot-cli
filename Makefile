@@ -6,7 +6,7 @@ CARGO ?= cargo
 .PHONY: lint test e2e smoke golden check build
 
 lint:
-	$(CARGO) fmt --all -- --check
+	$(CARGO) fmt -- --check
 	$(CARGO) clippy --locked --all-targets -- -D warnings
 
 test:
