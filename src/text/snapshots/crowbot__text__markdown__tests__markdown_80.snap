@@ -1,0 +1,31 @@
+---
+source: src/text/markdown.rs
+expression: "tagged(SAMPLE, 80)"
+---
+[heading+bold]Title[/]
+
+Some [italic]emphasis[/], [strong+bold]strong[/] and [code]code[/] with a [link+underline+link]link[/][muted] (https://crowbot.sh)[/].
+
+[bullet]• [/]one
+[bullet]• [/]two
+  [bullet]• [/]nested item that is long enough to wrap around
+
+[bullet]1. [/]first
+[bullet]2. [/]second
+
+[quote]│ [/][quote+italic]quoted text[/]
+
+[muted]```rust[/]
+  [syn_keyword]fn[/] [syn_function]main[/]() {}
+[muted]```[/]
+
+[muted]┌───┬────┐[/]
+[muted]│[/] [bold]a[/] [muted]│[/] [bold]b[/]  [muted]│[/]
+[muted]├───┼────┤[/]
+[muted]│[/] 1 [muted]│[/] 22 [muted]│[/]
+[muted]└───┴────┘[/]
+
+[rule]────────────────────────────────────────────────────────────────────────────────[/]
+
+[bullet]• [/][muted][x] [/]done
+[bullet]• [/][muted][ ] [/]todo

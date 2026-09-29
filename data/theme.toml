@@ -1,0 +1,73 @@
+# What everything looks like. Code styles text by role; roles name palette colours (or a hex).
+# `default` means the terminal's own colour, so text stays readable on light and dark themes.
+
+[palette]
+green = "#00DC82"
+purple = "#A855F7"
+orange = "#FF8A3D"
+red = "#FF4D5E"
+muted = "#7C8590"
+blue = "#60A5FA"
+yellow = "#E5C07B"
+teal = "#56B6C2"
+
+[roles]
+text = "default"
+accent = "green"
+muted = "muted"
+error = "red"
+warn = "orange"
+heading = "green"
+strong = "default"
+code = "teal"
+link = "blue"
+quote = "muted"
+rule = "muted"
+bullet = "green"
+diff_add = "green"
+diff_del = "red"
+diff_hunk = "purple"
+reasoning = "muted"
+user = "green"
+running = "orange"
+done = "green"
+crow = "purple"
+mode_manual = "green"
+mode_auto = "orange"
+mode_plan = "purple"
+syn_keyword = "purple"
+syn_string = "green"
+syn_number = "orange"
+syn_function = "blue"
+syn_type = "yellow"
+syn_constant = "orange"
+syn_comment = "muted"
+
+# Syntax scopes to roles; the most specific matching selector wins, as in editor themes.
+[[syntax]]
+scope = "comment"
+role = "syn_comment"
+
+[[syntax]]
+scope = "string, constant.character"
+role = "syn_string"
+
+[[syntax]]
+scope = "constant.numeric"
+role = "syn_number"
+
+[[syntax]]
+scope = "constant.language, support.constant, variable.language"
+role = "syn_constant"
+
+[[syntax]]
+scope = "entity.name.function, support.function, variable.function"
+role = "syn_function"
+
+[[syntax]]
+scope = "entity.name.type, entity.name.class, entity.name.struct, entity.name.enum, support.type"
+role = "syn_type"
+
+[[syntax]]
+scope = "keyword - keyword.operator, storage"
+role = "syn_keyword"

@@ -1,0 +1,498 @@
+//! Markdown as styled lines at a given width, and where a streaming reply can be cut into
+//! finished blocks.
+
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+
+use crate::text::highlight;
+use crate::text::styled::{Line, Style, width};
+
+/// Longest a horizontal rule gets, so it reads as a divider rather than a wall.
+const RULE_MAX: usize = 80;
+
+pub fn render(md: &str, width: usize) -> Vec<Line> {
+    let mut r = Renderer {
+        width: width.max(8),
+        ..Renderer::default()
+    };
+    let options =
+        Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
+    for event in Parser::new_ext(md, options) {
+        r.event(event);
+    }
+    r.flush();
+    r.out
+}
+
+/// The byte length of `text` made of finished blocks: everything up to the last blank line that is
+/// not inside a code fence. The rest may still change as the reply streams in.
+pub fn complete_prefix(text: &str) -> usize {
+    let mut fence: Option<String> = None;
+    let mut cut = 0;
+    let mut at = 0;
+    for line in text.split_inclusive('\n') {
+        let end = at + line.len();
+        let trimmed = line.trim_start();
+        if let Some(open) = &fence {
+            if line.ends_with('\n')
+                && trimmed.trim_end().starts_with(open.as_str())
+                && trimmed
+                    .trim()
+                    .chars()
+                    .all(|c| c == open.as_bytes()[0] as char)
+            {
+                fence = None;
+            }
+        } else if let Some(marker) = fence_marker(trimmed) {
+            fence = Some(marker);
+        } else if line.trim().is_empty() && line.ends_with('\n') {
+            cut = end;
+        }
+        at = end;
+    }
+    cut
+}
+
+/// Hides a closing fence that has only partly arrived, so a code block does not flicker shut.
+pub fn trim_partial_fence(tail: &str) -> &str {
+    let Some(start) = tail.rfind('\n').map(|i| i + 1).or(Some(0)) else {
+        return tail;
+    };
+    let last = tail[start..].trim_start();
+    if !last.is_empty() && last.chars().all(|c| c == '`' || c == '~') {
+        &tail[..start]
+    } else {
+        tail
+    }
+}
+
+fn fence_marker(line: &str) -> Option<String> {
+    let c = line.chars().next().filter(|c| *c == '`' || *c == '~')?;
+    let run = line.chars().take_while(|x| *x == c).count();
+    (run >= 3).then(|| c.to_string().repeat(run))
+}
+
+#[derive(Default)]
+struct Renderer {
+    width: usize,
+    out: Vec<Line>,
+    /// Inline content of the block being built.
+    inline: Line,
+    styles: Vec<Style>,
+    containers: Vec<Container>,
+    /// A block ended; the next one starts after a blank line.
+    gap: bool,
+    heading: Option<HeadingLevel>,
+    code: Option<(String, String)>,
+    link: Option<String>,
+    table: Option<Table>,
+}
+
+enum Container {
+    Quote,
+    List { next: Option<u64> },
+    Item { marker: String, used: bool },
+}
+
+#[derive(Default)]
+struct Table {
+    rows: Vec<Vec<Line>>,
+    cell: Line,
+    row: Vec<Line>,
+}
+
+impl Renderer {
+    fn event(&mut self, event: Event<'_>) {
+        if let Some(table) = &mut self.table {
+            match event {
+                Event::End(TagEnd::Table) => {}
+                Event::Start(Tag::TableCell) => table.cell = Line::default(),
+                Event::End(TagEnd::TableCell) => table.row.push(std::mem::take(&mut table.cell)),
+                Event::End(TagEnd::TableRow | TagEnd::TableHead) => {
+                    let row = std::mem::take(&mut table.row);
+                    table.rows.push(row);
+                    return;
+                }
+                Event::Text(t) | Event::Code(t) => {
+                    let style = self.styles.last().cloned().unwrap_or_default();
+                    table.cell.push(t.to_string(), style);
+                    return;
+                }
+                Event::Start(Tag::Strong) => {
+                    self.styles.push(self.current().bold());
+                    return;
+                }
+                Event::End(TagEnd::Strong | TagEnd::Emphasis) => {
+                    self.styles.pop();
+                    return;
+                }
+                Event::Start(Tag::Emphasis) => {
+                    self.styles.push(self.current().italic());
+                    return;
+                }
+                _ => return,
+            }
+            if matches!(event, Event::End(TagEnd::Table)) {
+                let table = self.table.take().unwrap_or_default();
+                self.block_start();
+                self.table_lines(table);
+                self.gap = true;
+            }
+            return;
+        }
+
+        match event {
+            Event::Start(tag) => self.start(tag),
+            Event::End(tag) => self.end(tag),
+            Event::Text(text) => {
+                if let Some((_, code)) = &mut self.code {
+                    code.push_str(&text);
+                } else {
+                    let style = self.current();
+                    self.inline.push(text.to_string(), style);
+                }
+            }
+            Event::Code(text) => {
+                let style = self.current().patch(&Style::fg("code"));
+                self.inline.push(text.to_string(), style);
+            }
+            Event::SoftBreak => self.inline.push(" ", self.current()),
+            Event::HardBreak => self.flush(),
+            Event::Rule => {
+                self.flush();
+                self.block_start();
+                let rule = "─".repeat(self.width.min(RULE_MAX));
+                self.emit(vec![Line::styled(rule, Style::fg("rule"))]);
+                self.gap = true;
+            }
+            Event::TaskListMarker(done) => {
+                let mark = if done { "[x] " } else { "[ ] " };
+                self.inline.push(mark, Style::fg("muted"));
+            }
+            Event::Html(html) | Event::InlineHtml(html) => {
+                self.inline
+                    .push(html.trim_end().to_string(), Style::fg("muted"));
+            }
+            _ => {}
+        }
+    }
+
+    fn start(&mut self, tag: Tag<'_>) {
+        match tag {
+            Tag::Paragraph => self.block_start(),
+            Tag::Heading { level, .. } => {
+                self.block_start();
+                self.heading = Some(level);
+                let style = match level {
+                    HeadingLevel::H1 | HeadingLevel::H2 => Style::fg("heading").bold(),
+                    _ => Style::default().bold(),
+                };
+                self.styles.push(style);
+            }
+            Tag::BlockQuote(_) => {
+                self.flush();
+                self.block_start();
+                self.containers.push(Container::Quote);
+                self.styles
+                    .push(self.current().patch(&Style::fg("quote").italic()));
+            }
+            Tag::CodeBlock(kind) => {
+                self.flush();
+                self.block_start();
+                let lang = match kind {
+                    CodeBlockKind::Fenced(info) => {
+                        info.split_whitespace().next().unwrap_or("").to_owned()
+                    }
+                    CodeBlockKind::Indented => String::new(),
+                };
+                self.code = Some((lang, String::new()));
+            }
+            Tag::List(first) => {
+                self.flush();
+                if !matches!(self.containers.last(), Some(Container::Item { .. })) {
+                    self.block_start();
+                }
+                self.containers.push(Container::List { next: first });
+            }
+            Tag::Item => {
+                self.flush();
+                let marker = match self.containers.last_mut() {
+                    Some(Container::List { next: Some(n) }) => {
+                        let m = format!("{n}. ");
+                        *n += 1;
+                        m
+                    }
+                    _ => "• ".to_owned(),
+                };
+                self.containers.push(Container::Item {
+                    marker,
+                    used: false,
+                });
+            }
+            Tag::Emphasis => self.styles.push(self.current().italic()),
+            Tag::Strong => self
+                .styles
+                .push(self.current().patch(&Style::fg("strong").bold())),
+            Tag::Strikethrough => {
+                let mut style = self.current();
+                style.strike = true;
+                self.styles.push(style);
+            }
+            Tag::Link { dest_url, .. } => {
+                let mut style = self.current().patch(&Style::fg("link"));
+                style.underline = true;
+                style.link = Some(dest_url.to_string());
+                self.link = Some(dest_url.to_string());
+                self.styles.push(style);
+            }
+            Tag::Image { dest_url, .. } => {
+                self.inline
+                    .push(format!("[image: {dest_url}]"), Style::fg("muted"));
+                self.styles.push(Style::fg("muted"));
+            }
+            Tag::Table(_) => {
+                self.flush();
+                self.table = Some(Table::default());
+            }
+            _ => {}
+        }
+    }
+
+    fn end(&mut self, tag: TagEnd) {
+        match tag {
+            TagEnd::Paragraph => {
+                self.flush();
+                self.gap = true;
+            }
+            TagEnd::Heading(_) => {
+                self.flush();
+                self.styles.pop();
+                self.heading = None;
+                self.gap = true;
+            }
+            TagEnd::BlockQuote(_) => {
+                self.flush();
+                self.containers.pop();
+                self.styles.pop();
+                self.gap = true;
+            }
+            TagEnd::CodeBlock => {
+                if let Some((lang, code)) = self.code.take() {
+                    self.code_lines(&lang, &code);
+                }
+                self.gap = true;
+            }
+            TagEnd::List(_) => {
+                self.flush();
+                self.containers.pop();
+                self.gap = true;
+            }
+            TagEnd::Item => {
+                self.flush();
+                self.containers.pop();
+            }
+            TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough | TagEnd::Image => {
+                self.styles.pop();
+            }
+            TagEnd::Link => {
+                self.styles.pop();
+                if let Some(url) = self.link.take() {
+                    let shown = self.inline.text();
+                    if !shown.ends_with(&url) {
+                        self.inline.push(format!(" ({url})"), Style::fg("muted"));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn current(&self) -> Style {
+        self.styles.last().cloned().unwrap_or_default()
+    }
+
+    /// Starts a block, leaving a blank line after the previous one.
+    fn block_start(&mut self) {
+        if self.gap && !self.out.is_empty() {
+            let (first, _) = self.prefixes(false);
+            self.out.push(first);
+        }
+        self.gap = false;
+    }
+
+    /// Emits the pending inline text, wrapped inside the current containers.
+    fn flush(&mut self) {
+        if self.inline.spans.is_empty() {
+            return;
+        }
+        let inline = std::mem::take(&mut self.inline);
+        let (first, rest) = self.prefixes(true);
+        let avail = self.width.saturating_sub(first.width()).max(1);
+        let wrapped = inline.wrap(avail, &Line::default());
+        let mut lines = Vec::with_capacity(wrapped.len());
+        for (i, line) in wrapped.into_iter().enumerate() {
+            let mut out = if i == 0 { first.clone() } else { rest.clone() };
+            out.extend(line);
+            lines.push(out);
+        }
+        self.out.extend(lines);
+    }
+
+    fn emit(&mut self, lines: Vec<Line>) {
+        let (first, rest) = self.prefixes(true);
+        for (i, line) in lines.into_iter().enumerate() {
+            let mut out = if i == 0 { first.clone() } else { rest.clone() };
+            out.extend(line);
+            self.out.push(out);
+        }
+    }
+
+    /// Prefixes for the first and later lines of a block: quote bars and list markers.
+    /// `claim` uses up a list item's marker, so only its first line shows it.
+    fn prefixes(&mut self, claim: bool) -> (Line, Line) {
+        let mut first = Line::default();
+        let mut rest = Line::default();
+        for c in &mut self.containers {
+            match c {
+                Container::Quote => {
+                    first.push("│ ", Style::fg("quote"));
+                    rest.push("│ ", Style::fg("quote"));
+                }
+                Container::List { .. } => {}
+                Container::Item { marker, used } => {
+                    let pad = " ".repeat(width(marker));
+                    if *used || !claim {
+                        first.push(pad.clone(), Style::default());
+                    } else {
+                        first.push(marker.clone(), Style::fg("bullet"));
+                        *used = true;
+                    }
+                    rest.push(pad, Style::default());
+                }
+            }
+        }
+        (first, rest)
+    }
+
+    fn code_lines(&mut self, lang: &str, code: &str) {
+        let fence = Style::fg("muted");
+        let mut lines = vec![Line::styled(format!("```{lang}"), fence.clone())];
+        let (first, _) = self.prefixes(false);
+        let avail = self.width.saturating_sub(first.width() + 2).max(1);
+        for line in highlight::highlight(code.trim_end_matches('\n'), lang) {
+            for part in line.wrap(avail, &Line::default()) {
+                let mut indented = Line::plain("  ");
+                indented.extend(part);
+                lines.push(indented);
+            }
+        }
+        lines.push(Line::styled("```", fence));
+        self.emit(lines);
+    }
+
+    fn table_lines(&mut self, table: Table) {
+        let columns = table.rows.iter().map(Vec::len).max().unwrap_or(0);
+        if columns == 0 {
+            return;
+        }
+        let mut widths = vec![0; columns];
+        for row in &table.rows {
+            for (i, cell) in row.iter().enumerate() {
+                widths[i] = widths[i].max(cell.width());
+            }
+        }
+        let (first, _) = self.prefixes(false);
+        let total: usize = widths.iter().sum::<usize>() + 3 * columns + 1 + first.width();
+        let border = Style::fg("muted");
+        if total > self.width {
+            // Too wide to draw as a grid: one line per row, cells separated.
+            let lines = table
+                .rows
+                .iter()
+                .map(|row| {
+                    let mut line = Line::default();
+                    for (i, cell) in row.iter().enumerate() {
+                        if i > 0 {
+                            line.push(" │ ", border.clone());
+                        }
+                        line.extend(cell.clone());
+                    }
+                    line.truncate(self.width.saturating_sub(first.width()))
+                })
+                .collect();
+            self.emit(lines);
+            return;
+        }
+        let rule = |l: &str, m: &str, r: &str| {
+            let parts: Vec<String> = widths.iter().map(|w| "─".repeat(w + 2)).collect();
+            Line::styled(format!("{l}{}{r}", parts.join(m)), border.clone())
+        };
+        let mut lines = vec![rule("┌", "┬", "┐")];
+        for (r, row) in table.rows.iter().enumerate() {
+            let mut line = Line::styled("│", border.clone());
+            for (i, w) in widths.iter().enumerate() {
+                let cell = row.get(i).cloned().unwrap_or_default();
+                let pad = w - cell.width();
+                line.push(" ", Style::default());
+                let mut cell = cell;
+                if r == 0 {
+                    for span in &mut cell.spans {
+                        span.style.bold = true;
+                    }
+                }
+                line.extend(cell);
+                line.push(" ".repeat(pad + 1), Style::default());
+                line.push("│", border.clone());
+            }
+            lines.push(line);
+            if r == 0 && table.rows.len() > 1 {
+                lines.push(rule("├", "┼", "┤"));
+            }
+        }
+        lines.push(rule("└", "┴", "┘"));
+        self.emit(lines);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tagged(md: &str, width: usize) -> String {
+        render(md, width)
+            .iter()
+            .map(Line::to_tagged)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    const SAMPLE: &str = "# Title\n\nSome *emphasis*, **strong** and `code` with a [link](https://crowbot.sh).\n\n- one\n- two\n  - nested item that is long enough to wrap around\n\n1. first\n2. second\n\n> quoted text\n\n```rust\nfn main() {}\n```\n\n| a | b |\n|---|---|\n| 1 | 22 |\n\n---\n\n- [x] done\n- [ ] todo\n";
+
+    #[test]
+    fn renders_every_element() {
+        insta::assert_snapshot!("markdown_80", tagged(SAMPLE, 80));
+        insta::assert_snapshot!("markdown_40", tagged(SAMPLE, 40));
+    }
+
+    #[test]
+    fn nothing_is_wider_than_asked() {
+        for w in [20, 40, 80, 120] {
+            for line in render(SAMPLE, w) {
+                assert!(line.width() <= w, "{} > {w}: {}", line.width(), line.text());
+            }
+        }
+    }
+
+    #[test]
+    fn stream_cuts_at_blank_lines_outside_fences() {
+        let text = "para one\n\n```\ncode\n\nmore code\n";
+        assert_eq!(&text[..complete_prefix(text)], "para one\n\n");
+        let closed = "```\nx\n\n```\n\nnext";
+        assert_eq!(&closed[..complete_prefix(closed)], "```\nx\n\n```\n\n");
+    }
+
+    #[test]
+    fn half_arrived_fences_are_hidden() {
+        assert_eq!(trim_partial_fence("code\n``"), "code\n");
+        assert_eq!(trim_partial_fence("code\nmore"), "code\nmore");
+    }
+}

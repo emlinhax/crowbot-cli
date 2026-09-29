@@ -1,0 +1,16 @@
+# Code-fence languages the bundled syntaxes know under another name. Unknown languages (TOML,
+# PowerShell, … are not bundled) are shown uncoloured rather than guessed.
+[alias]
+ts = "js"
+tsx = "js"
+typescript = "js"
+jsx = "js"
+mjs = "js"
+cjs = "js"
+jsonc = "json"
+sh = "bash"
+zsh = "bash"
+shell = "bash"
+console = "bash"
+yml = "yaml"
+dockerfile = "bash"

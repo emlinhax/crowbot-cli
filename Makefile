@@ -20,9 +20,9 @@ smoke:
 	@test -n "$${CROWBOT_SMOKE_KEY:-}" || { echo "set CROWBOT_SMOKE_KEY (smoke spends real money)"; exit 1; }
 	$(CARGO) test --locked --test smoke -- --ignored --test-threads=1
 
-# Rewrites golden expectations from current output; only for a deliberate behaviour change.
+# Rewrites golden files and insta snapshots from current output; only for a deliberate change.
 golden:
-	UPDATE_GOLDEN=1 $(CARGO) test --locked --bins golden
+	UPDATE_GOLDEN=1 INSTA_UPDATE=always $(CARGO) test --locked --bins
 
 check: lint test e2e
 

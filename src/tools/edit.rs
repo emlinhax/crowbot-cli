@@ -266,23 +266,25 @@ mod tests {
             let edits: Vec<EditSpec> =
                 serde_json::from_str(&std::fs::read_to_string(case.join("args.json")).unwrap())
                     .unwrap();
-            match apply(&before, &edits) {
-                Ok(applied) if update && !case.join("error.txt").exists() => {
-                    std::fs::write(case.join("after.txt"), &applied.text).unwrap();
+            let after = std::fs::read_to_string(case.join("after.txt")).ok();
+            let error = std::fs::read_to_string(case.join("error.txt")).ok();
+            let result = apply(&before, &edits);
+            let holds = match (&result, &after, &error) {
+                (Ok(applied), Some(after), _) => applied.text == *after,
+                (Err(why), _, Some(error)) => why.contains(error.trim()),
+                _ => false,
+            };
+            // Only a failing expectation is rewritten; one that holds is left as written.
+            if update && !holds {
+                match &result {
+                    Ok(applied) => std::fs::write(case.join("after.txt"), &applied.text).unwrap(),
+                    Err(why) => std::fs::write(case.join("error.txt"), why).unwrap(),
                 }
-                Ok(applied) => {
-                    let expected = std::fs::read_to_string(case.join("after.txt"))
-                        .unwrap_or_else(|_| panic!("{name}: succeeded but expected an error"));
-                    assert_eq!(applied.text, expected, "{name}");
-                }
-                Err(why) if update && !case.join("after.txt").exists() => {
-                    std::fs::write(case.join("error.txt"), &why).unwrap();
-                }
-                Err(why) => {
-                    let expected = std::fs::read_to_string(case.join("error.txt"))
-                        .unwrap_or_else(|_| panic!("{name}: failed unexpectedly: {why}"));
-                    assert!(why.contains(expected.trim()), "{name}: {why}");
-                }
+                continue;
+            }
+            match result {
+                Ok(applied) => assert_eq!(Some(applied.text), after, "{name}"),
+                Err(why) => assert!(holds, "{name}: {why}"),
             }
         }
     }

@@ -60,6 +60,24 @@ three", 2 of them Enter)
   the run hanging; the TUI will answer them for real.
 - `Reply`/`steer`/`follow_up`/`set_mode` carry `allow(dead_code)` outside tests until M3 wires them.
 ## M3 — TUI core
+Plan: inline renderer that commits finished blocks to real scrollback and diff-redraws only a live
+region; Enter queues and Tab steers while running; prompts are a numbered card (Yes / No / No +
+why, no "always"); tool cards are data (`data/tool_cards.toml`); `crowbot "…"` pre-types the prompt.
+- [x] 3.1 text: styled lines, theme roles, markdown (+ stream split), syntect highlight, diff; snapshots
+- [ ] 3.2 screen: commit + live-region diff, vt100-tested
+- [ ] 3.3 input + editor: keymap data, release filter, paste bursts, editing/wrapping/history
+- [ ] 3.4 blocks: welcome raven, transcript streaming, data-driven cards, status, queue, footer
+- [ ] 3.5 app loop + session commands (`/quit`, `/mode`, scopes, effects) + PTY e2e
+- [ ] 3.6 prompts: one `Prompt` shape (permission, question, plan_exit), views, "always" removed
+- [ ] 3.7 docs + manual Windows Terminal checklist
+
+**Learned**
+- syntect's bundled grammars have no TypeScript, TOML or PowerShell; `data/code_aliases.toml` maps
+  what it can (ts → js) and the rest renders uncoloured.
+- Mapping syntect scopes straight to theme roles (best `MatchPower` wins) keeps code colours in the
+  same palette and makes highlighting snapshot-testable by role name.
+- `make golden` must only rewrite expectations that fail, or it silently rewrites passing goldens.
+- The new `text/` renderers carry a temporary `allow(dead_code)` until 3.5 wires the TUI.
 ## M4 — Account UX in the TUI
 ## M5 — Context + sessions (compaction, shadow-git /undo)
 ## M6 — Subagents + MCP

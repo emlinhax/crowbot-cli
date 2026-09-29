@@ -21,18 +21,23 @@ grep-searcher = "0.1.17"
 htmd = "0.5.5"
 ignore = "0.4.33"
 jiff = { version = "0.2.37", features = ["serde"] }
+pulldown-cmark = { version = "0.13.4", default-features = false }
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "stream", "http2", "rustls", "system-proxy"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
 similar = "3.2.0"
+syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "parsing", "regex-fancy"] }
 thiserror = "2.0.21"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "signal", "process"] }
 tokio-util = "0.7.19"
 toml = "1.1.6"
+unicode-segmentation = "1.13.3"
+unicode-width = "0.2.2"
 
 [dev-dependencies]
 axum = "0.8.9"
+insta = "1.48.0"
 tempfile = "3.27.0"
 tokio = { version = "1.53.1", features = ["net", "process"] }
 
