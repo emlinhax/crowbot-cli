@@ -41,7 +41,7 @@ use crate::tui::login::{self, Login};
 use crate::tui::palette::{self, Palette};
 use crate::tui::queue::{self, Kind};
 use crate::tui::screen::Screen;
-use crate::tui::status::{self, Status};
+use crate::tui::status::{self, Progress};
 use crate::tui::view::View;
 use crate::tui::{frame, layout, ui, welcome};
 
@@ -135,7 +135,11 @@ struct Tui<'a> {
     cards: VecDeque<Choice>,
     /// The `/login` card, on screen in place of the editor while open.
     login: Option<Login>,
-    turn_started: Option<Instant>,
+    /// The turn in flight, for the working line.
+    progress: Option<Progress>,
+    last_verb: Option<usize>,
+    rng: fastrand::Rng,
+    braille: bool,
     last_ctrl_c: Option<Instant>,
     cost_micros: u64,
     context_pct: Option<u64>,
@@ -175,7 +179,10 @@ impl<'a> Tui<'a> {
             queue: Vec::new(),
             cards: VecDeque::new(),
             login: None,
-            turn_started: None,
+            progress: None,
+            last_verb: None,
+            rng: fastrand::Rng::new(),
+            braille: term::braille(),
             last_ctrl_c: None,
             cost_micros: 0,
             context_pct: None,
@@ -207,7 +214,9 @@ impl<'a> Tui<'a> {
                         Step::Login(next) => job = Some(login::run(self.app, next)),
                         Step::Send(text) => {
                             let Some(mut owned) = transcript.take() else { continue };
-                            self.turn_started = Some(clock::instant());
+                            let progress = Progress::start(clock::instant(), self.last_verb, &mut self.rng);
+                            self.last_verb = Some(progress.verb());
+                            self.progress = Some(progress);
                             let parts = vec![Part::Text { text }];
                             turn = Some(Box::pin(async move {
                                 let outcome = run::run(cx, &mut owned, shared, parts).await;
@@ -225,7 +234,7 @@ impl<'a> Tui<'a> {
                 (owned, outcome) = async { turn.as_mut().expect("guarded by the branch condition").await }, if turn.is_some() => {
                     turn = None;
                     transcript = Some(owned);
-                    self.turn_started = None;
+                    self.progress = None;
                     self.queue.clear();
                     while let Ok(event) = events.try_recv() {
                         self.agent(event);
@@ -566,6 +575,9 @@ impl<'a> Tui<'a> {
             }
             _ => {}
         }
+        if let Some(progress) = &mut self.progress {
+            progress.event(&event);
+        }
         self.feed.event(&event, now);
     }
 
@@ -628,14 +640,13 @@ impl<'a> Tui<'a> {
 
     fn status(&self, now: Instant, width: usize) -> Line {
         if let Some((secs, why)) = self.feed.retry(now) {
-            return status::render(&Status::Retrying { secs, why }, width);
+            return status::retrying(secs, why, width);
         }
-        let elapsed = self
-            .turn_started
-            .map_or(0, |t| now.duration_since(t).as_millis());
-        let frame = ui::get().spinner_frame(elapsed, limits::get().tui.spinner_ms.value);
-        let secs = (elapsed / 1000) as u64;
-        status::render(&Status::Working { secs, frame }, width)
+        let color = &self.shared.mode().color;
+        self.progress
+            .as_ref()
+            .map(|p| p.render(now, color, self.braille, width))
+            .unwrap_or_default()
     }
 }
 

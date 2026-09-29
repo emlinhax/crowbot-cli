@@ -16,7 +16,6 @@ items = ["model", "context", "cost"]
 separator = " · "
 
 [text]
-working = "Working"
 interrupt = "esc to interrupt"
 retrying = "retrying in"
 queued = "queued"
@@ -31,6 +30,17 @@ unknown_command = "Unknown command /{name}. /help lists them."
 more_below = "↓ {n} more · PgDn"
 saved = "Session saved to {path}"
 spent = "Spent about {cost} this session."
+
+# The line above the bar while crowbot works: a flapping raven, a verb with a glint running
+# along it, then elapsed time and tokens.
+[status]
+# One wingbeat: up, level, down and back, a frame per `tui.wing_ms`.
+wings = ["⠑⠤⠊", "⠢⠤⠔", "⠒⠒⠒", "⠔⠒⠢", "⡠⠒⢄", "⠔⠒⠢", "⠒⠒⠒", "⠢⠤⠔"]
+# For terminals without braille (legacy Windows conhost).
+plain = ["·", "•", "●", "•"]
+# One per turn, never the same twice running.
+verbs = ["Gooning", "Tweaking", "Cooking", "Pasting", "Maffing", "Napping", "Trapping", "Crowing", "Bypassing", "Caw-cawing"]
+tokens = "↓ {n} tok"
 
 # Thinking blocks: a click opens or closes one, Ctrl+T all of them.
 [thinking]

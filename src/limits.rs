@@ -138,6 +138,8 @@ pub struct TuiLimits {
     pub prompt_body_lines: Limit<usize>,
     pub palette_rows: Limit<usize>,
     pub scroll_lines: Limit<usize>,
+    pub wing_ms: Limit<u64>,
+    pub shimmer_ms: Limit<u64>,
 }
 
 #[cfg(test)]

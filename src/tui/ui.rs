@@ -25,6 +25,7 @@ pub struct Ui {
     pub card: CardText,
     pub palette: PaletteText,
     pub thinking: ThinkingText,
+    pub status: StatusText,
     pub login: LoginText,
 }
 
@@ -41,6 +42,15 @@ pub struct LoginText {
     pub checking: String,
     pub failed: String,
     pub hint: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StatusText {
+    pub wings: Vec<String>,
+    pub plain: Vec<String>,
+    pub verbs: Vec<String>,
+    pub tokens: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -96,7 +106,6 @@ pub struct Footer {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Text {
-    pub working: String,
     pub interrupt: String,
     pub retrying: String,
     pub queued: String,
