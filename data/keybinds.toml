@@ -1,0 +1,31 @@
+# Action = the keys that trigger it. A key is modifiers and a key name joined by `+`, e.g.
+# `ctrl+shift+left`. Letters ignore case. Key-release events never reach these (see io/term).
+
+# Enter sends when idle and queues a follow-up while crowbot is working.
+submit = ["enter"]
+# Alt+Enter is left alone: Windows Terminal uses it for fullscreen.
+newline = ["shift+enter", "ctrl+j"]
+# Tab steers while crowbot is working (delivered after the current tool calls) and completes
+# slash commands when idle.
+tab = ["tab"]
+cycle_mode = ["backtab", "shift+tab"]
+# Closes a prompt or palette, else interrupts the run.
+escape = ["esc"]
+# Clears the editor, else interrupts, else quits on a second press.
+ctrl_c = ["ctrl+c"]
+quit = ["ctrl+d"]
+toggle_reasoning = ["ctrl+t"]
+
+up = ["up", "ctrl+p"]
+down = ["down", "ctrl+n"]
+left = ["left", "ctrl+b"]
+right = ["right", "ctrl+f"]
+word_left = ["ctrl+left", "alt+left", "alt+b"]
+word_right = ["ctrl+right", "alt+right", "alt+f"]
+line_start = ["home", "ctrl+a"]
+line_end = ["end", "ctrl+e"]
+backspace = ["backspace", "ctrl+h"]
+delete = ["delete"]
+delete_word = ["ctrl+w", "alt+backspace", "ctrl+backspace"]
+kill_to_start = ["ctrl+u"]
+kill_to_end = ["ctrl+k"]

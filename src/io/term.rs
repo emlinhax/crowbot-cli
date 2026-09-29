@@ -6,7 +6,7 @@ use crossterm::event::{
     DisableBracketedPaste, EnableBracketedPaste, KeyboardEnhancementFlags,
     PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
-pub use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
+pub use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 /// Writes to stdout, ignoring a closed pipe (`crowbot models | head`) where `print!` would panic.
 pub fn out(text: &str) {

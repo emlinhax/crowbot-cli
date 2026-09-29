@@ -49,6 +49,11 @@ impl Style {
         self
     }
 
+    pub fn reverse(mut self) -> Self {
+        self.reverse = true;
+        self
+    }
+
     /// `self`, with anything `over` sets taking precedence.
     pub fn patch(&self, over: &Style) -> Style {
         Style {

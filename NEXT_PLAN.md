@@ -65,7 +65,7 @@ region; Enter queues and Tab steers while running; prompts are a numbered card (
 why, no "always"); tool cards are data (`data/tool_cards.toml`); `crowbot "…"` pre-types the prompt.
 - [x] 3.1 text: styled lines, theme roles, markdown (+ stream split), syntect highlight, diff; snapshots
 - [x] 3.2 screen: commit + live-region diff, vt100-tested (incl. 300 random frame sequences)
-- [ ] 3.3 input + editor: keymap data, release filter, paste bursts, editing/wrapping/history
+- [x] 3.3 input + editor: keymap data, paste bursts, editing/wrapping/history (release filter lands with the event stream in 3.5)
 - [ ] 3.4 blocks: welcome raven, transcript streaming, data-driven cards, status, queue, footer
 - [ ] 3.5 app loop + session commands (`/quit`, `/mode`, scopes, effects) + PTY e2e
 - [ ] 3.6 prompts: one `Prompt` shape (permission, question, plan_exit), views, "always" removed
