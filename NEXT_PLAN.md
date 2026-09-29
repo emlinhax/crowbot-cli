@@ -69,7 +69,14 @@ why, no "always"); tool cards are data (`data/tool_cards.toml`); `crowbot "…"`
 - [x] 3.4 blocks: welcome raven, transcript streaming (`tui/feed.rs`), data-driven cards, status, queue, footer
 - [x] 3.5 app loop + session commands (`/quit`, `/mode`, scopes, effects) + PTY e2e (passes on Windows ConPTY too)
 - [x] 3.6 prompts: one `Prompt` shape (permission, question, plan_exit), one numbered card (`tui/choice.rs`), "always" removed
-- [ ] 3.7 docs + manual Windows Terminal checklist
+- [x] 3.7 docs + manual Windows Terminal checklist
+- [ ] Manual pass on Windows Terminal (by the user):
+  - raven renders; streaming commits without flicker or doubled lines
+  - Shift+Tab cycles modes (editor border and footer change colour)
+  - a multi-line paste stays in the editor
+  - Enter mid-run queues, Tab steers; Esc interrupts a `sleep 100` and returns queued text
+  - a MANUAL edit shows a diff card; 1 / 2 / 3 behave
+  - resizing keeps the live region intact; Ctrl+D leaves the terminal clean
 
 **Learned**
 - syntect's bundled grammars have no TypeScript, TOML or PowerShell; `data/code_aliases.toml` maps
