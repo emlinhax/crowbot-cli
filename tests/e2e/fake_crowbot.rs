@@ -30,6 +30,9 @@ pub enum Reply {
 
 #[derive(Default)]
 struct Inner {
+    /// The fake's own address, filled into scripted replies as `{base}` so a scripted model
+    /// can point webfetch at this server.
+    base: String,
     paths: Vec<String>,
     chat_bodies: Vec<Value>,
     script: VecDeque<Reply>,
@@ -64,10 +67,13 @@ impl Fake {
             .route("/api/pair/{code}", get(pair_poll))
             .route("/api/pow", get(pow))
             .route("/api/signup", post(signup))
+            .route("/web/ok", get(web_ok))
+            .route("/web/blocked", get(web_blocked))
             .layer(middleware::from_fn_with_state(inner.clone(), record))
             .with_state(inner.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
+        inner.lock().unwrap().base = url.clone();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self { url, inner }
     }
@@ -126,6 +132,31 @@ fn error(status: u16, kind: &str, retry_after: Option<u64>) -> Response {
     resp
 }
 
+/// A plain page, as a documentation site serves it.
+async fn web_ok() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        "<html><head><title>Widget docs</title></head><body>\
+         <h1>Widget API</h1><p>The widget spins at 3 rpm.</p></body></html>",
+    )
+}
+
+/// What Cloudflare serves while it challenges a client: 403, its mitigation header, and an
+/// interstitial that must never reach the model as if it were the page.
+async fn web_blocked() -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::HeaderName::from_static("cf-mitigated"), "challenge"),
+        ],
+        "<html><head><title>Just a moment...</title></head><body>\
+         <script>window._cf_chl_opt={cType:'managed'};</script>\
+         <noscript>Enable JavaScript and cookies to continue</noscript></body></html>",
+    )
+        .into_response()
+}
+
 async fn models() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "application/json")], MODELS)
 }
@@ -134,17 +165,19 @@ async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> 
     if !authorized(&headers) {
         return error(401, "invalid_api_key", None);
     }
-    let reply = {
+    let (reply, base) = {
         let mut inner = inner.lock().unwrap();
         inner
             .chat_bodies
             .push(serde_json::from_str(&body).unwrap_or(Value::Null));
-        inner.script.pop_front()
+        (inner.script.pop_front(), inner.base.clone())
     };
     match reply {
         Some(Reply::Sse(name)) => {
             let path = format!("{}/tests/fixtures/sse/{name}", env!("CARGO_MANIFEST_DIR"));
-            let text = std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{path}"));
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|_| panic!("{path}"))
+                .replace("{base}", &base);
             (
                 [
                     (header::CONTENT_TYPE, "text/event-stream"),

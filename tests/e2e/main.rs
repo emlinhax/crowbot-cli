@@ -9,6 +9,7 @@ mod models;
 mod pty;
 mod scenarios;
 mod signup;
+mod web;
 
 use std::path::{Path, PathBuf};
 use std::process::Output;
