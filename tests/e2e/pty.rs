@@ -81,6 +81,14 @@ impl Session {
         self.screen.screen().contents()
     }
 
+    fn bottom_row(&self) -> String {
+        self.screen
+            .screen()
+            .rows(0, COLS)
+            .last()
+            .unwrap_or_default()
+    }
+
     /// Feeds output to the emulator, answering cursor-position queries as a real terminal
     /// would: Windows' ConPTY asks one before it lets any output through.
     fn pump(&mut self) {
@@ -130,6 +138,8 @@ async fn a_session_welcomes_chats_switches_mode_and_quits() {
         let mut s = Session::start(&sandbox, &url);
         s.wait_for("crowbot v");
         s.wait_for("MANUAL");
+        // The footer, and the message bar above it, sit at the bottom from the start.
+        assert!(s.bottom_row().contains("MANUAL"), "{}", s.contents());
         s.type_text("hi");
         s.send("\r");
         s.wait_for("Hello there!");

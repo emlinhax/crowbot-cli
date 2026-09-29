@@ -50,6 +50,11 @@ pub fn size() -> (usize, usize) {
     crossterm::terminal::size().map_or((80, 24), |(w, h)| (w as usize, h as usize))
 }
 
+/// The row the cursor is on, counted from the top of the screen.
+pub fn cursor_row() -> usize {
+    crossterm::cursor::position().map_or(0, |(_, row)| row as usize)
+}
+
 /// What the terminal can colour, from the conventions terminals advertise themselves by.
 pub fn color_depth() -> Depth {
     if settings::env("NO_COLOR").is_some() {
