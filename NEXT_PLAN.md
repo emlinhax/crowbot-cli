@@ -72,7 +72,10 @@ why, no "always"); tool cards are data (`data/tool_cards.toml`); `crowbot "…"`
 - [x] 3.7 docs + manual Windows Terminal checklist
 - [ ] Manual pass on Windows Terminal (by the user):
   - raven renders; streaming commits without flicker or doubled lines
-  - Shift+Tab cycles modes (editor border and footer change colour)
+  - Shift+Tab cycles modes: MANUAL gray, AUTO purple, PLAN blue (both rules change colour)
+  - the rule under the editor keeps model, effort (coloured), ctx and cost right-aligned at any width
+  - `/` opens the command popup: it filters, ↑↓ move, Tab completes, Enter runs, Esc hides
+  - `/login` pairs through the browser, and option 2 hides all but the last four digits
   - a multi-line paste stays in the editor
   - Enter mid-run queues, Tab steers; Esc interrupts a `sleep 100` and returns queued text
   - a MANUAL edit shows a diff card; 1 / 2 / 3 behave
@@ -92,6 +95,24 @@ why, no "always"); tool cards are data (`data/tool_cards.toml`); `crowbot "…"`
 - Switching to AUTO auto-approves only waiting *permission* prompts; questions still wait.
 - The session loop needs no engine thread: it owns the transcript and moves it into each turn's
   future, which hands it back; controls mid-turn go through `&Shared`.
+
+## M3.8 — Session polish (after first use)
+Plan: mode colours as data (MANUAL gray, AUTO purple, PLAN blue); the message bar framed by two
+rules in the mode colour, the bottom one carrying model + effort, ctx and cost right-aligned; a `/`
+command popup; `/login` inside the session.
+- [x] colours + `tui/frame.rs` (replaces `footer.rs`); effort levels carry a theme role
+- [x] `tui/boxed.rs` shared by prompt cards and `tui/palette.rs` (the `/` popup)
+- [x] live API key (`Arc<RwLock>` shared by clones), `api::pair::wait`, `auth::adopt`; login's words in its data file
+- [x] `tui/login.rs`: pair or a masked account number; its network work is a future in the loop
+
+**Learned**
+- The Tab-only completion from 3.x was not discoverable; a popup is worth its ~150 lines once it
+  shares the box with the prompt cards.
+- Sorting matches alphabetically puts an exact name before longer ones (`/mode` before
+  `/models`), so Enter never runs the wrong command.
+- Anything the session waits on (a turn, a login) is a future beside input in one `select!`; a
+  command awaited inside the input branch would freeze the screen.
+- Opening the browser belongs in the job, not the state machine, or unit tests open real tabs.
 ## M4 — Account UX in the TUI
 ## M5 — Context + sessions (compaction, shadow-git /undo)
 ## M6 — Subagents + MCP
