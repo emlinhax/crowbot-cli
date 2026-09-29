@@ -5,7 +5,7 @@ mod cards;
 mod choice;
 mod editor;
 mod feed;
-mod footer;
+mod frame;
 mod input;
 mod keymap;
 mod queue;

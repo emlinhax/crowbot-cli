@@ -138,8 +138,8 @@ async fn a_session_welcomes_chats_switches_mode_and_quits() {
         let mut s = Session::start(&sandbox, &url);
         s.wait_for("crowbot v");
         s.wait_for("MANUAL");
-        // The footer, and the message bar above it, sit at the bottom from the start.
-        assert!(s.bottom_row().contains("MANUAL"), "{}", s.contents());
+        // The message bar and the rule under it, with the model, sit at the bottom from the start.
+        assert!(s.bottom_row().contains("crow-2"), "{}", s.contents());
         s.type_text("hi");
         s.send("\r");
         s.wait_for("Hello there!");

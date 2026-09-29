@@ -11,11 +11,9 @@ tips = [
 ]
 
 [footer]
-# Shown in this order; when the line is too narrow, items go in `drop` order.
-items = ["mode", "model", "effort", "context", "cost"]
-drop = ["cost", "effort", "context", "model"]
+# Right-aligned on the rule under the message bar, in this order; effort rides with the model.
+items = ["model", "context", "cost"]
 separator = " · "
-mode_hint = "⇧⇥"
 
 [text]
 working = "Working"
@@ -25,7 +23,7 @@ queued = "queued"
 steering = "steering"
 thought = "thought"
 cost_estimate = "est"
-not_logged_in = "Not logged in: run `crowbot login` in another terminal, then restart."
+not_logged_in = "Not logged in: type /login"
 interrupted = "Interrupted."
 declined = "Stopped: you declined a call."
 cut_off = "The reply hit its output limit (a low balance lowers that limit)."

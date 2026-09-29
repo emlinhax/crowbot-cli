@@ -23,7 +23,7 @@ use crate::commands::{self, Ctx, Effect, Scope};
 use crate::io::clock;
 use crate::io::term::{self, Input, KeyCode, KeyModifiers};
 use crate::limits;
-use crate::mode::{self, Mode};
+use crate::mode;
 use crate::session::store::Store;
 use crate::session::transcript::Transcript;
 use crate::text::styled::{Line, Style};
@@ -39,7 +39,7 @@ use crate::tui::keymap::{self, Action};
 use crate::tui::queue::{self, Kind};
 use crate::tui::screen::Screen;
 use crate::tui::status::{self, Status};
-use crate::tui::{footer, ui, welcome};
+use crate::tui::{frame, ui, welcome};
 
 type Turn<'a> = Pin<Box<dyn Future<Output = (Transcript, anyhow::Result<Outcome>)> + 'a>>;
 
@@ -513,19 +513,17 @@ impl<'a> Tui<'a> {
         match self.cards.front() {
             Some(card) => live.extend(card.render(width)),
             None => {
-                live.push(border(mode, width));
+                live.push(frame::top(mode, width));
                 let ui = ui::get();
                 let prompt = Line::styled(&ui.prompt, Style::fg(&mode.color).bold());
                 let rows = (self.height * limits::get().tui.editor_max_rows_pct.value / 100).max(3);
                 live.extend(self.editor.render(width, rows, &prompt, &ui.placeholder));
             }
         }
-        live.push(footer::render(
-            &footer::State {
-                mode_label: &mode.label,
-                mode_color: &mode.color,
+        live.push(frame::bottom(
+            mode,
+            &frame::Info {
                 model: &self.model.id,
-                crow: self.model.id.starts_with("crow"),
                 effort: self.app.settings.effort.as_deref(),
                 context_pct: self.context_pct,
                 cost_micros: self.cost_micros,
@@ -553,17 +551,6 @@ impl<'a> Tui<'a> {
     fn screen_width(&self) -> usize {
         term::size().0
     }
-}
-
-/// The editor's top border, in the mode's colour with its label.
-fn border(mode: &Mode, width: usize) -> Line {
-    let style = Style::fg(&mode.color);
-    let mut line = Line::styled("── ", style.clone());
-    line.push(&mode.label, style.clone().bold());
-    line.push(" ", style.clone());
-    let used = line.width();
-    line.push("─".repeat(width.saturating_sub(used)), style);
-    line
 }
 
 fn text_of(parts: &[Part]) -> String {

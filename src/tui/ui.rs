@@ -56,9 +56,7 @@ pub enum PermissionReply {
 #[serde(deny_unknown_fields)]
 pub struct Footer {
     pub items: Vec<String>,
-    pub drop: Vec<String>,
     pub separator: String,
-    pub mode_hint: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,14 +92,9 @@ impl Ui {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn parses_and_drops_only_shown_items() {
+    fn parses() {
         let ui = super::get();
         assert!(!ui.spinner.is_empty());
-        for item in &ui.footer.drop {
-            assert!(
-                ui.footer.items.contains(item),
-                "{item} dropped but never shown"
-            );
-        }
+        assert!(!ui.footer.items.is_empty());
     }
 }

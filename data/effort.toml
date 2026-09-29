@@ -3,16 +3,20 @@
 
 [[level]]
 id = "low"
+color = "effort_low"
 summary = "Quick answers, least reasoning spend"
 
 [[level]]
 id = "medium"
+color = "effort_medium"
 summary = "Balanced"
 
 [[level]]
 id = "high"
+color = "effort_high"
 summary = "Think harder on tricky problems"
 
 [[level]]
 id = "max"
+color = "effort_max"
 summary = "The model's ceiling; crowbot maps it down for models with fewer tiers"
