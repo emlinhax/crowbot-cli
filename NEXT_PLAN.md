@@ -70,7 +70,7 @@ why, no "always"); tool cards are data (`data/tool_cards.toml`); `crowbot "…"`
 - [x] 3.5 app loop + session commands (`/quit`, `/mode`, scopes, effects) + PTY e2e (passes on Windows ConPTY too)
 - [x] 3.6 prompts: one `Prompt` shape (permission, question, plan_exit), one numbered card (`tui/choice.rs`), "always" removed
 - [x] 3.7 docs + manual Windows Terminal checklist
-- [ ] Manual pass on Windows Terminal (by the user):
+- [ ] Manual pass on Windows Terminal (by the user; the full-screen items are under M3.9):
   - raven renders; streaming commits without flicker or doubled lines
   - Shift+Tab cycles modes: MANUAL gray, AUTO purple, PLAN blue (both rules change colour)
   - the rule under the editor keeps model, effort (coloured), ctx and cost right-aligned at any width
@@ -113,6 +113,33 @@ command popup; `/login` inside the session.
 - Anything the session waits on (a turn, a login) is a future beside input in one `select!`; a
   command awaited inside the input branch would freeze the screen.
 - Opening the browser belongs in the job, not the state machine, or unit tests open real tabs.
+## M3.9 — Full-screen session (after second use)
+Plan: the session moves to the alternate screen with its own scrollable transcript so the bar can
+never move and thinking blocks can be clicked; a crow working line; an aligned `/models` picker.
+- [x] `Raw::fullscreen` (alternate screen, mouse, no auto-wrap); `screen.rs` diffs whole-screen rows
+- [x] `feed.rs` keeps blocks as source (redrawn per width); `view.rs` scroll; `layout.rs` frame
+- [x] thinking blocks: click one, Ctrl+T all; live header and tail while streaming
+- [x] `status.rs`: wingbeat raven, user's verbs with a glint, time and tokens
+- [x] `text/table.rs` for markdown, `crowbot models` and `tui/picker.rs`; model switch per session
+- [ ] Manual pass on Windows Terminal (by the user):
+  - the bar never moves: popup, `/login`, a permission card, at the top and after long output
+  - wheel and PgUp/PgDn scroll; `↓ N more` shows while scrolled up; the end follows again
+  - clicking a thinking block opens it; Ctrl+T toggles all; resizing re-wraps everything
+  - the raven flaps and the verb glints; `/models` → ↓ → Enter switches the model
+  - Shift+drag selects text; quitting returns to the shell with the "Session saved" line
+
+**Learned**
+- The inline renderer drifted when the live region outgrew the free rows: the terminal scrolled
+  but the renderer's count of used rows did not. Full-screen frames at absolute positions, with
+  auto-wrap off, cannot drift at all.
+- Mouse capture and inline scrollback cannot coexist: the wheel goes to the app. Clickable
+  blocks meant owning the scroll.
+- Kitty keyboard flags are kept per screen, so they are pushed after entering the alternate
+  screen and popped before leaving it.
+- ConPTY forwards SGR mouse reports as console mouse events, so clicks are testable end to end.
+- Shrinking every column evenly makes a narrow table useless; dropping low-priority columns
+  first (data) keeps it readable.
+
 ## M4 — Account UX in the TUI
 ## M5 — Context + sessions (compaction, shadow-git /undo)
 ## M6 — Subagents + MCP
