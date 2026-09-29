@@ -72,7 +72,8 @@ lines instead of sending.
 | `data/keybinds.toml`, `data/ui.toml` | Keys; the session's words, spinner, bottom-rule items, prompt choices, login card. |
 | `data/tool_cards.toml` | How each tool call looks in the transcript. |
 | `data/code_aliases.toml` | Code-fence languages mapped onto the bundled grammars. |
-| `src/io/` | The only code that touches network, files, processes, terminal or clock (enforced by `clippy.toml`). |
+| `src/io/` | The only code that touches network, files, processes, terminal or clock (enforced by `clippy.toml`). `http.rs` is crowbot's API (reqwest); `fetch.rs` is the rest of the web, for webfetch (cffetch). |
+| `crates/cffetch/` | The user's Cloudflare-aware HTTP client, vendored unchanged from its upstream and excluded from the workspace, so crowbot's rustfmt and clippy leave it alone. Re-sync by copying `src/`, `tests/`, `examples/` and `Cargo.toml` over; its own suite runs from that directory (it hits the network). |
 | `src/api/` | crowbot endpoints, errors, SSE parsing, chat streaming, retry, pairing, signup. |
 | `src/agent/` | The loop (`run.rs`), tool batches, prompts, context repair, doom-loop guard, shared run state. |
 | `src/tools/` | One file per tool behind the `Tool` trait, registered in `tools/mod.rs`; `edit_match.rs` is the fuzzy matcher. |
@@ -97,6 +98,12 @@ also where permanent allowances go, e.g. `permission = "bash"`, `pattern = "carg
 ## Checks
 
 GNU make, run from Git Bash on Windows (`winget install ezwinports.make`).
+
+webfetch fetches through cffetch, whose BoringSSL is built from source, so a build also needs
+CMake and libclang (`LIBCLANG_PATH` pointing at LLVM's `bin` when it is not found on its own),
+plus NASM on Windows (`winget install Kitware.CMake LLVM.LLVM NASM.NASM`). CI installs them
+through `.github/actions/boringssl`. The binary carries two TLS stacks: rustls for crowbot's API,
+BoringSSL for the web.
 
 | Target | Runs | When |
 |---|---|---|

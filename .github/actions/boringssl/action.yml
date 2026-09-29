@@ -1,0 +1,19 @@
+name: BoringSSL build tools
+description: What cffetch's BoringSSL (webfetch) needs to build, on any runner or container.
+runs:
+  using: composite
+  steps:
+    # BoringSSL's Windows assembly is NASM; elsewhere the system assembler does.
+    - if: runner.os == 'Windows'
+      uses: ilammy/setup-nasm@v1
+    # The Windows runner image ships LLVM; bindgen needs to be told where its libclang is.
+    - if: runner.os == 'Windows'
+      shell: bash
+      run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> "$GITHUB_ENV"
+    # Containers run as root without sudo, hosted runners the other way round.
+    - if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        SUDO=$(command -v sudo || true)
+        $SUDO apt-get update
+        $SUDO apt-get install -y cmake libclang-dev

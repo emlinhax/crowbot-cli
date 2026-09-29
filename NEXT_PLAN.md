@@ -140,6 +140,31 @@ never move and thinking blocks can be clicked; a crow working line; an aligned `
 - Shrinking every column evenly makes a narrow table useless; dropping low-priority columns
   first (data) keeps it readable.
 
+## M3.10 — webfetch on cffetch
+Plan: webfetch fetches through the user's cffetch (browser TLS via wreq/BoringSSL, another
+validated profile when one is challenged, challenge pages told apart from real ones) so protected
+pages load, and pages that still need a browser fail with a clear message instead of the
+interstitial passed off as the article. The API stays on reqwest.
+- [x] `crates/cffetch/` vendored unchanged, excluded from the workspace
+- [x] `io/fetch.rs` (`Fetch` in `App`, replacing `App.http`); `CfError` → `FetchError`
+- [x] webfetch on `Fetch`; its messages in `data/tools/webfetch.toml`; the model told not to retry
+- [x] e2e: the real binary and client against a readable page and a Cloudflare-style challenge
+- [x] CI: `.github/actions/boringssl` on every job; glibc is the required Linux release target
+- [ ] First CI run (needs the GitHub remote): proves the toolchain on all three OSes, and
+      `release-musl` decides whether Linux ships fully static (it may fail until then)
+- [ ] Manual: webfetch on a normal docs page and on a known protected page in a session
+
+**Learned**
+- A vendored crate must not be a workspace member: cargo lints and formats every member it
+  builds, whatever `default-members` says. `exclude` makes it an outside crate (`--cap-lints`),
+  and `cargo fmt` without `--all` leaves it alone.
+- BoringSSL honours `+crt-static` on its own (btls-sys passes `/MT` and the MultiThreaded
+  runtime to CMake); the static binary still imports only system DLLs. It costs about 6.4 MB.
+- CMake finds NASM on `PATH` only; the `NASM_PATH` variable cffetch's own config set does not
+  reach it.
+- cffetch over plain HTTP against the fake exercises the whole path (binary, tool, client,
+  detection) with no real Cloudflare, so the challenge case is a hermetic e2e test.
+
 ## M4 — Account UX in the TUI
 ## M5 — Context + sessions (compaction, shadow-git /undo)
 ## M6 — Subagents + MCP
