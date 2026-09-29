@@ -1,5 +1,6 @@
 id = "auto"
 label = "AUTO"
+color = "mode_auto"
 order = 1
 summary = "Runs everything without asking, deny rules included"
 

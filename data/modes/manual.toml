@@ -1,5 +1,6 @@
 id = "manual"
 label = "MANUAL"
+color = "mode_manual"
 order = 0
 summary = "Asks before edits, commands and fetches"
 

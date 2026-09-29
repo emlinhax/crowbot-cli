@@ -1,5 +1,6 @@
 id = "plan"
 label = "PLAN"
+color = "mode_plan"
 order = 2
 summary = "Read-only: investigates and writes a plan, changes nothing"
 reminder = "plan_mode"

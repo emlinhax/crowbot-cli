@@ -1,0 +1,31 @@
+# Words and shapes of the interactive UI. Colours are in theme.toml, keys in keybinds.toml.
+
+spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+prompt = "› "
+placeholder = "Ask crowbot anything  ·  / for commands"
+tips = [
+  "/help lists commands",
+  "Shift+Tab cycles MANUAL → AUTO → PLAN",
+  "Enter sends · while working, Enter queues and Tab steers",
+  "Shift+Enter or Ctrl+J starts a new line",
+]
+
+[footer]
+# Shown in this order; when the line is too narrow, items go in `drop` order.
+items = ["mode", "model", "effort", "context", "cost"]
+drop = ["cost", "effort", "context", "model"]
+separator = " · "
+mode_hint = "⇧⇥"
+
+[text]
+working = "Working"
+interrupt = "esc to interrupt"
+retrying = "retrying in"
+queued = "queued"
+steering = "steering"
+thought = "thought"
+cost_estimate = "est"
+not_logged_in = "Not logged in: run `crowbot login` in another terminal, then restart."
+interrupted = "Interrupted."
+declined = "Stopped: you declined a call."
+cut_off = "The reply hit its output limit (a low balance lowers that limit)."

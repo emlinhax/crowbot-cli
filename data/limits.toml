@@ -127,3 +127,39 @@ reason = "a fuzzy match this much longer or shorter than the text it replaces is
 [edit.similarity_max_chars]
 value = 20000
 reason = "edit distance is quadratic; beyond this the closest-match hint is skipped"
+
+[tui.frame_ms]
+value = 16
+reason = "about 60 frames a second; streaming never needs more"
+
+[tui.spinner_ms]
+value = 80
+reason = "a braille spinner reads as motion at this step"
+
+[tui.paste_gap_ms]
+value = 5
+reason = "pasted keys arrive together; people type tens of milliseconds apart"
+
+[tui.paste_min_keys]
+value = 3
+reason = "two quick keys can be a chord; three in a row is a paste"
+
+[tui.editor_max_rows_pct]
+value = 30
+reason = "the editor may take this share of the screen before it scrolls (pi's choice)"
+
+[tui.reasoning_tail_lines]
+value = 3
+reason = "enough to see the model is thinking without pushing the answer off screen"
+
+[tui.error_lines]
+value = 3
+reason = "a failed tool shows the start of its error; the model gets all of it"
+
+[tui.quit_window_ms]
+value = 1000
+reason = "a second Ctrl+C within this window quits, so one stray press does not"
+
+[tui.history_max]
+value = 100
+reason = "prompts kept for Up/Down in one session"

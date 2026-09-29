@@ -43,6 +43,7 @@ pub struct Limits {
     pub agent: AgentLimits,
     pub tools: ToolLimits,
     pub edit: EditLimits,
+    pub tui: TuiLimits,
 }
 
 #[derive(Debug, Deserialize)]
@@ -120,6 +121,22 @@ pub struct EditLimits {
     pub anchor_similarity_pct: Limit<u64>,
     pub size_tolerance_pct: Limit<u64>,
     pub similarity_max_chars: Limit<usize>,
+}
+
+// Read by the TUI loop (M3 step 3.5).
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TuiLimits {
+    pub frame_ms: Limit<u64>,
+    pub spinner_ms: Limit<u64>,
+    pub paste_gap_ms: Limit<u64>,
+    pub paste_min_keys: Limit<usize>,
+    pub editor_max_rows_pct: Limit<usize>,
+    pub reasoning_tail_lines: Limit<usize>,
+    pub error_lines: Limit<usize>,
+    pub quit_window_ms: Limit<u64>,
+    pub history_max: Limit<usize>,
 }
 
 #[cfg(test)]
