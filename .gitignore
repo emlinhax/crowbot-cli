@@ -1,4 +1,7 @@
 /target/
+# Built when cffetch's own suite runs from its directory.
+/crates/cffetch/target/
+/crates/cffetch/Cargo.lock
 /reference/
 *.snap.new
 *.pending-snap

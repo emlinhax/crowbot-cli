@@ -1,0 +1,19 @@
+[package]
+name = "cffetch"
+version = "0.2.1"
+edition = "2021"
+description = "Cloudflare-aware HTTP client: wreq with fingerprint rotation, challenge detection and a reqwest-like API"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+wreq = { version = "0.16", features = ["cookies"] }
+wreq-util = { version = "0.2", features = ["emulation"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+thiserror = "2"
+bytes = "1"
+rand = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
