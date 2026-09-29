@@ -114,6 +114,19 @@ impl Session {
         panic!("never saw {text:?}; screen:\n{}", self.contents());
     }
 
+    #[track_caller]
+    fn wait_gone(&mut self, text: &str) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while Instant::now() < deadline {
+            self.pump();
+            if !self.contents().contains(text) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        panic!("{text:?} never went away; screen:\n{}", self.contents());
+    }
+
     fn wait_exit(&mut self) -> bool {
         let deadline = Instant::now() + Duration::from_secs(10);
         while Instant::now() < deadline {
@@ -186,4 +199,36 @@ async fn manual_mode_shows_the_edit_and_applies_it_once_approved() {
     .unwrap();
     let fixed = std::fs::read_to_string(sandbox.project.path().join("src/calc.txt")).unwrap();
     assert_eq!(fixed, "2 + 2 = 4\n", "{screen}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    let url = fake.url.clone();
+    let screen = tokio::task::spawn_blocking(move || {
+        let mut s = Session::start(&sandbox, &url);
+        s.wait_for("MANUAL");
+        s.type_text("/mo");
+        s.wait_for("╭ commands");
+        s.wait_for("/models");
+        // Tab completes the first match and leaves room for arguments; the popup closes.
+        s.send("\t");
+        s.wait_gone("╭ commands");
+        s.send("\r");
+        s.wait_for("AUTO");
+        // Down picks the second match and Enter runs it.
+        s.type_text("/mo");
+        s.wait_for("╭ commands");
+        s.send("\x1b[B");
+        s.send("\r");
+        s.wait_for("fake-coder");
+        s.wait_gone("╭ commands");
+        s.send("\x04");
+        s.wait_exit();
+        s.contents()
+    })
+    .await
+    .unwrap();
+    assert!(screen.contains("/models"), "{screen}");
 }

@@ -36,6 +36,7 @@ use crate::tui::editor::Editor;
 use crate::tui::feed::Feed;
 use crate::tui::input::Burst;
 use crate::tui::keymap::{self, Action};
+use crate::tui::palette::{self, Palette};
 use crate::tui::queue::{self, Kind};
 use crate::tui::screen::Screen;
 use crate::tui::status::{self, Status};
@@ -119,6 +120,7 @@ struct Tui<'a> {
     screen: Screen,
     feed: Feed,
     editor: Editor,
+    palette: Palette,
     burst: Burst,
     queue: Vec<(Kind, String)>,
     /// Prompts waiting on the user; the first is on screen in place of the editor.
@@ -167,6 +169,7 @@ impl<'a> Tui<'a> {
             ),
             feed,
             editor,
+            palette: Palette::default(),
             burst: Burst::new(limits.paste_gap_ms.ms(), limits.paste_min_keys.value),
             queue: Vec::new(),
             cards: VecDeque::new(),
@@ -273,7 +276,25 @@ impl<'a> Tui<'a> {
                     }
                 }
                 match keymap::get().action(&key) {
-                    Some(action) => self.action(action, running).await,
+                    Some(action) => {
+                        // The command popup takes its keys first; it is closed during a run,
+                        // where Tab steers.
+                        if !running {
+                            match self.palette.key(action, &self.editor.text()) {
+                                palette::Step::Ignored => {}
+                                palette::Step::Handled => return Step::Continue,
+                                palette::Step::Complete(text) => {
+                                    self.editor.set_text(&text);
+                                    return Step::Continue;
+                                }
+                                palette::Step::Run(name) => {
+                                    self.editor.set_text(&format!("/{name}"));
+                                    return self.submit(running).await;
+                                }
+                            }
+                        }
+                        self.action(action, running).await
+                    }
                     None => {
                         let plain = !key
                             .modifiers
@@ -514,6 +535,12 @@ impl<'a> Tui<'a> {
             Some(card) => live.extend(card.render(width)),
             None => {
                 live.push(frame::top(mode, width));
+                if !running {
+                    let found = self.palette.open(&self.editor.text());
+                    if !found.is_empty() {
+                        live.extend(self.palette.render(&found, width));
+                    }
+                }
                 let ui = ui::get();
                 let prompt = Line::styled(&ui.prompt, Style::fg(&mode.color).bold());
                 let rows = (self.height * limits::get().tui.editor_max_rows_pct.value / 100).max(3);

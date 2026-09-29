@@ -23,6 +23,13 @@ pub struct Ui {
     pub footer: Footer,
     pub text: Text,
     pub card: CardText,
+    pub palette: PaletteText,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PaletteText {
+    pub title: String,
 }
 
 #[derive(Debug, Deserialize)]

@@ -7,6 +7,7 @@ use crate::limits;
 use crate::text::diff;
 use crate::text::markdown;
 use crate::text::styled::{Line, Style};
+use crate::tui::boxed::boxed;
 use crate::tui::editor::Editor;
 use crate::tui::keymap::Action;
 use crate::tui::ui::{self, PermissionReply};
@@ -189,27 +190,8 @@ impl Choice {
     pub fn render(&self, width: usize) -> Vec<Line> {
         let text = &ui::get().card;
         let border = Style::fg("muted");
-        let inner = width.saturating_sub(4);
-        let mut lines = Vec::new();
-        let mut top = Line::styled("╭ ", border.clone());
-        top.push(&self.title, Style::default().bold());
-        top = top.truncate(width.saturating_sub(2));
-        top.push(" ", border.clone());
-        let fill = width.saturating_sub(top.width() + 1);
-        top.push(format!("{}╮", "─".repeat(fill)), border.clone());
-        lines.push(top);
-        for body in &self.body {
-            let body = body.truncate(inner);
-            let mut line = Line::styled("│ ", border.clone());
-            let pad = inner.saturating_sub(body.width());
-            line.extend(body);
-            line.push(format!("{} │", " ".repeat(pad)), border.clone());
-            lines.push(line);
-        }
-        lines.push(Line::styled(
-            format!("╰{}╯", "─".repeat(width.saturating_sub(2))),
-            border.clone(),
-        ));
+        let title = Line::styled(&self.title, Style::default().bold());
+        let mut lines = boxed(title, &self.body, width);
         for (i, opt) in self.options.iter().enumerate() {
             let chosen = i == self.selected;
             let (mark, style) = if chosen {

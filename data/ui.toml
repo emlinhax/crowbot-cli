@@ -34,6 +34,10 @@ reasoning_hidden = "Thinking will be collapsed."
 saved = "Session saved to {path}"
 spent = "Spent about {cost} this session."
 
+# The popup listing commands while a `/name` is typed.
+[palette]
+title = "commands"
+
 # The card that replaces the editor when crowbot needs an answer.
 [card]
 hint = "↑↓ move · enter choose · 1-9 pick · esc no"
