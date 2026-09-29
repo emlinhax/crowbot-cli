@@ -146,3 +146,34 @@ async fn a_session_welcomes_chats_switches_mode_and_quits() {
     assert!(screen.contains("Session saved"), "{screen}");
     assert_eq!(fake.hits("/v1/chat/completions"), 1);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn manual_mode_shows_the_edit_and_applies_it_once_approved() {
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::sse("scenarios/auto_fix/1.sse"),
+        Reply::sse("scenarios/auto_fix/2.sse"),
+        Reply::sse("scenarios/auto_fix/4.sse"),
+    ]);
+    let sandbox = Sandbox::default();
+    sandbox.copy_project("calc");
+    let url = fake.url.clone();
+    let (screen, sandbox) = tokio::task::spawn_blocking(move || {
+        let mut s = Session::start(&sandbox, &url);
+        s.wait_for("MANUAL");
+        s.type_text("fix the sum");
+        s.send("\r");
+        s.wait_for("edit src/calc.txt");
+        s.wait_for("+2 + 2 = 4");
+        s.wait_for("1 Yes");
+        s.send("1");
+        s.wait_for("Fixed: 2 + 2 = 4.");
+        s.send("\x04");
+        s.wait_exit();
+        (s.contents(), sandbox)
+    })
+    .await
+    .unwrap();
+    let fixed = std::fs::read_to_string(sandbox.project.path().join("src/calc.txt")).unwrap();
+    assert_eq!(fixed, "2 + 2 = 4\n", "{screen}");
+}

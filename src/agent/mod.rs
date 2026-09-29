@@ -4,6 +4,7 @@ pub mod doom_loop;
 pub mod event;
 pub mod message;
 pub mod model_text;
+pub mod prompt;
 pub mod run;
 pub mod state;
 pub mod system_prompt;

@@ -2,6 +2,7 @@
 //! frame tick. The loop owns the transcript and lends it to each turn, which hands it back, so a
 //! turn runs alongside input without an engine thread.
 
+use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
 use std::process::ExitCode;
@@ -14,7 +15,7 @@ use tokio::sync::mpsc;
 use crate::agent::event::{AgentEvent, Outcome};
 use crate::agent::message::Part;
 use crate::agent::run::{self, RunCtx};
-use crate::agent::state::{Reply, Shared};
+use crate::agent::state::Shared;
 use crate::agent::system_prompt;
 use crate::api::models::{self, Model};
 use crate::app::App;
@@ -30,6 +31,7 @@ use crate::text::template;
 use crate::text::theme;
 use crate::text::units;
 use crate::tools::Registry;
+use crate::tui::choice::{self, Choice};
 use crate::tui::editor::Editor;
 use crate::tui::feed::Feed;
 use crate::tui::input::Burst;
@@ -119,6 +121,8 @@ struct Tui<'a> {
     editor: Editor,
     burst: Burst,
     queue: Vec<(Kind, String)>,
+    /// Prompts waiting on the user; the first is on screen in place of the editor.
+    cards: VecDeque<Choice>,
     height: usize,
     turn_started: Option<Instant>,
     last_ctrl_c: Option<Instant>,
@@ -159,6 +163,7 @@ impl<'a> Tui<'a> {
             editor,
             burst: Burst::new(limits.paste_gap_ms.ms(), limits.paste_min_keys.value),
             queue: Vec::new(),
+            cards: VecDeque::new(),
             height,
             turn_started: None,
             last_ctrl_c: None,
@@ -235,7 +240,14 @@ impl<'a> Tui<'a> {
                 Step::Continue
             }
             Input::Paste(text) => {
-                self.editor.insert(&text);
+                match self.cards.front_mut() {
+                    Some(card) => card.insert(&text),
+                    None => self.editor.insert(&text),
+                }
+                Step::Continue
+            }
+            Input::Key(key) if !self.cards.is_empty() => {
+                self.card_key(&key, running);
                 Step::Continue
             }
             Input::Key(key) => {
@@ -267,6 +279,23 @@ impl<'a> Tui<'a> {
                     }
                 }
             }
+        }
+    }
+
+    /// Keys while a prompt card is up: the card answers most, the session keeps a few.
+    fn card_key(&mut self, key: &crate::io::term::KeyEvent, running: bool) {
+        let action = keymap::get().action(key);
+        match action {
+            Some(Action::CycleMode) => return self.cycle_mode(),
+            Some(Action::CtrlC) if running => return self.interrupt(),
+            _ => {}
+        }
+        let Some(card) = self.cards.front_mut() else {
+            return;
+        };
+        if let choice::Step::Answer(reply) = card.key(action, key) {
+            self.shared.answer(card.id, reply);
+            self.cards.pop_front();
         }
     }
 
@@ -444,10 +473,9 @@ impl<'a> Tui<'a> {
                     self.queue.remove(i);
                 }
             }
-            // CEILING: until the prompt views land (M3 step 3.6), prompts are declined so the
-            // model hears why; AUTO mode never asks.
-            AgentEvent::Ask { id, .. } => {
-                self.shared.answer(*id, Reply::Unavailable);
+            AgentEvent::Prompt { id, prompt, .. } => {
+                self.cards
+                    .push_back(Choice::new(*id, prompt, term::size().0));
             }
             _ => {}
         }
@@ -473,11 +501,19 @@ impl<'a> Tui<'a> {
                 Style::fg("muted"),
             ));
         }
-        live.push(border(mode, width));
-        let ui = ui::get();
-        let prompt = Line::styled(&ui.prompt, Style::fg(&mode.color).bold());
-        let rows = (self.height * limits::get().tui.editor_max_rows_pct.value / 100).max(3);
-        live.extend(self.editor.render(width, rows, &prompt, &ui.placeholder));
+        // Prompts answered elsewhere (AUTO approved them, the run was interrupted) go away.
+        let shared = self.shared;
+        self.cards.retain(|card| shared.waiting(card.id));
+        match self.cards.front() {
+            Some(card) => live.extend(card.render(width)),
+            None => {
+                live.push(border(mode, width));
+                let ui = ui::get();
+                let prompt = Line::styled(&ui.prompt, Style::fg(&mode.color).bold());
+                let rows = (self.height * limits::get().tui.editor_max_rows_pct.value / 100).max(3);
+                live.extend(self.editor.render(width, rows, &prompt, &ui.placeholder));
+            }
+        }
         live.push(footer::render(
             &footer::State {
                 mode_label: &mode.label,

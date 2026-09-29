@@ -49,9 +49,7 @@ impl Tool for WebFetch {
                 args.url
             )));
         };
-        Ok(Check {
-            asks: vec![Ask::new("webfetch", host)],
-        })
+        Ok(Check::new(vec![Ask::new("webfetch", host)]))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {

@@ -22,6 +22,34 @@ pub struct Ui {
     pub tips: Vec<String>,
     pub footer: Footer,
     pub text: Text,
+    pub card: CardText,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CardText {
+    pub hint: String,
+    pub input_hint: String,
+    pub other: String,
+    pub plan_title: String,
+    pub plan_other: String,
+    pub permission: Vec<PermissionChoice>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PermissionChoice {
+    pub label: String,
+    pub reply: PermissionReply,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionReply {
+    Yes,
+    No,
+    /// No, and ask the user for the reason to pass on.
+    NoWhy,
 }
 
 #[derive(Debug, Deserialize)]

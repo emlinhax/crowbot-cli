@@ -1,5 +1,5 @@
-//! Session state a run shares with whoever drives it: queued messages, pending permission
-//! prompts, approvals, the mode, and the interrupt. Frontends change it while a run is live.
+//! Session state a run shares with whoever drives it: queued messages, pending prompts, the
+//! mode, and the interrupt. Frontends change it while a run is live.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
@@ -9,33 +9,18 @@ use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::message::Part;
+use crate::agent::prompt::Reply;
 use crate::mode::Mode;
-use crate::permission::rule::{Action, Rule};
+use crate::permission::rule::Action;
 use crate::tools::files::Files;
-
-/// An answer to a permission prompt.
-// CEILING: headless runs only ever answer `Unavailable`; the TUI (M3) answers the rest.
-#[cfg_attr(not(test), allow(dead_code))]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Reply {
-    Once,
-    /// Allow now, and the same thing for the rest of the session.
-    Always,
-    /// No; with feedback the model hears why and carries on, without it the run stops.
-    Reject {
-        feedback: Option<String>,
-    },
-    /// Nobody can answer (a headless run).
-    Unavailable,
-}
 
 pub struct Shared {
     cancel: Mutex<CancellationToken>,
     steer: Mutex<VecDeque<Vec<Part>>>,
     follow: Mutex<VecDeque<Vec<Part>>>,
-    asks: Mutex<HashMap<u64, oneshot::Sender<Reply>>>,
+    /// Waiting prompts, and whether each is a permission prompt.
+    asks: Mutex<HashMap<u64, (bool, oneshot::Sender<Reply>)>>,
     next_ask: AtomicU64,
-    approved: Mutex<Vec<Rule>>,
     mode: Mutex<&'static Mode>,
     /// The mode whose reminder the model was last given.
     reminded: Mutex<Option<String>>,
@@ -50,7 +35,6 @@ impl Shared {
             follow: Mutex::default(),
             asks: Mutex::default(),
             next_ask: AtomicU64::new(1),
-            approved: Mutex::default(),
             mode: Mutex::new(mode),
             reminded: Mutex::default(),
             files: Files::default(),
@@ -72,14 +56,33 @@ impl Shared {
         *self.mode.lock().unwrap()
     }
 
-    /// Switching into a mode that allows everything also clears prompts already waiting.
+    /// Switching into a mode that allows everything also approves permission prompts already
+    /// waiting (questions still wait for their answer).
     pub fn set_mode(&self, mode: &'static Mode) {
         *self.mode.lock().unwrap() = mode;
         if mode.verdicts.ask == Action::Allow {
-            for (_, waiting) in self.asks.lock().unwrap().drain() {
-                let _ = waiting.send(Reply::Once);
+            let mut asks = self.asks.lock().unwrap();
+            let permissions: Vec<u64> = asks
+                .iter()
+                .filter(|(_, (permission, _))| *permission)
+                .map(|(id, _)| *id)
+                .collect();
+            for id in permissions {
+                if let Some((_, waiting)) = asks.remove(&id) {
+                    let _ = waiting.send(Reply::Yes);
+                }
             }
         }
+    }
+
+    /// Drops a prompt nobody will answer now (the run was interrupted).
+    pub fn forget(&self, id: u64) {
+        self.asks.lock().unwrap().remove(&id);
+    }
+
+    /// Whether prompt `id` is still waiting for an answer.
+    pub fn waiting(&self, id: u64) -> bool {
+        self.asks.lock().unwrap().contains_key(&id)
     }
 
     /// The reminder to give the model now, if the mode changed since the last one.
@@ -111,26 +114,18 @@ impl Shared {
         self.follow.lock().unwrap().drain(..).collect()
     }
 
-    pub fn register_ask(&self) -> (u64, oneshot::Receiver<Reply>) {
+    pub fn register_ask(&self, permission: bool) -> (u64, oneshot::Receiver<Reply>) {
         let id = self.next_ask.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
-        self.asks.lock().unwrap().insert(id, tx);
+        self.asks.lock().unwrap().insert(id, (permission, tx));
         (id, rx)
     }
 
     /// `false` when that prompt is no longer waiting.
     pub fn answer(&self, id: u64, reply: Reply) -> bool {
         match self.asks.lock().unwrap().remove(&id) {
-            Some(waiting) => waiting.send(reply).is_ok(),
+            Some((_, waiting)) => waiting.send(reply).is_ok(),
             None => false,
         }
-    }
-
-    pub fn approve(&self, rules: impl IntoIterator<Item = Rule>) {
-        self.approved.lock().unwrap().extend(rules);
-    }
-
-    pub fn approved(&self) -> Vec<Rule> {
-        self.approved.lock().unwrap().clone()
     }
 }

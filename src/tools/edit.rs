@@ -83,9 +83,21 @@ impl Tool for Edit {
                 target.shown
             )));
         }
-        Ok(Check {
-            asks: target::asks("edit", &target),
-        })
+        // A call that will fail is refused now, before anyone is asked to approve it.
+        cx.files()
+            .check_fresh(&target.path, &target.shown)
+            .map_err(Refusal::Refused)?;
+        let before = io::fs::read_string(&target.path)
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let applied = apply(&before, &edits)
+            .map_err(|why| Refusal::Refused(format!("{why} ({})", target.shown)))?;
+        Ok(Check::new(target::asks("edit", &target)).with_preview(diff(
+            &before,
+            &applied.text,
+            &target.shown,
+        )))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
@@ -99,8 +111,8 @@ impl Tool for Edit {
                 Ok(edits) => edits,
                 Err(e) => return Output::error(e.to_string()),
             };
-            let _guard = cx.files.lock(&target.path).await;
-            if let Err(why) = cx.files.check_fresh(&target.path, &target.shown) {
+            let _guard = cx.files().lock(&target.path).await;
+            if let Err(why) = cx.files().check_fresh(&target.path, &target.shown) {
                 return Output::error(why);
             }
             let before = match io::fs::read_string(&target.path) {
@@ -117,12 +129,8 @@ impl Tool for Edit {
             {
                 return Output::error(format!("Could not write {}: {e}", target.shown));
             }
-            cx.files.saw(&target.path);
-            let diff = similar::TextDiff::from_lines(&before, &applied.text)
-                .unified_diff()
-                .context_radius(3)
-                .header(&target.shown, &target.shown)
-                .to_string();
+            cx.files().saw(&target.path);
+            let diff = diff(&before, &applied.text, &target.shown);
             Output::ok(format!(
                 "Edited {}: {} replacement{}.",
                 target.shown,
@@ -132,6 +140,14 @@ impl Tool for Edit {
             .with_details(json!({"diff": diff}))
         })
     }
+}
+
+fn diff(before: &str, after: &str, shown: &str) -> String {
+    similar::TextDiff::from_lines(before, after)
+        .unified_diff()
+        .context_radius(3)
+        .header(shown, shown)
+        .to_string()
 }
 
 pub struct Applied {

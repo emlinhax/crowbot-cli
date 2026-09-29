@@ -44,9 +44,7 @@ impl Tool for TodoWrite {
 
     fn check(&self, args: &Value, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let _: Args = parse(args)?;
-        Ok(Check {
-            asks: vec![Ask::new("todo", "*")],
-        })
+        Ok(Check::new(vec![Ask::new("todo", "*")]))
     }
 
     fn run<'a>(&'a self, args: Value, _cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {

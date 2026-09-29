@@ -178,7 +178,7 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::*;
-    use crate::agent::state::Reply;
+    use crate::agent::prompt::Reply;
     use crate::api::Api;
     use crate::api::models::{Capabilities, Pricing};
     use crate::io::http::Http;
@@ -291,13 +291,22 @@ mod tests {
                 effort: None,
                 system: "sys",
                 tools: &registry,
-                plan_file: "/nowhere/plan.md".into(),
+                plan_file: self.plan_file(),
                 emit: &emit,
             };
             let mut transcript = Transcript::new(None);
             let prompt = vec![Part::Text { text: "go".into() }];
             let outcome = run(&cx, &mut transcript, shared, prompt).await.unwrap();
             (outcome, transcript, events.into_inner().unwrap())
+        }
+
+        fn plan_file(&self) -> String {
+            self.app
+                .paths
+                .home
+                .join("plan.md")
+                .to_string_lossy()
+                .replace('\\', "/")
         }
 
         fn requests(&self) -> Vec<Value> {
@@ -403,8 +412,8 @@ mod tests {
         .await;
         let (outcome, transcript, _) = h
             .run(&shared("manual"), |event, shared| {
-                if let AgentEvent::Ask { id, .. } = event {
-                    shared.answer(*id, Reply::Reject { feedback: None });
+                if let AgentEvent::Prompt { id, .. } = event {
+                    shared.answer(*id, Reply::No { feedback: None });
                 }
             })
             .await;
@@ -425,10 +434,10 @@ mod tests {
         ])
         .await;
         h.run(&shared("manual"), |event, shared| {
-            if let AgentEvent::Ask { id, .. } = event {
+            if let AgentEvent::Prompt { id, .. } = event {
                 shared.answer(
                     *id,
-                    Reply::Reject {
+                    Reply::No {
                         feedback: Some("use trash instead".into()),
                     },
                 );
@@ -445,24 +454,55 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn always_answers_stop_asking_for_the_same_command() {
-        let call = |id| {
+    async fn the_question_tool_carries_the_answer_back() {
+        let h = Harness::new(vec![
             reply(
                 "",
-                &[(id, "bash", json!({"command": "echo hi"}))],
+                &[(
+                    "c1",
+                    "question",
+                    json!({"question": "Which DB?", "options": ["sqlite", "postgres"]}),
+                )],
                 "tool_calls",
-            )
-        };
-        let h = Harness::new(vec![call("c1"), call("c2"), text("done")]).await;
-        let (outcome, _, events) = h
+            ),
+            text("ok"),
+        ])
+        .await;
+        let (_, _, events) = h
             .run(&shared("manual"), |event, shared| {
-                if let AgentEvent::Ask { id, .. } = event {
-                    shared.answer(*id, Reply::Always);
+                if let AgentEvent::Prompt { id, .. } = event {
+                    shared.answer(*id, Reply::Choice(1));
                 }
             })
             .await;
-        assert_eq!(outcome, Outcome::Done);
-        assert_eq!(events.iter().filter(|e| *e == "ask").count(), 1);
+        assert_eq!(events.iter().filter(|e| *e == "prompt").count(), 1);
+        let result = last_message(&h.requests()[1]);
+        assert!(result["content"].as_str().unwrap().contains("postgres"));
+    }
+
+    #[tokio::test]
+    async fn an_approved_plan_switches_mode() {
+        let h = Harness::new(vec![
+            reply("", &[("c1", "plan_exit", json!({}))], "tool_calls"),
+            text("implementing"),
+        ])
+        .await;
+        crate::io::fs::write_atomic(
+            std::path::Path::new(&h.plan_file()),
+            b"1. do it",
+            crate::io::fs::Access::Shared,
+        )
+        .unwrap();
+        let state = shared("plan");
+        h.run(&state, |event, shared| {
+            if let AgentEvent::Prompt { id, .. } = event {
+                shared.answer(*id, Reply::Choice(0));
+            }
+        })
+        .await;
+        assert_eq!(state.mode().id, "manual");
+        let result = last_message(&h.requests()[1]);
+        assert!(result["content"].as_str().unwrap().contains("MANUAL"));
     }
 
     #[tokio::test]
@@ -478,7 +518,7 @@ mod tests {
         .await;
         let (outcome, transcript, _) = h
             .run(&shared("manual"), |event, shared| {
-                if matches!(event, AgentEvent::Ask { .. }) {
+                if matches!(event, AgentEvent::Prompt { .. }) {
                     shared.set_mode(mode::get("auto").unwrap());
                 }
             })

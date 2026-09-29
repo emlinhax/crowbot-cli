@@ -1,0 +1,12 @@
+# What the user can do with a finished plan. A choice with a `mode` switches to it and starts
+# implementing; one without keeps planning.
+[[choice]]
+label = "Implement it in MANUAL mode (ask before each change)"
+mode = "manual"
+
+[[choice]]
+label = "Implement it in AUTO mode (no questions)"
+mode = "auto"
+
+[[choice]]
+label = "Keep planning"

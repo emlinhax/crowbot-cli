@@ -163,3 +163,7 @@ reason = "a second Ctrl+C within this window quits, so one stray press does not"
 [tui.history_max]
 value = 100
 reason = "prompts kept for Up/Down in one session"
+
+[tui.prompt_body_lines]
+value = 16
+reason = "a permission preview shows this much of a diff before cutting it short"

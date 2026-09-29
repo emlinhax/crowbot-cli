@@ -38,3 +38,14 @@ action = "allow"
 permission = "todo"
 pattern = "*"
 action = "allow"
+
+# Asking the user and handing over a plan are conversations, not actions.
+[[permission]]
+permission = "question"
+pattern = "*"
+action = "allow"
+
+[[permission]]
+permission = "plan_exit"
+pattern = "*"
+action = "allow"

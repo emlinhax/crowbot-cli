@@ -11,8 +11,9 @@ use crate::agent::doom_loop;
 use crate::agent::event::AgentEvent;
 use crate::agent::message::{Message, ToolCall, ToolResult};
 use crate::agent::model_text::{self, fill};
+use crate::agent::prompt::{self, Prompt, Reply};
 use crate::agent::run::RunCtx;
-use crate::agent::state::{Reply, Shared};
+use crate::agent::state::Shared;
 use crate::limits;
 use crate::mode::DoomLoop;
 use crate::permission::gate::{self, Ask, Decision, Policy};
@@ -29,18 +30,21 @@ enum Slot {
     Run(Arc<dyn Tool>, Value),
 }
 
-pub async fn run(
-    cx: &RunCtx<'_>,
+pub async fn run<'a>(
+    cx: &'a RunCtx<'a>,
     history: &[Message],
-    calls: &[ToolCall],
-    shared: &Shared,
-    cancel: &CancellationToken,
+    calls: &'a [ToolCall],
+    shared: &'a Shared,
+    cancel: &'a CancellationToken,
 ) -> Batch {
     let text = model_text::get();
     let mode = shared.mode();
-    let tcx = ToolCx {
+    let tcx = |call_id: &'a str| ToolCx {
         app: cx.app,
-        files: &shared.files,
+        shared,
+        emit: cx.emit,
+        call_id,
+        plan_file: &cx.plan_file,
         cancel: cancel.clone(),
     };
     let earlier: Vec<&ToolCall> = history
@@ -93,8 +97,11 @@ pub async fn run(
                 DoomLoop::Ask => asks.push(Ask::new("doom_loop", call.name.clone())),
             }
         }
-        match tool.check(&args, &tcx) {
-            Ok(check) => asks.extend(check.asks),
+        let preview = match tool.check(&args, &tcx(&call.id)) {
+            Ok(check) => {
+                asks.extend(check.asks);
+                check.preview
+            }
             Err(refusal) => {
                 slots.push(fail(fill(
                     &text.invalid_arguments,
@@ -102,37 +109,38 @@ pub async fn run(
                 )));
                 continue;
             }
-        }
+        };
 
-        let approved = shared.approved();
         let policy = Policy {
             rules: &cx.app.settings.permission,
-            approved: &approved,
             mode,
             plan_file: &cx.plan_file,
         };
         let slot = match policy.decide(&asks) {
             Decision::Allow => Slot::Run(tool.clone(), args),
             Decision::Deny(what) => fail(fill(&text.denied, &[("what", &what)])),
-            Decision::Ask => match ask_user(cx, shared, call, &asks, cancel).await {
-                Some(Reply::Once) => Slot::Run(tool.clone(), args),
-                Some(Reply::Always) => {
-                    shared.approve(asks.iter().flat_map(Ask::always_rules));
-                    Slot::Run(tool.clone(), args)
+            Decision::Ask => {
+                let prompt = Prompt::Permission {
+                    tool: call.name.clone(),
+                    asks: asks.clone(),
+                    preview,
+                };
+                match prompt::ask(shared, cx.emit, &call.id, prompt, cancel).await {
+                    Some(Reply::Yes) => Slot::Run(tool.clone(), args),
+                    Some(Reply::No { feedback: Some(f) } | Reply::Text(f)) => {
+                        fail(fill(&text.rejected_with_feedback, &[("feedback", &f)]))
+                    }
+                    Some(Reply::No { feedback: None } | Reply::Choice(_)) => {
+                        stop = true;
+                        fail(text.rejected.clone())
+                    }
+                    Some(Reply::Unavailable) => fail(fill(
+                        &text.non_interactive,
+                        &[("what", &gate::describe(&asks))],
+                    )),
+                    None => fail(text.cancelled.clone()),
                 }
-                Some(Reply::Reject { feedback: Some(f) }) => {
-                    fail(fill(&text.rejected_with_feedback, &[("feedback", &f)]))
-                }
-                Some(Reply::Reject { feedback: None }) => {
-                    stop = true;
-                    fail(text.rejected.clone())
-                }
-                Some(Reply::Unavailable) => fail(fill(
-                    &text.non_interactive,
-                    &[("what", &gate::describe(&asks))],
-                )),
-                None => fail(text.cancelled.clone()),
-            },
+            }
         };
         slots.push(slot);
     }
@@ -142,7 +150,8 @@ pub async fn run(
         Slot::Done(_) => None,
     });
     let finished = join_all(running.map(|(i, tool, args)| {
-        let (call, tcx) = (&calls[i], &tcx);
+        let call = &calls[i];
+        let tcx = tcx(&call.id);
         async move {
             (cx.emit)(AgentEvent::ToolStart {
                 call_id: call.id.clone(),
@@ -150,7 +159,7 @@ pub async fn run(
                 arguments: call.arguments.clone(),
             });
             let out = tokio::select! {
-                out = tool.run(args, tcx) => out,
+                out = tool.run(args, &tcx) => out,
                 () = cancel.cancelled() => Output::error(model_text::get().cancelled.clone()),
             };
             let done = result(call, out);
@@ -182,26 +191,6 @@ pub fn fail_all(calls: &[ToolCall], why: &str) -> Batch {
             .map(|c| result(c, Output::error(why)))
             .collect(),
         stop: false,
-    }
-}
-
-async fn ask_user(
-    cx: &RunCtx<'_>,
-    shared: &Shared,
-    call: &ToolCall,
-    asks: &[Ask],
-    cancel: &CancellationToken,
-) -> Option<Reply> {
-    let (id, reply) = shared.register_ask();
-    (cx.emit)(AgentEvent::Ask {
-        id,
-        call_id: call.id.clone(),
-        tool: call.name.clone(),
-        asks: asks.to_vec(),
-    });
-    tokio::select! {
-        reply = reply => Some(reply.unwrap_or(Reply::Unavailable)),
-        () = cancel.cancelled() => None,
     }
 }
 

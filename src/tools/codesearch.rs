@@ -57,9 +57,7 @@ impl Tool for CodeSearch {
 
     fn check(&self, args: &Value, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: Args = parse(args)?;
-        Ok(Check {
-            asks: vec![Ask::new("codesearch", args.query)],
-        })
+        Ok(Check::new(vec![Ask::new("codesearch", args.query)]))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {

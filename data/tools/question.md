@@ -1,0 +1,1 @@
+Ask the user to choose when the choice is theirs and it matters: two approaches with different trade-offs, which of several things to do first. Keep options short and distinct; the user may also answer in their own words. Do not ask what you can find out yourself.

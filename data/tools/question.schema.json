@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "question": { "type": "string", "description": "What to decide, in one sentence" },
+    "options": {
+      "type": "array",
+      "description": "Two to nine short, distinct choices",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["question", "options"]
+}

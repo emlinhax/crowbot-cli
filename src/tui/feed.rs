@@ -158,7 +158,7 @@ impl Feed {
                 }
             }
             AgentEvent::Delivered { text } => self.user(text),
-            AgentEvent::Ask { .. } => {}
+            AgentEvent::Prompt { .. } => {}
         }
     }
 

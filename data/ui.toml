@@ -35,3 +35,24 @@ reasoning_shown = "Thinking will be shown in full."
 reasoning_hidden = "Thinking will be collapsed."
 saved = "Session saved to {path}"
 spent = "Spent about {cost} this session."
+
+# The card that replaces the editor when crowbot needs an answer.
+[card]
+hint = "↑↓ move · enter choose · 1-9 pick · esc no"
+input_hint = "enter send · esc back"
+other = "Other…"
+plan_title = "Plan ready"
+plan_other = "Tell crowbot what to change…"
+
+# Permission answers: `reply` is yes, no, or no_why (asks for the reason).
+[[card.permission]]
+label = "Yes"
+reply = "yes"
+
+[[card.permission]]
+label = "No"
+reply = "no"
+
+[[card.permission]]
+label = "No, and tell crowbot why…"
+reply = "no_why"

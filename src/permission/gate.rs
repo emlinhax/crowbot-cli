@@ -9,9 +9,6 @@ use crate::text::template;
 pub struct Ask {
     pub permission: String,
     pub patterns: Vec<String>,
-    /// What "always allow" would add as rules; the patterns themselves when empty.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub always: Vec<String>,
 }
 
 impl Ask {
@@ -19,25 +16,7 @@ impl Ask {
         Self {
             permission: permission.to_owned(),
             patterns: vec![pattern.into()],
-            always: Vec::new(),
         }
-    }
-
-    /// Rules that make the same ask pass without a prompt next time.
-    pub fn always_rules(&self) -> Vec<Rule> {
-        let patterns = if self.always.is_empty() {
-            &self.patterns
-        } else {
-            &self.always
-        };
-        patterns
-            .iter()
-            .map(|pattern| Rule {
-                permission: self.permission.clone(),
-                pattern: pattern.clone(),
-                action: Action::Allow,
-            })
-            .collect()
     }
 }
 
@@ -51,10 +30,8 @@ pub enum Decision {
 
 /// Everything a decision depends on, in the order rules are layered.
 pub struct Policy<'a> {
-    /// Defaults, then user config, then project config.
+    /// Defaults, then user config, then project config. Permanent allowances live here.
     pub rules: &'a [Rule],
-    /// "Always" answers given during this session.
-    pub approved: &'a [Rule],
     pub mode: &'a Mode,
     pub plan_file: &'a str,
 }
@@ -74,7 +51,7 @@ impl Policy<'_> {
         let mut asking = false;
         for ask in asks {
             for pattern in &ask.patterns {
-                let layers = self.rules.iter().chain(self.approved).chain(&locks);
+                let layers = self.rules.iter().chain(&locks);
                 match rule::evaluate(layers, &ask.permission, pattern) {
                     Action::Deny => {
                         denied.get_or_insert_with(|| format!("{} {pattern}", ask.permission));
@@ -109,10 +86,9 @@ mod tests {
     use super::*;
     use crate::mode;
 
-    fn policy<'a>(mode: &'a str, rules: &'a [Rule], approved: &'a [Rule]) -> Policy<'a> {
+    fn policy<'a>(mode: &'a str, rules: &'a [Rule]) -> Policy<'a> {
         Policy {
             rules,
-            approved,
             mode: mode::get(mode).unwrap(),
             plan_file: "/home/u/.crowbot/plans/s1.md",
         }
@@ -152,7 +128,7 @@ mod tests {
             ),
         ];
         for (mode, ask, expected) in cases {
-            let got = policy(mode, &rules, &[]).decide(std::slice::from_ref(&ask));
+            let got = policy(mode, &rules).decide(std::slice::from_ref(&ask));
             assert_eq!(got, expected, "{mode} {ask:?}");
         }
     }
@@ -167,23 +143,27 @@ mod tests {
         });
         let ask = [Ask::new("bash", "rm -rf x")];
         assert!(matches!(
-            policy("manual", &rules, &[]).decide(&ask),
+            policy("manual", &rules).decide(&ask),
             Decision::Deny(_)
         ));
-        assert_eq!(policy("auto", &rules, &[]).decide(&ask), Decision::Allow);
+        assert_eq!(policy("auto", &rules).decide(&ask), Decision::Allow);
     }
 
     #[test]
-    fn approvals_pass_in_manual_but_cannot_lift_plan_locks() {
-        let rules = defaults();
+    fn config_allowances_pass_in_manual_but_cannot_lift_plan_locks() {
+        let mut rules = defaults();
+        rules.push(Rule {
+            permission: "bash".into(),
+            pattern: "cargo *".into(),
+            action: Action::Allow,
+        });
         let ask = Ask::new("bash", "cargo build");
-        let approved = ask.always_rules();
         assert_eq!(
-            policy("manual", &rules, &approved).decide(std::slice::from_ref(&ask)),
+            policy("manual", &rules).decide(std::slice::from_ref(&ask)),
             Decision::Allow
         );
         assert!(matches!(
-            policy("plan", &rules, &approved).decide(&[ask]),
+            policy("plan", &rules).decide(&[ask]),
             Decision::Deny(_)
         ));
     }
@@ -196,7 +176,7 @@ mod tests {
             Ask::new("bash_write", "echo x > f"),
         ];
         assert!(matches!(
-            policy("plan", &rules, &[]).decide(&asks),
+            policy("plan", &rules).decide(&asks),
             Decision::Deny(_)
         ));
     }

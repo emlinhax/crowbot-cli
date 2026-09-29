@@ -9,8 +9,9 @@ use anyhow::anyhow;
 
 use crate::agent::event::{AgentEvent, DeltaKind, Outcome};
 use crate::agent::message::{Assistant, Finish, Part};
+use crate::agent::prompt::{Prompt, Reply};
 use crate::agent::run::{self, RunCtx};
-use crate::agent::state::{Reply, Shared};
+use crate::agent::state::Shared;
 use crate::agent::system_prompt;
 use crate::api::models;
 use crate::app::App;
@@ -93,7 +94,7 @@ struct Printer<'a> {
 impl Printer<'_> {
     fn event(&self, event: AgentEvent) {
         // Nobody can answer a prompt here; decline it so the model hears why and carries on.
-        if let AgentEvent::Ask { id, .. } = &event {
+        if let AgentEvent::Prompt { id, .. } = &event {
             self.shared.answer(*id, Reply::Unavailable);
         }
         if let AgentEvent::MessageEnd { message } = &event {
@@ -127,7 +128,10 @@ impl Printer<'_> {
                 let first = result.content.lines().next().unwrap_or_default();
                 self.note(&format!("  ✗ {}", shorten::line(first, NOTE_CHARS)));
             }
-            AgentEvent::Ask { tool, asks, .. } => self.note(&format!(
+            AgentEvent::Prompt {
+                prompt: Prompt::Permission { tool, asks, .. },
+                ..
+            } => self.note(&format!(
                 "  ✗ {tool} needs permission ({}); rerun with --mode auto to allow it",
                 shorten::line(&gate::describe(asks), NOTE_CHARS)
             )),

@@ -7,6 +7,8 @@ mod edit_match;
 pub mod files;
 mod glob;
 mod grep;
+mod plan_exit;
+mod question;
 mod read;
 mod shell;
 mod target;
@@ -21,6 +23,9 @@ use futures_util::future::BoxFuture;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
+use crate::agent::event::AgentEvent;
+use crate::agent::prompt::{self, Prompt, Reply};
+use crate::agent::state::Shared;
 use crate::app::App;
 use crate::limits;
 use crate::permission::gate::Ask;
@@ -44,9 +49,24 @@ impl Spec {
     }
 }
 
-/// What a call needs before it may run.
+/// What a call needs before it may run, and what it would do, for the permission prompt.
 pub struct Check {
     pub asks: Vec<Ask>,
+    pub preview: Option<String>,
+}
+
+impl Check {
+    pub fn new(asks: Vec<Ask>) -> Self {
+        Self {
+            asks,
+            preview: None,
+        }
+    }
+
+    pub fn with_preview(mut self, preview: impl Into<String>) -> Self {
+        self.preview = Some(preview.into());
+        self
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -90,9 +110,25 @@ impl Output {
 
 pub struct ToolCx<'a> {
     pub app: &'a App,
-    pub files: &'a Files,
+    /// The session: what the model has read, the mode, and the way to ask the user.
+    pub shared: &'a Shared,
+    pub emit: &'a (dyn Fn(AgentEvent) + Send + Sync),
+    pub call_id: &'a str,
+    /// The only file PLAN mode may write.
+    pub plan_file: &'a str,
     /// Fires when the user interrupts; long-running tools stop on it.
     pub cancel: tokio_util::sync::CancellationToken,
+}
+
+impl ToolCx<'_> {
+    pub fn files(&self) -> &Files {
+        &self.shared.files
+    }
+
+    /// Puts a question to the user and waits; `None` when the run was interrupted.
+    pub async fn ask(&self, prompt: Prompt) -> Option<Reply> {
+        prompt::ask(self.shared, self.emit, self.call_id, prompt, &self.cancel).await
+    }
 }
 
 pub trait Tool: Send + Sync {
@@ -141,6 +177,8 @@ impl Registry {
             Arc::new(webfetch::WebFetch),
             Arc::new(codesearch::CodeSearch),
             Arc::new(todowrite::TodoWrite),
+            Arc::new(question::Question),
+            Arc::new(plan_exit::PlanExit),
         ];
         Self { tools, vars }
     }
@@ -188,7 +226,7 @@ pub mod testing {
         /// Held so the directory lives as long as the test.
         _dir: tempfile::TempDir,
         pub app: App,
-        pub files: Files,
+        pub shared: Shared,
     }
 
     impl Project {
@@ -198,14 +236,17 @@ pub mod testing {
             Self {
                 _dir: dir,
                 app,
-                files: Files::default(),
+                shared: Shared::new(crate::mode::get("manual").unwrap()),
             }
         }
 
         pub fn cx(&self) -> ToolCx<'_> {
             ToolCx {
                 app: &self.app,
-                files: &self.files,
+                shared: &self.shared,
+                emit: &|_| {},
+                call_id: "test",
+                plan_file: "/nowhere/plan.md",
                 cancel: tokio_util::sync::CancellationToken::new(),
             }
         }

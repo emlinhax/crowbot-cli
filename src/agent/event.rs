@@ -3,9 +3,9 @@
 use serde::Serialize;
 
 use crate::agent::message::{Assistant, ToolResult};
+use crate::agent::prompt::Prompt;
 use crate::api::assemble::Delta;
 use crate::api::error::ErrorInfo;
-use crate::permission::gate::Ask;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -33,11 +33,10 @@ pub enum AgentEvent {
         result: ToolResult,
     },
     /// A call waits on the user; answer through `Shared::answer` with this id.
-    Ask {
+    Prompt {
         id: u64,
         call_id: String,
-        tool: String,
-        asks: Vec<Ask>,
+        prompt: Prompt,
     },
     Notice {
         text: String,

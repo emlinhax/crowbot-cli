@@ -38,9 +38,7 @@ impl Tool for Read {
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: Args = parse(args)?;
         let target = target::resolve(&cx.app.paths.project, &args.path);
-        Ok(Check {
-            asks: target::asks("read", &target),
-        })
+        Ok(Check::new(target::asks("read", &target)))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
@@ -56,7 +54,7 @@ impl Tool for Read {
                 Kind::File => {
                     let out = file(&target.path, &target.shown, args.offset, args.limit);
                     if !out.is_error {
-                        cx.files.saw(&target.path);
+                        cx.files().saw(&target.path);
                     }
                     out
                 }
@@ -194,8 +192,8 @@ mod tests {
         let project = Project::new();
         project.write("a.txt", "x");
         let path = project.app.paths.project.join("a.txt");
-        assert!(project.files.check_fresh(&path, "a.txt").is_err());
+        assert!(project.shared.files.check_fresh(&path, "a.txt").is_err());
         read(&project, json!({"path": "a.txt"})).await;
-        assert!(project.files.check_fresh(&path, "a.txt").is_ok());
+        assert!(project.shared.files.check_fresh(&path, "a.txt").is_ok());
     }
 }

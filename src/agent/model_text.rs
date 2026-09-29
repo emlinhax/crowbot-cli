@@ -26,6 +26,16 @@ pub struct ModelText {
     pub non_interactive: String,
     pub doom_loop: String,
     pub max_turns: String,
+    pub question_chosen: String,
+    pub question_answered: String,
+    pub question_dismissed: String,
+    pub question_unavailable: String,
+    pub plan_missing: String,
+    pub plan_approved: String,
+    pub plan_keep: String,
+    pub plan_changes: String,
+    pub plan_unavailable: String,
+    pub plan_only: String,
 }
 
 pub fn get() -> &'static ModelText {

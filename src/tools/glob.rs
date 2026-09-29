@@ -34,9 +34,7 @@ impl Tool for Glob {
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: Args = parse(args)?;
         let root = target::resolve(&cx.app.paths.project, args.path.as_deref().unwrap_or("."));
-        Ok(Check {
-            asks: target::asks("search", &root),
-        })
+        Ok(Check::new(target::asks("search", &root)))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {

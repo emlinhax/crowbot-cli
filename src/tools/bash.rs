@@ -13,7 +13,7 @@ use crate::io::shell::{self, Ended, ShellCommand};
 use crate::io::{self, fs::Access};
 use crate::limits;
 use crate::permission::gate::Ask;
-use crate::permission::{arity, shell_split};
+use crate::permission::shell_split;
 
 static SPEC: LazyLock<Spec> = LazyLock::new(|| {
     Spec::load(
@@ -53,11 +53,6 @@ impl Tool for Bash {
         let split = shell_split::split(&args.command);
         let mut asks = vec![Ask {
             permission: "bash".into(),
-            always: split
-                .commands
-                .iter()
-                .map(|c| arity::always_pattern(c))
-                .collect(),
             patterns: split.commands,
         }];
         // What runs cannot be read off a substitution, and a redirect writes files: both get
@@ -68,7 +63,7 @@ impl Tool for Bash {
         if split.writes {
             asks.push(Ask::new("bash_write", args.command.trim()));
         }
-        Ok(Check { asks })
+        Ok(Check::new(asks).with_preview(format!("$ {}", args.command.trim())))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
@@ -214,10 +209,9 @@ mod tests {
     }
 
     #[test]
-    fn asks_per_command_with_arity_suggestions() {
+    fn asks_once_per_command() {
         let asks = asks("git status && cargo test --all");
         assert_eq!(asks[0].patterns, vec!["git status", "cargo test --all"]);
-        assert_eq!(asks[0].always, vec!["git status", "cargo test *"]);
         assert_eq!(asks.len(), 1);
     }
 

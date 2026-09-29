@@ -2,6 +2,7 @@
 
 mod app;
 mod cards;
+mod choice;
 mod editor;
 mod feed;
 mod footer;

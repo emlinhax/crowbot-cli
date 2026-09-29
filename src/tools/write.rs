@@ -7,6 +7,9 @@ use serde_json::{Value, json};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
 use crate::io::{self, fs::Access, fs::Kind};
 
+/// How much of new content the permission prompt shows.
+const PREVIEW_LINES: usize = 40;
+
 static SPEC: LazyLock<Spec> = LazyLock::new(|| {
     Spec::load(
         "write",
@@ -37,9 +40,16 @@ impl Tool for Write {
                 target.shown
             )));
         }
-        Ok(Check {
-            asks: target::asks("edit", &target),
-        })
+        cx.files()
+            .check_fresh(&target.path, &target.shown)
+            .map_err(Refusal::Refused)?;
+        let preview: String = args
+            .content
+            .lines()
+            .take(PREVIEW_LINES)
+            .map(|l| format!("+{l}\n"))
+            .collect();
+        Ok(Check::new(target::asks("edit", &target)).with_preview(preview))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
@@ -49,8 +59,8 @@ impl Tool for Write {
                 Err(out) => return out,
             };
             let target = target::resolve(&cx.app.paths.project, &args.path);
-            let _guard = cx.files.lock(&target.path).await;
-            if let Err(why) = cx.files.check_fresh(&target.path, &target.shown) {
+            let _guard = cx.files().lock(&target.path).await;
+            if let Err(why) = cx.files().check_fresh(&target.path, &target.shown) {
                 return Output::error(why);
             }
             let created = io::fs::kind(&target.path) == Kind::Missing;
@@ -59,7 +69,7 @@ impl Tool for Write {
             {
                 return Output::error(format!("Could not write {}: {e}", target.shown));
             }
-            cx.files.saw(&target.path);
+            cx.files().saw(&target.path);
             let lines = args.content.lines().count();
             let verb = if created { "Created" } else { "Replaced" };
             Output::ok(format!("{verb} {} ({lines} lines).", target.shown))

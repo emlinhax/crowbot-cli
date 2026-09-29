@@ -43,3 +43,13 @@ max_lines = 6
 title = []
 body = "head"
 max_lines = 12
+
+[question]
+title = ["question"]
+body = "head"
+max_lines = 1
+
+[plan_exit]
+title = []
+body = "head"
+max_lines = 1
