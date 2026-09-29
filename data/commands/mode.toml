@@ -1,0 +1,4 @@
+name = "mode"
+summary = "Switch permission mode (no argument cycles, like Shift+Tab)"
+usage = "mode [manual|auto|plan]"
+scope = ["session"]

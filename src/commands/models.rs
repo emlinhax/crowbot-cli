@@ -4,9 +4,8 @@ use std::sync::LazyLock;
 use anyhow::bail;
 use futures_util::future::BoxFuture;
 
-use super::{Command, Spec};
+use super::{Command, Ctx, Outcome, Spec};
 use crate::api::models::{self, Catalog, Source};
-use crate::app::App;
 use crate::text::units;
 
 static SPEC: LazyLock<Spec> =
@@ -21,9 +20,9 @@ impl Command for Models {
 
     fn run<'a>(
         &'a self,
-        app: &'a App,
+        cx: &'a Ctx<'a>,
         args: &'a [String],
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             let mut refresh = false;
             for arg in args {
@@ -32,8 +31,8 @@ impl Command for Models {
                     _ => bail!("usage: {}", SPEC.usage),
                 }
             }
-            let catalog = models::load(app, refresh).await;
-            Ok(render(&catalog, &app.settings.model))
+            let catalog = models::load(cx.app, refresh).await;
+            Ok(render(&catalog, &cx.app.settings.model).into())
         })
     }
 }

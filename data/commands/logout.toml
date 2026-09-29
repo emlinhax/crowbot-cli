@@ -1,3 +1,4 @@
 name = "logout"
 summary = "Remove this machine's stored key"
 usage = "logout"
+scope = ["cli"]

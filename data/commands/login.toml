@@ -1,3 +1,4 @@
 name = "login"
 summary = "Pair this machine with your crowbot account (or --key to use an account number)"
 usage = "login [--key <account number> | --status]"
+scope = ["cli"]

@@ -47,6 +47,12 @@ pub struct Text {
     pub interrupted: String,
     pub declined: String,
     pub cut_off: String,
+    pub ctrl_c_again: String,
+    pub unknown_command: String,
+    pub reasoning_shown: String,
+    pub reasoning_hidden: String,
+    pub saved: String,
+    pub spent: String,
 }
 
 impl Ui {

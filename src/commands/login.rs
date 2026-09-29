@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use anyhow::{Context, bail};
 use futures_util::future::BoxFuture;
 
-use super::{Command, Spec};
+use super::{Command, Ctx, Outcome, Spec};
 use crate::api::account;
 use crate::api::endpoints;
 use crate::api::pair::{self, Poll};
@@ -26,18 +26,20 @@ impl Command for Login {
 
     fn run<'a>(
         &'a self,
-        app: &'a App,
+        cx: &'a Ctx<'a>,
         args: &'a [String],
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
-            match args {
+            let app = cx.app;
+            let text = match args {
                 [] => pair(app).await,
                 [flag, number @ ..] if flag == "--key" && !number.is_empty() => {
                     with_account_number(app, &number.join(" ")).await
                 }
                 [flag] if flag == "--status" => status(app),
                 _ => bail!("usage: {}", SPEC.usage),
-            }
+            }?;
+            Ok(text.into())
         })
     }
 }

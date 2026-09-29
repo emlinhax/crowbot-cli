@@ -80,6 +80,7 @@ impl Theme {
         }
     }
 
+    #[cfg(test)]
     pub fn has(&self, role: &str) -> bool {
         self.roles.contains_key(role)
     }

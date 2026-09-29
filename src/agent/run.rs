@@ -109,9 +109,7 @@ pub async fn run(
             let steered = shared.drain_steer();
             if !steered.is_empty() {
                 for parts in steered {
-                    transcript.push(Message::User {
-                        parts: with_reminder(cx, shared, parts),
-                    })?;
+                    deliver(cx, shared, transcript, parts)?;
                 }
                 continue;
             }
@@ -124,13 +122,32 @@ pub async fn run(
             break Outcome::Done;
         }
         for parts in queued {
-            transcript.push(Message::User {
-                parts: with_reminder(cx, shared, parts),
-            })?;
+            deliver(cx, shared, transcript, parts)?;
         }
     };
     (cx.emit)(AgentEvent::RunEnd { outcome });
     Ok(outcome)
+}
+
+/// Hands a message typed mid-run to the model, and tells the frontend it landed.
+fn deliver(
+    cx: &RunCtx<'_>,
+    shared: &Shared,
+    transcript: &mut Transcript,
+    parts: Vec<Part>,
+) -> anyhow::Result<()> {
+    let text = parts
+        .iter()
+        .filter_map(|p| match p {
+            Part::Text { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    (cx.emit)(AgentEvent::Delivered { text });
+    transcript.push(Message::User {
+        parts: with_reminder(cx, shared, parts),
+    })
 }
 
 /// Mode changes reach the model as a reminder on the next user message, so the system prompt

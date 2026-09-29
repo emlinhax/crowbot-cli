@@ -28,7 +28,6 @@ pub struct Mode {
     pub id: String,
     pub label: String,
     /// A role in data/theme.toml for the mode's label and the editor border.
-    #[allow(dead_code)] // read by the TUI (M3 step 3.5)
     pub color: String,
     /// Position in the Shift+Tab cycle.
     pub order: u32,
@@ -60,7 +59,6 @@ pub enum DoomLoop {
     TellModel,
 }
 
-#[cfg_attr(not(test), allow(dead_code))] // the Shift+Tab cycle (M3)
 pub fn all() -> &'static [Mode] {
     &MODES
 }

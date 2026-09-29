@@ -73,7 +73,6 @@ impl Shared {
     }
 
     /// Switching into a mode that allows everything also clears prompts already waiting.
-    #[cfg_attr(not(test), allow(dead_code))] // driven by the TUI (M3)
     pub fn set_mode(&self, mode: &'static Mode) {
         *self.mode.lock().unwrap() = mode;
         if mode.verdicts.ask == Action::Allow {
@@ -95,13 +94,11 @@ impl Shared {
     }
 
     /// Delivered after the current tool calls finish.
-    #[cfg_attr(not(test), allow(dead_code))] // driven by the TUI (M3)
     pub fn steer(&self, parts: Vec<Part>) {
         self.steer.lock().unwrap().push_back(parts);
     }
 
     /// Delivered when the run would otherwise stop.
-    #[cfg_attr(not(test), allow(dead_code))] // driven by the TUI (M3)
     pub fn follow_up(&self, parts: Vec<Part>) {
         self.follow.lock().unwrap().push_back(parts);
     }

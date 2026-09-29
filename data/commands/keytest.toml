@@ -2,6 +2,7 @@ name = "keytest"
 summary = "Walk through the keys the TUI relies on and report how this terminal sends them"
 usage = "keytest [step label, e.g. paste]"
 hidden = true
+scope = ["cli"]
 
 # One prompt per key to check; the report lists what actually arrived.
 [[step]]

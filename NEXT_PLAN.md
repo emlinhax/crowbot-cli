@@ -67,7 +67,7 @@ why, no "always"); tool cards are data (`data/tool_cards.toml`); `crowbot "…"`
 - [x] 3.2 screen: commit + live-region diff, vt100-tested (incl. 300 random frame sequences)
 - [x] 3.3 input + editor: keymap data, paste bursts, editing/wrapping/history (release filter lands with the event stream in 3.5)
 - [x] 3.4 blocks: welcome raven, transcript streaming (`tui/feed.rs`), data-driven cards, status, queue, footer
-- [ ] 3.5 app loop + session commands (`/quit`, `/mode`, scopes, effects) + PTY e2e
+- [x] 3.5 app loop + session commands (`/quit`, `/mode`, scopes, effects) + PTY e2e (passes on Windows ConPTY too)
 - [ ] 3.6 prompts: one `Prompt` shape (permission, question, plan_exit), views, "always" removed
 - [ ] 3.7 docs + manual Windows Terminal checklist
 
@@ -77,7 +77,11 @@ why, no "always"); tool cards are data (`data/tool_cards.toml`); `crowbot "…"`
 - Mapping syntect scopes straight to theme roles (best `MatchPower` wins) keeps code colours in the
   same palette and makes highlighting snapshot-testable by role name.
 - `make golden` must only rewrite expectations that fail, or it silently rewrites passing goldens.
-- The new `text/` renderers carry a temporary `allow(dead_code)` until 3.5 wires the TUI.
+- The new `text/` renderers carry a temporary `allow(dead_code)` until 3.5 wires the TUI (done).
+- Windows ConPTY sends a cursor-position query (`ESC[6n`) and holds all output until it is
+  answered; real terminals answer on their own, the PTY test harness answers it explicitly.
+- The session loop needs no engine thread: it owns the transcript and moves it into each turn's
+  future, which hands it back; controls mid-turn go through `&Shared`.
 ## M4 — Account UX in the TUI
 ## M5 — Context + sessions (compaction, shadow-git /undo)
 ## M6 — Subagents + MCP

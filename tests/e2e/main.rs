@@ -6,6 +6,7 @@ mod chat;
 mod fake_crowbot;
 mod login;
 mod models;
+mod pty;
 mod scenarios;
 mod signup;
 

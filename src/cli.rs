@@ -1,13 +1,14 @@
 use std::process::ExitCode;
 
-use anyhow::{anyhow, bail};
+use anyhow::bail;
 use clap::{Parser, Subcommand};
 
 use crate::app::App;
-use crate::commands;
+use crate::commands::{self, Ctx, Scope};
 use crate::frontend::print::{self, Format};
 use crate::io::term;
 use crate::settings::Overrides;
+use crate::tui;
 
 #[derive(Parser)]
 #[command(
@@ -68,9 +69,20 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
         Some(Sub::Words(words)) => words,
         None => Vec::new(),
     };
-    let command = words.first().and_then(|w| commands::find(w));
-    if let (Some(command), false, false) = (command, cli.print, cli.json) {
-        let out = command.run(&app, &words[1..]).await?;
+    let headless = cli.print || cli.json;
+    if let (Some(command), false) = (words.first().and_then(|w| commands::find(w)), headless) {
+        if !command.spec().scope.contains(&Scope::Cli) {
+            bail!(
+                "`{}` only works inside a session: /{}",
+                command.spec().name,
+                command.spec().name
+            );
+        }
+        let cx = Ctx {
+            app: &app,
+            scope: Scope::Cli,
+        };
+        let out = command.run(&cx, &words[1..]).await?.text;
         if !out.is_empty() {
             term::out(&out);
             if !out.ends_with('\n') {
@@ -80,7 +92,14 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
 
-    let mut prompt = words.join(" ");
+    let prompt = words.join(" ");
+    // A person at a terminal gets the session, with any words already typed in for review.
+    if !headless && term::stdin_is_terminal() && term::stdout_is_terminal() {
+        let initial = (!prompt.trim().is_empty()).then_some(prompt);
+        return tui::run(&app, initial).await;
+    }
+
+    let mut prompt = prompt;
     if let Some(piped) = term::piped_stdin()? {
         prompt = if prompt.is_empty() {
             piped
@@ -89,12 +108,7 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
         };
     }
     if prompt.trim().is_empty() {
-        if cli.print || cli.json {
-            bail!("nothing to send; pass a prompt or pipe one in");
-        }
-        let help = commands::find("help").ok_or_else(|| anyhow!("help is registered"))?;
-        term::out(&help.run(&app, &[]).await?);
-        return Ok(ExitCode::SUCCESS);
+        bail!("nothing to send; pass a prompt or pipe one in");
     }
     let format = if cli.json { Format::Json } else { Format::Text };
     print::run(&app, prompt, format).await

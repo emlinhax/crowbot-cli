@@ -1,16 +1,16 @@
 //! The interactive terminal UI.
 
-// Wired into the CLI in M3 step 3.5; until then only tests use it.
-#![allow(dead_code)]
+mod app;
+mod cards;
+mod editor;
+mod feed;
+mod footer;
+mod input;
+mod keymap;
+mod queue;
+mod screen;
+mod status;
+mod ui;
+mod welcome;
 
-pub mod cards;
-pub mod editor;
-pub mod feed;
-pub mod footer;
-pub mod input;
-pub mod keymap;
-pub mod queue;
-pub mod screen;
-pub mod status;
-pub mod ui;
-pub mod welcome;
+pub use app::run;

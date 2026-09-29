@@ -45,6 +45,10 @@ impl Api {
         }
     }
 
+    pub fn has_key(&self) -> bool {
+        self.key.is_some()
+    }
+
     /// The same client acting as another key, e.g. to check a key before saving it.
     pub fn with_key(&self, key: String) -> Self {
         Self {

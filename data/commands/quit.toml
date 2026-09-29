@@ -1,0 +1,4 @@
+name = "quit"
+summary = "Leave the session"
+usage = "quit"
+scope = ["session"]

@@ -4,8 +4,7 @@ use std::time::Duration;
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
-use super::{Command, Spec};
-use crate::app::App;
+use super::{Command, Ctx, Outcome, Spec};
 use crate::io;
 use crate::io::term::{self, Event, KeyEvent, KeyEventKind};
 
@@ -41,9 +40,9 @@ impl Command for KeyTest {
 
     fn run<'a>(
         &'a self,
-        _app: &'a App,
+        _cx: &'a Ctx<'a>,
         args: &'a [String],
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             let only = args.first().cloned();
             if let Some(label) = &only
@@ -58,7 +57,8 @@ impl Command for KeyTest {
             Ok(format!(
                 "Report (paste this back):\n\n```\n{}\n```",
                 report.join("\n")
-            ))
+            )
+            .into())
         })
     }
 }

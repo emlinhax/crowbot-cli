@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 use anyhow::bail;
 use futures_util::future::BoxFuture;
 
-use super::{Command, Spec};
+use super::{Command, Ctx, Outcome, Spec};
 use crate::api::signup;
 use crate::app::App;
 use crate::auth::{self, KeyKind};
@@ -22,10 +22,11 @@ impl Command for Signup {
 
     fn run<'a>(
         &'a self,
-        app: &'a App,
+        cx: &'a Ctx<'a>,
         args: &'a [String],
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
+            let app = cx.app;
             let force = match args {
                 [] => false,
                 [flag] if flag == "--force" => true,
@@ -47,7 +48,7 @@ impl Command for Signup {
                 app.paths.auth().display()
             ));
             confirm(&account.account_number)?;
-            Ok("Next: fund it at https://chat.crowbot.sh.".into())
+            Ok(Outcome::from("Next: fund it at https://chat.crowbot.sh."))
         })
     }
 }

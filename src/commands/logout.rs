@@ -3,8 +3,7 @@ use std::sync::LazyLock;
 use anyhow::bail;
 use futures_util::future::BoxFuture;
 
-use super::{Command, Spec};
-use crate::app::App;
+use super::{Command, Ctx, Outcome, Spec};
 use crate::auth;
 use crate::settings;
 
@@ -20,14 +19,14 @@ impl Command for Logout {
 
     fn run<'a>(
         &'a self,
-        app: &'a App,
+        cx: &'a Ctx<'a>,
         args: &'a [String],
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
+    ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             if !args.is_empty() {
                 bail!("usage: {}", SPEC.usage);
             }
-            let removed = auth::remove(&app.paths)?;
+            let removed = auth::remove(&cx.app.paths)?;
             let mut out = if removed {
                 // crowbot refuses to revoke the key making the request, so it can only go elsewhere.
                 "Logged out. The key still works until revoked with `crowbot keys` on another machine or on chat.crowbot.sh.".to_owned()
@@ -37,7 +36,7 @@ impl Command for Logout {
             if settings::env("CROWBOT_API_KEY").is_some() {
                 out.push_str(" CROWBOT_API_KEY is still set in this environment.");
             }
-            Ok(out)
+            Ok(out.into())
         })
     }
 }

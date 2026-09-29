@@ -42,6 +42,10 @@ pub enum AgentEvent {
     Notice {
         text: String,
     },
+    /// A message typed while the run was going has just been handed to the model.
+    Delivered {
+        text: String,
+    },
     RunEnd {
         outcome: Outcome,
     },

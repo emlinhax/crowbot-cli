@@ -157,6 +157,7 @@ impl Feed {
                     self.notice(note, "muted");
                 }
             }
+            AgentEvent::Delivered { text } => self.user(text),
             AgentEvent::Ask { .. } => {}
         }
     }

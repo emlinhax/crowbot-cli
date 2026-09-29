@@ -216,6 +216,7 @@ impl Line {
     }
 
     /// `[role+bold]text[/]` markup, for snapshot tests that must not depend on colours.
+    #[cfg(test)]
     pub fn to_tagged(&self) -> String {
         let mut out = String::new();
         for span in &self.spans {

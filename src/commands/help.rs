@@ -3,8 +3,7 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 
-use super::{COMMANDS, Command, Spec};
-use crate::app::App;
+use super::{Command, Ctx, Outcome, Scope, Spec, available};
 
 static SPEC: LazyLock<Spec> =
     LazyLock::new(|| Spec::parse(include_str!("../../data/commands/help.toml")));
@@ -18,17 +17,21 @@ impl Command for Help {
 
     fn run<'a>(
         &'a self,
-        _app: &'a App,
+        cx: &'a Ctx<'a>,
         _args: &'a [String],
-    ) -> BoxFuture<'a, anyhow::Result<String>> {
-        Box::pin(async { Ok(render()) })
+    ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
+        Box::pin(async move { Ok(render(cx.scope).into()) })
     }
 }
 
-fn render() -> String {
-    let mut out = String::from("Commands (also usable as `/name` inside a session):\n\n");
-    for spec in COMMANDS.iter().map(|c| c.spec()).filter(|s| !s.hidden) {
-        let _ = writeln!(out, "- `{}` — {}", spec.usage, spec.summary);
+fn render(scope: Scope) -> String {
+    let (intro, prefix) = match scope {
+        Scope::Cli => ("Commands (`crowbot <command>`):\n\n", ""),
+        Scope::Session => ("Commands:\n\n", "/"),
+    };
+    let mut out = String::from(intro);
+    for spec in available(scope).map(|c| c.spec()).filter(|s| !s.hidden) {
+        let _ = writeln!(out, "- `{prefix}{}` — {}", spec.usage, spec.summary);
     }
     out
 }

@@ -15,6 +15,11 @@ impl Transcript {
         }
     }
 
+    /// The session file, when there is one.
+    pub fn path(&self) -> Option<&std::path::Path> {
+        self.store.as_ref().map(|s| s.path.as_path())
+    }
+
     /// Identifies the session in file names (plans); stable for a stored session.
     pub fn id(&self) -> String {
         self.store

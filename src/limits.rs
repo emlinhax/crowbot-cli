@@ -123,8 +123,6 @@ pub struct EditLimits {
     pub similarity_max_chars: Limit<usize>,
 }
 
-// Read by the TUI loop (M3 step 3.5).
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TuiLimits {
