@@ -15,6 +15,7 @@ mod session;
 mod settings;
 mod text;
 mod tools;
+mod tui;
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
