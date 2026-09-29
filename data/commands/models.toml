@@ -1,3 +1,53 @@
 name = "models"
-summary = "List crowbot's live models with prices and limits"
+summary = "Pick the model for this session; on the command line, list them with prices and limits"
 usage = "models [--refresh]"
+# A narrow picker leaves these columns out first, in this order, before cutting any.
+drop = ["capabilities", "max_output", "cached", "name"]
+
+# The columns `crowbot models` prints and the session's picker shows, in order. Prices are USD
+# per 1M tokens; `right` aligns numbers.
+[[column]]
+id = "id"
+title = "model"
+
+[[column]]
+id = "name"
+title = "name"
+
+[[column]]
+id = "context"
+title = "context"
+align = "right"
+
+[[column]]
+id = "input"
+title = "in"
+align = "right"
+
+[[column]]
+id = "cached"
+title = "cached in"
+align = "right"
+
+[[column]]
+id = "output"
+title = "out"
+align = "right"
+
+[[column]]
+id = "max_output"
+title = "max out"
+align = "right"
+
+[[column]]
+id = "capabilities"
+title = ""
+
+[text]
+current = "●"
+footnote = "Prices are USD per 1M tokens; ● is your default."
+live = "Live list from crowbot."
+cache = "Cached list from {when} (`--refresh` to update)."
+snapshot = "Offline: showing the list bundled with this build."
+unreachable = "Could not reach crowbot: {note}"
+missing = "Your default model `{model}` is not in this list; pick another with `--model`."

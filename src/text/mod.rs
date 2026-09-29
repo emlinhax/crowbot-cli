@@ -3,6 +3,7 @@ pub mod highlight;
 pub mod markdown;
 pub mod shorten;
 pub mod styled;
+pub mod table;
 pub mod template;
 pub mod theme;
 pub mod units;

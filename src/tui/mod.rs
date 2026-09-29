@@ -12,6 +12,7 @@ mod keymap;
 mod layout;
 mod login;
 mod palette;
+mod picker;
 mod queue;
 mod screen;
 mod status;

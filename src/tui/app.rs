@@ -18,7 +18,7 @@ use crate::agent::message::Part;
 use crate::agent::run::{self, RunCtx};
 use crate::agent::state::Shared;
 use crate::agent::system_prompt;
-use crate::api::models::{self, Model};
+use crate::api::models::{self, Catalog, Model};
 use crate::app::App;
 use crate::commands::{self, Ctx, Effect, Scope};
 use crate::io::clock;
@@ -39,6 +39,7 @@ use crate::tui::input::Burst;
 use crate::tui::keymap::{self, Action};
 use crate::tui::login::{self, Login};
 use crate::tui::palette::{self, Palette};
+use crate::tui::picker::{self, Picker};
 use crate::tui::queue::{self, Kind};
 use crate::tui::screen::Screen;
 use crate::tui::status::{self, Progress};
@@ -46,6 +47,14 @@ use crate::tui::view::View;
 use crate::tui::{frame, layout, ui, welcome};
 
 type Turn<'a> = Pin<Box<dyn Future<Output = (Transcript, anyhow::Result<Outcome>)> + 'a>>;
+
+/// What every turn shares. The model and system prompt are not here: the session can switch
+/// them between turns.
+struct Turns<'a> {
+    tools: &'a Registry,
+    emit: &'a (dyn Fn(AgentEvent) + Send + Sync),
+    plan_file: String,
+}
 
 /// What the loop should do after an input.
 enum Step {
@@ -66,7 +75,6 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
         )
     })?;
     let mode = mode::get(&app.settings.mode).ok_or_else(|| anyhow!("mode was validated"))?;
-    let system = system_prompt::build(&app.paths, &model);
     let registry = Registry::builtin(app);
     let transcript = Transcript::new(Some(Store::create(&app.paths)?));
     let session_file = transcript.path().map(|p| p.display().to_string());
@@ -81,14 +89,10 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
     let emit = move |event: AgentEvent| {
         let _ = tx.send(event);
     };
-    let cx = RunCtx {
-        app,
-        model: &model,
-        effort: app.settings.effort.as_deref(),
-        system: &system,
+    let turns = Turns {
         tools: &registry,
-        plan_file,
         emit: &emit,
+        plan_file,
     };
 
     let raw = term::Raw::fullscreen()?;
@@ -97,8 +101,8 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
         term::restore_fullscreen();
         default_hook(info);
     }));
-    let mut tui = Tui::new(app, &model, &shared, initial);
-    let spent = tui.run(&cx, transcript, rx).await;
+    let mut tui = Tui::new(app, catalog, model, &shared, initial);
+    let spent = tui.run(turns, transcript, rx).await;
     drop(raw);
 
     let text = &ui::get().text;
@@ -120,7 +124,10 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
 
 struct Tui<'a> {
     app: &'a App,
-    model: &'a Model,
+    catalog: Catalog,
+    /// The model for the next turn, and the system prompt written for it.
+    model: Model,
+    system: String,
     shared: &'a Shared,
     screen: Screen,
     feed: Feed,
@@ -135,6 +142,8 @@ struct Tui<'a> {
     cards: VecDeque<Choice>,
     /// The `/login` card, on screen in place of the editor while open.
     login: Option<Login>,
+    /// The `/models` card, likewise.
+    picker: Option<Picker>,
     /// The turn in flight, for the working line.
     progress: Option<Progress>,
     last_verb: Option<usize>,
@@ -146,7 +155,13 @@ struct Tui<'a> {
 }
 
 impl<'a> Tui<'a> {
-    fn new(app: &'a App, model: &'a Model, shared: &'a Shared, initial: Option<String>) -> Self {
+    fn new(
+        app: &'a App,
+        catalog: Catalog,
+        model: Model,
+        shared: &'a Shared,
+        initial: Option<String>,
+    ) -> Self {
         let limits = &limits::get().tui;
         let (width, height) = term::size();
         let mut feed = Feed::new();
@@ -167,6 +182,8 @@ impl<'a> Tui<'a> {
         }
         Self {
             app,
+            catalog,
+            system: system_prompt::build(&app.paths, &model),
             model,
             shared,
             screen: Screen::new(width, height, theme::get(), term::color_depth()),
@@ -179,6 +196,7 @@ impl<'a> Tui<'a> {
             queue: Vec::new(),
             cards: VecDeque::new(),
             login: None,
+            picker: None,
             progress: None,
             last_verb: None,
             rng: fastrand::Rng::new(),
@@ -192,7 +210,7 @@ impl<'a> Tui<'a> {
     /// Runs until the user quits; returns what the session spent, in micro-dollars.
     async fn run(
         &mut self,
-        cx: &'a RunCtx<'a>,
+        turns: Turns<'a>,
         transcript: Transcript,
         mut events: mpsc::UnboundedReceiver<AgentEvent>,
     ) -> u64 {
@@ -218,8 +236,20 @@ impl<'a> Tui<'a> {
                             self.last_verb = Some(progress.verb());
                             self.progress = Some(progress);
                             let parts = vec![Part::Text { text }];
+                            let (app, tools, emit) = (self.app, turns.tools, turns.emit);
+                            let plan_file = turns.plan_file.clone();
+                            let (model, system) = (self.model.clone(), self.system.clone());
                             turn = Some(Box::pin(async move {
-                                let outcome = run::run(cx, &mut owned, shared, parts).await;
+                                let cx = RunCtx {
+                                    app,
+                                    model: &model,
+                                    effort: app.settings.effort.as_deref(),
+                                    system: &system,
+                                    tools,
+                                    plan_file,
+                                    emit,
+                                };
+                                let outcome = run::run(&cx, &mut owned, shared, parts).await;
                                 (owned, outcome)
                             }));
                         }
@@ -289,6 +319,7 @@ impl<'a> Tui<'a> {
                 self.view.scroll(if up { -page } else { page });
                 Step::Continue
             }
+            Input::Paste(_) if self.picker.is_some() => Step::Continue,
             Input::Paste(text) => {
                 if let Some(card) = &mut self.login {
                     card.insert(&text);
@@ -300,6 +331,10 @@ impl<'a> Tui<'a> {
                 Step::Continue
             }
             Input::Key(key) if self.login.is_some() => self.login_key(&key),
+            Input::Key(key) if self.picker.is_some() => {
+                self.picker_key(&key);
+                Step::Continue
+            }
             Input::Key(key) if !self.cards.is_empty() => {
                 self.card_key(&key, running);
                 Step::Continue
@@ -382,6 +417,35 @@ impl<'a> Tui<'a> {
             None => return Step::Continue,
         };
         self.login_next(next).map_or(Step::Continue, Step::Login)
+    }
+
+    fn picker_key(&mut self, key: &crate::io::term::KeyEvent) {
+        let action = keymap::get().action(key);
+        if action == Some(Action::CycleMode) {
+            return self.cycle_mode();
+        }
+        let Some(picker) = &mut self.picker else {
+            return;
+        };
+        match picker.key(action) {
+            picker::Step::Stay => {}
+            picker::Step::Close => self.picker = None,
+            picker::Step::Pick(id) => {
+                self.picker = None;
+                self.switch_model(&id);
+            }
+        }
+    }
+
+    /// Uses `id` from the next turn on, for this session only.
+    fn switch_model(&mut self, id: &str) {
+        let Some(model) = self.catalog.get(id).cloned() else {
+            return;
+        };
+        self.system = system_prompt::build(&self.app.paths, &model);
+        self.model = model;
+        let text = template::fill(&ui::get().picker.switched, &[("model", id)]);
+        self.feed.notice(&text, "done");
     }
 
     fn login_next(&mut self, next: login::Next) -> Option<login::Job> {
@@ -546,6 +610,12 @@ impl<'a> Tui<'a> {
                             }
                         }
                         Effect::Login => self.login = Some(Login::new()),
+                        Effect::PickModel { refresh } => {
+                            if refresh {
+                                self.catalog = models::load(self.app, true).await;
+                            }
+                            self.picker = Some(Picker::new(&self.catalog, &self.model.id));
+                        }
                     }
                 }
             }
@@ -603,10 +673,11 @@ impl<'a> Tui<'a> {
         // Prompts answered elsewhere (AUTO approved them, the run was interrupted) go away.
         let shared = self.shared;
         self.cards.retain(|card| shared.waiting(card.id));
-        match (&self.login, self.cards.front()) {
-            (Some(login), _) => live.extend(login.render(width)),
-            (None, Some(card)) => live.extend(card.render(width)),
-            (None, None) => {
+        match (&self.login, &self.picker, self.cards.front()) {
+            (Some(login), _, _) => live.extend(login.render(width)),
+            (None, Some(picker), _) => live.extend(picker.render(width)),
+            (None, None, Some(card)) => live.extend(card.render(width)),
+            (None, None, None) => {
                 live.push(frame::top(mode, width));
                 if !running {
                     let found = self.palette.open(&self.editor.text());

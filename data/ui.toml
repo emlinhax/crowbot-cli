@@ -50,6 +50,12 @@ done = "Thought for {secs}s"
 live = "Thinking… {secs}s"
 gutter = "│ "
 
+# `/models` inside a session.
+[picker]
+title = "Models"
+hint = "↑↓ move · → or enter select · esc close"
+switched = "Model: {model} for this session."
+
 # The popup listing commands while a `/name` is typed.
 [palette]
 title = "commands"

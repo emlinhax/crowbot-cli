@@ -1,10 +1,11 @@
 //! Markdown as styled lines at a given width, and where a streaming reply can be cut into
 //! finished blocks.
 
-use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
 use crate::text::highlight;
 use crate::text::styled::{Line, Style, width};
+use crate::text::table::{self, Align};
 
 /// Longest a horizontal rule gets, so it reads as a divider rather than a wall.
 const RULE_MAX: usize = 80;
@@ -95,6 +96,7 @@ enum Container {
 
 #[derive(Default)]
 struct Table {
+    aligns: Vec<Align>,
     rows: Vec<Vec<Line>>,
     cell: Line,
     row: Vec<Line>,
@@ -249,9 +251,18 @@ impl Renderer {
                     .push(format!("[image: {dest_url}]"), Style::fg("muted"));
                 self.styles.push(Style::fg("muted"));
             }
-            Tag::Table(_) => {
+            Tag::Table(aligns) => {
                 self.flush();
-                self.table = Some(Table::default());
+                self.table = Some(Table {
+                    aligns: aligns
+                        .iter()
+                        .map(|a| match a {
+                            Alignment::Right => Align::Right,
+                            _ => Align::Left,
+                        })
+                        .collect(),
+                    ..Table::default()
+                });
             }
             _ => {}
         }
@@ -394,34 +405,11 @@ impl Renderer {
         if columns == 0 {
             return;
         }
-        let mut widths = vec![0; columns];
-        for row in &table.rows {
-            for (i, cell) in row.iter().enumerate() {
-                widths[i] = widths[i].max(cell.width());
-            }
-        }
         let (first, _) = self.prefixes(false);
-        let total: usize = widths.iter().sum::<usize>() + 3 * columns + 1 + first.width();
+        let room = self.width.saturating_sub(first.width());
+        // Borders: one before each column, one after the last, and a space either side of cells.
+        let widths = table::widths(&table.rows, room, 3 * columns + 1);
         let border = Style::fg("muted");
-        if total > self.width {
-            // Too wide to draw as a grid: one line per row, cells separated.
-            let lines = table
-                .rows
-                .iter()
-                .map(|row| {
-                    let mut line = Line::default();
-                    for (i, cell) in row.iter().enumerate() {
-                        if i > 0 {
-                            line.push(" │ ", border.clone());
-                        }
-                        line.extend(cell.clone());
-                    }
-                    line.truncate(self.width.saturating_sub(first.width()))
-                })
-                .collect();
-            self.emit(lines);
-            return;
-        }
         let rule = |l: &str, m: &str, r: &str| {
             let parts: Vec<String> = widths.iter().map(|w| "─".repeat(w + 2)).collect();
             Line::styled(format!("{l}{}{r}", parts.join(m)), border.clone())
@@ -430,17 +418,16 @@ impl Renderer {
         for (r, row) in table.rows.iter().enumerate() {
             let mut line = Line::styled("│", border.clone());
             for (i, w) in widths.iter().enumerate() {
-                let cell = row.get(i).cloned().unwrap_or_default();
-                let pad = w - cell.width();
-                line.push(" ", Style::default());
-                let mut cell = cell;
+                let mut cell = row.get(i).cloned().unwrap_or_default();
                 if r == 0 {
                     for span in &mut cell.spans {
                         span.style.bold = true;
                     }
                 }
-                line.extend(cell);
-                line.push(" ".repeat(pad + 1), Style::default());
+                let align = table.aligns.get(i).copied().unwrap_or_default();
+                line.push(" ", Style::default());
+                line.extend(table::fit(&cell, *w, align));
+                line.push(" ", Style::default());
                 line.push("│", border.clone());
             }
             lines.push(line);

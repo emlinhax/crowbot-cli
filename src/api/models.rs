@@ -153,7 +153,8 @@ fn from_cache(cache: &Cached, note: Option<String>) -> Catalog {
     }
 }
 
-fn snapshot() -> Vec<Model> {
+/// The list bundled with this build, for when crowbot cannot be reached.
+pub fn snapshot() -> Vec<Model> {
     serde_json::from_str::<Listing>(SNAPSHOT)
         .expect("data/models.json is checked by tests")
         .data

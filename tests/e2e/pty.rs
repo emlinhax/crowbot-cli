@@ -247,10 +247,14 @@ async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
         s.wait_for("╭ commands");
         s.send("\x1b[B");
         s.send("\r");
+        s.wait_for("╭ Models");
         s.wait_for("fake-coder");
         s.wait_gone("╭ commands");
         // The session screen goes when crowbot exits, so read it first.
         let screen = s.contents();
+        // ← closes the picker, like Esc.
+        s.send("\x1b[D");
+        s.wait_gone("╭ Models");
         s.send("\x04");
         s.wait_exit();
         screen
@@ -351,4 +355,32 @@ async fn thinking_collapses_opens_on_click_and_ctrl_t_toggles_it_all() {
     })
     .await
     .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    let url = fake.url.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut s = Session::start(&sandbox, &url);
+        s.wait_for("MANUAL");
+        s.type_text("/models");
+        s.send("\r");
+        s.wait_for("╭ Models");
+        // The list opens on the model in use; the next one down is picked with Enter.
+        s.send("\x1b[B");
+        s.send("\r");
+        s.wait_for("Model: fake-coder for this session.");
+        assert!(s.bottom_row().contains("fake-coder"), "{}", s.contents());
+        s.type_text("hi");
+        s.send("\r");
+        s.wait_for("Hello there!");
+        s.send("\x04");
+        s.wait_exit();
+    })
+    .await
+    .unwrap();
+    assert_eq!(fake.chat_bodies()[0]["model"], "fake-coder");
 }

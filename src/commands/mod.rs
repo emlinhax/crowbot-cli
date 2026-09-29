@@ -6,7 +6,7 @@ mod keytest;
 pub mod login;
 mod logout;
 mod mode;
-mod models;
+pub mod models;
 mod quit;
 mod signup;
 
@@ -59,6 +59,10 @@ pub enum Effect {
     SetMode(String),
     /// Open the session's login card.
     Login,
+    /// Open the session's model picker, after fetching a fresh list when asked.
+    PickModel {
+        refresh: bool,
+    },
 }
 
 /// Markdown to show, and effects for the session to apply.

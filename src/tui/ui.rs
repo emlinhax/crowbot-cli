@@ -26,6 +26,7 @@ pub struct Ui {
     pub palette: PaletteText,
     pub thinking: ThinkingText,
     pub status: StatusText,
+    pub picker: PickerText,
     pub login: LoginText,
 }
 
@@ -42,6 +43,14 @@ pub struct LoginText {
     pub checking: String,
     pub failed: String,
     pub hint: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PickerText {
+    pub title: String,
+    pub hint: String,
+    pub switched: String,
 }
 
 #[derive(Debug, Deserialize)]
