@@ -11,7 +11,8 @@ async fn pairing_saves_a_device_key_that_chat_then_uses() {
     let out = run.success().stdout();
     assert!(out.contains("ABCD-1234"), "{out}");
     assert!(out.contains("/pair"), "{out}");
-    assert!(out.contains("Paired"), "{out}");
+    assert!(out.contains("Logged in with device key …9999"), "{out}");
+    assert!(out.contains("$12.30"), "{out}");
     assert_eq!(fake.hits("/api/pair/dev1"), 2);
 
     let stored = std::fs::read_to_string(sandbox.home().join("auth.json")).unwrap();

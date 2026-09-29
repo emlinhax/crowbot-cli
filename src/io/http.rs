@@ -16,7 +16,7 @@ pub enum Method {
 pub struct Request<'a> {
     pub method: Method,
     pub url: String,
-    pub bearer: Option<&'a str>,
+    pub bearer: Option<String>,
     pub headers: &'a [(&'a str, &'a str)],
     pub json: Option<&'a serde_json::Value>,
     /// Whole-request bound for `send`; for `open` it bounds only the wait for headers.
@@ -103,7 +103,7 @@ impl Http {
             Method::Get => self.client.get(&req.url),
             Method::Post => self.client.post(&req.url),
         };
-        if let Some(key) = req.bearer {
+        if let Some(key) = &req.bearer {
             builder = builder.bearer_auth(key);
         }
         for (name, value) in req.headers {

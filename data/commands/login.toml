@@ -1,4 +1,20 @@
 name = "login"
-summary = "Pair this machine with your crowbot account (or --key to use an account number)"
+summary = "Log in: pair this machine, or use an account number"
 usage = "login [--key <account number> | --status]"
 scope = ["cli"]
+
+# What login says; {placeholders} are filled in. The session shows the same results.
+[text]
+pair = """
+Pair this machine with your crowbot account:
+  1. Open {url}
+  2. Sign in and enter the code  {code}
+
+Waiting for approval (Ctrl+C to cancel)…"""
+logged_in = "Logged in with {what} {hint}. Balance {balance}."
+cannot_spend = " The account cannot spend yet; top it up at chat.crowbot.sh."
+status = "Logged in with {what} {hint}."
+from_env = "Using CROWBOT_API_KEY from the environment."
+logged_out = "Not logged in. Run `crowbot login`."
+account = "account number"
+device = "device key"

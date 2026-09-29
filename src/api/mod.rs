@@ -12,6 +12,7 @@ pub mod signup;
 pub mod sse;
 pub mod wire;
 
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use crate::io::http::{Http, Request, Response, Streaming};
@@ -20,7 +21,8 @@ use error::ApiError;
 #[derive(Clone)]
 pub struct Api {
     http: Http,
-    key: Option<String>,
+    /// Shared by every clone, so logging in or out mid-session reaches all of them at once.
+    key: Arc<RwLock<Option<String>>>,
     /// Replaces every origin; lets unit tests talk to a local fake.
     #[cfg(test)]
     base: Option<String>,
@@ -39,29 +41,38 @@ impl Api {
     pub fn new(http: Http, key: Option<String>) -> Self {
         Self {
             http,
-            key,
+            key: Arc::new(RwLock::new(key)),
             #[cfg(test)]
             base: None,
         }
     }
 
     pub fn has_key(&self) -> bool {
-        self.key.is_some()
+        self.key().is_some()
     }
 
-    /// The same client acting as another key, e.g. to check a key before saving it.
+    /// Replaces the key for this client and every clone of it.
+    pub fn set_key(&self, key: Option<String>) {
+        *self.key.write().unwrap_or_else(|e| e.into_inner()) = key;
+    }
+
+    /// A separate client acting as another key, e.g. to check a key before saving it.
     pub fn with_key(&self, key: String) -> Self {
         Self {
-            key: Some(key),
+            key: Arc::new(RwLock::new(Some(key))),
             ..self.clone()
         }
+    }
+
+    fn key(&self) -> Option<String> {
+        self.key.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     #[cfg(test)]
     pub fn redirected(http: Http, key: &str, base: &str) -> Self {
         Self {
             http,
-            key: Some(key.to_owned()),
+            key: Arc::new(RwLock::new(Some(key.to_owned()))),
             base: Some(base.to_owned()),
         }
     }
@@ -110,9 +121,9 @@ impl Api {
         timeout: Duration,
     ) -> Result<Request<'a>, ApiError> {
         let endpoint = endpoints::get(id);
-        let bearer = match (endpoint.auth, &self.key) {
+        let bearer = match (endpoint.auth, self.key()) {
             (false, _) => None,
-            (true, Some(key)) => Some(key.as_str()),
+            (true, Some(key)) => Some(key),
             (true, None) => return Err(ApiError::not_logged_in()),
         };
         #[cfg(test)]

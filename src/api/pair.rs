@@ -1,9 +1,12 @@
 //! Device pairing: the machine asks for a code, a signed-in person approves it on the web,
 //! and the machine collects its own revocable key.
 
+use std::time::Duration;
+
 use serde::Deserialize;
 
-use crate::api::error::ApiError;
+use crate::api::endpoints;
+use crate::api::error::{ApiError, ErrorInfo};
 use crate::api::{Api, Call};
 use crate::limits;
 
@@ -56,6 +59,33 @@ pub async fn poll(api: &Api, device_code: &str) -> Result<Poll, ApiError> {
     }
     let ready: Ready = serde_json::from_slice(&resp.body).map_err(|e| unreadable(&e))?;
     Ok(Poll::Ready(ready.api_key))
+}
+
+/// Polls until the code is approved, backing off when rate-limited, until it expires.
+pub async fn wait(api: &Api, started: &Started) -> Result<String, ApiError> {
+    let limits = &limits::get().pair;
+    let collect = async {
+        loop {
+            match poll(api, &started.device_code).await {
+                Ok(Poll::Ready(key)) => return Ok(key),
+                Ok(Poll::Pending) => tokio::time::sleep(limits.poll_interval_ms.ms()).await,
+                Err(e) if e.info.kind == "rate_limited" => {
+                    tokio::time::sleep(limits.backoff_ms.ms()).await;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(started.ttl), collect)
+        .await
+        .unwrap_or_else(
+            |_| Err(ErrorInfo::local("pair_expired", "the pairing code expired").into()),
+        )
+}
+
+/// Where a signed-in person approves the code.
+pub fn page() -> String {
+    endpoints::url(endpoints::get("pair_page"), &[])
 }
 
 fn unreadable(e: &serde_json::Error) -> ApiError {

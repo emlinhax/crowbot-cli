@@ -6,6 +6,8 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
+use crate::api::account::{self, Me};
+use crate::app::App;
 use crate::io::{self, fs::Access};
 use crate::paths::Paths;
 use crate::settings;
@@ -92,6 +94,17 @@ pub fn save(paths: &Paths, secret: &str, kind: KeyKind) -> anyhow::Result<()> {
         Access::Private,
     )?;
     Ok(())
+}
+
+/// Checks `secret` with crowbot, stores it, and makes it the key this process uses from now on.
+pub async fn adopt(app: &App, secret: &str, kind: KeyKind) -> anyhow::Result<Me> {
+    let secret = normalize(secret);
+    let me = account::me(&app.api.with_key(secret.clone()))
+        .await
+        .context("checking that key with crowbot")?;
+    save(&app.paths, &secret, kind)?;
+    app.api.set_key(Some(secret));
+    Ok(me)
 }
 
 /// `Ok(false)` when there was no stored key.
