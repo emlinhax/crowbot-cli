@@ -3,7 +3,7 @@
 
 mod help;
 mod keytest;
-mod login;
+pub mod login;
 mod logout;
 mod mode;
 mod models;
@@ -57,6 +57,8 @@ pub enum Effect {
     /// Switch to the next mode, as Shift+Tab does.
     CycleMode,
     SetMode(String),
+    /// Open the session's login card.
+    Login,
 }
 
 /// Markdown to show, and effects for the session to apply.

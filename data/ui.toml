@@ -38,6 +38,19 @@ spent = "Spent about {cost} this session."
 [palette]
 title = "commands"
 
+# `/login` inside a session; {placeholders} are filled in.
+[login]
+title = "Log in to crowbot"
+pair = "Pair this device (approve in your browser)"
+number = "Enter my account number"
+starting = "Asking crowbot for a pairing code…"
+open = "Open {url}"
+code = "and enter the code  "
+waiting = "Waiting for approval…"
+checking = "Checking with crowbot…"
+failed = "Login failed: {error}"
+hint = "esc cancel"
+
 # The card that replaces the editor when crowbot needs an answer.
 [card]
 hint = "↑↓ move · enter choose · 1-9 pick · esc no"

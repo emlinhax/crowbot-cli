@@ -21,6 +21,11 @@ struct Session {
 
 impl Session {
     fn start(sandbox: &Sandbox, api_url: &str) -> Self {
+        Self::start_as(sandbox, api_url, Some(ENV_KEY))
+    }
+
+    /// `key: None` starts logged out.
+    fn start_as(sandbox: &Sandbox, api_url: &str, key: Option<&str>) -> Self {
         let pty = native_pty_system()
             .openpty(PtySize {
                 rows: ROWS,
@@ -35,11 +40,14 @@ impl Session {
             ("CROWBOT_HOME", sandbox.home.path().to_str().unwrap()),
             ("CROWBOT_API_URL", api_url),
             ("CROWBOT_CHAT_URL", api_url),
-            ("CROWBOT_API_KEY", ENV_KEY),
             ("CROWBOT_NO_BROWSER", "1"),
             ("TERM", "xterm-256color"),
         ] {
             cmd.env(key, value);
+        }
+        match key {
+            Some(key) => cmd.env("CROWBOT_API_KEY", key),
+            None => cmd.env_remove("CROWBOT_API_KEY"),
         }
         let child = pty.slave.spawn_command(cmd).expect("crowbot starts");
         drop(pty.slave);
@@ -231,4 +239,65 @@ async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
     .await
     .unwrap();
     assert!(screen.contains("/models"), "{screen}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn slash_login_pairs_this_device_and_the_session_chats_at_once() {
+    let fake = Fake::start().await;
+    fake.pair_after(1);
+    fake.script([Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    let url = fake.url.clone();
+    let (screen, sandbox) = tokio::task::spawn_blocking(move || {
+        let mut s = Session::start_as(&sandbox, &url, None);
+        s.wait_for("type /login");
+        s.type_text("/login");
+        s.send("\r");
+        s.wait_for("Log in to crowbot");
+        s.send("1");
+        s.wait_for("ABCD-1234");
+        s.wait_for("Logged in with device key …9999");
+        // The key is live in this session: no restart needed.
+        s.type_text("hi");
+        s.send("\r");
+        s.wait_for("Hello there!");
+        s.send("\x04");
+        s.wait_exit();
+        (s.contents(), sandbox)
+    })
+    .await
+    .unwrap();
+    assert!(screen.contains("$12.30"), "{screen}");
+    assert!(sandbox.home().join("auth.json").exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn slash_login_takes_a_masked_account_number_and_retries_a_wrong_one() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    let url = fake.url.clone();
+    let (screen, sandbox) = tokio::task::spawn_blocking(move || {
+        let mut s = Session::start_as(&sandbox, &url, None);
+        s.wait_for("type /login");
+        s.type_text("/login");
+        s.send("\r");
+        s.wait_for("Log in to crowbot");
+        s.send("2");
+        s.type_text("0000 0000 0000 0000");
+        s.send("\r");
+        s.wait_for("invalid_api_key");
+        s.send("2");
+        s.type_text("1234 5678 9012 3456");
+        s.wait_for("•••• •••• •••• 3456");
+        assert!(!s.contents().contains("1234 5678"), "{}", s.contents());
+        s.send("\r");
+        s.wait_for("Logged in with account number …3456");
+        s.send("\x04");
+        s.wait_exit();
+        (s.contents(), sandbox)
+    })
+    .await
+    .unwrap();
+    assert!(!screen.contains("1234 5678"), "{screen}");
+    assert!(sandbox.home().join("auth.json").exists());
 }

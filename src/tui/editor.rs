@@ -17,6 +17,8 @@ pub struct Editor {
     /// The draft set aside while browsing history.
     draft: String,
     history_max: usize,
+    /// Shows only this many trailing characters, for a secret typed in view of others.
+    mask: Option<usize>,
 }
 
 impl Editor {
@@ -26,6 +28,12 @@ impl Editor {
             history_max,
             ..Self::default()
         }
+    }
+
+    /// Hides all but the last `shown` characters (spaces stay, so grouping is visible).
+    pub fn masked(mut self, shown: usize) -> Self {
+        self.mask = Some(shown);
+        self
     }
 
     pub fn text(&self) -> String {
@@ -160,7 +168,11 @@ impl Editor {
         let mut cursor_row = 0;
         for (i, text) in self.lines.iter().enumerate() {
             let cursor = (i == self.row).then_some(self.col);
-            let (wrapped, at) = wrap_with_cursor(text, cursor, avail);
+            let (text, cursor) = match self.mask {
+                Some(shown) => mask(text, cursor, shown),
+                None => (text.clone(), cursor),
+            };
+            let (wrapped, at) = wrap_with_cursor(&text, cursor, avail);
             if let Some(at) = at {
                 cursor_row = rows.len() + at;
             }
@@ -304,6 +316,30 @@ fn is_word(g: &str) -> bool {
 
 /// Wraps one logical line by cells, drawing the cursor (reverse video) at byte `cursor`.
 /// Returns the rows and which of them holds the cursor.
+/// `text` with every non-space character but the last `shown` as `•`, and the cursor's byte
+/// offset moved to match.
+fn mask(text: &str, cursor: Option<usize>, shown: usize) -> (String, Option<usize>) {
+    let total = text.chars().filter(|c| !c.is_whitespace()).count();
+    let mut out = String::with_capacity(text.len());
+    let mut at = None;
+    let mut seen = 0;
+    for (i, c) in text.char_indices() {
+        if cursor == Some(i) {
+            at = Some(out.len());
+        }
+        if c.is_whitespace() {
+            out.push(c);
+            continue;
+        }
+        seen += 1;
+        out.push(if seen + shown > total { c } else { '•' });
+    }
+    if cursor == Some(text.len()) {
+        at = Some(out.len());
+    }
+    (out, at)
+}
+
 fn wrap_with_cursor(text: &str, cursor: Option<usize>, avail: usize) -> (Vec<Line>, Option<usize>) {
     let mut rows = vec![Line::default()];
     let mut used = 0;
@@ -345,6 +381,19 @@ mod tests {
         let mut e = Editor::new(10);
         e.insert(text);
         e
+    }
+
+    #[test]
+    fn a_masked_editor_shows_only_the_tail_and_keeps_the_cursor() {
+        let mut e = Editor::new(0).masked(4);
+        e.insert("1234 5678 9012 3456");
+        assert_eq!(e.text(), "1234 5678 9012 3456");
+        let prompt = Line::plain("> ");
+        let shown = e.render(40, 3, &prompt, "")[0].text();
+        assert_eq!(shown, "> •••• •••• •••• 3456 ");
+        e.apply(Action::LineStart);
+        let tagged = e.render(40, 3, &prompt, "")[0].to_tagged();
+        assert!(tagged.starts_with("> [reverse]•[/]•••"), "{tagged}");
     }
 
     #[test]

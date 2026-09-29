@@ -1,7 +1,8 @@
 //! The numbered card that replaces the editor when crowbot needs an answer: permission, a
-//! question, or what to do with a finished plan. Every prompt kind uses this one card.
+//! question, or what to do with a finished plan; `/login` builds its menu from it too.
 
 use crate::agent::prompt::{Prompt, Reply};
+use crate::auth;
 use crate::io::term::{KeyCode, KeyEvent, KeyModifiers};
 use crate::limits;
 use crate::text::diff;
@@ -17,13 +18,41 @@ use crate::tui::ui::{self, PermissionReply};
 enum Pick {
     Reply(PermissionReply),
     Index(usize),
-    /// Opens a line for the user's own words.
-    Text,
+    /// Opens a line for the user's own words; a masked one shows only their end.
+    Text {
+        masked: bool,
+    },
 }
 
-struct Opt {
+pub struct Opt {
     label: String,
     pick: Pick,
+}
+
+impl Opt {
+    /// Answers `Reply::Choice(index)`.
+    pub fn index(label: impl Into<String>, index: usize) -> Self {
+        Self {
+            label: label.into(),
+            pick: Pick::Index(index),
+        }
+    }
+
+    /// Opens a line whose words answer `Reply::Text`.
+    pub fn text(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            pick: Pick::Text { masked: false },
+        }
+    }
+
+    /// Like `text`, for a secret: only its last few characters show as it is typed.
+    pub fn secret(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            pick: Pick::Text { masked: true },
+        }
+    }
 }
 
 pub struct Choice {
@@ -45,11 +74,32 @@ pub enum Step {
 }
 
 impl Choice {
-    pub fn new(id: u64, prompt: &Prompt, width: usize) -> Self {
+    pub fn new(id: u64, title: impl Into<String>, body: Vec<Line>, options: Vec<Opt>) -> Self {
+        assert!(!options.is_empty(), "a card needs something to choose");
+        Self {
+            id,
+            title: title.into(),
+            body,
+            options,
+            selected: 0,
+            input: None,
+            input_for: Pick::Text { masked: false },
+        }
+    }
+
+    /// The card for a prompt from the agent.
+    pub fn from_prompt(id: u64, prompt: &Prompt, width: usize) -> Self {
         let text = &ui::get().card;
         let inner = width.saturating_sub(4).max(1);
         let max = limits::get().tui.prompt_body_lines.value;
-        let (title, body, options) = match prompt {
+        let indexed = |labels: &[String]| -> Vec<Opt> {
+            labels
+                .iter()
+                .enumerate()
+                .map(|(i, label)| Opt::index(label.clone(), i))
+                .collect()
+        };
+        match prompt {
             Prompt::Permission {
                 tool,
                 asks,
@@ -72,22 +122,12 @@ impl Choice {
                         pick: Pick::Reply(c.reply),
                     })
                     .collect();
-                (format!("{tool} {target}"), body, options)
+                Self::new(id, format!("{tool} {target}"), body, options)
             }
             Prompt::Question { question, options } => {
-                let mut opts: Vec<Opt> = options
-                    .iter()
-                    .enumerate()
-                    .map(|(i, label)| Opt {
-                        label: label.clone(),
-                        pick: Pick::Index(i),
-                    })
-                    .collect();
-                opts.push(Opt {
-                    label: text.other.clone(),
-                    pick: Pick::Text,
-                });
-                (question.clone(), Vec::new(), opts)
+                let mut opts = indexed(options);
+                opts.push(Opt::text(text.other.clone()));
+                Self::new(id, question.clone(), Vec::new(), opts)
             }
             Prompt::PlanExit { plan, choices } => {
                 let mut body = markdown::render(plan, inner);
@@ -99,29 +139,10 @@ impl Choice {
                         Style::fg("muted"),
                     ));
                 }
-                let mut opts: Vec<Opt> = choices
-                    .iter()
-                    .enumerate()
-                    .map(|(i, label)| Opt {
-                        label: label.clone(),
-                        pick: Pick::Index(i),
-                    })
-                    .collect();
-                opts.push(Opt {
-                    label: text.plan_other.clone(),
-                    pick: Pick::Text,
-                });
-                (text.plan_title.clone(), body, opts)
+                let mut opts = indexed(choices);
+                opts.push(Opt::text(text.plan_other.clone()));
+                Self::new(id, text.plan_title.clone(), body, opts)
             }
-        };
-        Self {
-            id,
-            title,
-            body,
-            options,
-            selected: 0,
-            input: None,
-            input_for: Pick::Text,
         }
     }
 
@@ -179,12 +200,20 @@ impl Choice {
             Pick::Reply(PermissionReply::Yes) => Step::Answer(Reply::Yes),
             Pick::Reply(PermissionReply::No) => Step::Answer(Reply::No { feedback: None }),
             Pick::Index(n) => Step::Answer(Reply::Choice(n)),
-            Pick::Reply(PermissionReply::NoWhy) | Pick::Text => {
-                self.input = Some(Editor::new(0));
-                self.input_for = pick;
-                Step::Stay
-            }
+            Pick::Reply(PermissionReply::NoWhy) => self.open_input(pick, false),
+            Pick::Text { masked } => self.open_input(pick, masked),
         }
+    }
+
+    fn open_input(&mut self, pick: Pick, masked: bool) -> Step {
+        let input = Editor::new(0);
+        self.input = Some(if masked {
+            input.masked(auth::HINT_CHARS)
+        } else {
+            input
+        });
+        self.input_for = pick;
+        Step::Stay
     }
 
     pub fn render(&self, width: usize) -> Vec<Line> {
@@ -235,7 +264,7 @@ mod tests {
     }
 
     fn permission() -> Choice {
-        Choice::new(
+        Choice::from_prompt(
             7,
             &Prompt::Permission {
                 tool: "edit".into(),
@@ -292,7 +321,7 @@ mod tests {
 
     #[test]
     fn questions_offer_other() {
-        let mut card = Choice::new(
+        let mut card = Choice::from_prompt(
             1,
             &Prompt::Question {
                 question: "Which DB?".into(),

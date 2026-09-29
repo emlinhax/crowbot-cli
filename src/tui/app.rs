@@ -10,6 +10,7 @@ use std::time::Instant;
 
 use anyhow::anyhow;
 use futures_util::StreamExt;
+use futures_util::future::BoxFuture;
 use tokio::sync::mpsc;
 
 use crate::agent::event::{AgentEvent, Outcome};
@@ -36,6 +37,7 @@ use crate::tui::editor::Editor;
 use crate::tui::feed::Feed;
 use crate::tui::input::Burst;
 use crate::tui::keymap::{self, Action};
+use crate::tui::login::{self, Login};
 use crate::tui::palette::{self, Palette};
 use crate::tui::queue::{self, Kind};
 use crate::tui::screen::Screen;
@@ -49,6 +51,8 @@ enum Step {
     Continue,
     Send(String),
     Quit,
+    /// Start network work for the login card.
+    Login(login::Job),
 }
 
 pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode> {
@@ -125,6 +129,8 @@ struct Tui<'a> {
     queue: Vec<(Kind, String)>,
     /// Prompts waiting on the user; the first is on screen in place of the editor.
     cards: VecDeque<Choice>,
+    /// The `/login` card, on screen in place of the editor while open.
+    login: Option<Login>,
     height: usize,
     turn_started: Option<Instant>,
     last_ctrl_c: Option<Instant>,
@@ -173,6 +179,7 @@ impl<'a> Tui<'a> {
             burst: Burst::new(limits.paste_gap_ms.ms(), limits.paste_min_keys.value),
             queue: Vec::new(),
             cards: VecDeque::new(),
+            login: None,
             height,
             turn_started: None,
             last_ctrl_c: None,
@@ -190,6 +197,7 @@ impl<'a> Tui<'a> {
     ) -> u64 {
         let mut transcript = Some(transcript);
         let mut turn: Option<Turn<'a>> = None;
+        let mut job: Option<BoxFuture<'a, login::Done>> = None;
         let mut inputs = Box::pin(term::inputs());
         let mut tick = tokio::time::interval(limits::get().tui.frame_ms.ms());
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -202,6 +210,7 @@ impl<'a> Tui<'a> {
                     match self.input(input, turn.is_some()).await {
                         Step::Continue => {}
                         Step::Quit => break,
+                        Step::Login(next) => job = Some(login::run(self.app, next)),
                         Step::Send(text) => {
                             let Some(mut owned) = transcript.take() else { continue };
                             self.turn_started = Some(clock::instant());
@@ -231,7 +240,19 @@ impl<'a> Tui<'a> {
                         self.feed.notice(&format!("{e:#}"), "error");
                     }
                 }
+                done = async { job.as_mut().expect("guarded by the branch condition").await }, if job.is_some() => {
+                    job = self
+                        .login
+                        .as_mut()
+                        .map(|card| card.finished(done))
+                        .and_then(|next| self.login_next(next))
+                        .map(|next| login::run(self.app, next));
+                }
                 _ = tick.tick(), if turn.is_some() => {}
+            }
+            // Closing the login card drops whatever it was waiting on.
+            if self.login.is_none() {
+                job = None;
             }
         }
         // Leave nothing half-drawn: clear the live region before the terminal is handed back.
@@ -249,12 +270,16 @@ impl<'a> Tui<'a> {
                 Step::Continue
             }
             Input::Paste(text) => {
-                match self.cards.front_mut() {
-                    Some(card) => card.insert(&text),
-                    None => self.editor.insert(&text),
+                if let Some(card) = &mut self.login {
+                    card.insert(&text);
+                } else if let Some(card) = self.cards.front_mut() {
+                    card.insert(&text);
+                } else {
+                    self.editor.insert(&text);
                 }
                 Step::Continue
             }
+            Input::Key(key) if self.login.is_some() => self.login_key(&key),
             Input::Key(key) if !self.cards.is_empty() => {
                 self.card_key(&key, running);
                 Step::Continue
@@ -323,6 +348,37 @@ impl<'a> Tui<'a> {
         if let choice::Step::Answer(reply) = card.key(action, key) {
             self.shared.answer(card.id, reply);
             self.cards.pop_front();
+        }
+    }
+
+    fn login_key(&mut self, key: &crate::io::term::KeyEvent) -> Step {
+        let action = keymap::get().action(key);
+        if action == Some(Action::CycleMode) {
+            self.cycle_mode();
+            return Step::Continue;
+        }
+        let next = match &mut self.login {
+            Some(card) => card.key(action, key),
+            None => return Step::Continue,
+        };
+        self.login_next(next).map_or(Step::Continue, Step::Login)
+    }
+
+    fn login_next(&mut self, next: login::Next) -> Option<login::Job> {
+        match next {
+            login::Next::Stay => None,
+            login::Next::Run(job) => Some(job),
+            login::Next::Error(error) => {
+                self.feed.notice(&error, "error");
+                None
+            }
+            login::Next::Close(message) => {
+                self.login = None;
+                if let Some(message) = message {
+                    self.feed.notice(&message, "done");
+                }
+                None
+            }
         }
     }
 
@@ -477,6 +533,7 @@ impl<'a> Tui<'a> {
                                 self.shared.set_mode(mode);
                             }
                         }
+                        Effect::Login => self.login = Some(Login::new()),
                     }
                 }
             }
@@ -502,7 +559,7 @@ impl<'a> Tui<'a> {
             }
             AgentEvent::Prompt { id, prompt, .. } => {
                 self.cards
-                    .push_back(Choice::new(*id, prompt, term::size().0));
+                    .push_back(Choice::from_prompt(*id, prompt, term::size().0));
             }
             _ => {}
         }
@@ -531,9 +588,10 @@ impl<'a> Tui<'a> {
         // Prompts answered elsewhere (AUTO approved them, the run was interrupted) go away.
         let shared = self.shared;
         self.cards.retain(|card| shared.waiting(card.id));
-        match self.cards.front() {
-            Some(card) => live.extend(card.render(width)),
-            None => {
+        match (&self.login, self.cards.front()) {
+            (Some(login), _) => live.extend(login.render(width)),
+            (None, Some(card)) => live.extend(card.render(width)),
+            (None, None) => {
                 live.push(frame::top(mode, width));
                 if !running {
                     let found = self.palette.open(&self.editor.text());

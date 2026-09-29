@@ -4,7 +4,7 @@ use anyhow::bail;
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
-use super::{Command, Ctx, Outcome, Spec};
+use super::{Command, Ctx, Effect, Outcome, Scope, Spec};
 use crate::api::account::Me;
 use crate::api::pair;
 use crate::app::App;
@@ -53,6 +53,13 @@ impl Command for Login {
         args: &'a [String],
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
+            // A session logs in through its own card, where the number is typed out of sight.
+            if cx.scope == Scope::Session {
+                return Ok(Outcome {
+                    text: String::new(),
+                    effects: vec![Effect::Login],
+                });
+            }
             let app = cx.app;
             let text = match args {
                 [] => pair_here(app).await,

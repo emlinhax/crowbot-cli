@@ -24,6 +24,22 @@ pub struct Ui {
     pub text: Text,
     pub card: CardText,
     pub palette: PaletteText,
+    pub login: LoginText,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LoginText {
+    pub title: String,
+    pub pair: String,
+    pub number: String,
+    pub starting: String,
+    pub open: String,
+    pub code: String,
+    pub waiting: String,
+    pub checking: String,
+    pub failed: String,
+    pub hint: String,
 }
 
 #[derive(Debug, Deserialize)]

@@ -9,6 +9,7 @@ mod feed;
 mod frame;
 mod input;
 mod keymap;
+mod login;
 mod palette;
 mod queue;
 mod screen;

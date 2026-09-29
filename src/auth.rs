@@ -112,12 +112,15 @@ pub fn remove(paths: &Paths) -> anyhow::Result<bool> {
     Ok(io::fs::remove(&paths.auth())?)
 }
 
-/// The last four characters, enough to tell keys apart without revealing them.
+/// How many trailing characters of a key are ever shown.
+pub const HINT_CHARS: usize = 4;
+
+/// The last few characters, enough to tell keys apart without revealing them.
 pub fn hint(secret: &str) -> String {
     let tail: String = secret
         .chars()
         .rev()
-        .take(4)
+        .take(HINT_CHARS)
         .collect::<Vec<_>>()
         .into_iter()
         .rev()
