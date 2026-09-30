@@ -1,0 +1,35 @@
+name: Toolchain and build tools
+description: The pinned Rust toolchain (plus a target), what cffetch's BoringSSL needs, make, and the cache.
+inputs:
+  target:
+    description: A target triple to add besides the host's, e.g. x86_64-unknown-linux-musl.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    # rust-toolchain.toml pins the version and components.
+    - shell: bash
+      run: |
+        rustup toolchain install
+        if [ -n "${{ inputs.target }}" ]; then rustup target add "${{ inputs.target }}"; fi
+    # BoringSSL's Windows assembly is NASM; elsewhere the system assembler does.
+    - if: runner.os == 'Windows'
+      uses: ilammy/setup-nasm@v1
+    # The Windows runner image ships LLVM; bindgen needs to be told where its libclang is.
+    - if: runner.os == 'Windows'
+      shell: bash
+      run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> "$GITHUB_ENV"
+    - if: runner.os == 'Windows'
+      shell: bash
+      run: command -v make || choco install make -y --no-progress
+    # Containers run as root without sudo, hosted runners the other way round.
+    - if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        SUDO=$(command -v sudo || true)
+        $SUDO apt-get update
+        $SUDO apt-get install -y cmake libclang-dev make
+    - uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ inputs.target }}

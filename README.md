@@ -114,7 +114,7 @@ GNU make, run from Git Bash on Windows (`winget install ezwinports.make`).
 webfetch fetches through cffetch, whose BoringSSL is built from source, so a build also needs
 CMake and libclang (`LIBCLANG_PATH` pointing at LLVM's `bin` when it is not found on its own),
 plus NASM on Windows (`winget install Kitware.CMake LLVM.LLVM NASM.NASM`). CI installs them
-through `.github/actions/boringssl`. The binary carries two TLS stacks: rustls for crowbot's API,
+through `.github/actions/setup`. The binary carries two TLS stacks: rustls for crowbot's API,
 BoringSSL for the web.
 
 | Target | Runs | When |

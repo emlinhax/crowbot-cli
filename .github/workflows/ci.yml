@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   check:
     strategy:
@@ -11,43 +15,14 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash
     steps:
       - uses: actions/checkout@v4
-      # rust-toolchain.toml pins the version and components.
-      - run: rustup toolchain install
-      - uses: ./.github/actions/boringssl
-      - uses: Swatinem/rust-cache@v2
-      - if: runner.os == 'Windows'
-        run: command -v make || choco install make -y --no-progress
+      - uses: ./.github/actions/setup
       - run: make lint
       - run: make test
       - run: make e2e
-
-  # Proves every release target still builds; the real release job lives on `prod`.
-  release-build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
-          - { os: macos-latest, target: aarch64-apple-darwin }
-          - { os: windows-latest, target: x86_64-pc-windows-msvc }
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-      - run: rustup toolchain install && rustup target add ${{ matrix.target }}
-      - uses: ./.github/actions/boringssl
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
-      - run: cargo build --locked --release --target ${{ matrix.target }}
-      - run: ls -l target/${{ matrix.target }}/release/
+      # The release build README documents; a release job for `prod` comes later (NEXT_PLAN M7).
+      - run: make build && ls -l target/release/
 
   # Fully static Linux. BoringSSL needs a musl C++ cross toolchain, which this image carries.
   # Allowed to fail until a green run proves it; until then glibc above is the Linux target.
@@ -55,12 +30,9 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     container: ghcr.io/rust-cross/rust-musl-cross:x86_64-musl
-    defaults:
-      run:
-        shell: bash
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/boringssl
-      - run: rustup toolchain install && rustup target add x86_64-unknown-linux-musl
-      - run: cargo build --locked --release --target x86_64-unknown-linux-musl
-      - run: ls -l target/x86_64-unknown-linux-musl/release/
+      - uses: ./.github/actions/setup
+        with:
+          target: x86_64-unknown-linux-musl
+      - run: make build TARGET=x86_64-unknown-linux-musl && ls -l target/x86_64-unknown-linux-musl/release/

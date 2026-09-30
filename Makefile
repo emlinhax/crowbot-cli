@@ -27,5 +27,6 @@ golden:
 
 check: lint test e2e
 
+# `make build TARGET=<triple>` builds for another target, e.g. static musl in CI.
 build:
-	$(CARGO) build --locked --release
+	$(CARGO) build --locked --release $(if $(TARGET),--target $(TARGET))
