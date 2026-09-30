@@ -20,7 +20,9 @@ impl App {
         let paths = Paths::resolve()?;
         let settings = settings::load(&paths, flags)?;
         let http = Http::new(limits::get().http.connect_timeout_ms.ms())?;
-        let key = auth::load(&paths)?.map(|k| k.secret);
+        // An unreadable auth.json must not stop every command, `logout` (which removes it) and
+        // `login --status` (which explains it) included; it just leaves this run without a key.
+        let key = auth::load(&paths).ok().flatten().map(|k| k.secret);
         Ok(Self {
             api: Api::new(http, key),
             fetch: Fetch::new(limits::get().tools.webfetch_timeout_secs.secs())?,

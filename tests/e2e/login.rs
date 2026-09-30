@@ -59,3 +59,25 @@ async fn logout_removes_the_key() {
     let again = sandbox.run(&fake.url, &["logout"], &[]).await;
     assert!(again.success().stdout().contains("No key"));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_corrupt_key_file_is_explained_and_logout_still_clears_it() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    std::fs::create_dir_all(sandbox.home()).unwrap();
+    std::fs::write(sandbox.home().join("auth.json"), "not json").unwrap();
+
+    let status = sandbox.run(&fake.url, &["login", "--status"], &[]).await;
+    assert_ne!(status.code(), Some(0));
+    assert!(status.stderr().contains("auth.json"), "{}", status.stderr());
+    assert!(
+        status.stderr().contains("crowbot logout"),
+        "{}",
+        status.stderr()
+    );
+
+    sandbox.run(&fake.url, &["logout"], &[]).await.success();
+    assert!(!sandbox.home().join("auth.json").exists());
+    let status = sandbox.run(&fake.url, &["login", "--status"], &[]).await;
+    assert!(status.success().stdout().contains("Not logged in"));
+}
