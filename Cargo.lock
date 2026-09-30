@@ -629,6 +629,7 @@ dependencies = [
  "toml",
  "unicode-segmentation",
  "unicode-width",
+ "url",
  "vt100",
  "windows-sys 0.61.2",
 ]

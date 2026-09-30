@@ -3,6 +3,7 @@ use std::sync::LazyLock;
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use url::Url;
 
 use super::permissions;
 use super::truncate::{self, Keep};
@@ -36,6 +37,8 @@ struct Text {
     browser: String,
     slow: String,
     cut: String,
+    redirect: String,
+    invalid: String,
 }
 
 #[derive(Deserialize)]
@@ -45,14 +48,35 @@ struct Args {
 
 pub struct WebFetch;
 
-/// The host part of an http(s) URL, which is what permission rules match.
-fn host(url: &str) -> Option<&str> {
-    let rest = url
-        .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))?;
-    let host = rest.split(['/', '?', '#']).next()?;
-    let host = host.rsplit('@').next()?;
-    (!host.is_empty()).then_some(host)
+/// Parsed as the client will parse it, so the host that is asked for is the host fetched.
+fn parse_url(raw: &str) -> Result<Url, Refusal> {
+    let invalid = || Refusal::Refused(fill(&TEXT.invalid, &[("url", raw.trim())]));
+    let url = Url::parse(raw.trim()).map_err(|_| invalid())?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return Err(invalid());
+    }
+    Ok(url)
+}
+
+/// What permission rules match: the host, and the port when one is given.
+fn host(url: &Url) -> String {
+    let host = url.host_str().unwrap_or_default().to_lowercase();
+    match url.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host,
+    }
+}
+
+/// A redirect is reported, not followed, so its target is asked for under its own host.
+fn redirect(url: &Url, status: u16, location: Option<&str>) -> Option<String> {
+    if !(300..400).contains(&status) {
+        return None;
+    }
+    let target = url.join(location?).ok()?;
+    Some(fill(
+        &TEXT.redirect,
+        &[("url", url.as_str()), ("location", target.as_str())],
+    ))
 }
 
 /// Why a fetch brought back no page.
@@ -88,13 +112,11 @@ impl Tool for WebFetch {
 
     fn check(&self, args: &Value, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: Args = parse(args)?;
-        let Some(host) = host(args.url.trim()) else {
-            return Err(Refusal::Refused(format!(
-                "{} is not an http(s) URL.",
-                args.url
-            )));
-        };
-        Ok(Check::new(vec![Ask::new(permissions::WEBFETCH.name, host)]))
+        let url = parse_url(&args.url)?;
+        Ok(
+            Check::new(vec![Ask::new(permissions::WEBFETCH.name, host(&url))])
+                .with_preview(url.as_str()),
+        )
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
@@ -104,11 +126,18 @@ impl Tool for WebFetch {
                 Err(out) => return out,
             };
             let limits = &limits::get().tools;
-            let url = args.url.trim().to_owned();
+            let parsed = match parse_url(&args.url) {
+                Ok(url) => url,
+                Err(why) => return Output::error(why.to_string()),
+            };
+            let url = parsed.as_str().to_owned();
             let page = match cx.app.fetch.get(&url).await {
                 Ok(page) => page,
                 Err(e) => return Output::error(failure(&url, &e)),
             };
+            if let Some(moved) = redirect(&parsed, page.status, page.location.as_deref()) {
+                return Output::ok(moved);
+            }
             if let Some(why) = refusal(&url, page.status, page.firewall) {
                 return Output::error(why);
             }
@@ -148,13 +177,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn permission_is_per_host() {
-        assert_eq!(host("https://docs.rs/x?y=1"), Some("docs.rs"));
+    fn permission_is_per_host_as_the_client_reads_it() {
+        let asked = |raw: &str| parse_url(raw).map(|u| host(&u)).ok();
+        assert_eq!(asked("https://docs.rs/x?y=1").as_deref(), Some("docs.rs"));
         assert_eq!(
-            host("http://user@example.com:8080/a"),
+            asked("http://user@example.com:8080/a").as_deref(),
             Some("example.com:8080")
         );
-        assert_eq!(host("ftp://x"), None);
+        assert_eq!(asked("https://Docs.RS:443/").as_deref(), Some("docs.rs"));
+        // A backslash ends the host for the client, so `docs.rs` here is only a path.
+        assert_eq!(asked("https://evil\\@docs.rs/").as_deref(), Some("evil"));
+        assert_eq!(asked("ftp://x"), None);
+        assert_eq!(asked("not a url"), None);
+    }
+
+    #[test]
+    fn a_redirect_names_its_target_instead_of_being_followed() {
+        let url = Url::parse("https://docs.rs/x").unwrap();
+        let text = redirect(&url, 301, Some("/y")).unwrap();
+        assert!(text.contains("https://docs.rs/y"), "{text}");
+        assert_eq!(redirect(&url, 200, Some("/y")), None);
+        assert_eq!(redirect(&url, 302, None), None);
     }
 
     #[test]

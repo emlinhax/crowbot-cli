@@ -18,6 +18,8 @@ pub struct Fetched {
     pub status: u16,
     /// Where redirects ended.
     pub url: String,
+    /// A redirect's target as sent, possibly relative; the client does not follow it.
+    pub location: Option<String>,
     /// CEILING: cffetch buffers the whole body before returning, so a size cap applies after the
     /// fetch rather than mid-stream; a streaming cap would be a change to cffetch.
     pub body: Vec<u8>,
@@ -70,6 +72,11 @@ impl Fetch {
         Ok(Fetched {
             status,
             url: resp.uri().to_string(),
+            location: resp
+                .headers()
+                .get("location")
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_owned),
             firewall: status >= 400 && resp.is_waf_block(),
             fingerprint: resp.fingerprint_used().to_owned(),
             body: resp.bytes().to_vec(),

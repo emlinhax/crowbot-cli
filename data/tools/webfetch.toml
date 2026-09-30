@@ -7,3 +7,5 @@ challenge = "{url} is behind a Cloudflare challenge that no browser profile pass
 browser = "{url} asks for an interactive Cloudflare check that needs a real browser; do not retry."
 slow = "{url} took too long to answer."
 cut = "[Page cut at {kept} of {total} lines.]"
+redirect = "{url} redirects to {location}; fetch that URL if it is what you want."
+invalid = "{url} is not an http(s) URL."
