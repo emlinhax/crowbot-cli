@@ -8,9 +8,6 @@ use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
 use crate::io::{self, fs::Access, fs::Kind};
 
-/// How much of new content the permission prompt shows.
-const PREVIEW_LINES: usize = 40;
-
 static SPEC: LazyLock<Spec> = LazyLock::new(|| {
     Spec::load(
         "write",
@@ -48,7 +45,7 @@ impl Tool for Write {
         let preview: String = args
             .content
             .lines()
-            .take(PREVIEW_LINES)
+            // All of it: the card shows what fits and counts the rest.
             .map(|l| format!("+{l}\n"))
             .collect();
         Ok(Check::new(target::asks(permissions::EDIT.name, &target)).with_preview(preview))
@@ -87,6 +84,19 @@ impl Tool for Write {
 mod tests {
     use super::*;
     use crate::tools::testing::Project;
+
+    #[test]
+    fn the_preview_holds_every_new_line_so_the_card_can_count_them() {
+        let project = Project::new();
+        let content: String = (0..100).map(|i| format!("line {i}\n")).collect();
+        let check = Write
+            .check(
+                &json!({"path": "big.txt", "content": content}),
+                &project.cx(),
+            )
+            .unwrap();
+        assert_eq!(check.preview.unwrap().lines().count(), 100);
+    }
 
     #[tokio::test]
     async fn creates_new_files_but_only_replaces_read_ones() {
