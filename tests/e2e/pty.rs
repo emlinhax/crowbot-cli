@@ -330,11 +330,9 @@ async fn a_command_typed_during_a_run_never_reaches_the_model() {
         s.wait_for("sleep 3");
         s.type_text("/login --key 1234 5678 9012 3456");
         s.send("\r");
+        s.wait_for("Logged in with account number …3456");
         s.wait_for("Hello there!");
-        let during = s.contents();
-        s.send("\x1b");
-        s.wait_gone("Log in to crowbot");
-        during
+        s.contents()
     })
     .await;
     // The command ran mid-turn, echoed with its number hidden.
