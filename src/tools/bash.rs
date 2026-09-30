@@ -222,8 +222,7 @@ impl Sink {
 
 impl Spill {
     fn open(dir: &std::path::Path, start: &[u8]) -> Option<Self> {
-        let path = dir.join(format!("bash-{:08x}.log", fastrand::u32(..)));
-        let file = io::fs::Appender::create(&path, Access::Shared).ok()?;
+        let (path, file) = create_spill(dir)?;
         let mut spill = Self {
             file,
             path,
@@ -255,13 +254,45 @@ fn clean(text: &str) -> String {
 }
 
 fn save_full(cx: &ToolCx<'_>, text: &str) -> Option<String> {
-    let path = cx
-        .app
-        .paths
-        .tmp_dir()
-        .join(format!("bash-{:08x}.log", fastrand::u32(..)));
-    io::fs::write_atomic(&path, text.as_bytes(), Access::Shared).ok()?;
+    let (path, mut file) = create_spill(&cx.app.paths.tmp_dir())?;
+    file.append(text.as_bytes()).ok()?;
     Some(path.display().to_string())
+}
+
+static PRUNED: std::sync::Once = std::sync::Once::new();
+
+/// A new spill file, never one an older transcript still points to. The process's first spill
+/// also clears out old ones.
+fn create_spill(dir: &std::path::Path) -> Option<(std::path::PathBuf, io::fs::Appender)> {
+    PRUNED.call_once(|| prune_spills(dir));
+    // 32 random bits rarely collide; a few draws make it never in practice.
+    for _ in 0..8 {
+        let path = dir.join(format!("bash-{:08x}.log", fastrand::u32(..)));
+        match io::fs::Appender::create(&path, Access::Shared) {
+            Ok(file) => return Some((path, file)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+fn prune_spills(dir: &std::path::Path) {
+    let days = limits::get().tools.bash_spill_keep_days.value;
+    let keep = jiff::SignedDuration::from_hours(i64::try_from(days * 24).unwrap_or(i64::MAX));
+    let now = io::clock::now();
+    for entry in io::fs::list_dir(dir).unwrap_or_default() {
+        if !(entry.name.starts_with("bash-") && entry.name.ends_with(".log")) {
+            continue;
+        }
+        let path = dir.join(&entry.name);
+        let age = io::fs::modified(&path)
+            .and_then(|m| jiff::Timestamp::try_from(m).ok())
+            .map(|m| now.duration_since(m));
+        if age.is_some_and(|age| age > keep) {
+            let _ = io::fs::remove(&path);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -297,6 +328,39 @@ mod tests {
     #[test]
     fn cleans_escapes_and_carriage_returns() {
         assert_eq!(clean("\u{1b}[31mred\u{1b}[0m\n10%\r50%\r100%"), "red\n100%");
+    }
+
+    #[test]
+    fn old_spills_are_pruned_and_fresh_ones_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let (old, fresh, other) = ("bash-00000001.log", "bash-00000002.log", "notes.log");
+        for name in [old, fresh, other] {
+            io::fs::write_atomic(&dir.path().join(name), b"x", Access::Shared).unwrap();
+        }
+        for name in [old, other] {
+            std::fs::File::options()
+                .write(true)
+                .open(dir.path().join(name))
+                .unwrap()
+                .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000))
+                .unwrap();
+        }
+        prune_spills(dir.path());
+        let left: Vec<String> = io::fs::list_dir(dir.path())
+            .unwrap()
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert_eq!(left, vec![fresh, other]);
+    }
+
+    #[test]
+    fn a_spill_never_reuses_a_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let names: std::collections::HashSet<_> = (0..50)
+            .map(|_| create_spill(dir.path()).unwrap().0)
+            .collect();
+        assert_eq!(names.len(), 50);
     }
 
     #[cfg(unix)]

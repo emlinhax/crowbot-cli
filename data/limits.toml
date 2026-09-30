@@ -112,6 +112,10 @@ reason = "after the shell exits, output still in flight gets this long before th
 value = 262144
 reason = "output held in memory before the rest goes to a spill file; a few max_bytes, since escapes and redrawn progress lines shrink it"
 
+[tools.bash_spill_keep_days]
+value = 7
+reason = "a spill is read in the turn that made it; older ones only fill the disk"
+
 [tools.bash_spill_max_bytes]
 value = 67108864
 reason = "a spill the model can page through; a command printing forever stops filling the disk here"
