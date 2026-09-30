@@ -5,7 +5,8 @@
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Split {
     pub commands: Vec<String>,
-    /// `$(…)`, backticks or a heredoc: what runs cannot be read off the text.
+    /// `$(…)`, backticks, `<(…)`/`>(…)`, a subshell or group, or a heredoc: what runs cannot be
+    /// read off the text.
     pub complex: bool,
     /// Output is redirected into a file.
     pub writes: bool,
@@ -61,6 +62,17 @@ pub fn split(line: &str) -> Split {
                 out.complex = true;
                 current.push(c);
             }
+            // Process substitution runs its own command wherever it appears.
+            (None, '<' | '>') if chars.peek() == Some(&'(') => {
+                out.complex = true;
+                current.push(c);
+            }
+            // A command that opens a subshell or group would be matched by its bracket, not by
+            // the commands inside.
+            (None, '(' | '{') if current.trim().is_empty() => {
+                out.complex = true;
+                current.push(c);
+            }
             (None, '>') => {
                 // `2>&1` and `>/dev/null` go nowhere worth asking about.
                 let rest: String = chars.clone().collect();
@@ -108,6 +120,17 @@ mod tests {
         assert!(split("echo `whoami`").complex);
         assert!(split("cat <<EOF\nx\nEOF").complex);
         assert!(!split("echo '$(literal)'").complex);
+    }
+
+    #[test]
+    fn flags_process_substitution_subshells_and_groups() {
+        assert!(split("cat <(rm -rf ~)").complex);
+        assert!(split("diff <(ls a) <(ls b)").complex);
+        assert!(split("tee >(sh)").complex);
+        assert!(split("(rm -rf x)").complex);
+        assert!(split("echo hi; (rm x)").complex);
+        assert!(split("{ rm x; }").complex);
+        assert!(!split("echo '<(x)' \"(y)\" a=(1 2)").complex);
     }
 
     #[test]
