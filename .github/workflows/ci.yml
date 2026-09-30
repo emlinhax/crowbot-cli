@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+# Nothing here writes to the repository, so third-party actions get a read-only token.
+permissions:
+  contents: read
+
 defaults:
   run:
     shell: bash
@@ -15,6 +19,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    # A hung PTY test would otherwise hold three runners for six hours; cold BoringSSL builds
+    # set the bound.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -29,6 +36,7 @@ jobs:
   release-musl:
     runs-on: ubuntu-latest
     continue-on-error: true
+    timeout-minutes: 60
     container: ghcr.io/rust-cross/rust-musl-cross:x86_64-musl
     steps:
       - uses: actions/checkout@v4
