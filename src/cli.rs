@@ -1,7 +1,8 @@
 use std::process::ExitCode;
 
 use anyhow::bail;
-use clap::{Parser, Subcommand};
+use clap::error::ErrorKind;
+use clap::{CommandFactory, Parser, Subcommand};
 
 use crate::app::App;
 use crate::commands::{self, Ctx, Missing, Scope};
@@ -50,7 +51,18 @@ enum Sub {
 }
 
 pub async fn run() -> ExitCode {
-    match dispatch(Cli::parse()).await {
+    let cli = Cli::parse();
+    if let Some(Sub::Words(words)) = &cli.command
+        && let Some(flag) = misplaced_flag(words)
+    {
+        Cli::command()
+            .error(
+                ErrorKind::ArgumentConflict,
+                format!("`{flag}` goes before the words; quote a prompt that contains it"),
+            )
+            .exit();
+    }
+    match dispatch(cli).await {
         Ok(code) => code,
         Err(e) => {
             term::err(&format!("crowbot: {e:#}\n"));
@@ -141,4 +153,42 @@ fn confirm_trust(untrusted: &Untrusted) -> anyhow::Result<bool> {
         term::out(&format!("{}\n", trust::declined()));
     }
     Ok(yes)
+}
+
+/// One of crowbot's own flags after the words, where it would silently become prompt text (or
+/// a command's argument) instead of taking effect.
+fn misplaced_flag(words: &[String]) -> Option<&str> {
+    let command = Cli::command();
+    let ours = |word: &str| {
+        if let Some(long) = word.strip_prefix("--") {
+            let name = long.split('=').next().unwrap_or(long);
+            command.get_arguments().any(|a| a.get_long() == Some(name))
+        } else if let Some(short) = word.strip_prefix('-') {
+            let mut chars = short.chars();
+            matches!((chars.next(), chars.next()), (Some(c), None)
+                if command.get_arguments().any(|a| a.get_short() == Some(c)))
+        } else {
+            false
+        }
+    };
+    words.iter().map(String::as_str).find(|w| ours(w))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn crowbots_own_flags_after_the_words_are_found() {
+        let found = |words: &[&str]| {
+            let words: Vec<String> = words.iter().map(|w| (*w).to_owned()).collect();
+            misplaced_flag(&words).map(str::to_owned)
+        };
+        assert_eq!(found(&["hi", "--json"]).as_deref(), Some("--json"));
+        assert_eq!(found(&["hi", "--model=x"]).as_deref(), Some("--model=x"));
+        assert_eq!(found(&["hi", "-p"]).as_deref(), Some("-p"));
+        assert_eq!(found(&["login", "--key", "1"]), None);
+        assert_eq!(found(&["login", "--help"]), None);
+        assert_eq!(found(&["explain --json"]), None);
+    }
 }

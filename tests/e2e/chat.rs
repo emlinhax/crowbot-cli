@@ -163,3 +163,19 @@ async fn without_a_key_it_says_how_to_log_in() {
     assert!(run.stderr().contains("crowbot login"), "{}", run.stderr());
     assert_eq!(fake.hits("/v1/chat/completions"), 0);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_flag_after_the_prompt_is_refused_not_sent() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    let run = sandbox
+        .run(&fake.url, &["-p", "hi", "--json"], WITH_KEY)
+        .await;
+    assert_eq!(run.code(), Some(2), "{}", run.stderr());
+    assert!(
+        run.stderr().contains("`--json` goes before the words"),
+        "{}",
+        run.stderr()
+    );
+    assert_eq!(fake.hits("/v1/chat/completions"), 0);
+}
