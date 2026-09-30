@@ -17,6 +17,13 @@ pub struct Target {
     pub outside: bool,
 }
 
+impl Target {
+    /// What the path is, or why that cannot be told, in words for the model.
+    pub fn kind(&self) -> Result<io::fs::Kind, String> {
+        io::fs::kind(&self.path).map_err(|e| format!("Could not look at {}: {e}", self.shown))
+    }
+}
+
 /// Links are followed before deciding inside or outside, so a link out of the project asks to
 /// leave it and a link to `.env` is matched as `.env`.
 pub fn resolve(project: &Path, raw: &str) -> Result<Target, String> {

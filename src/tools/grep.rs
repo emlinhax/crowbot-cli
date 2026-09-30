@@ -56,8 +56,12 @@ impl Tool for Grep {
                     Err(why) => return Output::error(why),
                 };
             let base = io::fs::canonical(&cx.app.paths.project);
-            if io::fs::kind(&root.path) == Kind::Missing {
-                return Output::error(format!("{} does not exist.", root.shown));
+            match root.kind() {
+                Ok(Kind::Missing) => {
+                    return Output::error(format!("{} does not exist.", root.shown));
+                }
+                Ok(_) => {}
+                Err(why) => return Output::error(why),
             }
             let limits = &limits::get().tools;
             let max = limits.max_results.value;

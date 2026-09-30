@@ -33,7 +33,7 @@ impl Tool for Write {
         let args: Args = parse(args)?;
         let target =
             target::resolve(&cx.app.paths.project, &args.path).map_err(Refusal::Refused)?;
-        if io::fs::kind(&target.path) == Kind::Dir {
+        if target.kind().map_err(Refusal::Refused)? == Kind::Dir {
             return Err(Refusal::Refused(format!(
                 "{} is a directory.",
                 target.shown
@@ -65,7 +65,7 @@ impl Tool for Write {
             if let Err(why) = cx.files().check_fresh(&target.path, &target.shown) {
                 return Output::error(why);
             }
-            let created = io::fs::kind(&target.path) == Kind::Missing;
+            let created = target.kind() == Ok(Kind::Missing);
             if let Err(e) =
                 io::fs::write_atomic(&target.path, args.content.as_bytes(), Access::Shared)
             {

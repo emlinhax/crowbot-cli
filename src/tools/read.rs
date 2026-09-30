@@ -53,10 +53,11 @@ impl Tool for Read {
                 Ok(target) => target,
                 Err(why) => return Output::error(why),
             };
-            match io::fs::kind(&target.path) {
-                Kind::Missing => Output::error(format!("{} does not exist.", target.shown)),
-                Kind::Dir => list(&target.path, &target.shown),
-                Kind::File => {
+            match target.kind() {
+                Err(why) => Output::error(why),
+                Ok(Kind::Missing) => Output::error(format!("{} does not exist.", target.shown)),
+                Ok(Kind::Dir) => list(&target.path, &target.shown),
+                Ok(Kind::File) => {
                     let out = file(&target.path, &target.shown, args.offset, args.limit);
                     if !out.is_error {
                         cx.files().saw(&target.path);

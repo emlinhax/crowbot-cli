@@ -51,8 +51,10 @@ impl Tool for Glob {
                     Err(why) => return Output::error(why),
                 };
             let base = io::fs::canonical(&cx.app.paths.project);
-            if io::fs::kind(&root.path) != Kind::Dir {
-                return Output::error(format!("{} is not a directory.", root.shown));
+            match root.kind() {
+                Ok(Kind::Dir) => {}
+                Ok(_) => return Output::error(format!("{} is not a directory.", root.shown)),
+                Err(why) => return Output::error(why),
             }
             let (dir, pattern) = (root.path.clone(), args.pattern.clone());
             let found = tokio::task::spawn_blocking(move || io::search::glob(&dir, &pattern)).await;

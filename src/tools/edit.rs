@@ -79,7 +79,7 @@ impl Tool for Edit {
         if edits.is_empty() {
             return Err(Refusal::InvalidArgs("`edits` is empty".into()));
         }
-        if io::fs::kind(&target.path) != Kind::File {
+        if target.kind().map_err(Refusal::Refused)? != Kind::File {
             return Err(Refusal::Refused(format!(
                 "{} is not a file; use write to create it.",
                 target.shown

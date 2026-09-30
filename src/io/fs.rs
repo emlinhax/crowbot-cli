@@ -121,11 +121,21 @@ pub enum Kind {
     Dir,
 }
 
-pub fn kind(path: &Path) -> Kind {
+/// What is at `path`, following links. Only absence is `Missing`; an error that leaves it
+/// unknown (no permission, say) is returned as the error it is.
+pub fn kind(path: &Path) -> io::Result<Kind> {
     match std::fs::metadata(path) {
-        Ok(m) if m.is_dir() => Kind::Dir,
-        Ok(_) => Kind::File,
-        Err(_) => Kind::Missing,
+        Ok(m) if m.is_dir() => Ok(Kind::Dir),
+        Ok(_) => Ok(Kind::File),
+        Err(e)
+            if matches!(
+                e.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+            ) =>
+        {
+            Ok(Kind::Missing)
+        }
+        Err(e) => Err(e),
     }
 }
 
@@ -139,13 +149,15 @@ pub struct Entry {
     pub is_dir: bool,
 }
 
-/// A directory's entries, sorted by name.
+/// A directory's entries, sorted by name; a link to a directory counts as one.
 pub fn list_dir(path: &Path) -> io::Result<Vec<Entry>> {
     let mut entries: Vec<Entry> = std::fs::read_dir(path)?
         .filter_map(Result::ok)
         .map(|e| Entry {
             name: e.file_name().to_string_lossy().into_owned(),
-            is_dir: e.file_type().is_ok_and(|t| t.is_dir()),
+            is_dir: e
+                .file_type()
+                .is_ok_and(|t| t.is_dir() || (t.is_symlink() && e.path().is_dir())),
         })
         .collect();
     entries.sort_by(|a, b| a.name.cmp(&b.name));
@@ -201,6 +213,43 @@ fn open_new(path: &Path, access: Access) -> io::Result<std::fs::File> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_path_that_cannot_be_looked_at_is_not_called_missing() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let locked = dir.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::write(locked.join("a.txt"), "x").unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let found = kind(&locked.join("a.txt"));
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // SAFETY: a plain query. Root reads through permissions, so there it is simply a file.
+        let root = unsafe { libc::geteuid() } == 0;
+        assert!(
+            root || found
+                .as_ref()
+                .is_err_and(|e| e.kind() == io::ErrorKind::PermissionDenied),
+            "{found:?}"
+        );
+        assert_eq!(kind(&locked.join("gone")).unwrap(), Kind::Missing);
+        assert_eq!(kind(&locked.join("a.txt/b")).unwrap(), Kind::Missing);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_to_a_directory_lists_as_one() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("real")).unwrap();
+        std::os::unix::fs::symlink(dir.path().join("real"), dir.path().join("link")).unwrap();
+        let dirs: Vec<bool> = list_dir(dir.path())
+            .unwrap()
+            .iter()
+            .map(|e| e.is_dir)
+            .collect();
+        assert_eq!(dirs, [true, true]);
+    }
 
     #[test]
     fn missing_file_reads_as_none() {

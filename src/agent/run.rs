@@ -544,7 +544,7 @@ mod tests {
         let (outcome, _, _) = h.run(&shared("auto"), |_, _| {}).await;
         assert_eq!(outcome, Outcome::Done);
         assert_eq!(
-            crate::io::fs::kind(&h.app.paths.project.join("new.txt")),
+            crate::io::fs::kind(&h.app.paths.project.join("new.txt")).unwrap(),
             crate::io::fs::Kind::Missing
         );
         let result = last_message(&h.requests()[1]);
