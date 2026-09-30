@@ -26,6 +26,8 @@ pub enum Outcome {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentEvent {
+    /// Every tool call in a `MessageEnd` gets one `ToolStart` and one `ToolEnd`, refused ones
+    /// included, in call order.
     ToolStart {
         call_id: String,
         name: String,

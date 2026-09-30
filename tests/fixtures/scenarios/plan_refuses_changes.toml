@@ -5,6 +5,7 @@ replies = ["scenarios/plan_refuses/1.sse", "scenarios/plan_refuses/2.sse"]
 
 [expect]
 exit = 0
+stderr_contains = ["› bash rm src/calc.txt", "Not allowed by the user's permission rules"]
 files = { "src/calc.txt" = "2 + 2 = 5\n" }
 
 [[expect.requests]]

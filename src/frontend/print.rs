@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::anyhow;
 
 use crate::agent::event::{AgentEvent, DeltaKind, Outcome};
-use crate::agent::message::{Assistant, Finish, Part};
+use crate::agent::message::{Assistant, Finish, Part, ToolResult};
 use crate::agent::prompt::{Prompt, Reply};
 use crate::agent::run::{self, RunCtx};
 use crate::agent::state::Shared;
@@ -54,6 +54,7 @@ pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<Ex
         shared: &shared,
         at_line_start: AtomicBool::new(true),
         last: Mutex::new(None),
+        declined: Mutex::new(Vec::new()),
     };
     let emit = |event: AgentEvent| out.event(event);
     let cx = RunCtx {
@@ -85,6 +86,8 @@ struct Printer<'a> {
     /// Whether stdout ends at a line start, so stderr notes do not land mid-sentence.
     at_line_start: AtomicBool,
     last: Mutex<Option<Assistant>>,
+    /// Calls already reported at their declined prompt; their start and end say nothing new.
+    declined: Mutex<Vec<String>>,
 }
 
 impl Printer<'_> {
@@ -117,6 +120,10 @@ impl Printer<'_> {
                 self.at_line_start
                     .store(text.ends_with('\n'), Ordering::Relaxed);
             }
+            AgentEvent::ToolStart { call_id, .. }
+            | AgentEvent::ToolEnd {
+                result: ToolResult { call_id, .. },
+            } if self.declined.lock().unwrap().contains(call_id) => {}
             AgentEvent::ToolStart {
                 name, arguments, ..
             } => self.note(&format!("› {name} {}", summary(arguments))),
@@ -126,11 +133,15 @@ impl Printer<'_> {
             }
             AgentEvent::Prompt {
                 prompt: Prompt::Permission { tool, asks, .. },
+                call_id,
                 ..
-            } => self.note(&format!(
-                "  ✗ {tool} needs permission ({}); rerun with --mode auto to allow it",
-                shorten::line(&gate::describe(asks), NOTE_CHARS)
-            )),
+            } => {
+                self.declined.lock().unwrap().push(call_id.clone());
+                self.note(&format!(
+                    "  ✗ {tool} needs permission ({}); rerun with --mode auto to allow it",
+                    shorten::line(&gate::describe(asks), NOTE_CHARS)
+                ));
+            }
             AgentEvent::Retry {
                 delay_ms, error, ..
             } => self.note(&format!(

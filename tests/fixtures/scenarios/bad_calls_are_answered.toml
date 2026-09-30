@@ -4,6 +4,7 @@ replies = ["scenarios/bad_calls/1.sse", "scenarios/bad_calls/2.sse"]
 
 [expect]
 exit = 0
+stderr_contains = ["› frobnicate", "no tool named `frobnicate`", "not valid JSON"]
 
 [[expect.requests]]
 index = 1

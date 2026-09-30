@@ -70,32 +70,29 @@ pub async fn run<'a>(
     }
 
     // Polled in order, so tools start, and results come back, in the order they were called.
-    let results = join_all(
-        cleared
-            .into_iter()
-            .zip(calls)
-            .map(|(slot, call)| async move {
-                let (tool, args) = match slot {
-                    Ok(cleared) => cleared,
-                    Err(refused) => return result(call, Output::error(refused.why)),
-                };
-                (cx.emit)(AgentEvent::ToolStart {
-                    call_id: call.id.clone(),
-                    name: call.name.clone(),
-                    arguments: call.arguments.clone(),
-                });
+    // A refused call gets its start and end too, so a frontend shows every call's fate.
+    let results = join_all(cleared.into_iter().zip(calls).map(|(slot, call)| async move {
+        (cx.emit)(AgentEvent::ToolStart {
+            call_id: call.id.clone(),
+            name: call.name.clone(),
+            arguments: call.arguments.clone(),
+        });
+        let out = match slot {
+            Err(refused) => Output::error(refused.why),
+            Ok((tool, args)) => {
                 let tcx = tool_cx(cx, shared, cancel, &call.id);
-                let out = tokio::select! {
+                tokio::select! {
                     out = tool.run(args, &tcx) => out,
                     () = cancel.cancelled() => Output::error(model_text::get().cancelled.clone()),
-                };
-                let done = result(call, out);
-                (cx.emit)(AgentEvent::ToolEnd {
-                    result: done.clone(),
-                });
-                done
-            }),
-    )
+                }
+            }
+        };
+        let done = result(call, out);
+        (cx.emit)(AgentEvent::ToolEnd {
+            result: done.clone(),
+        });
+        done
+    }))
     .await;
     Batch { results, stop }
 }
