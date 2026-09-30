@@ -1,0 +1,4 @@
+[[permission]]
+permission = "read"
+pattern = "*"
+action = "deny"

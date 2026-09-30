@@ -1,0 +1,8 @@
+data: {"choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "id": "c1", "type": "function", "function": {"name": "read", "arguments": "{\"path\": \"notes.txt\"}"}}]}}]}
+
+data: {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: {"choices": [], "usage": {"prompt_tokens": 100, "completion_tokens": 10}}
+
+data: [DONE]
+

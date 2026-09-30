@@ -1,0 +1,13 @@
+description = "A deny rule in the project's .crowbot/config.toml reaches the permission gate"
+args = ["--mode", "manual", "-p", "read the notes"]
+project = "denies_read"
+replies = ["scenarios/config_deny/1.sse", "scenarios/config_deny/2.sse"]
+
+[expect]
+exit = 0
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "Not allowed"
