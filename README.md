@@ -17,7 +17,13 @@ crowbot models [--refresh]       # live models, prices and limits
 crowbot help                     # every command
 ```
 
-`--model <id>`, `--effort low|medium|high|max` and `--mode manual|auto|plan` apply to any run.
+`--model <id>`, `--effort <level>` and `--mode <mode>` go before the prompt or command;
+`crowbot --help` lists their values. A first word that names a command runs it, except with `-p`
+or `--json`, where every word is prompt text. Otherwise the session opens when stdin and stdout
+are both terminals, and the prompt runs headless when they are not. Piped stdin is read to its
+end and appended to the words (`< /dev/null` when stdin is an open pipe with nothing coming). Exit codes: `0` done, `1` error, rejection or turn limit, `2` bad usage, `130`
+interrupted.
+
 MANUAL asks before edits, commands and fetches; AUTO allows everything, deny rules included.
 PLAN locks out edits outside its plan file and runs, unasked, only the commands its allowlist
 names (`data/modes/plan.toml`); the allowlist is not a sandbox. It ends by handing the plan over.
