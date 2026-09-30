@@ -188,7 +188,12 @@ mod tests {
     #[test]
     fn defaults_parse() {
         let settings: Settings = toml::from_str(DEFAULTS).unwrap();
-        assert!(!settings.model.is_empty());
+        let bundled = crate::api::models::snapshot();
+        assert!(
+            bundled.iter().any(|m| m.id == settings.model),
+            "{}",
+            settings.model
+        );
         assert!(mode::get(&settings.mode).is_some());
         assert!(!settings.permission.is_empty());
     }

@@ -7,6 +7,7 @@ use crate::io;
 use crate::limits;
 
 /// The list shipped in the binary, used when crowbot is unreachable and nothing is cached.
+/// Refreshed by saving a verbatim `GET /v1/models` reply over data/models.json.
 const SNAPSHOT: &str = include_str!("../../data/models.json");
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -85,10 +86,7 @@ struct Cached {
 /// Fresh cache, else live, else stale cache, else the bundled snapshot: never fails.
 pub async fn load(app: &App, refresh: bool) -> Catalog {
     let path = app.paths.models_cache();
-    let cached = io::fs::read_string(&path)
-        .ok()
-        .flatten()
-        .and_then(|text| serde_json::from_str::<Cached>(&text).ok());
+    let cached = read_cache(&path);
     let now = io::clock::now();
     let ttl = SignedDuration::try_from(limits::get().models.cache_ttl_secs.secs())
         .unwrap_or(SignedDuration::MAX);
@@ -140,11 +138,23 @@ async fn fetch(app: &App) -> Result<Vec<Model>, String> {
         .map_err(|e| e.to_string())?;
     let listing: Listing =
         serde_json::from_slice(&resp.body).map_err(|e| format!("unreadable model list: {e}"))?;
-    // An empty list must not read as "crowbot has no models"; keep what we had instead.
-    if listing.data.is_empty() {
+    if !usable(&listing.data) {
         return Err("crowbot returned an empty model list".into());
     }
     Ok(listing.data)
+}
+
+/// An empty list must not read as "crowbot has no models", whether it came live or from the
+/// cache; what we had before is kept instead.
+fn usable(models: &[Model]) -> bool {
+    !models.is_empty()
+}
+
+fn read_cache(path: &std::path::Path) -> Option<Cached> {
+    let text = io::fs::read_string(path).ok().flatten()?;
+    serde_json::from_str::<Cached>(&text)
+        .ok()
+        .filter(|cache| usable(&cache.data))
 }
 
 fn is_fresh(fetched_at: Timestamp, now: Timestamp, ttl: SignedDuration) -> bool {
@@ -175,6 +185,28 @@ mod tests {
     #[test]
     fn snapshot_parses_and_is_not_empty() {
         assert!(!snapshot().is_empty());
+    }
+
+    #[test]
+    fn an_empty_cache_counts_as_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("models.json");
+        let write = |data: Vec<Model>| {
+            let cache = Cached {
+                fetched_at: io::clock::now(),
+                data,
+            };
+            io::fs::write_atomic(
+                &path,
+                &serde_json::to_vec(&cache).unwrap(),
+                io::fs::Access::Shared,
+            )
+            .unwrap();
+        };
+        write(Vec::new());
+        assert!(read_cache(&path).is_none());
+        write(snapshot());
+        assert!(read_cache(&path).is_some());
     }
 
     #[test]
