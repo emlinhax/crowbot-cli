@@ -1,4 +1,6 @@
-//! What a run reports as it goes. Serializable so `--json` is a plain dump of these.
+//! What a run reports as it goes. `--json` prints each as one line; tags and field names are
+//! stable, and changes are additions (tests/golden/json pins them).
+//! CEILING: no version in the stream; a breaking change adds a leading `{"type":"start","v":N}`.
 
 use serde::Serialize;
 

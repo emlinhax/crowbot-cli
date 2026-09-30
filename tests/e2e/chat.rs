@@ -44,19 +44,19 @@ async fn json_mode_emits_one_event_per_line() {
     let sandbox = Sandbox::default();
 
     let run = sandbox.run(&fake.url, &["--json", "hi"], WITH_KEY).await;
-    let events: Vec<Value> = run
-        .success()
-        .stdout()
-        .lines()
-        .map(|l| serde_json::from_str(l).unwrap())
-        .collect();
-    assert_eq!(events[0]["type"], "delta");
-    assert_eq!(events[0]["kind"], "reasoning");
-    let end = events.iter().find(|e| e["type"] == "message_end").unwrap();
-    assert_eq!(end["message"]["finish"], "done");
-    let last = events.last().unwrap();
-    assert_eq!(last["type"], "run_end");
-    assert_eq!(last["outcome"], "done");
+    let stdout = run.success().stdout();
+    for line in stdout.lines() {
+        serde_json::from_str::<Value>(line).unwrap_or_else(|e| panic!("{e}: {line}"));
+    }
+    // The stream is a contract for scripts: its golden changes only on purpose.
+    let golden =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/json/hello.jsonl");
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        std::fs::create_dir_all(golden.parent().unwrap()).unwrap();
+        std::fs::write(&golden, &stdout).unwrap();
+    }
+    let want = std::fs::read_to_string(&golden).unwrap_or_default();
+    assert_eq!(stdout, want, "--json changed; if on purpose, `make golden`");
 }
 
 #[tokio::test(flavor = "multi_thread")]

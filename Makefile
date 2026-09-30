@@ -23,6 +23,7 @@ smoke:
 # Rewrites golden files and insta snapshots from current output; only for a deliberate change.
 golden:
 	UPDATE_GOLDEN=1 INSTA_UPDATE=always $(CARGO) test --locked --bins
+	UPDATE_GOLDEN=1 $(CARGO) test --locked --test e2e
 
 check: lint test e2e
 

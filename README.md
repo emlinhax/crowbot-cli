@@ -12,7 +12,7 @@ crowbot "fix the failing test"   # the same, with the prompt typed in for you to
 crowbot login                    # pair this machine (or: login --key <account number>)
 crowbot signup                   # create an account: no email, no password, no recovery
 crowbot -p "explain this repo"   # headless: one prompt, reply on stdout (pipe input works too)
-crowbot --json "..."             # headless, one JSON event per line
+crowbot --json "..."             # headless, one JSON event per line (fields stable; additions only)
 crowbot models [--refresh]       # live models, prices and limits
 crowbot help                     # every command
 ```

@@ -1,0 +1,5 @@
+{"type":"delta","kind":"reasoning","text":"The user greets me."}
+{"type":"delta","kind":"text","text":"Hello "}
+{"type":"delta","kind":"text","text":"there!"}
+{"type":"message_end","message":{"parts":[{"type":"reasoning","text":"The user greets me."},{"type":"text","text":"Hello there!"}],"model":"crow-2","effort":null,"usage":{"input":1000,"cached":400,"output":100,"reasoning":0,"cost_micros":4840},"finish":"done","error":null,"request_id":"req_fake"}}
+{"type":"run_end","outcome":"done"}
