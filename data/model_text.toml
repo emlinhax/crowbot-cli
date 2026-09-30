@@ -21,3 +21,4 @@ plan_keep = "The user wants to keep planning. Ask what to change, or refine the 
 plan_changes = "The user wants changes to the plan: {feedback}"
 plan_unavailable = "Nobody can approve the plan in this run. Stop and summarise the plan."
 plan_only = "plan_exit only works in PLAN mode."
+mode_left = "The user switched to {mode} mode; the previous mode's instructions no longer apply."

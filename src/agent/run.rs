@@ -6,7 +6,7 @@ use crate::agent::context;
 use crate::agent::event::{AgentEvent, Outcome};
 use crate::agent::message::{Finish, Message, Part, ToolCall};
 use crate::agent::model_text;
-use crate::agent::state::Shared;
+use crate::agent::state::{Reminder, Shared};
 use crate::agent::system_prompt;
 use crate::api::chat::{self, Event, Turn};
 use crate::api::models::Model;
@@ -152,15 +152,19 @@ fn deliver(cx: &RunCtx<'_>, shared: &Shared, transcript: &mut Transcript, parts:
 /// Mode changes reach the model as a reminder on the next user message, so the system prompt
 /// (and the vendor's cache of it) never changes mid-session.
 fn with_reminder(cx: &RunCtx<'_>, shared: &Shared, mut parts: Vec<Part>) -> Vec<Part> {
-    if let Some(mode) = shared.take_reminder()
-        && let Some(text) = mode.reminder.as_deref().and_then(system_prompt::reminder)
-    {
-        parts.insert(
-            0,
-            Part::Reminder {
-                text: fill(text, &[("plan_file", &cx.plan_file)]),
-            },
-        );
+    let text = match shared.take_reminder() {
+        Some(Reminder::Entered(mode)) => mode
+            .reminder
+            .as_deref()
+            .and_then(system_prompt::reminder)
+            .map(|text| fill(text, &[("plan_file", &cx.plan_file)])),
+        Some(Reminder::Left { now }) => {
+            Some(fill(&model_text::get().mode_left, &[("mode", &now.label)]))
+        }
+        None => None,
+    };
+    if let Some(text) = text {
+        parts.insert(0, Part::Reminder { text });
     }
     parts
 }
@@ -582,5 +586,26 @@ mod tests {
         assert!(first["content"].as_str().unwrap().contains("PLAN mode"));
         let result = last_message(&h.requests()[1]);
         assert!(result["content"].as_str().unwrap().contains("Not allowed"));
+    }
+
+    #[tokio::test]
+    async fn leaving_plan_mode_is_told_to_the_model_once() {
+        let h = Harness::new(Vec::new()).await;
+        let told = |i: usize| {
+            let content = last_message(&h.requests()[i])["content"].to_string();
+            content.contains("no longer apply")
+        };
+        let session = shared("plan");
+        h.run(&session, |_, _| {}).await;
+        session.set_mode(mode::get("manual").unwrap());
+        h.run(&session, |_, _| {}).await;
+        h.run(&session, |_, _| {}).await;
+        assert_eq!([told(0), told(1), told(2)], [false, true, false]);
+
+        let session = shared("manual");
+        h.run(&session, |_, _| {}).await;
+        session.set_mode(mode::get("auto").unwrap());
+        h.run(&session, |_, _| {}).await;
+        assert_eq!([told(3), told(4)], [false, false]);
     }
 }

@@ -14,6 +14,14 @@ use crate::mode::Mode;
 use crate::permission::rule::Action;
 use crate::tools::files::Files;
 
+/// A mode change the model has to hear about.
+pub enum Reminder {
+    /// A mode with instructions of its own.
+    Entered(&'static Mode),
+    /// Out of a mode with instructions, into one without, so they no longer hold.
+    Left { now: &'static Mode },
+}
+
 pub struct Shared {
     cancel: Mutex<CancellationToken>,
     steer: Mutex<VecDeque<Vec<Part>>>,
@@ -22,8 +30,8 @@ pub struct Shared {
     asks: Mutex<HashMap<u64, (bool, oneshot::Sender<Reply>)>>,
     next_ask: AtomicU64,
     mode: Mutex<&'static Mode>,
-    /// The mode whose reminder the model was last given.
-    reminded: Mutex<Option<String>>,
+    /// The mode the model was last told about.
+    reminded: Mutex<Option<&'static Mode>>,
     pub files: Files,
 }
 
@@ -85,15 +93,21 @@ impl Shared {
         self.asks.lock().unwrap().contains_key(&id)
     }
 
-    /// The reminder to give the model now, if the mode changed since the last one.
-    pub fn take_reminder(&self) -> Option<&'static Mode> {
+    /// What to tell the model about the mode now, if it changed since the model was last told.
+    pub fn take_reminder(&self) -> Option<Reminder> {
         let mode = self.mode();
         let mut reminded = self.reminded.lock().unwrap();
-        if reminded.as_deref() == Some(mode.id.as_str()) {
+        if reminded.is_some_and(|m| m.id == mode.id) {
             return None;
         }
-        *reminded = Some(mode.id.clone());
-        mode.reminder.is_some().then_some(mode)
+        let left = reminded.replace(mode);
+        if mode.reminder.is_some() {
+            Some(Reminder::Entered(mode))
+        } else if left.is_some_and(|m| m.reminder.is_some()) {
+            Some(Reminder::Left { now: mode })
+        } else {
+            None
+        }
     }
 
     /// Delivered after the current tool calls finish.
