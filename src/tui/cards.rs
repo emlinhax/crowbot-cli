@@ -10,6 +10,7 @@ use crate::agent::message::ToolResult;
 use crate::limits;
 use crate::text::diff;
 use crate::text::styled::{Line, Style};
+use crate::text::units;
 use crate::tui::boxed::capped;
 
 const SRC: &str = include_str!("../../data/tool_cards.toml");
@@ -25,9 +26,22 @@ struct Spec {
     #[serde(default)]
     body: Option<Body>,
     #[serde(default)]
-    summary: Option<String>,
+    summary: Option<Summary>,
     #[serde(default)]
     max_lines: Option<usize>,
+}
+
+/// A line from the result's details, or a count of one of them in the form that fits it.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+enum Summary {
+    Text(String),
+    Count {
+        /// The details key holding the number; `{n}` in the forms.
+        count: String,
+        one: String,
+        many: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
@@ -131,13 +145,20 @@ fn body(tool: &str, result: &ToolResult, width: usize) -> Vec<Line> {
             lines[skip..].iter().map(|l| dim(l)).collect()
         }
         Body::Summary => {
-            let template = spec.summary.unwrap_or_default();
+            let template = match spec.summary {
+                Some(Summary::Text(text)) => text,
+                Some(Summary::Count { count, one, many }) => {
+                    let n = lookup(&count, result).parse().unwrap_or(0);
+                    units::plural(n, &one, &many)
+                }
+                None => String::new(),
+            };
             vec![Line::styled(fill(&template, result), Style::fg("muted")).truncate(width)]
         }
     }
 }
 
-/// `{a.b}` reads `details.a.b` (array indices too); `{lines}` counts output lines.
+/// `{a.b}` reads `details.a.b` (array indices too).
 fn fill(template: &str, result: &ToolResult) -> String {
     let mut out = String::new();
     let mut rest = template;
@@ -155,9 +176,6 @@ fn fill(template: &str, result: &ToolResult) -> String {
 }
 
 fn lookup(key: &str, result: &ToolResult) -> String {
-    if key == "lines" {
-        return result.content.lines().count().to_string();
-    }
     let mut value = result.details.clone().unwrap_or(Value::Null);
     for part in key.split('.') {
         value = match part.parse::<usize>() {
@@ -238,6 +256,23 @@ mod tests {
             60,
         );
         assert_eq!(edit[2].to_tagged(), "  [diff_del]-a[/]");
+    }
+
+    #[test]
+    fn counts_come_from_the_details_in_the_form_that_fits() {
+        let summary = |tool: &str, details| {
+            let card = finished(
+                tool,
+                r#"{"path":"a"}"#,
+                &result("x", Some(details), false),
+                60,
+            );
+            card[1].text()
+        };
+        assert_eq!(summary("write", json!({"lines": 1})).trim(), "1 line");
+        assert_eq!(summary("write", json!({"lines": 120})).trim(), "120 lines");
+        assert_eq!(summary("glob", json!({"files": 1})).trim(), "1 file");
+        assert_eq!(summary("grep", json!({"matches": 0})).trim(), "0 matches");
     }
 
     #[test]

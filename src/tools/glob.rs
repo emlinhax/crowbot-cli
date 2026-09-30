@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
@@ -62,7 +62,8 @@ impl Tool for Glob {
                 Err(e) => return Output::error(e.to_string()),
             };
             if found.is_empty() {
-                return Output::ok(format!("No files match {}.", args.pattern));
+                return Output::ok(format!("No files match {}.", args.pattern))
+                    .with_details(json!({"files": 0}));
             }
             // Newest first: the file being worked on is usually the one changed last.
             found.sort_by_key(|f| std::cmp::Reverse(f.modified));
@@ -75,7 +76,7 @@ impl Tool for Glob {
             if found.len() > max {
                 let _ = write!(out, "\n[{} more; narrow the pattern.]", found.len() - max);
             }
-            Output::ok(out.trim_end().to_owned())
+            Output::ok(out.trim_end().to_owned()).with_details(json!({"files": found.len()}))
         })
     }
 }

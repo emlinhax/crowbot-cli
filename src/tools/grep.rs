@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
@@ -78,7 +78,7 @@ impl Tool for Grep {
                 Err(e) => return Output::error(e.to_string()),
             };
             if hits.is_empty() {
-                return Output::ok("No matches.");
+                return Output::ok("No matches.").with_details(json!({"matches": 0}));
             }
             let mut out: String = hits
                 .iter()
@@ -94,7 +94,7 @@ impl Tool for Grep {
             if capped {
                 let _ = write!(out, "\n[Stopped at {max} matches; narrow the search.]");
             }
-            Output::ok(out.trim_end().to_owned())
+            Output::ok(out.trim_end().to_owned()).with_details(json!({"matches": hits.len()}))
         })
     }
 }
