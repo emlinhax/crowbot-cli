@@ -5,6 +5,7 @@ use crate::agent::prompt::{Prompt, Reply};
 use crate::auth;
 use crate::io::term::{KeyCode, KeyEvent, KeyModifiers};
 use crate::limits;
+use crate::permission::gate;
 use crate::text::diff;
 use crate::text::markdown;
 use crate::text::styled::{Line, Style};
@@ -105,11 +106,13 @@ impl Choice {
                 asks,
                 preview,
             } => {
-                let target = asks
-                    .first()
-                    .and_then(|a| a.patterns.first())
-                    .cloned()
-                    .unwrap_or_default();
+                // Every ask is on the card: approving one call approves all of them.
+                let title = match asks.as_slice() {
+                    [only] if only.permission == *tool => {
+                        format!("{tool} {}", only.patterns.join(", "))
+                    }
+                    _ => format!("{tool}: {}", gate::describe(asks)),
+                };
                 let body = preview
                     .as_deref()
                     .map(|p| diff::render(p, inner, max))
@@ -122,7 +125,7 @@ impl Choice {
                         pick: Pick::Reply(c.reply),
                     })
                     .collect();
-                Self::new(id, format!("{tool} {target}"), body, options)
+                Self::new(id, title, body, options)
             }
             Prompt::Question { question, options } => {
                 let mut opts = indexed(options);
@@ -286,6 +289,27 @@ mod tests {
             card.key(None, &press(KeyCode::Char('1'))),
             Step::Answer(Reply::Yes)
         ));
+    }
+
+    #[test]
+    fn a_call_that_asks_twice_shows_both_asks() {
+        let card = Choice::from_prompt(
+            8,
+            &Prompt::Permission {
+                tool: "read".into(),
+                asks: vec![
+                    Ask::new("read", "/etc/app.conf"),
+                    Ask::new("external_directory", "/etc/app.conf"),
+                ],
+                preview: None,
+            },
+            100,
+        );
+        let top = card.render(100)[0].text();
+        assert!(
+            top.contains("read: read /etc/app.conf; external_directory /etc/app.conf"),
+            "{top}"
+        );
     }
 
     #[test]
