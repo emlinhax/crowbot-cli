@@ -42,11 +42,11 @@ impl Drop for Session {
 
 impl Session {
     fn start(sandbox: &Sandbox, api_url: &str) -> Self {
-        Self::start_as(sandbox, api_url, Some(ENV_KEY))
+        Self::start_as(sandbox, api_url, Some(ENV_KEY), &[])
     }
 
-    /// `key: None` starts logged out.
-    fn start_as(sandbox: &Sandbox, api_url: &str, key: Option<&str>) -> Self {
+    /// `key: None` starts logged out; `args` go on the command line.
+    fn start_as(sandbox: &Sandbox, api_url: &str, key: Option<&str>, args: &[&str]) -> Self {
         let pty = native_pty_system()
             .openpty(PtySize {
                 rows: ROWS,
@@ -56,6 +56,7 @@ impl Session {
             })
             .expect("a pseudo-terminal");
         let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_crowbot"));
+        cmd.args(args);
         cmd.cwd(sandbox.project.path());
         for name in CLEARED {
             cmd.env_remove(name);
@@ -219,7 +220,7 @@ async fn in_session<T: Send + 'static>(
 ) -> Ended<T> {
     let url = fake.url.clone();
     tokio::task::spawn_blocking(move || {
-        let mut s = Session::start_as(&sandbox, &url, key);
+        let mut s = Session::start_as(&sandbox, &url, key, &[]);
         s.wait_for("crowbot v");
         let out = body(&mut s);
         let screen = s.contents();
@@ -257,6 +258,25 @@ async fn a_session_welcomes_chats_switches_mode_and_quits() {
     .await;
     assert!(ended.exited.contains("Session saved"), "{}", ended.exited);
     assert_eq!(fake.hits("/v1/chat/completions"), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn keytest_reads_the_terminal_and_leaves_it_as_it_found_it() {
+    let fake = Fake::start().await;
+    let url = fake.url.clone();
+    tokio::task::spawn_blocking(move || {
+        let sandbox = Sandbox::default();
+        let mut s = Session::start_as(&sandbox, &url, None, &["keytest", "shift+tab"]);
+        s.wait_for("Press Shift+Tab");
+        assert!(s.screen.screen().bracketed_paste() && s.screen.screen().hide_cursor());
+        s.send("\x1b[Z");
+        s.wait_for("Shift+Tab: BackTab");
+        assert!(s.wait_exit(), "{}", s.contents());
+        let screen = s.screen.screen();
+        assert!(!screen.bracketed_paste() && !screen.hide_cursor());
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]

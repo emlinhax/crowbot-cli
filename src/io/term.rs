@@ -1,14 +1,18 @@
 #![allow(clippy::disallowed_methods)]
 
 use std::io::{self, IsTerminal, Write};
+use std::sync::Arc;
 
 use crossterm::event::{
-    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture, Event,
     EventStream, KeyboardEnhancementFlags, MouseButton, MouseEventKind,
     PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
-pub use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
+// CEILING: key types are crossterm's; a backend swap needs a mirror type.
+pub use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::terminal::{
+    DisableLineWrap, EnableLineWrap, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use futures_util::{Stream, StreamExt};
 
 use crate::settings;
@@ -16,15 +20,16 @@ use crate::text::theme::Depth;
 
 /// Writes to stdout, ignoring a closed pipe (`crowbot models | head`) where `print!` would panic.
 pub fn out(text: &str) {
-    let mut stdout = io::stdout().lock();
-    let _ = stdout.write_all(text.as_bytes());
-    let _ = stdout.flush();
+    write_to(io::stdout().lock(), text);
 }
 
 pub fn err(text: &str) {
-    let mut stderr = io::stderr().lock();
-    let _ = stderr.write_all(text.as_bytes());
-    let _ = stderr.flush();
+    write_to(io::stderr().lock(), text);
+}
+
+fn write_to(mut to: impl Write, text: &str) {
+    let _ = to.write_all(text.as_bytes());
+    let _ = to.flush();
 }
 
 /// Piped input, if stdin is not a terminal; lets `git diff | crowbot -p review` work.
@@ -94,14 +99,59 @@ pub async fn interrupted() {
     }
 }
 
-/// Auto-wrap off: a line whose width was misjudged is clipped instead of pushing rows down.
-const WRAP_OFF: &str = "\x1b[?7l";
-const WRAP_ON: &str = "\x1b[?7h";
+type Hook = dyn Fn(&std::panic::PanicHookInfo<'_>) + Send + Sync;
 
 /// Raw mode while the guard lives; dropping it restores the terminal, even on an early return.
+/// A panic restores it too, then aborts, the same in dev as under release's `panic = "abort"`.
 pub struct Raw {
     enhanced: bool,
-    fullscreen: bool,
+    /// Pushed before the step it undoes, so a step that fails halfway is still undone.
+    undo: Vec<Undo>,
+    previous_hook: Option<Arc<Hook>>,
+}
+
+#[derive(Clone, Copy)]
+enum Undo {
+    #[cfg(windows)]
+    CodePage(u32),
+    RawMode,
+    Fullscreen,
+    Paste,
+    Keyboard,
+}
+
+impl Undo {
+    fn run(self) {
+        let mut stdout = io::stdout();
+        match self {
+            #[cfg(windows)]
+            // SAFETY: plain Win32 call with a code page the console reported.
+            Undo::CodePage(page) => unsafe {
+                windows_sys::Win32::System::Console::SetConsoleOutputCP(page);
+            },
+            Undo::RawMode => {
+                let _ = crossterm::terminal::disable_raw_mode();
+            }
+            Undo::Fullscreen => {
+                let _ = crossterm::execute!(
+                    stdout,
+                    EnableLineWrap,
+                    DisableMouseCapture,
+                    LeaveAlternateScreen
+                );
+            }
+            Undo::Paste => {
+                let _ = crossterm::execute!(stdout, DisableBracketedPaste, crossterm::cursor::Show);
+            }
+            Undo::Keyboard => {
+                let _ = crossterm::execute!(stdout, PopKeyboardEnhancementFlags);
+            }
+        }
+    }
+}
+
+fn undo_all(undo: &[Undo]) {
+    undo.iter().rev().for_each(|u| u.run());
 }
 
 impl Raw {
@@ -116,22 +166,37 @@ impl Raw {
     }
 
     fn open(fullscreen: bool) -> io::Result<Self> {
+        let mut raw = Self {
+            enhanced: false,
+            undo: Vec::new(),
+            previous_hook: None,
+        };
         #[cfg(windows)]
-        // SAFETY: plain Win32 call; UTF-8 output is what every line we write is.
+        // SAFETY: plain Win32 calls; UTF-8 output is what every line we write is.
         unsafe {
-            windows_sys::Win32::System::Console::SetConsoleOutputCP(65001);
+            use windows_sys::Win32::System::Console::{GetConsoleOutputCP, SetConsoleOutputCP};
+            raw.undo.push(Undo::CodePage(GetConsoleOutputCP()));
+            SetConsoleOutputCP(65001);
         }
         crossterm::terminal::enable_raw_mode()?;
+        raw.undo.push(Undo::RawMode);
         let mut stdout = io::stdout();
-        // Before the keyboard flags: kitty keeps a separate flag stack per screen.
+        // Before the keyboard flags: kitty keeps a separate flag stack per screen. Auto-wrap off:
+        // a line whose width was misjudged is clipped instead of pushing rows down.
         if fullscreen {
-            crossterm::execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-            let _ = stdout.write_all(WRAP_OFF.as_bytes());
+            raw.undo.push(Undo::Fullscreen);
+            crossterm::execute!(
+                stdout,
+                EnterAlternateScreen,
+                EnableMouseCapture,
+                DisableLineWrap
+            )?;
         }
+        raw.undo.push(Undo::Paste);
         // Best effort: terminals that lack bracketed paste simply ignore the sequence.
         let _ = crossterm::execute!(stdout, EnableBracketedPaste, crossterm::cursor::Hide);
-        let enhanced = crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
-        if enhanced {
+        if crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false) {
+            raw.undo.push(Undo::Keyboard);
             crossterm::execute!(
                 stdout,
                 PushKeyboardEnhancementFlags(
@@ -139,11 +204,17 @@ impl Raw {
                         | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
                 )
             )?;
+            raw.enhanced = true;
         }
-        Ok(Self {
-            enhanced,
-            fullscreen,
-        })
+        let previous: Arc<Hook> = Arc::from(std::panic::take_hook());
+        let (undo, report) = (raw.undo.clone(), Arc::clone(&previous));
+        std::panic::set_hook(Box::new(move |info| {
+            undo_all(&undo);
+            report(info);
+            std::process::abort();
+        }));
+        raw.previous_hook = Some(previous);
+        Ok(raw)
     }
 
     /// Whether the terminal speaks the kitty keyboard protocol (tells Shift+Enter from Enter).
@@ -154,44 +225,10 @@ impl Raw {
 
 impl Drop for Raw {
     fn drop(&mut self) {
-        if self.enhanced {
-            let _ = crossterm::execute!(io::stdout(), PopKeyboardEnhancementFlags);
+        if let Some(previous) = self.previous_hook.take() {
+            std::panic::set_hook(Box::new(move |info| previous(info)));
         }
-        if self.fullscreen {
-            leave_fullscreen();
-        }
-        restore();
-    }
-}
-
-fn leave_fullscreen() {
-    let mut stdout = io::stdout();
-    let _ = stdout.write_all(WRAP_ON.as_bytes());
-    let _ = crossterm::execute!(stdout, DisableMouseCapture, LeaveAlternateScreen);
-}
-
-/// `restore` for a full-screen session, for the panic hook.
-pub fn restore_fullscreen() {
-    leave_fullscreen();
-    restore();
-}
-
-/// Puts the terminal back to normal; also used by the panic hook, which has no guard to drop.
-pub fn restore() {
-    let _ = crossterm::execute!(io::stdout(), DisableBracketedPaste, crossterm::cursor::Show);
-    let _ = crossterm::terminal::disable_raw_mode();
-}
-
-pub fn read_event() -> io::Result<Event> {
-    crossterm::event::read()
-}
-
-/// The next event if one arrives within `timeout`.
-pub fn poll_event(timeout: std::time::Duration) -> io::Result<Option<Event>> {
-    if crossterm::event::poll(timeout)? {
-        crossterm::event::read().map(Some)
-    } else {
-        Ok(None)
+        undo_all(&self.undo);
     }
 }
 

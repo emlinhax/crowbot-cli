@@ -95,11 +95,6 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
     };
 
     let raw = term::Raw::fullscreen()?;
-    let default_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        term::restore_fullscreen();
-        default_hook(info);
-    }));
     let mut tui = Tui::new(app, catalog, model, &shared, initial);
     let (spent, transcript) = tui.run(turns, transcript, rx).await;
     drop(raw);
