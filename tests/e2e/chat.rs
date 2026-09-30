@@ -98,6 +98,18 @@ async fn billing_errors_fail_with_a_hint_and_no_retry() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn an_error_whose_body_stalls_is_retried_not_waited_on() {
+    let fake = Fake::start().await;
+    fake.script([Reply::Stall { status: 503 }, Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+
+    let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
+    assert!(run.success().stdout().contains("Hello there!"));
+    assert!(run.stderr().contains("retrying"), "{}", run.stderr());
+    assert_eq!(fake.hits("/v1/chat/completions"), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_mid_stream_error_keeps_the_partial_reply() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("error_midstream.sse")]);

@@ -55,7 +55,7 @@ pub async fn poll(api: &Api, device_code: &str) -> Result<Poll, ApiError> {
             limits::get().http.request_timeout_ms.ms(),
         )
         .await?;
-    if resp.status == 202 {
+    if resp.head.status == 202 {
         return Ok(Poll::Pending);
     }
     let ready: Ready = serde_json::from_slice(&resp.body).map_err(|e| unreadable(&e))?;

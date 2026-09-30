@@ -7,6 +7,7 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
+use futures_util::StreamExt;
 use serde_json::{Value, json};
 
 const MODELS: &str = include_str!("../fixtures/api/models.json");
@@ -26,6 +27,8 @@ pub enum Reply {
         kind: &'static str,
         retry_after: Option<u64>,
     },
+    /// An error that sends its headers (retry at once) and the start of its body, then nothing.
+    Stall { status: u16 },
 }
 
 #[derive(Default)]
@@ -192,6 +195,17 @@ async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> 
             kind,
             retry_after,
         }) => error(status, kind, retry_after),
+        Some(Reply::Stall { status }) => {
+            let start =
+                futures_util::stream::once(async { Ok::<_, std::io::Error>(r#"{"error":"#) });
+            let body = axum::body::Body::from_stream(start.chain(futures_util::stream::pending()));
+            (
+                StatusCode::from_u16(status).unwrap(),
+                [("x-request-id", "req_fake"), ("retry-after", "0")],
+                body,
+            )
+                .into_response()
+        }
         None => error(500, "unscripted", None),
     }
 }

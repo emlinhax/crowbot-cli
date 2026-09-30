@@ -6,6 +6,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::io::http::{HttpError, Response};
+use crate::limits;
 
 const CATALOG_SRC: &str = include_str!("../../data/errors.toml");
 
@@ -88,15 +89,15 @@ impl ApiError {
                 "http_error",
                 String::from_utf8_lossy(&resp.body)
                     .chars()
-                    .take(200)
+                    .take(limits::get().http.error_text_chars.value)
                     .collect::<String>(),
             ),
         };
-        info.status = Some(resp.status);
-        info.request_id.clone_from(&resp.request_id);
+        info.status = Some(resp.head.status);
+        info.request_id.clone_from(&resp.head.request_id);
         Self {
             info,
-            retry_after: resp.retry_after,
+            retry_after: resp.head.retry_after,
         }
     }
 
@@ -127,12 +128,15 @@ impl From<HttpError> for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::io::http::Head;
 
     fn response(status: u16, body: &str) -> Response {
         Response {
-            status,
-            request_id: Some("req_1".into()),
-            retry_after: Some(Duration::from_secs(3)),
+            head: Head {
+                status,
+                request_id: Some("req_1".into()),
+                retry_after: Some(Duration::from_secs(3)),
+            },
             body: body.as_bytes().to_vec(),
         }
     }

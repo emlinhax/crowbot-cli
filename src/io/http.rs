@@ -23,19 +23,43 @@ pub struct Request<'a> {
     pub timeout: Duration,
 }
 
-pub struct Response {
+/// What a response says before its body.
+pub struct Head {
     pub status: u16,
     pub request_id: Option<String>,
     pub retry_after: Option<Duration>,
+}
+
+pub struct Response {
+    pub head: Head,
     pub body: Vec<u8>,
 }
 
 /// A response whose body is still arriving.
 pub struct Streaming {
-    pub status: u16,
-    pub request_id: Option<String>,
-    pub retry_after: Option<Duration>,
+    pub head: Head,
     pub body: BoxStream<'static, Result<Vec<u8>, HttpError>>,
+}
+
+impl Streaming {
+    /// The body as far as it arrives within `timeout` and `max_bytes`; a read that fails or
+    /// stalls ends it there, keeping what came.
+    pub async fn collect(mut self, max_bytes: usize, timeout: Duration) -> Response {
+        let mut body = Vec::new();
+        let read = async {
+            while body.len() < max_bytes
+                && let Some(Ok(chunk)) = self.body.next().await
+            {
+                body.extend(chunk);
+            }
+        };
+        let _ = tokio::time::timeout(timeout, read).await;
+        body.truncate(max_bytes);
+        Response {
+            head: self.head,
+            body,
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -72,12 +96,7 @@ impl Http {
             .map_err(classify)?;
         let head = Head::of(&resp);
         let body = resp.bytes().await.map_err(classify)?.to_vec();
-        Ok(Response {
-            status: head.status,
-            request_id: head.request_id,
-            retry_after: head.retry_after,
-            body,
-        })
+        Ok(Response { head, body })
     }
 
     /// Sends and returns as soon as headers arrive; the caller bounds each read of the body.
@@ -86,11 +105,8 @@ impl Http {
             .await
             .map_err(|_| HttpError::Timeout)?
             .map_err(classify)?;
-        let head = Head::of(&resp);
         Ok(Streaming {
-            status: head.status,
-            request_id: head.request_id,
-            retry_after: head.retry_after,
+            head: Head::of(&resp),
             body: resp
                 .bytes_stream()
                 .map(|chunk| chunk.map(|b| b.to_vec()).map_err(classify))
@@ -114,12 +130,6 @@ impl Http {
         }
         builder
     }
-}
-
-struct Head {
-    status: u16,
-    request_id: Option<String>,
-    retry_after: Option<Duration>,
 }
 
 impl Head {

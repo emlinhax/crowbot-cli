@@ -8,6 +8,18 @@ reason = "a dead network should fail fast; slow responses are bounded separately
 value = 30000
 reason = "account calls are small; anything slower is a stuck connection"
 
+[http.error_body_ms]
+value = 5000
+reason = "an error's body follows its headers at once; one that trails is a stuck connection"
+
+[http.error_body_bytes]
+value = 16384
+reason = "error envelopes are well under 1 KiB, and only their start is shown"
+
+[http.error_text_chars]
+value = 200
+reason = "a server's own words past this crowd a one-line notice"
+
 [models.fetch_timeout_ms]
 value = 2500
 reason = "on the startup path a stale model list beats a slow start (same bound as crowbot's opencode plugin)"

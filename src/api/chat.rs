@@ -152,7 +152,7 @@ async fn attempt_once(
     }
 
     let emitted = asm.emitted;
-    let request_id = resp.request_id.clone();
+    let request_id = resp.head.request_id.clone();
     let done = asm.finish(cut);
     let (finish, error) = if aborted {
         (Finish::Aborted, None)

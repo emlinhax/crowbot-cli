@@ -84,32 +84,27 @@ impl Api {
         timeout: Duration,
     ) -> Result<Response, ApiError> {
         let resp = self.http.send(self.request(id, &call, timeout)?).await?;
-        if resp.status >= 400 {
+        if resp.head.status >= 400 {
             return Err(ApiError::from_response(&resp));
         }
         Ok(resp)
     }
 
-    /// Like `call`, but hands back the body as it streams; errors before the body are read whole.
+    /// Like `call`, but hands back the body as it streams. An error's body is read first, as far
+    /// as it comes within the error bounds in data/limits.toml.
     pub async fn open(
         &self,
         id: &str,
         call: Call<'_>,
         timeout: Duration,
     ) -> Result<Streaming, ApiError> {
-        let mut resp = self.http.open(self.request(id, &call, timeout)?).await?;
-        if resp.status >= 400 {
-            use futures_util::StreamExt;
-            let mut body = Vec::new();
-            while let Some(Ok(chunk)) = resp.body.next().await {
-                body.extend(chunk);
-            }
-            return Err(ApiError::from_response(&Response {
-                status: resp.status,
-                request_id: resp.request_id,
-                retry_after: resp.retry_after,
-                body,
-            }));
+        let resp = self.http.open(self.request(id, &call, timeout)?).await?;
+        if resp.head.status >= 400 {
+            let limits = &crate::limits::get().http;
+            let resp = resp
+                .collect(limits.error_body_bytes.value, limits.error_body_ms.ms())
+                .await;
+            return Err(ApiError::from_response(&resp));
         }
         Ok(resp)
     }

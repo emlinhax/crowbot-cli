@@ -51,6 +51,9 @@ pub struct Limits {
 pub struct HttpLimits {
     pub connect_timeout_ms: Limit<u64>,
     pub request_timeout_ms: Limit<u64>,
+    pub error_body_ms: Limit<u64>,
+    pub error_body_bytes: Limit<usize>,
+    pub error_text_chars: Limit<usize>,
 }
 
 #[derive(Debug, Deserialize)]
