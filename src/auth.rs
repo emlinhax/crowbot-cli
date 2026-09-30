@@ -21,7 +21,7 @@ pub enum KeyKind {
     Device,
 }
 
-#[derive(Debug)]
+/// No `Debug`: it holds the secret.
 pub struct Key {
     pub secret: String,
     pub origin: Origin,

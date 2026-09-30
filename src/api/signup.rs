@@ -16,7 +16,8 @@ pub struct Challenge {
     pub bits: u32,
 }
 
-#[derive(Debug, Deserialize)]
+/// No `Debug`: it holds the account number.
+#[derive(Deserialize)]
 pub struct Account {
     pub account_number: String,
     pub formatted: String,

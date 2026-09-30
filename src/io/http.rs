@@ -141,12 +141,43 @@ impl Head {
     }
 }
 
+/// The URL is dropped from the message: a pairing poll's URL carries the live device code.
 fn classify(e: reqwest::Error) -> HttpError {
+    let e = e.without_url();
     if e.is_timeout() {
         HttpError::Timeout
     } else if e.is_connect() {
         HttpError::Connect(e.to_string())
     } else {
         HttpError::Other(e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn an_error_never_repeats_the_url() {
+        let closed = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let http = Http::new(Duration::from_secs(2)).unwrap();
+        let sent = http
+            .send(Request {
+                method: Method::Get,
+                url: format!("http://127.0.0.1:{closed}/api/pair/DEVICECODE"),
+                bearer: None,
+                headers: &[],
+                json: None,
+                timeout: Duration::from_secs(2),
+            })
+            .await;
+        let Err(err) = sent else {
+            panic!("a closed port answered");
+        };
+        assert!(!err.to_string().contains("DEVICECODE"), "{err}");
     }
 }

@@ -10,7 +10,8 @@ use crate::api::error::{ApiError, ErrorInfo};
 use crate::api::{Api, Call};
 use crate::limits;
 
-#[derive(Debug, Deserialize)]
+/// No `Debug`: it holds the device code.
+#[derive(Deserialize)]
 pub struct Started {
     pub device_code: String,
     pub user_code: String,
