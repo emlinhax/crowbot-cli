@@ -51,8 +51,16 @@ impl Policy<'_> {
         let mut asking = false;
         for ask in asks {
             for pattern in &ask.patterns {
-                let layers = self.rules.iter().chain(&locks);
-                match rule::evaluate(layers, &ask.permission, pattern) {
+                // A lock can tighten the rules but never lift one of their denies.
+                let action = match (
+                    rule::evaluate(self.rules, &ask.permission, pattern),
+                    rule::last_match(&locks, &ask.permission, pattern),
+                ) {
+                    (Action::Deny, _) => Action::Deny,
+                    (_, Some(lock)) => lock,
+                    (from_rules, None) => from_rules,
+                };
+                match action {
                     Action::Deny => {
                         denied.get_or_insert_with(|| format!("{} {pattern}", ask.permission));
                     }
@@ -190,6 +198,25 @@ mod tests {
             policy("plan", &rules).decide(&[ask]),
             Decision::Deny(_)
         ));
+    }
+
+    #[test]
+    fn a_plan_lock_that_allows_cannot_lift_a_user_deny() {
+        let mut rules = defaults();
+        rules.push(Rule {
+            permission: "bash".into(),
+            pattern: "git log *".into(),
+            action: Action::Deny,
+        });
+        let ask = [Ask::new("bash", "git log -p")];
+        assert!(matches!(
+            policy("plan", &rules).decide(&ask),
+            Decision::Deny(_)
+        ));
+        assert_eq!(
+            policy("plan", &rules).decide(&[Ask::new("bash", "git status")]),
+            Decision::Allow
+        );
     }
 
     #[test]

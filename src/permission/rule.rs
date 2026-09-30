@@ -23,11 +23,19 @@ pub fn evaluate<'a>(
     permission: &str,
     target: &str,
 ) -> Action {
+    last_match(rules, permission, target).unwrap_or(Action::Ask)
+}
+
+pub fn last_match<'a>(
+    rules: impl IntoIterator<Item = &'a Rule>,
+    permission: &str,
+    target: &str,
+) -> Option<Action> {
     rules
         .into_iter()
         .filter(|r| wildcard(&r.permission, permission) && wildcard(&r.pattern, target))
         .last()
-        .map_or(Action::Ask, |r| r.action)
+        .map(|r| r.action)
 }
 
 /// `*` matches any run of characters (slashes included), `?` exactly one.
