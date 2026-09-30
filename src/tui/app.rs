@@ -80,8 +80,10 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
     })?;
     let mode = mode::get(&app.settings.mode).ok_or_else(|| anyhow!("mode was validated"))?;
     let registry = Registry::builtin(app);
-    let transcript = Transcript::new(Some(Store::create(&app.paths)?));
-    let session_file = transcript.path().map(|p| p.display().to_string());
+    let store = Store::create(&app.paths);
+    // A turn still holding the transcript at exit has already written its prompt there.
+    let session_file = store.path.display().to_string();
+    let transcript = Transcript::new(Some(store));
     let plan_file = tools::plan_file(&app.paths, &transcript.id());
     let shared = Shared::new(mode);
     let (tx, rx) = mpsc::unbounded_channel();
@@ -103,7 +105,7 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
     // Only a file that still holds the whole conversation counts as saved.
     let saved = match &transcript {
         Some(transcript) => transcript.path().map(|p| p.display().to_string()),
-        None => session_file,
+        None => Some(session_file),
     };
     if let Some(path) = saved {
         term::out(&format!(

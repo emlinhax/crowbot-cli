@@ -1,0 +1,12 @@
+{"type":"session","v":1,"id":"a1b2c3d4","created":"2026-09-30T12:00:00Z","cwd":"/home/u/proj","crowbot":"0.1.0"}
+{"type":"message","id":"00000001","parent":null,"ts":"2026-09-30T12:00:01Z","message":{"role":"user","parts":[{"type":"reminder","text":"PLAN mode is on."},{"type":"text","text":"fix the test"}]}}
+{"type":"message","id":"00000002","parent":"00000001","ts":"2026-09-30T12:00:02Z","message":{"role":"assistant","parts":[{"type":"reasoning","text":"Look first."},{"type":"text","text":"Reading it."},{"type":"tool_call","id":"c1","name":"read","arguments":"{\"path\":\"a.rs\"}"}],"model":"crow-2","effort":"high","usage":{"input":1000,"cached":400,"output":100,"reasoning":20,"cost_micros":4840},"finish":"tool_calls","error":null,"request_id":"req_1"}}
+{"type":"message","id":"00000003","parent":"00000002","ts":"2026-09-30T12:00:03Z","message":{"role":"tool","call_id":"c1","name":"read","content":"     1\tfn a() {}","is_error":false,"details":{"lines":[1,1],"total":1}}}
+{"type":"message","id":"00000004","parent":"00000003","ts":"2026-09-30T12:00:04Z","message":{"role":"assistant","parts":[{"type":"text","text":"The vendor"}],"model":"crow-2","effort":null,"usage":null,"finish":"error","error":{"type":"upstream_error","message":"vendor said no","status":502,"request_id":"req_2"},"request_id":"req_2"}}
+{"type":"session","v":1,"id":"x","created":"2026-09-30T12:00:00Z","cwd":"/"}
+{"type":"message","id":"m1","ts":"2026-09-30T12:00:00Z","message":{"role":"user","parts":[]}}
+{"type":"message","id":"m2","ts":"2026-09-30T12:00:00Z","message":{"role":"assistant","parts":[],"model":"m","finish":"done"}}
+{"type":"message","id":"m3","ts":"2026-09-30T12:00:00Z","message":{"role":"assistant","parts":[],"model":"m","finish":"length","usage":{"input":1,"output":2}}}
+{"type":"message","id":"m4","ts":"2026-09-30T12:00:00Z","message":{"role":"assistant","parts":[],"model":"m","finish":"error","error":{}}}
+{"type":"message","id":"m5","ts":"2026-09-30T12:00:00Z","message":{"role":"assistant","parts":[],"model":"m","finish":"aborted"}}
+{"type":"message","id":"m6","ts":"2026-09-30T12:00:00Z","message":{"role":"tool","call_id":"c","name":"bash","content":"ok"}}

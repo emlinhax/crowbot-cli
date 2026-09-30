@@ -5,27 +5,37 @@ use crate::io;
 use crate::paths::Paths;
 use crate::session::entry::{self, Entry, FORMAT_VERSION};
 
-/// An append-only JSONL session file; the only writer of its file.
+/// An append-only JSONL session file; the only writer of its file. Nothing is written until
+/// the first message, so a session that never says anything leaves no file.
 pub struct Store {
     pub path: PathBuf,
+    header: Entry,
+    written: bool,
     last: Option<String>,
 }
 
 impl Store {
-    pub fn create(paths: &Paths) -> anyhow::Result<Self> {
+    pub fn create(paths: &Paths) -> Self {
         let id = entry::new_id();
         let created = io::clock::now();
         let stamp = created.strftime("%Y%m%dT%H%M%S");
-        let path = paths.sessions_dir().join(format!("{stamp}_{id}.jsonl"));
-        let store = Self { path, last: None };
-        store.write(&Entry::Session {
-            v: FORMAT_VERSION,
-            id,
-            created,
-            cwd: paths.project.display().to_string(),
-            crowbot: env!("CARGO_PKG_VERSION").to_owned(),
-        })?;
-        Ok(store)
+        Self {
+            path: paths.sessions_dir().join(format!("{stamp}_{id}.jsonl")),
+            header: Entry::Session {
+                v: FORMAT_VERSION,
+                id,
+                created,
+                cwd: paths.project.display().to_string(),
+                crowbot: env!("CARGO_PKG_VERSION").to_owned(),
+            },
+            written: false,
+            last: None,
+        }
+    }
+
+    /// Whether the file exists yet: the header goes out with the first message.
+    pub fn written(&self) -> bool {
+        self.written
     }
 
     /// The file name without extension, unique per session.
@@ -37,7 +47,12 @@ impl Store {
     }
 
     pub fn append(&mut self, message: &Message) -> anyhow::Result<()> {
+        if !self.written {
+            self.write(&self.header)?;
+            self.written = true;
+        }
         let id = entry::new_id();
+        // CEILING: the parent is always the last entry written. Upgrade: undo/retry (M5) passes it in.
         let parent = self.last.take();
         self.write(&Entry::Message {
             id: id.clone(),
@@ -63,7 +78,11 @@ mod tests {
     fn writes_a_header_then_linked_messages() {
         let home = tempfile::tempdir().unwrap();
         let paths = Paths::at(home.path().into(), home.path().join("proj"));
-        let mut store = Store::create(&paths).unwrap();
+        let mut store = Store::create(&paths);
+        assert!(
+            !store.path.exists(),
+            "a session that has said nothing has no file"
+        );
         store.append(&Message::user_text("one")).unwrap();
         store.append(&Message::user_text("two")).unwrap();
         let text = io::fs::read_string(&store.path).unwrap().unwrap();

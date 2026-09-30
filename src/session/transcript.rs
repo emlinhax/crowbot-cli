@@ -26,11 +26,11 @@ impl Transcript {
         }
     }
 
-    /// The session file, while it holds the whole conversation.
+    /// The session file, once it exists and while it holds the whole conversation.
     pub fn path(&self) -> Option<&Path> {
         self.store
             .as_ref()
-            .filter(|_| !self.unsaved)
+            .filter(|s| s.written() && !self.unsaved)
             .map(|s| s.path.as_path())
     }
 
@@ -71,10 +71,24 @@ mod tests {
     }
 
     #[test]
+    fn there_is_no_file_to_name_until_something_is_said() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = Paths::at(root.path().join("home"), root.path().into());
+        let mut transcript = Transcript::new(Some(Store::create(&paths)));
+        assert!(transcript.path().is_none());
+        assert!(transcript.push(user("one")).is_ok());
+        assert!(
+            transcript
+                .path()
+                .is_some_and(|p| p.starts_with(paths.sessions_dir()))
+        );
+    }
+
+    #[test]
     fn a_failed_write_keeps_the_message_and_is_reported_once() {
         let root = tempfile::tempdir().unwrap();
         let paths = Paths::at(root.path().join("home"), root.path().into());
-        let mut store = Store::create(&paths).unwrap();
+        let mut store = Store::create(&paths);
         // A file where its directory should be: every later append fails.
         let blocker = root.path().join("blocker");
         io::fs::write_atomic(&blocker, b"", io::fs::Access::Shared).unwrap();
