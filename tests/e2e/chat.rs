@@ -226,6 +226,22 @@ async fn a_session_command_on_the_command_line_names_where_it_works() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_prompt_that_starts_with_a_command_name_is_not_dropped() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    let run = sandbox
+        .run(&fake.url, &["help", "me", "fix", "the", "build"], WITH_KEY)
+        .await;
+    assert_eq!(run.code(), Some(1));
+    assert!(
+        run.stderr().contains("usage: crowbot help"),
+        "{}",
+        run.stderr()
+    );
+    assert!(!run.stdout().contains("Commands:"), "{}", run.stdout());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn headless_with_nothing_to_send_says_so() {
     let fake = Fake::start().await;
     let run = Sandbox::default().run(&fake.url, &["-p"], WITH_KEY).await;

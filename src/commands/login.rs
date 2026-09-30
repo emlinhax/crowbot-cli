@@ -1,6 +1,5 @@
 use std::sync::LazyLock;
 
-use anyhow::bail;
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
@@ -70,7 +69,7 @@ impl Command for Login {
                     Ok(logged_in(KeyKind::Account, &number, &me))
                 }
                 [flag] if flag == "--status" => status(app),
-                _ => bail!("usage: {}", SPEC.usage),
+                _ => return Err(cx.usage(&SPEC)),
             }?;
             Ok(text.into())
         })

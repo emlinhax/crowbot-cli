@@ -28,7 +28,7 @@ impl Command for Signup {
             let force = match args {
                 [] => false,
                 [flag] if flag == "--force" => true,
-                _ => bail!("usage: {}", SPEC.usage),
+                _ => return Err(cx.usage(&SPEC)),
             };
             // A new account would replace the stored key, and an account number has no recovery.
             if !force && auth::stored(&app.paths)?.is_some() {

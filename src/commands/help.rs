@@ -18,9 +18,12 @@ impl Command for Help {
     fn run<'a>(
         &'a self,
         cx: &'a Ctx<'a>,
-        _args: &'a [String],
+        args: &'a [String],
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
-        Box::pin(async move { Ok(render(cx.scope).into()) })
+        Box::pin(async move {
+            cx.no_args(&SPEC, args)?;
+            Ok(render(cx.scope).into())
+        })
     }
 }
 

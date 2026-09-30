@@ -1,7 +1,6 @@
 use std::fmt::Write;
 use std::sync::LazyLock;
 
-use anyhow::bail;
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
@@ -62,7 +61,7 @@ impl Command for Models {
             for arg in args {
                 match arg.as_str() {
                     "--refresh" => refresh = true,
-                    _ => bail!("usage: {}", SPEC.usage),
+                    _ => return Err(cx.usage(&SPEC)),
                 }
             }
             if cx.scope == Scope::Session {

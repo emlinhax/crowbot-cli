@@ -16,10 +16,11 @@ impl Command for Quit {
 
     fn run<'a>(
         &'a self,
-        _cx: &'a Ctx<'a>,
-        _args: &'a [String],
+        cx: &'a Ctx<'a>,
+        args: &'a [String],
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
-        Box::pin(async {
+        Box::pin(async move {
+            cx.no_args(&SPEC, args)?;
             Ok(Outcome {
                 text: String::new(),
                 effects: vec![Effect::Quit],

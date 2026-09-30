@@ -41,10 +41,13 @@ impl Command for KeyTest {
 
     fn run<'a>(
         &'a self,
-        _cx: &'a Ctx<'a>,
+        cx: &'a Ctx<'a>,
         args: &'a [String],
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
+            if args.len() > 1 {
+                return Err(cx.usage(&SPEC));
+            }
             let only = args.first().cloned();
             if let Some(label) = &only
                 && !STEPS
@@ -52,7 +55,8 @@ impl Command for KeyTest {
                     .iter()
                     .any(|s| s.label.eq_ignore_ascii_case(label))
             {
-                anyhow::bail!("usage: {}", SPEC.usage);
+                let labels: Vec<&str> = STEPS.step.iter().map(|s| s.label.as_str()).collect();
+                anyhow::bail!("no step `{label}`; the steps are {}", labels.join(", "));
             }
             let report = probe(only.as_deref()).await?;
             Ok(format!(

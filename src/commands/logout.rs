@@ -1,6 +1,5 @@
 use std::sync::LazyLock;
 
-use anyhow::bail;
 use futures_util::future::BoxFuture;
 
 use super::{Command, Ctx, Outcome, Spec};
@@ -22,9 +21,7 @@ impl Command for Logout {
         args: &'a [String],
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
-            if !args.is_empty() {
-                bail!("usage: {}", SPEC.usage);
-            }
+            cx.no_args(&SPEC, args)?;
             let removed = auth::remove(&cx.app.paths)?;
             // A running session stops using the key at once, unless the environment supplies one.
             let left = auth::load(&cx.app.paths)?.map(|key| key.secret);

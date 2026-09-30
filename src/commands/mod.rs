@@ -96,6 +96,22 @@ pub struct Ctx<'a> {
     pub scope: Scope,
 }
 
+impl Ctx<'_> {
+    /// The error for arguments `spec` does not take, with its usage as it is typed here.
+    pub fn usage(&self, spec: &Spec) -> anyhow::Error {
+        anyhow::anyhow!("usage: {}", self.scope.invoke(&spec.usage))
+    }
+
+    /// For a command that takes no arguments: stray words are an error, never dropped.
+    pub fn no_args(&self, spec: &Spec, args: &[String]) -> anyhow::Result<()> {
+        if args.is_empty() {
+            Ok(())
+        } else {
+            Err(self.usage(spec))
+        }
+    }
+}
+
 /// What a command asks the session to do beyond showing its text.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Effect {
@@ -217,6 +233,34 @@ mod tests {
             panic!("signup works in the session");
         };
         assert_eq!(places(spec), "`crowbot signup`");
+    }
+
+    #[tokio::test]
+    async fn stray_arguments_are_refused_with_the_usage_typed_for_the_scope() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = App::for_tests(dir.path());
+        let words = |s: &str| s.split(' ').map(str::to_owned).collect::<Vec<_>>();
+        for (scope, name, args, usage) in [
+            (
+                Scope::Cli,
+                "help",
+                "me fix the build",
+                "usage: crowbot help",
+            ),
+            (Scope::Session, "quit", "now", "usage: /quit"),
+            (
+                Scope::Session,
+                "mode",
+                "plan auto",
+                "usage: /mode [manual|auto|plan]",
+            ),
+            (Scope::Cli, "logout", "please", "usage: crowbot logout"),
+        ] {
+            let cx = Ctx { app: &app, scope };
+            let command = lookup(name, scope).ok().unwrap();
+            let err = command.run(&cx, &words(args)).await.expect_err(name);
+            assert_eq!(err.to_string(), usage);
+        }
     }
 
     #[test]
