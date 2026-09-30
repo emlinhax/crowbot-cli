@@ -4,7 +4,7 @@ use anyhow::bail;
 use clap::{Parser, Subcommand};
 
 use crate::app::App;
-use crate::commands::{self, Ctx, Scope};
+use crate::commands::{self, Ctx, Missing, Scope};
 use crate::frontend::print::{self, Format};
 use crate::io::term;
 use crate::settings::{Overrides, Untrusted};
@@ -71,10 +71,16 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
         None => Vec::new(),
     };
     let headless = cli.print || cli.json;
-    let command = words
-        .first()
-        .and_then(|w| commands::find(w))
-        .filter(|_| !headless);
+    let command = match words.first().filter(|_| !headless) {
+        Some(name) => match commands::lookup(name, Scope::Cli) {
+            Ok(command) => Some(command),
+            Err(Missing::Elsewhere(spec)) => {
+                bail!("`{}` only works as {}", spec.name, commands::places(spec))
+            }
+            Err(Missing::Unknown) => None,
+        },
+        None => None,
+    };
     let session =
         command.is_none() && !headless && term::stdin_is_terminal() && term::stdout_is_terminal();
     if let Some(untrusted) = app.settings.untrusted.take() {
@@ -89,13 +95,6 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
         }
     }
     if let Some(command) = command {
-        if !command.spec().scope.contains(&Scope::Cli) {
-            bail!(
-                "`{}` only works inside a session: /{}",
-                command.spec().name,
-                command.spec().name
-            );
-        }
         let cx = Ctx {
             app: &app,
             scope: Scope::Cli,

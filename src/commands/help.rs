@@ -25,13 +25,9 @@ impl Command for Help {
 }
 
 fn render(scope: Scope) -> String {
-    let (intro, prefix) = match scope {
-        Scope::Cli => ("Commands (`crowbot <command>`):\n\n", ""),
-        Scope::Session => ("Commands:\n\n", "/"),
-    };
-    let mut out = String::from(intro);
+    let mut out = String::from("Commands:\n\n");
     for spec in available(scope).map(|c| c.spec()).filter(|s| !s.hidden) {
-        let _ = writeln!(out, "- `{prefix}{}` — {}", spec.usage, spec.summary);
+        let _ = writeln!(out, "- `{}` — {}", scope.invoke(&spec.usage), spec.summary);
     }
     out
 }

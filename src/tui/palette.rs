@@ -32,7 +32,7 @@ pub enum Step {
 /// name comes before longer ones sharing it (`/mode` before `/models`).
 pub fn matches(text: &str) -> Vec<&'static Spec> {
     let Some(prefix) = text
-        .strip_prefix('/')
+        .strip_prefix(Scope::Session.prefix())
         .filter(|p| !p.contains(char::is_whitespace))
     else {
         return Vec::new();
@@ -75,7 +75,11 @@ impl Palette {
                     self.selected + 1
                 }
             }
-            Action::Tab => return Step::Complete(format!("/{} ", found[self.selected].name)),
+            Action::Tab => {
+                return Step::Complete(
+                    Scope::Session.invoke(&format!("{} ", found[self.selected].name)),
+                );
+            }
             Action::Submit => return Step::Run(found[self.selected].name.clone()),
             Action::Escape => self.dismissed = true,
             _ => return Step::Ignored,
@@ -100,7 +104,7 @@ impl Palette {
                     ("  ", Style::default())
                 };
                 let mut line = Line::styled(mark, name_style.clone());
-                line.push(format!("/{}", spec.name), name_style);
+                line.push(Scope::Session.invoke(&spec.name), name_style);
                 let pad = name_width - self.width_of(spec) + 2;
                 line.push(" ".repeat(pad), Style::default());
                 line.push(&spec.summary, Style::fg("muted"));
@@ -112,7 +116,7 @@ impl Palette {
     }
 
     fn width_of(&self, spec: &Spec) -> usize {
-        width(&spec.name) + 1
+        width(&Scope::Session.invoke(&spec.name))
     }
 }
 

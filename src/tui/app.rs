@@ -20,7 +20,7 @@ use crate::agent::state::Shared;
 use crate::agent::system_prompt;
 use crate::api::models::{self, Catalog, Model};
 use crate::app::App;
-use crate::commands::{self, Ctx, Effect, Scope};
+use crate::commands::{self, Ctx, Effect, Missing, Scope};
 use crate::io::clock;
 use crate::io::term::{self, Input, KeyCode, KeyModifiers};
 use crate::limits;
@@ -363,7 +363,7 @@ impl<'a> Tui<'a> {
                                     return Step::Continue;
                                 }
                                 palette::Step::Run(name) => {
-                                    self.editor.set_text(&format!("/{name}"));
+                                    self.editor.set_text(&Scope::Session.invoke(&name));
                                     return self.submit(running).await;
                                 }
                             }
@@ -511,7 +511,7 @@ impl<'a> Tui<'a> {
             return Step::Continue;
         }
         let text = self.editor.take();
-        if let Some(command) = text.trim().strip_prefix('/') {
+        if let Some(command) = text.trim().strip_prefix(Scope::Session.prefix()) {
             return self.command(command).await;
         }
         self.feed.user(&text);
@@ -562,7 +562,10 @@ impl<'a> Tui<'a> {
     /// Completes a slash command name when only one fits.
     fn complete(&mut self) {
         let text = self.editor.text();
-        let Some(prefix) = text.strip_prefix('/').filter(|p| !p.contains(' ')) else {
+        let Some(prefix) = text
+            .strip_prefix(Scope::Session.prefix())
+            .filter(|p| !p.contains(' '))
+        else {
             return;
         };
         let matches: Vec<&str> = commands::available(Scope::Session)
@@ -570,7 +573,8 @@ impl<'a> Tui<'a> {
             .filter(|name| name.starts_with(prefix))
             .collect();
         if let [only] = matches.as_slice() {
-            self.editor.set_text(&format!("/{only} "));
+            self.editor
+                .set_text(&Scope::Session.invoke(&format!("{only} ")));
         }
     }
 
@@ -579,13 +583,29 @@ impl<'a> Tui<'a> {
         let Some((name, args)) = words.split_first() else {
             return Step::Continue;
         };
-        let found = commands::find(name).filter(|c| c.spec().scope.contains(&Scope::Session));
-        let Some(command) = found else {
-            let text = template::fill(&ui::get().text.unknown_command, &[("name", name)]);
-            self.feed.notice(&text, "warn");
-            return Step::Continue;
+        let command = match commands::lookup(name, Scope::Session) {
+            Ok(command) => command,
+            Err(missing) => {
+                let text = &ui::get().text;
+                let typed = Scope::Session.invoke(name);
+                let note = match missing {
+                    Missing::Unknown => template::fill(
+                        &text.unknown_command,
+                        &[
+                            ("command", &typed),
+                            ("help", &Scope::Session.invoke("help")),
+                        ],
+                    ),
+                    Missing::Elsewhere(spec) => template::fill(
+                        &text.elsewhere,
+                        &[("command", &typed), ("places", &commands::places(spec))],
+                    ),
+                };
+                self.feed.notice(&note, "warn");
+                return Step::Continue;
+            }
         };
-        self.feed.user(&format!("/{line}"));
+        self.feed.user(&Scope::Session.invoke(line));
         let cx = Ctx {
             app: self.app,
             scope: Scope::Session,

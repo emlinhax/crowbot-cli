@@ -22,6 +22,20 @@ pub enum Scope {
     Session,
 }
 
+impl Scope {
+    /// How a command is typed here: `crowbot login`, `/login`.
+    pub fn prefix(self) -> &'static str {
+        match self {
+            Self::Cli => "crowbot ",
+            Self::Session => "/",
+        }
+    }
+
+    pub fn invoke(self, rest: &str) -> String {
+        format!("{}{rest}", self.prefix())
+    }
+}
+
 /// A command's user-facing metadata, from `data/commands/<name>.toml`. A command may keep
 /// its own extra data in the same file, so unknown fields are allowed here.
 #[derive(Debug, Deserialize)]
@@ -112,6 +126,31 @@ pub fn find(name: &str) -> Option<&'static dyn Command> {
     COMMANDS.iter().copied().find(|c| c.spec().name == name)
 }
 
+pub enum Missing {
+    Unknown,
+    /// It exists, but not in the scope asked about.
+    Elsewhere(&'static Spec),
+}
+
+/// The command `name` names in `scope`; one that only works elsewhere says so.
+pub fn lookup(name: &str, scope: Scope) -> Result<&'static dyn Command, Missing> {
+    let command = find(name).ok_or(Missing::Unknown)?;
+    if command.spec().scope.contains(&scope) {
+        Ok(command)
+    } else {
+        Err(Missing::Elsewhere(command.spec()))
+    }
+}
+
+/// Where a command works, as it is typed there: `` `crowbot signup` ``.
+pub fn places(spec: &Spec) -> String {
+    spec.scope
+        .iter()
+        .map(|s| format!("`{}`", s.invoke(&spec.name)))
+        .collect::<Vec<_>>()
+        .join(" or ")
+}
+
 pub fn available(scope: Scope) -> impl Iterator<Item = &'static dyn Command> {
     COMMANDS
         .iter()
@@ -122,6 +161,19 @@ pub fn available(scope: Scope) -> impl Iterator<Item = &'static dyn Command> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_command_from_another_scope_says_where_it_works() {
+        assert!(lookup("help", Scope::Session).is_ok());
+        assert!(matches!(
+            lookup("nope", Scope::Session),
+            Err(Missing::Unknown)
+        ));
+        let Err(Missing::Elsewhere(spec)) = lookup("signup", Scope::Session) else {
+            panic!("signup works in the session");
+        };
+        assert_eq!(places(spec), "`crowbot signup`");
+    }
 
     #[test]
     fn specs_parse_with_unique_names_and_a_scope() {

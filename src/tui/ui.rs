@@ -126,6 +126,7 @@ pub struct Text {
     pub cut_off: String,
     pub ctrl_c_again: String,
     pub unknown_command: String,
+    pub elsewhere: String,
     pub more_below: String,
     pub saved: String,
     pub spent: String,
