@@ -510,10 +510,18 @@ impl<'a> Tui<'a> {
             self.enqueue(Kind::Queued);
             return Step::Continue;
         }
-        let text = self.editor.take();
-        if let Some(command) = text.trim().strip_prefix(Scope::Session.prefix()) {
-            return self.command(command).await;
+        if let Some(line) = self
+            .editor
+            .text()
+            .trim()
+            .strip_prefix(Scope::Session.prefix())
+        {
+            let line = line.to_owned();
+            let shown = Scope::Session.invoke(&commands::redact_line(&line));
+            self.editor.take_remembering(shown);
+            return self.command(&line).await;
         }
+        let text = self.editor.take();
         self.feed.user(&text);
         Step::Send(text)
     }
@@ -605,7 +613,8 @@ impl<'a> Tui<'a> {
                 return Step::Continue;
             }
         };
-        self.feed.user(&Scope::Session.invoke(line));
+        self.feed
+            .user(&Scope::Session.invoke(&commands::redact_line(line)));
         let cx = Ctx {
             app: self.app,
             scope: Scope::Session,

@@ -1,6 +1,7 @@
 name = "login"
 summary = "Log in: pair this machine, or use an account number"
 usage = "login [--key <account number> | --status]"
+secret = ["--key"]
 
 # What login says; {placeholders} are filled in. The session shows the same results.
 [text]

@@ -14,6 +14,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
 use crate::app::App;
+use crate::auth;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -47,6 +48,9 @@ pub struct Spec {
     pub hidden: bool,
     #[serde(default = "everywhere")]
     pub scope: Vec<Scope>,
+    /// Flags whose values are secrets: echoed and remembered only as a hint.
+    #[serde(default)]
+    pub secret: Vec<String>,
 }
 
 fn everywhere() -> Vec<Scope> {
@@ -56,6 +60,34 @@ fn everywhere() -> Vec<Scope> {
 impl Spec {
     pub fn parse(src: &str) -> Self {
         toml::from_str(src).expect("command specs are checked by tests")
+    }
+
+    /// `args` as they may be shown and remembered: a secret flag's value becomes a hint.
+    pub fn redact(&self, args: &[String]) -> String {
+        let mut out = Vec::new();
+        let mut hidden: Option<String> = None;
+        for arg in args {
+            if arg.starts_with("--") {
+                out.extend(hidden.take().map(|h| auth::hint(&h)));
+                match arg.split_once('=') {
+                    Some((flag, value)) if self.secret.iter().any(|s| s == flag) => {
+                        out.push(format!("{flag}={}", auth::hint(value)));
+                    }
+                    _ => {
+                        out.push(arg.clone());
+                        if self.secret.contains(arg) {
+                            hidden = Some(String::new());
+                        }
+                    }
+                }
+            } else if let Some(h) = hidden.as_mut() {
+                h.push_str(arg);
+            } else {
+                out.push(arg.clone());
+            }
+        }
+        out.extend(hidden.filter(|h| !h.is_empty()).map(|h| auth::hint(&h)));
+        out.join(" ")
     }
 }
 
@@ -142,6 +174,18 @@ pub fn lookup(name: &str, scope: Scope) -> Result<&'static dyn Command, Missing>
     }
 }
 
+/// A typed command line, `name args…`, with its secret values replaced by hints.
+pub fn redact_line(line: &str) -> String {
+    let words: Vec<String> = line.split_whitespace().map(str::to_owned).collect();
+    match words.split_first() {
+        Some((name, args)) if !args.is_empty() => match find(name) {
+            Some(command) => format!("{name} {}", command.spec().redact(args)),
+            None => line.trim().to_owned(),
+        },
+        _ => line.trim().to_owned(),
+    }
+}
+
 /// Where a command works, as it is typed there: `` `crowbot signup` ``.
 pub fn places(spec: &Spec) -> String {
     spec.scope
@@ -173,6 +217,20 @@ mod tests {
             panic!("signup works in the session");
         };
         assert_eq!(places(spec), "`crowbot signup`");
+    }
+
+    #[test]
+    fn secret_values_are_shown_only_as_a_hint() {
+        let words = |s: &str| s.split(' ').map(str::to_owned).collect::<Vec<_>>();
+        let login = find("login").unwrap().spec();
+        assert_eq!(login.redact(&words("--key 1234 5678")), "--key …5678");
+        assert_eq!(login.redact(&words("--key=12345678")), "--key=…5678");
+        assert_eq!(login.redact(&words("--status")), "--status");
+        assert_eq!(
+            redact_line("login --key 1234 5678 9012 3456"),
+            "login --key …3456"
+        );
+        assert_eq!(redact_line("models --refresh"), "models --refresh");
     }
 
     #[test]

@@ -58,8 +58,15 @@ impl Editor {
     /// Hands back the text for sending, remembering it in history.
     pub fn take(&mut self) -> String {
         let text = self.text();
-        if !text.trim().is_empty() && self.history.last() != Some(&text) {
-            self.history.push(text.clone());
+        self.take_remembering(text)
+    }
+
+    /// Hands back the text, remembering `remembered` in its place (a command with its secrets
+    /// hidden).
+    pub fn take_remembering(&mut self, remembered: String) -> String {
+        let text = self.text();
+        if !remembered.trim().is_empty() && self.history.last() != Some(&remembered) {
+            self.history.push(remembered);
             if self.history.len() > self.history_max {
                 self.history.remove(0);
             }
