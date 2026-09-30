@@ -76,7 +76,7 @@ pub fn split(line: &str) -> Split {
             (None, '>') => {
                 // `2>&1` and `>/dev/null` go nowhere worth asking about.
                 let rest: String = chars.clone().collect();
-                let target = rest.trim_start_matches(['>', '&', ' ']);
+                let target = rest.trim_start_matches(['>', '&', '|', ' ']);
                 if !(rest.starts_with('&')
                     || target.starts_with("/dev/null")
                     || target.starts_with("NUL"))
@@ -84,6 +84,10 @@ pub fn split(line: &str) -> Split {
                     out.writes = true;
                 }
                 current.push(c);
+                // `>|` overwrites like `>`; its `|` is not a pipe.
+                if let Some(bar) = chars.next_if_eq(&'|') {
+                    current.push(bar);
+                }
             }
             (None, _) => current.push(c),
         }
@@ -130,7 +134,18 @@ mod tests {
         assert!(split("(rm -rf x)").complex);
         assert!(split("echo hi; (rm x)").complex);
         assert!(split("{ rm x; }").complex);
+        assert!(split("cat < <(rm x)").complex);
+        assert!(split("echo $(cat <(ls))").complex);
+        assert!(split("echo \"$(rm x)\"").complex);
         assert!(!split("echo '<(x)' \"(y)\" a=(1 2)").complex);
+    }
+
+    #[test]
+    fn clobber_redirect_is_one_command() {
+        let s = split("echo hi >| out.txt");
+        assert_eq!(s.commands, vec!["echo hi >| out.txt"]);
+        assert!(s.writes);
+        assert!(!split("make 2>| /dev/null").writes);
     }
 
     #[test]
