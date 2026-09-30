@@ -12,8 +12,11 @@ const MAX_COST_MICROS: u64 = 1000;
 fn crowbot(args: &[&str]) -> Output {
     let key = std::env::var("CROWBOT_SMOKE_KEY").expect("set CROWBOT_SMOKE_KEY");
     let home = tempfile::tempdir().unwrap();
+    // An empty project: the live model sees neither this checkout nor its .crowbot config.
+    let project = tempfile::tempdir().unwrap();
     Command::new(env!("CARGO_BIN_EXE_crowbot"))
         .args(args)
+        .current_dir(project.path())
         .env("CROWBOT_HOME", home.path())
         .env("CROWBOT_API_KEY", key)
         .env_remove("CROWBOT_API_URL")
