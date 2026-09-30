@@ -16,6 +16,7 @@ pub fn options() -> Options {
 
 pub fn render(md: &str, width: usize) -> Vec<Line> {
     let mut r = Renderer {
+        // Narrower than this, prefixes and borders leave no room for a word.
         width: width.max(8),
         ..Renderer::default()
     };
@@ -348,37 +349,9 @@ impl Renderer {
     }
 
     fn table_lines(&mut self, table: Table) {
-        let columns = table.rows.iter().map(Vec::len).max().unwrap_or(0);
-        if columns == 0 {
-            return;
-        }
         let (first, _) = self.prefixes(false);
         let room = self.width.saturating_sub(first.width());
-        // Borders: one before each column, one after the last, and a space either side of cells.
-        let widths = table::widths(&table.rows, room, 3 * columns + 1);
-        let border = Style::fg("muted");
-        let rule = |l: &str, m: &str, r: &str| {
-            let parts: Vec<String> = widths.iter().map(|w| "─".repeat(w + 2)).collect();
-            Line::styled(format!("{l}{}{r}", parts.join(m)), border.clone())
-        };
-        let mut lines = vec![rule("┌", "┬", "┐")];
-        for (r, row) in table.rows.iter().enumerate() {
-            let mut line = Line::styled("│", border.clone());
-            for (i, w) in widths.iter().enumerate() {
-                let cell = row.get(i).cloned().unwrap_or_default();
-                let align = table.aligns.get(i).copied().unwrap_or_default();
-                line.push(" ", Style::default());
-                line.extend(table::fit(&cell, *w, align));
-                line.push(" ", Style::default());
-                line.push("│", border.clone());
-            }
-            lines.push(line);
-            if r == 0 && table.rows.len() > 1 {
-                lines.push(rule("├", "┼", "┤"));
-            }
-        }
-        lines.push(rule("└", "┴", "┘"));
-        self.emit(lines);
+        self.emit(table::grid(&table.rows, &table.aligns, room));
     }
 }
 
@@ -415,9 +388,13 @@ mod tests {
 
     #[test]
     fn nothing_is_wider_than_asked() {
-        for w in [20, 40, 80, 120] {
-            for line in render(SAMPLE, w) {
-                assert!(line.width() <= w, "{} > {w}: {}", line.width(), line.text());
+        let head: String = (1..=12).map(|i| format!("| column {i} ")).collect();
+        let wide = format!("{head}|\n{}|\n", "|---".repeat(12));
+        for md in [SAMPLE, wide.as_str()] {
+            for w in [20, 40, 80, 120] {
+                for line in render(md, w) {
+                    assert!(line.width() <= w, "{} > {w}: {}", line.width(), line.text());
+                }
             }
         }
     }

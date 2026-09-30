@@ -74,6 +74,74 @@ pub fn fit(cell: &Line, width: usize, align: Align) -> Line {
     }
 }
 
+/// Cells side by side: `edges` are what goes before the first, between two, and after the last,
+/// all in `style`.
+fn join(cells: impl IntoIterator<Item = Line>, edges: [&str; 3], style: &Style) -> Line {
+    let [left, mid, right] = edges;
+    let mut line = Line::styled(left, style.clone());
+    for (i, cell) in cells.into_iter().enumerate() {
+        if i > 0 {
+            line.push(mid, style.clone());
+        }
+        line.extend(cell);
+    }
+    line.push(right, style.clone());
+    line
+}
+
+/// A bordered grid, header row first, within `width` cells. Columns are cut to fit; when even
+/// cut ones do not, the rightmost are left out (markdown has no better order to drop them in).
+pub fn grid(rows: &[Vec<Line>], aligns: &[Align], width: usize) -> Vec<Line> {
+    let natural = widths(rows, usize::MAX, 0);
+    // Borders: one before each column, one after the last, and a space either side of cells.
+    let overhead = |columns: usize| 3 * columns + 1;
+    let narrowest = |columns: usize| -> usize {
+        natural[..columns]
+            .iter()
+            .map(|&w| w.min(MIN_COLUMN))
+            .sum::<usize>()
+            + overhead(columns)
+    };
+    let mut columns = natural.len();
+    while columns > 1 && narrowest(columns) > width {
+        columns -= 1;
+    }
+    if columns == 0 {
+        return Vec::new();
+    }
+    let rows: Vec<Vec<Line>> = rows
+        .iter()
+        .map(|row| {
+            (0..columns)
+                .map(|i| row.get(i).cloned().unwrap_or_default())
+                .collect()
+        })
+        .collect();
+    let widths = widths(&rows, width, overhead(columns));
+    let border = Style::fg("muted");
+    let rule = |edges: [&str; 3]| {
+        let dashes = widths
+            .iter()
+            .map(|w| Line::styled("─".repeat(w + 2), border.clone()));
+        join(dashes, edges, &border)
+    };
+    let mut lines = vec![rule(["┌", "┬", "┐"])];
+    for (r, row) in rows.iter().enumerate() {
+        let cells = row.iter().zip(&widths).enumerate().map(|(i, (cell, w))| {
+            let mut padded = Line::plain(" ");
+            padded.extend(fit(cell, *w, aligns.get(i).copied().unwrap_or_default()));
+            padded.push(" ", Style::default());
+            padded
+        });
+        lines.push(join(cells, ["│", "│", "│"], &border));
+        if r == 0 && rows.len() > 1 {
+            lines.push(rule(["├", "┼", "┤"]));
+        }
+    }
+    lines.push(rule(["└", "┴", "┘"]));
+    lines.into_iter().map(|l| l.truncate(width)).collect()
+}
+
 /// Borderless rows, cells `gap` apart, fitted to `width` by leaving out columns in `drop`
 /// order, then cutting.
 pub fn plain(
@@ -93,17 +161,13 @@ pub fn plain(
         })
         .collect();
     let widths = widths(&rows, width, gap * kept.len().saturating_sub(1));
+    let gap = " ".repeat(gap);
     rows.iter()
         .map(|row| {
-            let mut line = Line::default();
-            for (i, (cell, w)) in row.iter().zip(&widths).enumerate() {
-                if i > 0 {
-                    line.push(" ".repeat(gap), Style::default());
-                }
-                let align = aligns.get(kept[i]).copied().unwrap_or_default();
-                line.extend(fit(cell, *w, align));
-            }
-            line
+            let cells = row.iter().zip(&widths).enumerate().map(|(i, (cell, w))| {
+                fit(cell, *w, aligns.get(kept[i]).copied().unwrap_or_default())
+            });
+            join(cells, ["", &gap, ""], &Style::default())
         })
         .collect()
 }
@@ -151,6 +215,22 @@ mod tests {
         assert_eq!(text, "crow-2  $5");
         // Wide enough for everything: nothing is left out.
         assert_eq!(keep(&rows, &[1], 80, 2), [0, 1, 2]);
+    }
+
+    #[test]
+    fn a_grid_too_wide_even_cut_leaves_out_its_rightmost_columns() {
+        let cells = ["a", "b", "c", "d", "e", "f", "g", "h"];
+        let rows = vec![row(&cells), row(&cells)];
+        for width in [8, 12, 20, 40] {
+            let lines = grid(&rows, &[], width);
+            assert!(lines.iter().all(|l| l.width() <= width), "{width}");
+            assert!(
+                lines[1].text().starts_with("│ a"),
+                "{width}: {}",
+                lines[1].text()
+            );
+        }
+        assert_eq!(grid(&rows, &[], 40)[1].text().matches('│').count(), 9);
     }
 
     #[test]
