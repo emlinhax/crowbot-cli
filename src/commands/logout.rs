@@ -32,7 +32,7 @@ impl Command for Logout {
             cx.app.api.set_key(left);
             let mut out = if removed {
                 // crowbot refuses to revoke the key making the request, so it can only go elsewhere.
-                "Logged out. The key still works until revoked with `crowbot keys` on another machine or on chat.crowbot.sh.".to_owned()
+                "Logged out. The key still works until revoked on chat.crowbot.sh.".to_owned()
             } else {
                 "No key was stored on this machine.".to_owned()
             };

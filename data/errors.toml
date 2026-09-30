@@ -45,11 +45,11 @@ hint = "A card refund or chargeback froze it. Contact admin@crowbot.sh."
 
 [insufficient_balance]
 title = "Out of funds"
-hint = "Top up with `crowbot topup`."
+hint = "Top up at chat.crowbot.sh."
 
 [plan_allowance_spent]
 title = "Your plan's allowance is used up for now"
-hint = "It refills over the day, or allow balance fallback in `crowbot plans`."
+hint = "It refills over the day, or turn balance fallback back on at chat.crowbot.sh."
 
 [model_not_found]
 title = "That model is not being served"
@@ -57,7 +57,7 @@ hint = "Pick a live one from `crowbot models`."
 
 [body_too_large]
 title = "The request is over crowbot's 16 MiB limit"
-hint = "Compact the conversation or drop large attachments."
+hint = "Start a new session; this one has grown too long to send."
 
 [rate_limited]
 title = "Too many requests at once"
