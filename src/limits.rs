@@ -68,6 +68,7 @@ pub struct ModelLimits {
 pub struct ChatLimits {
     pub headers_timeout_secs: Limit<u64>,
     pub idle_timeout_secs: Limit<u64>,
+    pub max_event_bytes: Limit<usize>,
 }
 
 #[derive(Debug, Deserialize)]

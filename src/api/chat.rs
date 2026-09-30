@@ -10,7 +10,7 @@ use crate::agent::message::{Assistant, Finish, Message, Usage};
 use crate::api::assemble::{Assembler, Delta};
 use crate::api::error::{ApiError, ErrorInfo};
 use crate::api::models::Model;
-use crate::api::sse::{self, Frame};
+use crate::api::sse;
 use crate::api::wire::{self, Replay, StreamOptions, WireMessage, WireUsage};
 use crate::api::{Api, Call, retry};
 use crate::limits;
@@ -88,7 +88,7 @@ async fn attempt_once(
             retry_after: None,
         },
     };
-    let mut resp = match opened {
+    let resp = match opened {
         Ok(resp) => resp,
         Err(ApiError { info, retry_after }) => {
             let request_id = info.request_id.clone();
@@ -107,47 +107,33 @@ async fn attempt_once(
         }
     };
 
-    let mut parser = sse::Parser::default();
+    let events = sse::events(
+        resp.body,
+        limits.idle_timeout_secs.secs(),
+        limits.max_event_bytes.value,
+    );
+    let mut events = std::pin::pin!(events);
     let mut asm = Assembler::default();
     let mut cut = None;
     let mut aborted = false;
-    let idle = limits.idle_timeout_secs.secs();
-    'read: loop {
+    loop {
         let next = tokio::select! {
-            next = tokio::time::timeout(idle, resp.body.next()) => next,
-            () = cancel.cancelled() => { aborted = true; break 'read; }
+            next = events.next() => next,
+            () = cancel.cancelled() => { aborted = true; break; }
         };
-        let ended = matches!(next, Ok(None));
-        let frames = match next {
-            Err(_) => {
-                cut = Some(ErrorInfo::local(
-                    "idle_timeout",
-                    format!("no data for {}s", idle.as_secs()),
-                ));
+        match next {
+            None => break,
+            Some(Err(error)) => {
+                cut = Some(error);
                 break;
             }
-            Ok(None) => parser.finish(),
-            Ok(Some(Err(e))) => {
-                cut = Some(ApiError::from(e).info);
-                break;
-            }
-            Ok(Some(Ok(bytes))) => parser.feed(&bytes),
-        };
-        for frame in frames {
-            match frame {
-                Frame::Comment => {}
-                Frame::Data(data) if data == "[DONE]" => break 'read,
-                Frame::Data(data) => match serde_json::from_str(&data) {
-                    Ok(chunk) => asm.apply(chunk, &mut |d| on(Event::Delta(d))),
-                    Err(e) => {
-                        cut = Some(ErrorInfo::local("bad_stream", e.to_string()));
-                        break 'read;
-                    }
-                },
-            }
-        }
-        if ended {
-            break;
+            Some(Ok(data)) => match serde_json::from_str(&data) {
+                Ok(chunk) => asm.apply(chunk, &mut |d| on(Event::Delta(d))),
+                Err(e) => {
+                    cut = Some(ErrorInfo::local("bad_stream", e.to_string()));
+                    break;
+                }
+            },
         }
     }
 
