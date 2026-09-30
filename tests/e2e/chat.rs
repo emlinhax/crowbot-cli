@@ -124,7 +124,7 @@ async fn a_length_stop_explains_the_cut() {
 #[tokio::test(flavor = "multi_thread")]
 async fn effort_is_forwarded_and_validated() {
     let fake = Fake::start().await;
-    fake.script([Reply::sse("hello.sse")]);
+    fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
     let sandbox = Sandbox::default();
 
     sandbox
@@ -132,6 +132,27 @@ async fn effort_is_forwarded_and_validated() {
         .await
         .success();
     assert_eq!(fake.chat_bodies()[0]["reasoning_effort"], "high");
+
+    // A model that does not reason gets no effort, and none is recorded as used.
+    let args = [
+        "--model",
+        "fake-coder",
+        "--effort",
+        "high",
+        "--json",
+        "-p",
+        "hi",
+    ];
+    let run = sandbox.run(&fake.url, &args, WITH_KEY).await;
+    assert!(fake.chat_bodies()[1].get("reasoning_effort").is_none());
+    let end = run
+        .success()
+        .stdout()
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .find(|e| e["type"] == "message_end")
+        .unwrap();
+    assert_eq!(end["message"]["effort"], Value::Null, "{end}");
 
     let bad = sandbox
         .run(&fake.url, &["--effort", "ludicrous", "-p", "hi"], WITH_KEY)

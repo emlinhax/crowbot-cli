@@ -42,6 +42,14 @@ pub struct Capabilities {
     pub caching: bool,
 }
 
+impl Model {
+    /// The effort a request to this model carries: none for one that does not reason, which is
+    /// what gets sent, recorded and shown.
+    pub fn effort<'a>(&self, requested: Option<&'a str>) -> Option<&'a str> {
+        requested.filter(|_| self.capabilities.reasoning)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Source {
     Live,

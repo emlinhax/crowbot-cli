@@ -191,10 +191,7 @@ fn request(turn: &Turn<'_>) -> wire::Request {
         stream_options: StreamOptions {
             include_usage: true,
         },
-        reasoning_effort: turn
-            .effort
-            .filter(|_| turn.model.capabilities.reasoning)
-            .map(str::to_owned),
+        reasoning_effort: turn.model.effort(turn.effort).map(str::to_owned),
     }
 }
 
@@ -232,7 +229,7 @@ fn message(
     Assistant {
         parts,
         model: turn.model.id.clone(),
-        effort: turn.effort.map(str::to_owned),
+        effort: turn.model.effort(turn.effort).map(str::to_owned),
         usage,
         finish,
         error,
@@ -286,9 +283,13 @@ mod tests {
             messages: &[],
             tools: &[],
         };
+        let recorded =
+            |turn: &Turn<'_>| message(turn, vec![], Finish::Done, None, None, None).effort;
         assert!(request(&turn).reasoning_effort.is_none());
+        assert_eq!(recorded(&turn), None);
         let m = model(true);
         let turn = Turn { model: &m, ..turn };
         assert_eq!(request(&turn).reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(recorded(&turn).as_deref(), Some("high"));
     }
 }

@@ -169,7 +169,9 @@ impl<'a> Tui<'a> {
             version: env!("CARGO_PKG_VERSION"),
             cwd: app.paths.project.display().to_string(),
             model: model.id.clone(),
-            effort: app.settings.effort.clone(),
+            effort: model
+                .effort(app.settings.effort.as_deref())
+                .map(str::to_owned),
             mode_label: mode.label.clone(),
             mode_color: mode.color.clone(),
             logged_in: app.api.has_key(),
@@ -724,7 +726,7 @@ impl<'a> Tui<'a> {
             mode,
             &frame::Info {
                 model: &self.model.id,
-                effort: self.app.settings.effort.as_deref(),
+                effort: self.model.effort(self.app.settings.effort.as_deref()),
                 context_pct: self.context_pct,
                 cost_micros: self.cost_micros,
             },
