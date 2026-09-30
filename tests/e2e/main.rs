@@ -36,22 +36,19 @@ impl Sandbox {
         self.home.path()
     }
 
-    /// Runs crowbot pointed at `api_url`, with no stored key unless the home has one.
-    pub async fn run(&self, api_url: &str, args: &[&str], env: &[(&str, &str)]) -> Run {
+    /// Runs crowbot pointed at `api_url`, with `key` as its env key; with none it has only
+    /// what the home stores.
+    pub async fn run(&self, api_url: &str, args: &[&str], key: Option<&str>) -> Run {
         let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_crowbot"));
         command
             .args(args)
             .current_dir(self.project.path())
-            .env("CROWBOT_HOME", self.home.path())
-            .env("CROWBOT_API_URL", api_url)
-            .env("CROWBOT_CHAT_URL", api_url)
-            .env("CROWBOT_NO_BROWSER", "1")
-            .env_remove("CROWBOT_API_KEY")
             // An inherited stdin pipe that never closes would look like piped input forever.
             .stdin(std::process::Stdio::null());
-        for (name, value) in env {
-            command.env(name, value);
+        for name in CLEARED {
+            command.env_remove(name);
         }
+        command.envs(launch_env(self.home.path(), api_url, key));
         Run(command.output().await.expect("crowbot binary runs"))
     }
 
@@ -123,5 +120,30 @@ impl Run {
 /// An address nothing listens on, for offline behaviour.
 pub const DEAD_URL: &str = "http://127.0.0.1:9";
 
-/// The environment that makes crowbot use the fake's accepted test key.
-pub const WITH_KEY: &[(&str, &str)] = &[("CROWBOT_API_KEY", fake_crowbot::ENV_KEY)];
+/// Makes crowbot use the fake's accepted test key.
+pub const WITH_KEY: Option<&str> = Some(fake_crowbot::ENV_KEY);
+
+/// What the developer's shell must not bring into a test: their key, and what picks colour
+/// depth, glyphs or the clock (io/term.rs, io/clock.rs), so local and CI runs see the same.
+pub const CLEARED: &[&str] = &[
+    "CROWBOT_API_KEY",
+    "NO_COLOR",
+    "COLORTERM",
+    "WT_SESSION",
+    "TERM_PROGRAM",
+    "CROWBOT_FAKE_NOW",
+];
+
+/// What every crowbot a test starts is launched with, headless or in a terminal.
+pub fn launch_env(home: &Path, api_url: &str, key: Option<&str>) -> Vec<(&'static str, String)> {
+    let mut env = vec![
+        ("CROWBOT_HOME", home.display().to_string()),
+        ("CROWBOT_API_URL", api_url.to_owned()),
+        ("CROWBOT_CHAT_URL", api_url.to_owned()),
+        ("CROWBOT_NO_BROWSER", "1".to_owned()),
+    ];
+    if let Some(key) = key {
+        env.push(("CROWBOT_API_KEY", key.to_owned()));
+    }
+    env
+}

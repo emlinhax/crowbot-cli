@@ -158,7 +158,7 @@ async fn without_a_key_it_says_how_to_log_in() {
     let fake = Fake::start().await;
     let sandbox = Sandbox::default();
 
-    let run = sandbox.run(&fake.url, &["-p", "hi"], &[]).await;
+    let run = sandbox.run(&fake.url, &["-p", "hi"], None).await;
     assert_eq!(run.code(), Some(1));
     assert!(run.stderr().contains("crowbot login"), "{}", run.stderr());
     assert_eq!(fake.hits("/v1/chat/completions"), 0);

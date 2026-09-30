@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
-use crate::Sandbox;
 use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
+use crate::{CLEARED, Sandbox, launch_env};
 
 const ROWS: u16 = 30;
 const COLS: u16 = 100;
@@ -36,19 +36,13 @@ impl Session {
             .expect("a pseudo-terminal");
         let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_crowbot"));
         cmd.cwd(sandbox.project.path());
-        for (key, value) in [
-            ("CROWBOT_HOME", sandbox.home.path().to_str().unwrap()),
-            ("CROWBOT_API_URL", api_url),
-            ("CROWBOT_CHAT_URL", api_url),
-            ("CROWBOT_NO_BROWSER", "1"),
-            ("TERM", "xterm-256color"),
-        ] {
-            cmd.env(key, value);
+        for name in CLEARED {
+            cmd.env_remove(name);
         }
-        match key {
-            Some(key) => cmd.env("CROWBOT_API_KEY", key),
-            None => cmd.env_remove("CROWBOT_API_KEY"),
+        for (name, value) in launch_env(sandbox.home.path(), api_url, key) {
+            cmd.env(name, value);
         }
+        cmd.env("TERM", "xterm-256color");
         let child = pty.slave.spawn_command(cmd).expect("crowbot starts");
         drop(pty.slave);
         let mut reader = pty.master.try_clone_reader().unwrap();
