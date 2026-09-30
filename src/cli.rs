@@ -2,36 +2,36 @@ use std::process::ExitCode;
 
 use anyhow::bail;
 use clap::error::ErrorKind;
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use crate::app::App;
 use crate::commands::{self, Ctx, Missing, Scope};
 use crate::frontend::print::{self, Format};
 use crate::io::term;
 use crate::settings::{Overrides, Untrusted};
-use crate::{trust, tui};
+use crate::{effort, mode, trust, tui};
 
+/// The help for `--effort`, `--mode` and the commands is filled in from their catalogs by
+/// `command()`, so a new level, mode or command shows up with no edit here.
 #[derive(Parser)]
 #[command(
-    name = "crowbot",
     version,
-    about = "Coding agent for crowbot.sh",
-    allow_external_subcommands = true
+    about,
+    allow_external_subcommands = true,
+    subcommand_value_name = "COMMAND|PROMPT"
 )]
 struct Cli {
     /// Model id for this run (see `crowbot models`).
     #[arg(long, global = true)]
     model: Option<String>,
 
-    /// Reasoning effort for this run: low, medium, high or max.
     #[arg(long, global = true)]
     effort: Option<String>,
 
-    /// Permission mode: manual (asks), auto (allows everything) or plan (read-only).
     #[arg(long, global = true)]
     mode: Option<String>,
 
-    /// Send the prompt, print the reply, exit.
+    /// Send the words as a prompt, never a command; print the reply, exit.
     #[arg(short, long)]
     print: bool,
 
@@ -50,12 +50,39 @@ enum Sub {
     Words(Vec<String>),
 }
 
+/// `Cli`'s shape with the parts that are data filled in.
+fn command() -> clap::Command {
+    let ids = |ids: Vec<&str>| ids.join(", ");
+    let efforts = ids(effort::levels().iter().map(|l| l.id.as_str()).collect());
+    let modes = ids(mode::all().iter().map(|m| m.id.as_str()).collect());
+    let names: Vec<&str> = commands::available(Scope::Cli)
+        .map(|c| c.spec())
+        .filter(|s| !s.hidden)
+        .map(|s| s.name.as_str())
+        .collect();
+    Cli::command()
+        .mut_arg("effort", |a| {
+            a.help(format!("Reasoning effort for this run: {efforts}"))
+        })
+        .mut_arg("mode", |a| {
+            a.help(format!("Permission mode for this run: {modes}"))
+        })
+        .after_help(format!(
+            "Commands: {}. Other words are the prompt.",
+            ids(names)
+        ))
+}
+
+fn parse() -> Cli {
+    Cli::from_arg_matches(&command().get_matches()).unwrap_or_else(|e| e.exit())
+}
+
 pub async fn run() -> ExitCode {
-    let cli = Cli::parse();
+    let cli = parse();
     if let Some(Sub::Words(words)) = &cli.command
         && let Some(flag) = misplaced_flag(words)
     {
-        Cli::command()
+        command()
             .error(
                 ErrorKind::ArgumentConflict,
                 format!("`{flag}` goes before the words; quote a prompt that contains it"),
@@ -158,7 +185,7 @@ fn confirm_trust(untrusted: &Untrusted) -> anyhow::Result<bool> {
 /// One of crowbot's own flags after the words, where it would silently become prompt text (or
 /// a command's argument) instead of taking effect.
 fn misplaced_flag(words: &[String]) -> Option<&str> {
-    let command = Cli::command();
+    let command = command();
     let ours = |word: &str| {
         if let Some(long) = word.strip_prefix("--") {
             let name = long.split('=').next().unwrap_or(long);
@@ -177,6 +204,22 @@ fn misplaced_flag(words: &[String]) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn help_is_built_from_the_catalogs() {
+        command().debug_assert();
+        let help = command().render_long_help().to_string();
+        for name in ["help", "login", "logout", "signup", "models"] {
+            assert!(help.contains(name), "{name} missing from:\n{help}");
+        }
+        assert!(!help.contains("keytest"), "hidden commands stay hidden");
+        for level in effort::levels() {
+            assert!(help.contains(&level.id), "{}", level.id);
+        }
+        for mode in mode::all() {
+            assert!(help.contains(&mode.id), "{}", mode.id);
+        }
+    }
 
     #[test]
     fn crowbots_own_flags_after_the_words_are_found() {

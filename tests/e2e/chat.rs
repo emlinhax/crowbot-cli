@@ -242,6 +242,16 @@ async fn a_prompt_that_starts_with_a_command_name_is_not_dropped() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn help_names_the_commands_and_what_print_does_with_them() {
+    let fake = Fake::start().await;
+    let run = Sandbox::default().run(&fake.url, &["--help"], None).await;
+    let out = run.success().stdout();
+    assert!(out.contains("Commands: help, login"), "{out}");
+    assert!(out.contains("never a command"), "{out}");
+    assert_eq!(fake.hits("/v1/chat/completions"), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn headless_with_nothing_to_send_says_so() {
     let fake = Fake::start().await;
     let run = Sandbox::default().run(&fake.url, &["-p"], WITH_KEY).await;
