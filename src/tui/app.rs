@@ -117,7 +117,7 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
         ));
     }
     if spent > 0 {
-        let cost = units::usd(spent as f64 / 1e6);
+        let cost = units::usd_micros(spent);
         term::out(&format!(
             "{}\n",
             template::fill(&text.spent, &[("cost", &cost)])

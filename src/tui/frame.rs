@@ -79,7 +79,7 @@ fn item_line(info: &Info<'_>, item: &str) -> Option<Line> {
         "cost" => Line::styled(
             format!(
                 "{} {}",
-                units::usd(info.cost_micros as f64 / 1e6),
+                units::usd_micros(info.cost_micros),
                 ui::get().text.cost_estimate
             ),
             muted,

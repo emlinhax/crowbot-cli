@@ -100,7 +100,7 @@ pub fn open_browser(url: &str) {
 
 /// What a successful login says, on the command line and in a session alike.
 pub fn logged_in(kind: KeyKind, secret: &str, me: &Me) -> String {
-    let balance = units::usd(me.balance_microdollars as f64 / 1e6);
+    let balance = units::usd_micros(me.balance_microdollars);
     let mut out = fill(
         &TEXT.logged_in,
         &[
