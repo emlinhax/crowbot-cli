@@ -48,8 +48,13 @@ impl Sandbox {
         for name in CLEARED {
             command.env_remove(name);
         }
-        command.envs(launch_env(self.home.path(), api_url, key));
-        Run(command.output().await.expect("crowbot binary runs"))
+        command
+            .envs(launch_env(self.home.path(), api_url, key))
+            .kill_on_drop(true);
+        let output = tokio::time::timeout(RUN_LIMIT, command.output())
+            .await
+            .unwrap_or_else(|_| panic!("crowbot {args:?} still running after {RUN_LIMIT:?}"));
+        Run(output.expect("crowbot binary runs"))
     }
 
     /// Copies tests/fixtures/projects/<name> into the project directory.
@@ -119,6 +124,10 @@ impl Run {
 
 /// An address nothing listens on, for offline behaviour.
 pub const DEAD_URL: &str = "http://127.0.0.1:9";
+
+/// How long one headless run may take before the test fails instead of hanging CI. The slowest
+/// run today takes a few seconds; a full retry ladder without Retry-After is about 30 s.
+const RUN_LIMIT: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Makes crowbot use the fake's accepted test key.
 pub const WITH_KEY: Option<&str> = Some(fake_crowbot::ENV_KEY);
