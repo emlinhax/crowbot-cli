@@ -97,7 +97,7 @@ async fn probe(only: Option<&str>) -> std::io::Result<Vec<String>> {
 async fn first_press(inputs: &mut (impl Stream<Item = Input> + Unpin)) -> std::io::Result<String> {
     Ok(match next_input(inputs).await? {
         Input::Key(key) => describe(&key),
-        Input::Paste(text) => format!("paste event ({} chars)", text.len()),
+        Input::Paste(text) => format!("paste event ({} bytes)", text.len()),
         other => format!("{other:?}"),
     })
 }
