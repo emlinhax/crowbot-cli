@@ -29,6 +29,7 @@ use crate::agent::prompt::{self, Prompt, Reply};
 use crate::agent::state::Shared;
 use crate::app::App;
 use crate::limits;
+use crate::paths::Paths;
 use crate::permission::gate::Ask;
 use crate::text::template;
 use files::Files;
@@ -146,6 +147,14 @@ pub fn parse<T: DeserializeOwned>(args: &Value) -> Result<T, Refusal> {
 /// `parse` for `run`, where `check` has already vetted the arguments.
 pub fn parse_or_fail<T: DeserializeOwned>(args: &Value) -> Result<T, Output> {
     parse(args).map_err(|e| Output::error(e.to_string()))
+}
+
+/// Where PLAN writes this session's plan, spelled as the tools resolve it, so the lock that lets
+/// PLAN write there matches what the write tool asks for.
+pub fn plan_file(paths: &Paths, session: &str) -> String {
+    let file = paths.plans_dir().join(format!("{session}.md"));
+    let file = file.to_string_lossy();
+    target::resolve(&paths.project, &file).map_or_else(|_| file.replace('\\', "/"), |t| t.shown)
 }
 
 pub struct Registry {

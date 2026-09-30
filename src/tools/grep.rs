@@ -39,7 +39,8 @@ impl Tool for Grep {
 
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: Args = parse(args)?;
-        let root = target::resolve(&cx.app.paths.project, args.path.as_deref().unwrap_or("."));
+        let root = target::resolve(&cx.app.paths.project, args.path.as_deref().unwrap_or("."))
+            .map_err(Refusal::Refused)?;
         Ok(Check::new(target::asks(permissions::SEARCH.name, &root)))
     }
 
@@ -49,7 +50,12 @@ impl Tool for Grep {
                 Ok(args) => args,
                 Err(out) => return out,
             };
-            let root = target::resolve(&cx.app.paths.project, args.path.as_deref().unwrap_or("."));
+            let root =
+                match target::resolve(&cx.app.paths.project, args.path.as_deref().unwrap_or(".")) {
+                    Ok(root) => root,
+                    Err(why) => return Output::error(why),
+                };
+            let base = io::fs::canonical(&cx.app.paths.project);
             if io::fs::kind(&root.path) == Kind::Missing {
                 return Output::error(format!("{} does not exist.", root.shown));
             }
@@ -77,8 +83,7 @@ impl Tool for Grep {
             let mut out: String = hits
                 .iter()
                 .map(|h| {
-                    let shown =
-                        target::resolve(&cx.app.paths.project, &h.path.to_string_lossy()).shown;
+                    let shown = target::show(&base, &h.path).0;
                     format!(
                         "{shown}:{}: {}\n",
                         h.line,

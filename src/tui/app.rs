@@ -31,7 +31,7 @@ use crate::text::styled::{Line, Style};
 use crate::text::template;
 use crate::text::theme;
 use crate::text::units;
-use crate::tools::Registry;
+use crate::tools::{self, Registry};
 use crate::tui::choice::{self, Choice};
 use crate::tui::editor::Editor;
 use crate::tui::feed::{Block, Feed};
@@ -78,12 +78,7 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
     let registry = Registry::builtin(app);
     let transcript = Transcript::new(Some(Store::create(&app.paths)?));
     let session_file = transcript.path().map(|p| p.display().to_string());
-    let plan_file = app
-        .paths
-        .plans_dir()
-        .join(format!("{}.md", transcript.id()))
-        .to_string_lossy()
-        .replace('\\', "/");
+    let plan_file = tools::plan_file(&app.paths, &transcript.id());
     let shared = Shared::new(mode);
     let (tx, rx) = mpsc::unbounded_channel();
     let emit = move |event: AgentEvent| {

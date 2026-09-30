@@ -21,7 +21,7 @@ use crate::permission::gate;
 use crate::session::store::Store;
 use crate::session::transcript::Transcript;
 use crate::text::shorten;
-use crate::tools::Registry;
+use crate::tools::{self, Registry};
 
 /// How much of an argument or error a one-line note shows.
 const NOTE_CHARS: usize = 100;
@@ -46,12 +46,7 @@ pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<Ex
     let registry = Registry::builtin(app);
     let mut transcript = Transcript::new(Some(Store::create(&app.paths)?));
     let shared = Shared::new(mode);
-    let plan_file = app
-        .paths
-        .plans_dir()
-        .join(format!("{}.md", transcript.id()))
-        .to_string_lossy()
-        .replace('\\', "/");
+    let plan_file = tools::plan_file(&app.paths, &transcript.id());
 
     let out = Printer {
         format,

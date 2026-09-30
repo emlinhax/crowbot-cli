@@ -1,7 +1,7 @@
 #![allow(clippy::disallowed_methods)]
 
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 /// Who may read a written file.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -37,6 +37,41 @@ pub fn write_atomic(path: &Path, bytes: &[u8], access: Access) -> io::Result<()>
         let _ = std::fs::set_permissions(&tmp, old.permissions());
     }
     std::fs::rename(&tmp, path)
+}
+
+/// `path` with links, `.` and `..` resolved as far as it exists on disk; the part that does not
+/// exist yet (a file about to be written) is appended as written.
+pub fn canonical(path: &Path) -> PathBuf {
+    let parts: Vec<Component> = path.components().collect();
+    for split in (1..=parts.len()).rev() {
+        let head: PathBuf = parts[..split].iter().collect();
+        if let Ok(real) = std::fs::canonicalize(&head) {
+            let mut out = without_verbatim(real);
+            for part in &parts[split..] {
+                match part {
+                    Component::ParentDir => {
+                        out.pop();
+                    }
+                    Component::CurDir => {}
+                    other => out.push(other),
+                }
+            }
+            return out;
+        }
+    }
+    path.to_path_buf()
+}
+
+/// Windows answers `\\?\C:\…`; everything else here spells paths `C:\…`.
+fn without_verbatim(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{unc}"))
+    } else if let Some(local) = text.strip_prefix(r"\\?\") {
+        PathBuf::from(local)
+    } else {
+        path
+    }
 }
 
 /// Whether both paths name one existing file, with links and `..` resolved.

@@ -34,7 +34,8 @@ impl Tool for Glob {
 
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: Args = parse(args)?;
-        let root = target::resolve(&cx.app.paths.project, args.path.as_deref().unwrap_or("."));
+        let root = target::resolve(&cx.app.paths.project, args.path.as_deref().unwrap_or("."))
+            .map_err(Refusal::Refused)?;
         Ok(Check::new(target::asks(permissions::SEARCH.name, &root)))
     }
 
@@ -44,7 +45,12 @@ impl Tool for Glob {
                 Ok(args) => args,
                 Err(out) => return out,
             };
-            let root = target::resolve(&cx.app.paths.project, args.path.as_deref().unwrap_or("."));
+            let root =
+                match target::resolve(&cx.app.paths.project, args.path.as_deref().unwrap_or(".")) {
+                    Ok(root) => root,
+                    Err(why) => return Output::error(why),
+                };
+            let base = io::fs::canonical(&cx.app.paths.project);
             if io::fs::kind(&root.path) != Kind::Dir {
                 return Output::error(format!("{} is not a directory.", root.shown));
             }
@@ -64,12 +70,7 @@ impl Tool for Glob {
             let mut out: String = found
                 .iter()
                 .take(max)
-                .map(|f| {
-                    format!(
-                        "{}\n",
-                        target::resolve(&cx.app.paths.project, &f.path.to_string_lossy()).shown
-                    )
-                })
+                .map(|f| format!("{}\n", target::show(&base, &f.path).0))
                 .collect();
             if found.len() > max {
                 let _ = write!(out, "\n[{} more; narrow the pattern.]", found.len() - max);
