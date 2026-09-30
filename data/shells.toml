@@ -1,5 +1,6 @@
-# Shells tried in order for the bash tool; the first that exists wins. `settings.shell` overrides.
-# `{VAR}` in a candidate is an environment variable. `note` tells the model which shell it has.
+# Shells tried in order for the bash tool; the first that exists wins. The `shell` key in
+# config.toml overrides the list. `{NAME}` in a candidate is that environment variable; a
+# candidate naming an unset one is skipped. `note` tells the model which shell it has.
 
 [[shell]]
 os = "windows"
@@ -28,6 +29,12 @@ name = "sh"
 candidates = ["/bin/sh"]
 args = ["-c"]
 note = "Commands run in POSIX sh."
+
+# What the model is told when no entry above applies; `{shell}` is the configured one.
+[fallback]
+configured = "Commands run in {shell}."
+missing = "The configured shell {shell} was not found; commands cannot run."
+none = "No shell was found on this machine; commands cannot run."
 
 # Set for every command: nothing may stop to wait for input or page output.
 [env]

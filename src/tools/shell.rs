@@ -1,5 +1,6 @@
 //! Which shell the bash tool runs commands in, chosen from data/shells.toml.
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
@@ -18,13 +19,29 @@ static CATALOG: LazyLock<Catalog> =
 #[serde(deny_unknown_fields)]
 struct Catalog {
     shell: Vec<Entry>,
+    fallback: Fallback,
     env: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct Fallback {
+    configured: String,
+    missing: String,
+    none: String,
+}
+
+#[derive(Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum Os {
+    Windows,
+    Unix,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Entry {
-    os: String,
+    os: Os,
     name: String,
     candidates: Vec<String>,
     args: Vec<String>,
@@ -42,7 +59,8 @@ pub struct Shell {
 }
 
 pub fn resolve(configured: Option<&str>) -> Shell {
-    let os = if cfg!(windows) { "windows" } else { "unix" };
+    let os = if cfg!(windows) { Os::Windows } else { Os::Unix };
+    let fallback = &CATALOG.fallback;
     let env: Vec<(String, String)> = CATALOG
         .env
         .iter()
@@ -63,27 +81,24 @@ pub fn resolve(configured: Option<&str>) -> Shell {
                     .is_some_and(|s| s.to_string_lossy().to_lowercase() == stem)
             })
         });
+        let program = io::proc::which(configured);
+        let note = match (&program, like) {
+            (None, _) => &fallback.missing,
+            (Some(_), Some(entry)) => &entry.note,
+            (Some(_), None) => &fallback.configured,
+        };
         return Shell {
             name: configured.to_owned(),
-            program: io::proc::which(configured),
+            program,
             args: like.map_or_else(|| vec!["-c".to_owned()], |e| e.args.clone()),
-            note: like.map_or_else(
-                || format!("Commands run in {configured}."),
-                |e| e.note.clone(),
-            ),
+            note: template::fill(note, &[("shell", configured)]),
             env,
         };
     }
 
     for entry in &entries {
         for candidate in &entry.candidates {
-            let vars: Vec<(String, String)> = ["LOCALAPPDATA", "ProgramFiles", "HOME"]
-                .iter()
-                .filter_map(|v| settings::env(v).map(|value| ((*v).to_owned(), value)))
-                .collect();
-            let refs: Vec<(&str, &str)> =
-                vars.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-            let path = template::fill(candidate, &refs);
+            let path = template::fill_with(candidate, |name| settings::env(name).map(Cow::Owned));
             if path.contains('{') {
                 continue;
             }
@@ -102,7 +117,7 @@ pub fn resolve(configured: Option<&str>) -> Shell {
         name: "none".into(),
         program: None,
         args: Vec::new(),
-        note: "No shell was found on this machine; commands cannot run.".into(),
+        note: fallback.none.clone(),
         env,
     }
 }
@@ -116,5 +131,15 @@ mod tests {
         assert!(CATALOG.shell.iter().all(|e| !e.name.is_empty()));
         let shell = resolve(None);
         assert!(shell.program.is_some(), "{}", shell.note);
+    }
+
+    #[test]
+    fn a_configured_shell_that_is_missing_says_so() {
+        let shell = resolve(Some("/nowhere/zsh"));
+        assert!(shell.program.is_none());
+        assert_eq!(
+            shell.note,
+            "The configured shell /nowhere/zsh was not found; commands cannot run."
+        );
     }
 }
