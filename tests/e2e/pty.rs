@@ -11,12 +11,33 @@ use crate::{CLEARED, Sandbox, launch_env};
 
 const ROWS: u16 = 30;
 const COLS: u16 = 100;
+/// Longest wait for something to appear on screen or go away.
+const WAIT: Duration = Duration::from_secs(20);
+/// Longest wait for crowbot to exit once asked to.
+const EXIT_WAIT: Duration = Duration::from_secs(10);
+/// How often the screen is checked while waiting.
+const POLL: Duration = Duration::from_millis(50);
+/// Between typed keys: far above `tui.paste_gap_ms` (data/limits.toml), so typing never looks
+/// like a paste. CEILING: keys are timestamped when crowbot reads them, so a stall longer than
+/// two gaps can still bunch three into a paste (tui/paste.rs).
+const KEY_GAP: Duration = Duration::from_millis(30);
 
 struct Session {
     screen: vt100::Parser,
     output: mpsc::Receiver<Vec<u8>>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn portable_pty::Child + Send + Sync>,
+    /// Held so the child keeps its terminal; dropping it would hang it up.
+    _master: Box<dyn portable_pty::MasterPty + Send>,
+}
+
+/// A failed test must not leave crowbot running.
+impl Drop for Session {
+    fn drop(&mut self) {
+        if matches!(self.child.try_wait(), Ok(None)) {
+            let _ = self.child.kill();
+        }
+    }
 }
 
 impl Session {
@@ -56,13 +77,12 @@ impl Session {
             }
         });
         let writer = pty.master.take_writer().unwrap();
-        // The master must outlive the session or the child sees a hangup.
-        std::mem::forget(pty.master);
         Self {
             screen: vt100::Parser::new(ROWS, COLS, 500),
             output,
             writer,
             child,
+            _master: pty.master,
         }
     }
 
@@ -75,7 +95,7 @@ impl Session {
     fn type_text(&mut self, text: &str) {
         for c in text.chars() {
             self.send(&c.to_string());
-            std::thread::sleep(Duration::from_millis(30));
+            std::thread::sleep(KEY_GAP);
         }
     }
 
@@ -84,49 +104,64 @@ impl Session {
     }
 
     fn bottom_row(&self) -> String {
-        self.screen
-            .screen()
-            .rows(0, COLS)
-            .last()
-            .unwrap_or_default()
+        self.row(usize::from(ROWS) - 1)
     }
 
     /// Feeds output to the emulator, answering cursor-position queries as a real terminal
-    /// would: Windows' ConPTY asks one before it lets any output through.
-    fn pump(&mut self) {
+    /// would: Windows' ConPTY asks one before it lets any output through. True if any came.
+    fn pump(&mut self) -> bool {
+        let mut any = false;
         while let Ok(bytes) = self.output.try_recv() {
+            any = true;
             if bytes.windows(4).any(|w| w == b"\x1b[6n") {
                 let (row, col) = self.screen.screen().cursor_position();
                 self.send(&format!("\x1b[{};{}R", row + 1, col + 1));
             }
             self.screen.process(&bytes);
         }
+        any
+    }
+
+    /// Pumps until `done` answers, or fails after `limit` naming `what` and the screen.
+    #[track_caller]
+    fn poll<T>(
+        &mut self,
+        limit: Duration,
+        what: &str,
+        mut done: impl FnMut(&mut Self) -> Option<T>,
+    ) -> T {
+        let deadline = Instant::now() + limit;
+        while Instant::now() < deadline {
+            self.pump();
+            if let Some(found) = done(self) {
+                return found;
+            }
+            std::thread::sleep(POLL);
+        }
+        panic!("{what}; screen:\n{}", self.contents());
     }
 
     #[track_caller]
     fn wait_for(&mut self, text: &str) {
-        let deadline = Instant::now() + Duration::from_secs(20);
-        while Instant::now() < deadline {
-            self.pump();
-            if self.contents().contains(text) {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        panic!("never saw {text:?}; screen:\n{}", self.contents());
+        self.poll(WAIT, &format!("never saw {text:?}"), |s| {
+            s.contents().contains(text).then_some(())
+        });
     }
 
     #[track_caller]
     fn wait_gone(&mut self, text: &str) {
-        let deadline = Instant::now() + Duration::from_secs(20);
-        while Instant::now() < deadline {
-            self.pump();
-            if !self.contents().contains(text) {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        panic!("{text:?} never went away; screen:\n{}", self.contents());
+        self.poll(WAIT, &format!("{text:?} never went away"), |s| {
+            (!s.contents().contains(text)).then_some(())
+        });
+    }
+
+    /// Until one poll interval passes with no new output: the screen has settled.
+    #[track_caller]
+    fn wait_quiet(&mut self) {
+        self.poll(WAIT, "output never settled", |s| {
+            std::thread::sleep(POLL);
+            (!s.pump()).then_some(())
+        });
     }
 
     /// Row `i` of the screen, zero-based.
@@ -153,17 +188,15 @@ impl Session {
         self.send(&format!("\x1b[<0;3;{0}M\x1b[<0;3;{0}m", row + 1));
     }
 
+    #[track_caller]
     fn wait_exit(&mut self) -> bool {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while Instant::now() < deadline {
-            self.pump();
-            if let Ok(Some(status)) = self.child.try_wait() {
-                return status.success();
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        let _ = self.child.kill();
-        panic!("crowbot did not exit; screen:\n{}", self.contents());
+        self.poll(EXIT_WAIT, "crowbot did not exit", |s| {
+            s.child
+                .try_wait()
+                .ok()
+                .flatten()
+                .map(|status| status.success())
+        })
     }
 }
 
@@ -505,8 +538,7 @@ async fn the_command_popup_floats_over_the_conversation_without_moving_it() {
             s.send("\r");
             s.wait_gone("╭ commands");
         }
-        std::thread::sleep(Duration::from_millis(300));
-        s.pump();
+        s.wait_quiet();
         let top: Vec<String> = (0..8).map(|i| s.row(i)).collect();
         s.send("/");
         s.wait_for("╭ commands");
