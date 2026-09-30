@@ -138,7 +138,7 @@ impl Choice {
                     let rest = body.len() - max;
                     body.truncate(max);
                     body.push(Line::styled(
-                        format!("… {rest} more lines"),
+                        ui::get().text.more_lines.of(rest),
                         Style::fg("muted"),
                     ));
                 }

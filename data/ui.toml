@@ -27,6 +27,7 @@ declined = "Stopped: you declined a call."
 cut_off = "The reply hit its output limit (a low balance lowers that limit)."
 ctrl_c_again = "Press Ctrl+C again to quit"
 unknown_command = "Unknown command {command}. {help} lists them."
+more_lines = { one = "… {n} more line", many = "… {n} more lines" }
 elsewhere = "{command} only works as {places}."
 more_below = "↓ {n} more · PgDn"
 saved = "Session saved to {path}"

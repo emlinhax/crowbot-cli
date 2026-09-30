@@ -1,3 +1,5 @@
+use crate::text::template;
+
 /// Token counts the way model cards print them: 1M, 262K, 32.8K.
 pub fn tokens(n: u64) -> String {
     for (unit, suffix) in [(1_000_000, "M"), (1_000, "K")] {
@@ -14,6 +16,11 @@ pub fn tokens(n: u64) -> String {
     n.to_string()
 }
 
+/// `n` in the form that fits it: `one` for exactly one, else `many`; `{n}` is filled in.
+pub fn plural(n: usize, one: &str, many: &str) -> String {
+    template::fill(if n == 1 { one } else { many }, &[("n", &n.to_string())])
+}
+
 /// Dollars with two decimals, or more when the price needs them ($0.0009).
 pub fn usd(value: f64) -> String {
     let text = format!("{value:.6}");
@@ -25,6 +32,14 @@ pub fn usd(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plural_picks_the_form_by_count() {
+        let say = |n| plural(n, "{n} more line", "{n} more lines");
+        assert_eq!(say(1), "1 more line");
+        assert_eq!(say(2), "2 more lines");
+        assert_eq!(say(0), "0 more lines");
+    }
 
     #[test]
     fn tokens_match_model_cards() {

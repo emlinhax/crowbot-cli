@@ -4,6 +4,8 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
+use crate::text::units;
+
 const SRC: &str = include_str!("../../data/ui.toml");
 
 static UI: LazyLock<Ui> =
@@ -29,6 +31,20 @@ pub struct Ui {
     pub status: StatusText,
     pub picker: PickerText,
     pub login: LoginText,
+}
+
+/// A phrase with a count in it, in the form for one and for any other number.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Plural {
+    pub one: String,
+    pub many: String,
+}
+
+impl Plural {
+    pub fn of(&self, n: usize) -> String {
+        units::plural(n, &self.one, &self.many)
+    }
 }
 
 /// How a run that ended early is told.
@@ -134,6 +150,8 @@ pub struct Text {
     pub cut_off: String,
     pub ctrl_c_again: String,
     pub unknown_command: String,
+    /// Under a card cut to fit: how many lines it left out.
+    pub more_lines: Plural,
     pub elsewhere: String,
     pub more_below: String,
     pub saved: String,
