@@ -1,6 +1,7 @@
 # Next plan
 
-Phases from the approved design. Every sub-step ends with `make lint test` (plus `make e2e` from M1).
+Phases from the approved design. Each sub-step is checked as AGENTS.md says (`make lint test`;
+e2e only for critical changes, once per batch).
 Record what each phase taught us under **Learned**.
 
 ## M0 — Skeleton

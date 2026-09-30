@@ -2,7 +2,7 @@
 
 Read this before changing anything. Every codebase starts out hard-wired to its first case: two of something, a fixed pair of names, a check that demands exactly what existed on day one. Opening it up to the third case then costs a day of edits across every layer. Build so that the next case is an addition, not a rewrite.
 
-**Data, not code.** Numbers, shapes, catalogs, prompts and lookup tables live in data files (JSON, YAML, Markdown) and are read by generic code. A new system's configuration is a new data file with its values, not constants inside a function.
+**Data, not code.** Numbers, shapes, catalogs, prompts and lookup tables live in data files (TOML, JSON, Markdown) and are read by generic code. A new system's configuration is a new data file with its values, not constants inside a function.
 
 **Many solutions, one shape.** Where several implementations answer one need, they are same-shaped files in one folder behind one interface, swapped by name: providers that each expose the same entry point, backends with identical signatures, plugins registered in one index. Adding one is adding a file; nothing else learns its name.
 
@@ -10,7 +10,7 @@ Read this before changing anything. Every codebase starts out hard-wired to its 
 
 **Write it once.** Code needed twice is one shared implementation with a mode or a parameter, never a copy. Globals and settings live in one place and are read from there, never redeclared where they are used.
 
-**Wrap the outside world.** Network, files, processes and the clock go through one module each, so a change of transport, a retry or a cache is one edit. No inline HTTP calls, file reads or shell-outs in feature code; a request made in two places is one function.
+**Wrap the outside world.** Network, files, processes, the terminal and the clock go through one module each, so a change of transport, a retry or a cache is one edit. No inline HTTP calls, file reads or shell-outs in feature code; a request made in two places is one function.
 
 **Shapes that extend.** Anything that can have more than one is a list, iterated by index or id, even while it has one or two today. A record names every party it concerns, never "the other one". A limit is data with a stated reason, checked in one place, not implied by a loop bound or a fixed-size table. A file format carries lists and optional fields, so a new field is an addition and old files still load.
 
@@ -34,7 +34,8 @@ The rest: `README.md` for the layout, the commands and the checks; `NEXT_PLAN.md
 
 - e2e here means the real `crowbot` binary driven against an in-process fake crowbot server
   (`tests/e2e/`), never the live API. `make smoke` is the only thing that spends real money.
-- Only `src/io/` touches the network, filesystem, processes, terminal or clock; clippy's
-  `disallowed_methods` (see `clippy.toml`) enforces it.
-- `reference/` holds the opencode and pi clones plus crowbot's docs. It is gitignored and read-only:
+- Only `src/io/` touches the network, filesystem, processes, terminal or clock; `clippy.toml` bans
+  the raw calls elsewhere.
+- `reference/` (gitignored: local only, absent from a fresh clone) holds the opencode and pi clones
+  plus crowbot's docs. It is read-only:
   port designs from it, never code paths into it.

@@ -81,7 +81,7 @@ lines instead of sending.
 | `data/tool_cards.toml` | How each tool call looks in the transcript. |
 | `data/code_aliases.toml` | Code-fence languages mapped onto the bundled grammars. |
 | `src/io/` | The only code that touches network, files, processes, terminal or clock (enforced by `clippy.toml`). `http.rs` is crowbot's API (reqwest); `fetch.rs` is the rest of the web, for webfetch (cffetch). |
-| `crates/cffetch/` | The user's Cloudflare-aware HTTP client, vendored unchanged from its upstream and excluded from the workspace, so crowbot's rustfmt and clippy leave it alone. Re-sync by copying `src/`, `tests/`, `examples/` and `Cargo.toml` over; its own suite runs from that directory (it hits the network). |
+| `crates/cffetch/` | The user's Cloudflare-aware HTTP client, vendored unchanged (why it is outside the workspace: `Cargo.toml`). Re-sync by copying `src/`, `tests/`, `examples/` and `Cargo.toml` over; its own suite runs from that directory (it hits the network). |
 | `src/api/` | crowbot endpoints, errors, SSE parsing, chat streaming, retry, pairing, signup. |
 | `src/agent/` | The loop (`run.rs`), tool batches, prompts, context repair, doom-loop guard, shared run state. |
 | `src/tools/` | One file per tool behind the `Tool` trait, registered in `tools/mod.rs`; `edit_match.rs` is the fuzzy matcher. |
@@ -125,8 +125,3 @@ BoringSSL for the web.
 | `make golden` | rewrite failing goldens and snapshots | only for a deliberate change |
 | `make smoke` | real API round trip, needs `CROWBOT_SMOKE_KEY` (costs a fraction of a cent) | by hand, never in CI |
 | `make build` | static release binary | as needed |
-
-## Conventions
-
-- Comments say why, briefly. `CEILING:` marks a known shortcut and its upgrade path: `grep -rn CEILING: src`.
-- Commit straight to `main`; `prod` is the release trigger and is merged into only on an explicit go.
