@@ -22,12 +22,20 @@ pub struct Ui {
     pub tips: Vec<String>,
     pub footer: Footer,
     pub text: Text,
+    pub outcome: OutcomeText,
     pub card: CardText,
     pub palette: PaletteText,
     pub thinking: ThinkingText,
     pub status: StatusText,
     pub picker: PickerText,
     pub login: LoginText,
+}
+
+/// How a run that ended early is told.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OutcomeText {
+    pub turn_limit: String,
 }
 
 #[derive(Debug, Deserialize)]

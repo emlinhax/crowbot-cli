@@ -38,9 +38,6 @@ pub enum AgentEvent {
         call_id: String,
         prompt: Prompt,
     },
-    Notice {
-        text: String,
-    },
     /// The session file stopped being written; the run goes on, unsaved from here.
     Unsaved {
         path: String,

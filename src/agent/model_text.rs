@@ -25,7 +25,6 @@ pub struct ModelText {
     pub rejected_with_feedback: String,
     pub non_interactive: String,
     pub doom_loop: String,
-    pub max_turns: String,
     pub question_chosen: String,
     pub question_answered: String,
     pub question_dismissed: String,

@@ -95,3 +95,7 @@ reply = "no"
 [[card.permission]]
 label = "No, and tell crowbot why…"
 reply = "no_why"
+
+# How a run that ended early is told.
+[outcome]
+turn_limit = "Stopped after {count} turns. Send a message to continue."

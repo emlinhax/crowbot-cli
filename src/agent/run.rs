@@ -42,12 +42,6 @@ pub async fn run(
     let outcome = 'run: loop {
         loop {
             if turns >= max_turns {
-                (cx.emit)(AgentEvent::Notice {
-                    text: fill(
-                        &model_text::get().max_turns,
-                        &[("count", &max_turns.to_string())],
-                    ),
-                });
                 break 'run Outcome::TurnLimit;
             }
             turns += 1;

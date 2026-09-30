@@ -16,6 +16,7 @@ use crate::agent::system_prompt;
 use crate::api::models;
 use crate::app::App;
 use crate::io::term;
+use crate::limits;
 use crate::mode;
 use crate::permission::gate;
 use crate::session::store::Store;
@@ -137,7 +138,6 @@ impl Printer<'_> {
                 error.entry().title,
                 *delay_ms as f64 / 1000.0
             )),
-            AgentEvent::Notice { text } => self.note(text),
             AgentEvent::Unsaved { path, error } => {
                 self.note(&format!(
                     "crowbot: no longer saving this session to {path}: {error}"
@@ -174,7 +174,12 @@ impl Printer<'_> {
                 }
                 ExitCode::FAILURE
             }
-            Outcome::Rejected | Outcome::TurnLimit => ExitCode::FAILURE,
+            Outcome::TurnLimit => {
+                let limit = limits::get().agent.max_turns.value;
+                term::err(&format!("crowbot: stopped after {limit} turns\n"));
+                ExitCode::FAILURE
+            }
+            Outcome::Rejected => ExitCode::FAILURE,
             Outcome::Done => {
                 if last.is_some_and(|m| m.finish == Finish::Length) {
                     term::err(

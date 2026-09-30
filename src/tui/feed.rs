@@ -201,7 +201,6 @@ impl Feed {
                 let until = now + Duration::from_millis(*delay_ms);
                 self.retry = Some((until, error.entry().title.clone()));
             }
-            AgentEvent::Notice { text } => self.notice(text, "warn"),
             AgentEvent::Unsaved { path, error } => {
                 let text = fill(&ui::get().text.unsaved, &[("path", path), ("error", error)]);
                 self.notice(&text, "warn");
@@ -211,13 +210,17 @@ impl Feed {
                 self.finish_text();
                 self.running.clear();
                 self.retry = None;
+                let limit = limits::get().agent.max_turns.value.to_string();
                 let note = match outcome {
-                    Outcome::Aborted => Some(&ui::get().text.interrupted),
-                    Outcome::Rejected => Some(&ui::get().text.declined),
+                    Outcome::Aborted => Some(ui::get().text.interrupted.clone()),
+                    Outcome::Rejected => Some(ui::get().text.declined.clone()),
+                    Outcome::TurnLimit => {
+                        Some(fill(&ui::get().outcome.turn_limit, &[("count", &limit)]))
+                    }
                     _ => None,
                 };
                 if let Some(note) = note {
-                    self.notice(note, "muted");
+                    self.notice(&note, "muted");
                 }
             }
             AgentEvent::Delivered { text } => self.user(text),
