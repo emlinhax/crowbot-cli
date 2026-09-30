@@ -284,6 +284,28 @@ async fn a_command_typed_during_a_run_never_reaches_the_model() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_doubled_slash_sends_a_message_that_starts_with_a_slash() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    let url = fake.url.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut s = Session::start(&sandbox, &url);
+        s.wait_for("MANUAL");
+        s.type_text("//etc/hosts is odd");
+        s.send("\r");
+        s.wait_for("Hello there!");
+        s.send("\x04");
+        assert!(s.wait_exit(), "{}", s.contents());
+    })
+    .await
+    .unwrap();
+    let bodies = fake.chat_bodies();
+    let user = &bodies[0]["messages"][1]["content"];
+    assert_eq!(user, "/etc/hosts is odd");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn manual_mode_shows_the_edit_and_applies_it_once_approved() {
     let fake = Fake::start().await;
     fake.script([

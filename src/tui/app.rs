@@ -23,12 +23,12 @@ use crate::api::models::{self, Catalog, Model};
 use crate::app::App;
 use crate::commands::{self, Effect, Outcome as CommandOutcome, Scope};
 use crate::io::clock;
-use crate::io::term::{self, Input, KeyCode, KeyModifiers};
+use crate::io::term::{self, Input, KeyCode};
 use crate::limits;
 use crate::mode;
 use crate::session::store::Store;
 use crate::session::transcript::Transcript;
-use crate::text::styled::{Line, Style};
+use crate::text::styled::{Line, Style, TAB};
 use crate::text::template;
 use crate::text::theme;
 use crate::text::units;
@@ -37,10 +37,10 @@ use crate::tui::choice::{self, Choice};
 use crate::tui::command::{self, Work};
 use crate::tui::editor::Editor;
 use crate::tui::feed::{Block, Feed};
-use crate::tui::input::Burst;
 use crate::tui::keymap::{self, Action};
 use crate::tui::login::{self, Login};
 use crate::tui::palette::{self, Palette};
+use crate::tui::paste::Burst;
 use crate::tui::picker::{self, Picker};
 use crate::tui::queue::{self, Kind};
 use crate::tui::screen::Screen;
@@ -303,6 +303,16 @@ impl<'a> Tui<'a> {
     }
 
     fn input(&mut self, input: Input, running: bool) -> Step<'a> {
+        // Inside a burst of keys (a paste where the terminal sends one as keystrokes), Enter
+        // and Tab are text for whatever field has the keys, never commands.
+        let input = match input {
+            Input::Key(key) => match (self.burst.is_paste(clock::instant()), key.code) {
+                (true, KeyCode::Enter) => Input::Paste("\n".into()),
+                (true, KeyCode::Tab) => Input::Paste(TAB.into()),
+                _ => Input::Key(key),
+            },
+            other => other,
+        };
         match input {
             Input::Resize(width, height) => {
                 self.screen.resize(width, height);
@@ -351,21 +361,6 @@ impl<'a> Tui<'a> {
                 Step::Continue
             }
             Input::Key(key) => {
-                let pasting = self.burst.is_paste(clock::instant());
-                // Inside a paste, Enter and Tab are text, never commands.
-                if pasting {
-                    match key.code {
-                        KeyCode::Enter => {
-                            self.editor.insert("\n");
-                            return Step::Continue;
-                        }
-                        KeyCode::Tab => {
-                            self.editor.insert("    ");
-                            return Step::Continue;
-                        }
-                        _ => {}
-                    }
-                }
                 match keymap::get().action(&key) {
                     Some(action) => {
                         // The command popup takes its keys first; it is closed during a run,
@@ -387,12 +382,7 @@ impl<'a> Tui<'a> {
                         self.action(action, running)
                     }
                     None => {
-                        let plain = !key
-                            .modifiers
-                            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
-                        if let (KeyCode::Char(c), true) = (key.code, plain) {
-                            self.editor.insert(&c.to_string());
-                        }
+                        self.editor.type_key(&key);
                         Step::Continue
                     }
                 }
@@ -524,14 +514,14 @@ impl<'a> Tui<'a> {
         if text.trim().is_empty() {
             return Step::Continue;
         }
-        // Checked before a run gets the text: a command queued as a message would send its
-        // arguments (a `--key`) to the model.
-        if let Some(line) = self
-            .editor
-            .text()
-            .trim()
-            .strip_prefix(Scope::Session.prefix())
-        {
+        let prefix = Scope::Session.prefix();
+        let escape = prefix.repeat(2);
+        // A doubled prefix sends the line as written, less one `/`: `//etc/hosts is odd`.
+        if text.trim_start().starts_with(&escape) {
+            self.editor.set_text(&text.replacen(&escape, prefix, 1));
+        } else if let Some(line) = text.trim().strip_prefix(prefix) {
+            // Checked before a run gets the text: a command queued as a message would send
+            // its arguments (a `--key`) to the model.
             let line = line.to_owned();
             let shown = Scope::Session.invoke(&commands::redact_line(&line));
             self.editor.take_remembering(shown);

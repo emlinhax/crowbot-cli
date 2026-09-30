@@ -3,7 +3,7 @@
 
 use crate::agent::prompt::{Prompt, Reply};
 use crate::auth;
-use crate::io::term::{KeyCode, KeyEvent, KeyModifiers};
+use crate::io::term::{KeyCode, KeyEvent};
 use crate::limits;
 use crate::permission::gate;
 use crate::text::diff;
@@ -168,7 +168,7 @@ impl Choice {
                 Some(other) => {
                     input.apply(other);
                 }
-                None => insert_char(input, key),
+                None => input.type_key(key),
             }
             return Step::Stay;
         }
@@ -247,19 +247,10 @@ impl Choice {
     }
 }
 
-fn insert_char(input: &mut Editor, key: &KeyEvent) {
-    let plain = !key
-        .modifiers
-        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
-    if let (KeyCode::Char(c), true) = (key.code, plain) {
-        input.insert(&c.to_string());
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::term::KeyEventKind;
+    use crate::io::term::{KeyEventKind, KeyModifiers};
     use crate::permission::gate::Ask;
 
     fn press(code: KeyCode) -> KeyEvent {
@@ -325,6 +316,19 @@ mod tests {
                 assert_eq!(feedback.as_deref(), Some("use trash"))
             }
             _ => panic!("expected a refusal with a reason"),
+        }
+    }
+
+    #[test]
+    fn a_pasted_newline_in_a_reason_is_text_not_an_answer() {
+        let mut card = permission();
+        card.key(None, &press(KeyCode::Char('3')));
+        card.insert("use trash\nnot rm");
+        match card.key(Some(Action::Submit), &press(KeyCode::Enter)) {
+            Step::Answer(Reply::No { feedback }) => {
+                assert_eq!(feedback.as_deref(), Some("use trash\nnot rm"));
+            }
+            _ => panic!("expected a refusal with the whole reason"),
         }
     }
 

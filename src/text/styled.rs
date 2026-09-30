@@ -10,7 +10,7 @@ use crate::text::controls;
 use crate::text::theme::{self, Depth, Theme};
 
 /// Tabs become this many spaces so every cell is accounted for.
-const TAB: &str = "    ";
+pub const TAB: &str = "    ";
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Style {

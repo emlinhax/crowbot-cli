@@ -2,6 +2,7 @@
 
 use unicode_segmentation::UnicodeSegmentation;
 
+use crate::io::term::{KeyCode, KeyEvent, KeyModifiers};
 use crate::text::styled::{Line, Style, width};
 use crate::tui::keymap::Action;
 
@@ -73,6 +74,16 @@ impl Editor {
         }
         self.clear();
         text
+    }
+
+    /// Types the key's character, if it is a plain one (no Ctrl or Alt).
+    pub fn type_key(&mut self, key: &KeyEvent) {
+        let plain = !key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        if let (KeyCode::Char(c), true) = (key.code, plain) {
+            self.insert(&c.to_string());
+        }
     }
 
     pub fn insert(&mut self, text: &str) {
