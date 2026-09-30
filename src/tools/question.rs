@@ -6,9 +6,10 @@ use serde_json::Value;
 
 use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
-use crate::agent::model_text::{self, fill};
+use crate::agent::model_text;
 use crate::agent::prompt::{Prompt, Reply};
 use crate::permission::gate::Ask;
+use crate::text::template::fill;
 
 static SPEC: LazyLock<Spec> = LazyLock::new(|| {
     Spec::load(

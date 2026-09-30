@@ -5,7 +5,7 @@ use crate::agent::batch::{self, Batch};
 use crate::agent::context;
 use crate::agent::event::{AgentEvent, Outcome};
 use crate::agent::message::{Finish, Message, Part, ToolCall};
-use crate::agent::model_text::{self, fill};
+use crate::agent::model_text;
 use crate::agent::state::Shared;
 use crate::agent::system_prompt;
 use crate::api::chat::{self, Event, Turn};
@@ -13,6 +13,7 @@ use crate::api::models::Model;
 use crate::app::App;
 use crate::limits;
 use crate::session::transcript::Transcript;
+use crate::text::template::fill;
 use crate::tools::Registry;
 
 pub struct RunCtx<'a> {

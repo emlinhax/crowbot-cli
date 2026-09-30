@@ -10,7 +10,7 @@ use crate::agent::message::ToolResult;
 use crate::limits;
 use crate::text::diff;
 use crate::text::styled::{Line, Style};
-use crate::text::units;
+use crate::text::{template, units};
 use crate::tui::boxed::capped;
 
 const SRC: &str = include_str!("../../data/tool_cards.toml");
@@ -160,19 +160,7 @@ fn body(tool: &str, result: &ToolResult, width: usize) -> Vec<Line> {
 
 /// `{a.b}` reads `details.a.b` (array indices too).
 fn fill(template: &str, result: &ToolResult) -> String {
-    let mut out = String::new();
-    let mut rest = template;
-    while let Some(open) = rest.find('{') {
-        let Some(close) = rest[open..].find('}') else {
-            break;
-        };
-        out.push_str(&rest[..open]);
-        let key = &rest[open + 1..open + close];
-        out.push_str(&lookup(key, result));
-        rest = &rest[open + close + 1..];
-    }
-    out.push_str(rest);
-    out
+    template::fill_with(template, |key| Some(lookup(key, result).into()))
 }
 
 fn lookup(key: &str, result: &ToolResult) -> String {

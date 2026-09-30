@@ -4,8 +4,6 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
-use crate::text::template;
-
 const SRC: &str = include_str!("../../data/model_text.toml");
 
 static TEXT: LazyLock<ModelText> =
@@ -39,10 +37,6 @@ pub struct ModelText {
 
 pub fn get() -> &'static ModelText {
     &TEXT
-}
-
-pub fn fill(text: &str, values: &[(&str, &str)]) -> String {
-    template::fill(text, values)
 }
 
 #[cfg(test)]
