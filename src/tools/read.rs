@@ -38,8 +38,7 @@ impl Tool for Read {
 
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: Args = parse(args)?;
-        let target =
-            target::resolve(&cx.app.paths.project, &args.path).map_err(Refusal::Refused)?;
+        let target = target::resolve(&cx.app.paths, &args.path).map_err(Refusal::Refused)?;
         Ok(Check::new(target::asks(permissions::READ.name, &target)))
     }
 
@@ -49,7 +48,7 @@ impl Tool for Read {
                 Ok(args) => args,
                 Err(out) => return out,
             };
-            let target = match target::resolve(&cx.app.paths.project, &args.path) {
+            let target = match target::resolve(&cx.app.paths, &args.path) {
                 Ok(target) => target,
                 Err(why) => return Output::error(why),
             };

@@ -36,6 +36,8 @@ struct Inner {
     /// The fake's own address, filled into scripted replies as `{base}` so a scripted model
     /// can point webfetch at this server.
     base: String,
+    /// The sandbox's crowbot home, filled in as `{home}`, with `/` separators.
+    home: String,
     paths: Vec<String>,
     chat_bodies: Vec<Value>,
     script: VecDeque<Reply>,
@@ -86,6 +88,11 @@ impl Fake {
         inner.lock().unwrap().base = url.clone();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self { url, inner }
+    }
+
+    /// Where `{home}` in a scripted reply points.
+    pub fn set_home(&self, home: &std::path::Path) {
+        self.inner.lock().unwrap().home = home.to_string_lossy().replace('\\', "/");
     }
 
     pub fn script(&self, replies: impl IntoIterator<Item = Reply>) {
@@ -180,19 +187,24 @@ async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> 
     if !authorized(&headers) {
         return error(401, "invalid_api_key", None);
     }
-    let (reply, base) = {
+    let (reply, base, home) = {
         let mut inner = inner.lock().unwrap();
         inner
             .chat_bodies
             .push(serde_json::from_str(&body).unwrap_or(Value::Null));
-        (inner.script.pop_front(), inner.base.clone())
+        (
+            inner.script.pop_front(),
+            inner.base.clone(),
+            inner.home.clone(),
+        )
     };
     match reply {
         Some(Reply::Sse(name)) => {
             let path = format!("{}/tests/fixtures/sse/{name}", env!("CARGO_MANIFEST_DIR"));
             let text = std::fs::read_to_string(&path)
                 .unwrap_or_else(|_| panic!("{path}"))
-                .replace("{base}", &base);
+                .replace("{base}", &base)
+                .replace("{home}", &home);
             (
                 [
                     (header::CONTENT_TYPE, "text/event-stream"),

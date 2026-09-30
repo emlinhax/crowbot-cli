@@ -1,0 +1,15 @@
+description = "The full output a bash cut points to, under crowbot's tmp dir, is readable in a headless run"
+args = ["--mode", "manual", "-p", "read the full output"]
+replies = ["scenarios/spill_read/1.sse", "scenarios/spill_read/2.sse"]
+
+[home_files]
+"tmp/bash-1.txt" = "line 99999\n"
+
+[expect]
+exit = 0
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "line 99999"

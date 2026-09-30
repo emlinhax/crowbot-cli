@@ -17,6 +17,9 @@ struct Scenario {
     args: Vec<String>,
     #[serde(default)]
     project: Option<String>,
+    /// Files to put under crowbot's home first, by path relative to it.
+    #[serde(default)]
+    home_files: BTreeMap<String, String>,
     /// SSE fixtures under tests/fixtures/sse/, one per model turn.
     replies: Vec<String>,
     expect: Expect,
@@ -83,6 +86,12 @@ async fn check(name: &str, scenario: &Scenario) {
     let sandbox = Sandbox::default();
     if let Some(project) = &scenario.project {
         sandbox.copy_project(project);
+    }
+    fake.set_home(sandbox.home());
+    for (path, text) in &scenario.home_files {
+        let path = sandbox.home().join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
     }
     let args: Vec<&str> = scenario.args.iter().map(String::as_str).collect();
     let run = sandbox.run(&fake.url, &args, WITH_KEY).await;

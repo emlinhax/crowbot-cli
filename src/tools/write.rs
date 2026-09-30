@@ -31,8 +31,7 @@ impl Tool for Write {
 
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: Args = parse(args)?;
-        let target =
-            target::resolve(&cx.app.paths.project, &args.path).map_err(Refusal::Refused)?;
+        let target = target::resolve(&cx.app.paths, &args.path).map_err(Refusal::Refused)?;
         if target.kind().map_err(Refusal::Refused)? == Kind::Dir {
             return Err(Refusal::Refused(format!(
                 "{} is a directory.",
@@ -57,7 +56,7 @@ impl Tool for Write {
                 Ok(args) => args,
                 Err(out) => return out,
             };
-            let target = match target::resolve(&cx.app.paths.project, &args.path) {
+            let target = match target::resolve(&cx.app.paths, &args.path) {
                 Ok(target) => target,
                 Err(why) => return Output::error(why),
             };

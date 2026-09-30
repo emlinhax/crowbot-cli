@@ -39,7 +39,7 @@ impl Tool for Grep {
 
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: Args = parse(args)?;
-        let root = target::resolve(&cx.app.paths.project, args.path.as_deref().unwrap_or("."))
+        let root = target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or("."))
             .map_err(Refusal::Refused)?;
         Ok(Check::new(target::asks(permissions::SEARCH.name, &root)))
     }
@@ -50,11 +50,10 @@ impl Tool for Grep {
                 Ok(args) => args,
                 Err(out) => return out,
             };
-            let root =
-                match target::resolve(&cx.app.paths.project, args.path.as_deref().unwrap_or(".")) {
-                    Ok(root) => root,
-                    Err(why) => return Output::error(why),
-                };
+            let root = match target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or(".")) {
+                Ok(root) => root,
+                Err(why) => return Output::error(why),
+            };
             let base = io::fs::canonical(&cx.app.paths.project);
             match root.kind() {
                 Ok(Kind::Missing) => {

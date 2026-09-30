@@ -154,7 +154,7 @@ pub fn parse_or_fail<T: DeserializeOwned>(args: &Value) -> Result<T, Output> {
 pub fn plan_file(paths: &Paths, session: &str) -> String {
     let file = paths.plans_dir().join(format!("{session}.md"));
     let file = file.to_string_lossy();
-    target::resolve(&paths.project, &file).map_or_else(|_| file.replace('\\', "/"), |t| t.shown)
+    target::resolve(paths, &file).map_or_else(|_| file.replace('\\', "/"), |t| t.shown)
 }
 
 pub struct Registry {

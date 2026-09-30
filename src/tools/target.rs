@@ -6,6 +6,7 @@ use std::path::{Component, Path, PathBuf};
 
 use super::permissions;
 use crate::io;
+use crate::paths::Paths;
 use crate::permission::gate::Ask;
 
 pub struct Target {
@@ -26,7 +27,8 @@ impl Target {
 
 /// Links are followed before deciding inside or outside, so a link out of the project asks to
 /// leave it and a link to `.env` is matched as `.env`.
-pub fn resolve(project: &Path, raw: &str) -> Result<Target, String> {
+pub fn resolve(paths: &Paths, raw: &str) -> Result<Target, String> {
+    let project = &paths.project;
     let raw = msys_to_windows(raw.trim());
     let raw = Path::new(&raw);
     if raw.components().next() == Some(Component::Normal(std::ffi::OsStr::new("~"))) {
@@ -46,6 +48,9 @@ pub fn resolve(project: &Path, raw: &str) -> Result<Target, String> {
     };
     let path = io::fs::canonical(&joined);
     let (shown, outside) = show(&io::fs::canonical(project), &path);
+    // crowbot's tmp dir holds the full output it pointed the model at; reading there is not
+    // leaving the project (writes still meet the edit rules).
+    let outside = outside && !path.starts_with(io::fs::canonical(&paths.tmp_dir()));
     Ok(Target {
         path,
         shown,
@@ -97,24 +102,43 @@ fn slashes(path: &Path) -> String {
 mod tests {
     use super::*;
 
+    fn resolve_in(project: &Path, raw: &str) -> Result<Target, String> {
+        resolve(
+            &Paths::at(project.join(".home"), project.to_path_buf()),
+            raw,
+        )
+    }
+
+    #[test]
+    fn crowbots_tmp_dir_is_not_outside_though_it_shows_absolute() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
+        let spill = paths.tmp_dir().join("bash-1.txt");
+        let t = resolve(&paths, &spill.to_string_lossy()).unwrap();
+        assert!(!t.outside, "{}", t.shown);
+        assert!(t.shown.ends_with("/home/tmp/bash-1.txt"), "{}", t.shown);
+        let beside = resolve(&paths, &paths.home.join("auth.json").to_string_lossy()).unwrap();
+        assert!(beside.outside);
+    }
+
     #[test]
     fn inside_paths_are_relative_and_outside_ones_absolute() {
         let project = std::env::temp_dir().join("proj");
-        let t = resolve(&project, "src/../src/./main.rs").unwrap();
+        let t = resolve_in(&project, "src/../src/./main.rs").unwrap();
         assert_eq!(t.shown, "src/main.rs");
         assert!(!t.outside);
-        let t = resolve(&project, "../other/x.txt").unwrap();
+        let t = resolve_in(&project, "../other/x.txt").unwrap();
         assert!(t.outside);
         assert!(t.shown.ends_with("/other/x.txt"), "{}", t.shown);
         assert_eq!(asks("edit", &t).len(), 2);
-        assert_eq!(resolve(&project, ".").unwrap().shown, ".");
+        assert_eq!(resolve_in(&project, ".").unwrap().shown, ".");
     }
 
     #[test]
     fn a_leading_tilde_is_refused_not_taken_as_a_folder() {
         let project = std::env::temp_dir().join("proj");
-        assert!(resolve(&project, "~/.bashrc").is_err());
-        assert!(resolve(&project, "notes/~draft").is_ok());
+        assert!(resolve_in(&project, "~/.bashrc").is_err());
+        assert!(resolve_in(&project, "notes/~draft").is_ok());
     }
 
     #[cfg(unix)]
@@ -129,12 +153,12 @@ mod tests {
         std::os::unix::fs::symlink(&away, project.join("dir")).unwrap();
         std::os::unix::fs::symlink(project.join(".env"), project.join("notes")).unwrap();
 
-        let file = resolve(&project, "file").unwrap();
+        let file = resolve_in(&project, "file").unwrap();
         assert!(file.outside, "{}", file.shown);
         assert_eq!(file.path, io::fs::canonical(&away.join("x.txt")));
-        let dir = resolve(&project, "dir/new.txt").unwrap();
+        let dir = resolve_in(&project, "dir/new.txt").unwrap();
         assert!(dir.outside, "{}", dir.shown);
-        let alias = resolve(&project, "notes").unwrap();
+        let alias = resolve_in(&project, "notes").unwrap();
         assert_eq!(alias.shown, ".env");
         assert!(!alias.outside);
     }
@@ -144,13 +168,13 @@ mod tests {
     fn msys_and_lowercase_drives_resolve_to_the_same_place() {
         let project = PathBuf::from(r"C:\Users\j\proj");
         assert_eq!(
-            resolve(&project, "/c/Users/j/proj/a.rs").unwrap().shown,
+            resolve_in(&project, "/c/Users/j/proj/a.rs").unwrap().shown,
             "a.rs"
         );
         assert_eq!(
-            resolve(&project, r"c:\Users\j\proj\a.rs").unwrap().shown,
+            resolve_in(&project, r"c:\Users\j\proj\a.rs").unwrap().shown,
             "a.rs"
         );
-        assert!(resolve(&project, "a.rs:hidden").is_err());
+        assert!(resolve_in(&project, "a.rs:hidden").is_err());
     }
 }
