@@ -76,6 +76,10 @@ reason = "pause after crowbot rate-limits the polling"
 value = 3
 reason = "crowbot raises the difficulty per address; a third stale challenge means something else is wrong"
 
+[signup.max_bits]
+value = 30
+reason = "the most work a person waits for on one machine; crowbot itself caps signup at 28 bits"
+
 [agent.max_turns]
 value = 100
 reason = "a runaway loop on crow-2 costs real money; a run that needs more should be continued deliberately"

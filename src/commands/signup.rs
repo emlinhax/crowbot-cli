@@ -5,10 +5,8 @@ use futures_util::future::BoxFuture;
 
 use super::{Command, Ctx, Outcome, Spec};
 use crate::api::signup;
-use crate::app::App;
 use crate::auth::{self, KeyKind};
 use crate::io::term;
-use crate::limits;
 
 static SPEC: LazyLock<Spec> =
     LazyLock::new(|| Spec::parse(include_str!("../../data/commands/signup.toml")));
@@ -39,7 +37,7 @@ impl Command for Signup {
                 );
             }
             term::out("Creating a crowbot account (solving a proof-of-work challenge)…\n");
-            let account = create(app).await?;
+            let account = signup::register(&app.api).await?;
             // Saved before it is shown, so an interrupted terminal cannot lose the only copy.
             auth::save(&app.paths, &account.account_number, KeyKind::Account)?;
             term::out(&format!(
@@ -51,24 +49,6 @@ impl Command for Signup {
             Ok(Outcome::from("Next: fund it at https://chat.crowbot.sh."))
         })
     }
-}
-
-async fn create(app: &App) -> anyhow::Result<signup::Account> {
-    let attempts = limits::get().signup.max_attempts.value;
-    let mut last = None;
-    for _ in 0..attempts {
-        let challenge = signup::challenge(&app.api).await?;
-        let seed = challenge.challenge.clone();
-        let nonce =
-            tokio::task::spawn_blocking(move || signup::solve(&seed, challenge.bits)).await?;
-        match signup::create(&app.api, &challenge.challenge, &nonce).await {
-            Ok(account) => return Ok(account),
-            // The required work grew while we solved; fetch a fresh challenge.
-            Err(e) if e.info.kind == "pow_required" => last = Some(e),
-            Err(e) => return Err(e.into()),
-        }
-    }
-    Err(last.map_or_else(|| anyhow::anyhow!("signup failed"), Into::into))
 }
 
 /// Asks for the last four digits back, when someone is at the keyboard to answer.

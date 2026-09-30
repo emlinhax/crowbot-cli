@@ -105,7 +105,10 @@ hint = "Log in again for a fresh code."
 
 [pow_required]
 title = "The proof of work expired before it was used"
-retry = true
+
+[pow_too_hard]
+title = "crowbot asked for more work than this machine will do"
+hint = "Many signups came from this address; try again later."
 
 [tool_unavailable]
 title = "That crowbot tool is off right now"

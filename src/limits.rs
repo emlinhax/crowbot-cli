@@ -93,6 +93,7 @@ pub struct PairLimits {
 #[serde(deny_unknown_fields)]
 pub struct SignupLimits {
     pub max_attempts: Limit<u32>,
+    pub max_bits: Limit<u32>,
 }
 
 #[derive(Debug, Deserialize)]
