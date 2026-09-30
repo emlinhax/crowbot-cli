@@ -5,6 +5,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::Value;
 
+use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
 use crate::io::{self, fs::Kind};
 use crate::limits;
@@ -39,7 +40,7 @@ impl Tool for Grep {
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: Args = parse(args)?;
         let root = target::resolve(&cx.app.paths.project, args.path.as_deref().unwrap_or("."));
-        Ok(Check::new(target::asks("search", &root)))
+        Ok(Check::new(target::asks(permissions::SEARCH.name, &root)))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {

@@ -17,7 +17,7 @@ use crate::agent::state::Shared;
 use crate::limits;
 use crate::mode::DoomLoop;
 use crate::permission::gate::{self, Ask, Decision, Policy};
-use crate::tools::{Output, Tool, ToolCx};
+use crate::tools::{Output, Tool, ToolCx, permissions};
 
 pub struct Batch {
     pub results: Vec<ToolResult>,
@@ -94,7 +94,9 @@ pub async fn run<'a>(
                     )));
                     continue;
                 }
-                DoomLoop::Ask => asks.push(Ask::new("doom_loop", call.name.clone())),
+                DoomLoop::Ask => {
+                    asks.push(Ask::new(permissions::DOOM_LOOP.name, call.name.clone()))
+                }
             }
         }
         let preview = match tool.check(&args, &tcx(&call.id)) {

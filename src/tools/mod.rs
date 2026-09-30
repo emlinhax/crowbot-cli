@@ -7,6 +7,7 @@ mod edit_match;
 pub mod files;
 mod glob;
 mod grep;
+pub mod permissions;
 mod plan_exit;
 mod question;
 mod read;

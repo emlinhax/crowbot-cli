@@ -7,6 +7,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::Value;
 
+use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::api::Call;
 use crate::limits;
@@ -57,7 +58,10 @@ impl Tool for CodeSearch {
 
     fn check(&self, args: &Value, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: Args = parse(args)?;
-        Ok(Check::new(vec![Ask::new("codesearch", args.query)]))
+        Ok(Check::new(vec![Ask::new(
+            permissions::CODESEARCH.name,
+            args.query,
+        )]))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {

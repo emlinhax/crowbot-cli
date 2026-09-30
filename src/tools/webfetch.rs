@@ -4,6 +4,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use super::permissions;
 use super::truncate::{self, Keep};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::io::fetch::FetchError;
@@ -93,7 +94,7 @@ impl Tool for WebFetch {
                 args.url
             )));
         };
-        Ok(Check::new(vec![Ask::new("webfetch", host)]))
+        Ok(Check::new(vec![Ask::new(permissions::WEBFETCH.name, host)]))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {

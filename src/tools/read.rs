@@ -5,6 +5,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use super::permissions;
 use super::truncate;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
 use crate::io::{self, fs::Kind};
@@ -38,7 +39,7 @@ impl Tool for Read {
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: Args = parse(args)?;
         let target = target::resolve(&cx.app.paths.project, &args.path);
-        Ok(Check::new(target::asks("read", &target)))
+        Ok(Check::new(target::asks(permissions::READ.name, &target)))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {

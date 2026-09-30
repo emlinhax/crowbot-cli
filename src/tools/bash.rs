@@ -6,6 +6,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use super::permissions;
 use super::shell::Shell;
 use super::truncate::{self, Keep};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
@@ -52,16 +53,19 @@ impl Tool for Bash {
         }
         let split = shell_split::split(&args.command);
         let mut asks = vec![Ask {
-            permission: "bash".into(),
+            permission: permissions::BASH.name.into(),
             patterns: split.commands,
         }];
         // What runs cannot be read off a substitution, and a redirect writes files: both get
         // their own permission so read-only allowances never cover them.
         if split.complex {
-            asks.push(Ask::new("bash_complex", args.command.trim()));
+            asks.push(Ask::new(
+                permissions::BASH_COMPLEX.name,
+                args.command.trim(),
+            ));
         }
         if split.writes {
-            asks.push(Ask::new("bash_write", args.command.trim()));
+            asks.push(Ask::new(permissions::BASH_WRITE.name, args.command.trim()));
         }
         Ok(Check::new(asks).with_preview(format!("$ {}", args.command.trim())))
     }

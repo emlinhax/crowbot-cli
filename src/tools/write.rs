@@ -4,6 +4,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
 use crate::io::{self, fs::Access, fs::Kind};
 
@@ -49,7 +50,7 @@ impl Tool for Write {
             .take(PREVIEW_LINES)
             .map(|l| format!("+{l}\n"))
             .collect();
-        Ok(Check::new(target::asks("edit", &target)).with_preview(preview))
+        Ok(Check::new(target::asks(permissions::EDIT.name, &target)).with_preview(preview))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {

@@ -4,6 +4,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::Value;
 
+use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::agent::model_text::{self, fill};
 use crate::agent::prompt::{Prompt, Reply};
@@ -40,7 +41,7 @@ impl Tool for Question {
                 "give between 1 and {MAX_OPTIONS} options"
             )));
         }
-        Ok(Check::new(vec![Ask::new("question", "*")]))
+        Ok(Check::new(vec![Ask::new(permissions::QUESTION.name, "*")]))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
