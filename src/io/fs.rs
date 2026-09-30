@@ -22,21 +22,49 @@ pub fn read_string(path: &Path) -> io::Result<Option<String>> {
 
 /// Writes a sibling temp file and renames it over the target, so a crash never leaves half a file.
 pub fn write_atomic(path: &Path, bytes: &[u8], access: Access) -> io::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
+    ensure_parent(path)?;
+    let (tmp, file) = create_temp(path, access)?;
+    let written = fill(file, bytes, path, access).and_then(|()| std::fs::rename(&tmp, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp);
     }
-    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
-    let mut file = open_new(&tmp, access)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    drop(file);
-    // Replacing a file must not drop its mode bits (an executable script stays executable).
+    written
+}
+
+/// A new file beside `path`, never one already there: not a leftover, not a planted link.
+fn create_temp(path: &Path, access: Access) -> io::Result<(PathBuf, std::fs::File)> {
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    loop {
+        let tmp = path.with_file_name(format!(
+            "{name}.tmp-{}-{:08x}",
+            std::process::id(),
+            fastrand::u32(..)
+        ));
+        match open_new(&tmp, access) {
+            Ok(file) => return Ok((tmp, file)),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+fn fill(mut file: std::fs::File, bytes: &[u8], path: &Path, access: Access) -> io::Result<()> {
+    // A replaced file keeps its mode bits (a script stays executable), set before any content
+    // so the new one is never readable more widely than the old.
     if access == Access::Shared
         && let Ok(old) = std::fs::metadata(path)
     {
-        let _ = std::fs::set_permissions(&tmp, old.permissions());
+        file.set_permissions(old.permissions())?;
     }
-    std::fs::rename(&tmp, path)
+    file.write_all(bytes)?;
+    file.sync_all()
+}
+
+fn ensure_parent(path: &Path) -> io::Result<()> {
+    match path.parent() {
+        Some(dir) => std::fs::create_dir_all(dir),
+        None => Ok(()),
+    }
 }
 
 /// `path` with links, `.` and `..` resolved as far as it exists on disk; the part that does not
@@ -126,9 +154,7 @@ pub fn list_dir(path: &Path) -> io::Result<Vec<Entry>> {
 
 /// Appends one line, creating the file and its directory on first use.
 pub fn append_line(path: &Path, line: &str) -> io::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
+    ensure_parent(path)?;
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -147,7 +173,7 @@ pub fn remove(path: &Path) -> io::Result<bool> {
 
 fn open_new(path: &Path, access: Access) -> io::Result<std::fs::File> {
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.write(true).create_new(true);
     #[cfg(unix)]
     if access == Access::Private {
         use std::os::unix::fs::OpenOptionsExt;
@@ -186,6 +212,30 @@ mod tests {
         write_atomic(&path, b"k", Access::Private).unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_replaced_file_keeps_its_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("run.sh");
+        write_atomic(&path, b"echo 1", Access::Shared).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        write_atomic(&path, b"echo 2", Access::Shared).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o755);
+    }
+
+    #[test]
+    fn a_failed_write_leaves_no_temp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("taken");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::create_dir(target.join("inside")).unwrap();
+        assert!(write_atomic(&target, b"x", Access::Shared).is_err());
+        let left: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().collect();
+        assert_eq!(left.len(), 1, "{left:?}");
     }
 
     #[test]
