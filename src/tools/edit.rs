@@ -6,7 +6,8 @@ use serde_json::{Value, json};
 
 use super::edit_match::{self, Fit, Miss};
 use super::permissions;
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
+use super::target::{self, Target};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::io::{self, fs::Access, fs::Kind};
 
 static SPEC: LazyLock<Spec> = LazyLock::new(|| {
@@ -78,20 +79,11 @@ impl Tool for Edit {
         if edits.is_empty() {
             return Err(Refusal::InvalidArgs("`edits` is empty".into()));
         }
-        if target.kind().map_err(Refusal::Refused)? != Kind::File {
-            return Err(Refusal::Refused(format!(
-                "{} is not a file; use write to create it.",
-                target.shown
-            )));
-        }
         // A call that will fail is refused now, before anyone is asked to approve it.
+        let before = load(&target).map_err(Refusal::Refused)?;
         cx.files()
             .check_fresh(&target.path, &target.shown)
             .map_err(Refusal::Refused)?;
-        let before = io::fs::read_string(&target.path)
-            .ok()
-            .flatten()
-            .unwrap_or_default();
         let applied = apply(&before, &edits)
             .map_err(|why| Refusal::Refused(format!("{why} ({})", target.shown)))?;
         Ok(
@@ -121,10 +113,9 @@ impl Tool for Edit {
             if let Err(why) = cx.files().check_fresh(&target.path, &target.shown) {
                 return Output::error(why);
             }
-            let before = match io::fs::read_string(&target.path) {
-                Ok(Some(text)) => text,
-                Ok(None) => return Output::error(format!("{} does not exist.", target.shown)),
-                Err(e) => return Output::error(format!("Could not read {}: {e}", target.shown)),
+            let before = match load(&target) {
+                Ok(text) => text,
+                Err(why) => return Output::error(why),
             };
             let applied = match apply(&before, &edits) {
                 Ok(applied) => applied,
@@ -167,6 +158,25 @@ pub struct Applied {
     /// Each replacement found by a loose strategy, `whitespace normalized, line 12`: the diff
     /// only reaches the user, so the model hears this and knows to check its edit.
     pub loose: Vec<String>,
+}
+
+/// The file's text, read the same way for the check and the run, or why edit cannot work on it.
+fn load(target: &Target) -> Result<String, String> {
+    let missing = || format!("{} does not exist; use write to create it.", target.shown);
+    match target.kind()? {
+        Kind::File => {}
+        Kind::Missing => return Err(missing()),
+        Kind::Dir => return Err(format!("{} is a directory.", target.shown)),
+    }
+    match io::fs::read_string(&target.path) {
+        Ok(Some(text)) => Ok(text),
+        Ok(None) => Err(missing()),
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => Err(format!(
+            "{} is not UTF-8 text; edit would corrupt it.",
+            target.shown
+        )),
+        Err(e) => Err(format!("Could not read {}: {e}", target.shown)),
+    }
 }
 
 /// Applies every edit to `original`, all matched against the original text.
@@ -369,6 +379,34 @@ mod tests {
         assert_eq!(applied.loose, vec!["whitespace normalized, line 3"]);
         let exact = apply("a\nb\n", &[edit("b", "c")]).unwrap();
         assert!(exact.loose.is_empty());
+    }
+
+    #[test]
+    fn says_why_a_file_cannot_be_edited() {
+        let project = Project::new();
+        crate::io::fs::write_atomic(
+            &project.app.paths.project.join("latin1.txt"),
+            b"caf\xe9\n",
+            Access::Shared,
+        )
+        .unwrap();
+        project.write("d/x.txt", "x");
+        let why = |path: &str| {
+            let args = json!({"path": path, "old_text": "a", "new_text": "b"});
+            match Edit.check(&args, &project.cx()) {
+                Err(Refusal::Refused(why)) => why,
+                _ => panic!("{path} was not refused"),
+            }
+        };
+        assert_eq!(
+            why("latin1.txt"),
+            "latin1.txt is not UTF-8 text; edit would corrupt it."
+        );
+        assert_eq!(why("d"), "d is a directory.");
+        assert_eq!(
+            why("gone.txt"),
+            "gone.txt does not exist; use write to create it."
+        );
     }
 
     #[tokio::test]
