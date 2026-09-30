@@ -4,8 +4,10 @@
     "question": { "type": "string", "description": "What to decide, in one sentence" },
     "options": {
       "type": "array",
-      "description": "Two to nine short, distinct choices",
-      "items": { "type": "string" }
+      "description": "Up to eight short, distinct choices",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 8
     }
   },
   "required": ["question", "options"]

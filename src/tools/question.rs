@@ -19,8 +19,9 @@ static SPEC: LazyLock<Spec> = LazyLock::new(|| {
     )
 });
 
-/// Options are picked by digit, so more than nine cannot all be chosen with one key.
-const MAX_OPTIONS: usize = 9;
+/// The card picks by digit, 1 to 9, and adds its own "Other" row after the options, so eight
+/// leave every row a digit.
+const MAX_OPTIONS: usize = 8;
 
 #[derive(Deserialize)]
 struct Args {
@@ -71,5 +72,17 @@ impl Tool for Question {
                 None => Output::error(text.cancelled.clone()),
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_schema_offers_what_the_check_allows() {
+        let options = &SPEC.parameters["properties"]["options"];
+        assert_eq!(options["maxItems"], MAX_OPTIONS);
+        assert_eq!(options["minItems"], 1);
     }
 }

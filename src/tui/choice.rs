@@ -340,6 +340,25 @@ mod tests {
     }
 
     #[test]
+    fn other_keeps_a_digit_with_the_most_options_a_question_may_have() {
+        let options = (1..=8).map(|i| format!("option {i}")).collect();
+        let question = Prompt::Question {
+            question: "Which?".into(),
+            options,
+        };
+        let mut card = Choice::from_prompt(1, &question, 40);
+        assert!(matches!(
+            card.key(None, &press(KeyCode::Char('9'))),
+            Step::Stay
+        ));
+        card.insert("my own");
+        assert!(matches!(
+            card.key(Some(Action::Submit), &press(KeyCode::Enter)),
+            Step::Answer(Reply::Text(t)) if t == "my own"
+        ));
+    }
+
+    #[test]
     fn questions_offer_other() {
         let mut card = Choice::from_prompt(
             1,
