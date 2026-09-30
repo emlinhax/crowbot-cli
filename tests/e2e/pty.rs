@@ -200,15 +200,51 @@ impl Session {
     }
 }
 
+/// What a session left behind: `body`'s answer, the screen before and after quitting (the
+/// session's own screen is gone once it exits), and the sandbox, for the files it wrote.
+struct Ended<T> {
+    out: T,
+    screen: String,
+    exited: String,
+    sandbox: Sandbox,
+}
+
+/// Starts a session (logged out when `key` is `None`), waits for its welcome, runs `body`, then
+/// quits with Ctrl+D and asserts a clean exit.
+async fn in_session<T: Send + 'static>(
+    fake: &Fake,
+    sandbox: Sandbox,
+    key: Option<&'static str>,
+    body: impl FnOnce(&mut Session) -> T + Send + 'static,
+) -> Ended<T> {
+    let url = fake.url.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut s = Session::start_as(&sandbox, &url, key);
+        s.wait_for("crowbot v");
+        let out = body(&mut s);
+        let screen = s.contents();
+        s.send("\x04");
+        assert!(
+            s.wait_exit(),
+            "crowbot exited with an error; screen:\n{}",
+            s.contents()
+        );
+        Ended {
+            out,
+            screen,
+            exited: s.contents(),
+            sandbox,
+        }
+    })
+    .await
+    .unwrap()
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_session_welcomes_chats_switches_mode_and_quits() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
-    let sandbox = Sandbox::default();
-    let url = fake.url.clone();
-    let hits_after = tokio::task::spawn_blocking(move || {
-        let mut s = Session::start(&sandbox, &url);
-        s.wait_for("crowbot v");
+    let ended = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.wait_for("MANUAL");
         // The message bar and the rule under it, with the model, sit at the bottom from the start.
         assert!(s.bottom_row().contains("crow-2"), "{}", s.contents());
@@ -217,15 +253,9 @@ async fn a_session_welcomes_chats_switches_mode_and_quits() {
         s.wait_for("Hello there!");
         s.send("\x1b[Z");
         s.wait_for("AUTO");
-        s.send("\x04");
-        let clean = s.wait_exit();
-        (clean, s.contents())
     })
-    .await
-    .unwrap();
-    let (clean, screen) = hits_after;
-    assert!(clean, "crowbot exited with an error; screen:\n{screen}");
-    assert!(screen.contains("Session saved"), "{screen}");
+    .await;
+    assert!(ended.exited.contains("Session saved"), "{}", ended.exited);
     assert_eq!(fake.hits("/v1/chat/completions"), 1);
 }
 
@@ -273,9 +303,7 @@ async fn a_command_typed_during_a_run_never_reaches_the_model() {
     let sandbox = Sandbox::default();
     std::fs::create_dir_all(sandbox.home.path()).unwrap();
     std::fs::write(sandbox.home.path().join("config.toml"), "mode = \"auto\"\n").unwrap();
-    let url = fake.url.clone();
-    let (screen, sessions) = tokio::task::spawn_blocking(move || {
-        let mut s = Session::start(&sandbox, &url);
+    let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.wait_for("AUTO");
         s.type_text("go");
         s.send("\r");
@@ -286,19 +314,17 @@ async fn a_command_typed_during_a_run_never_reaches_the_model() {
         let during = s.contents();
         s.send("\x1b");
         s.wait_gone("Log in to crowbot");
-        s.send("\x04");
-        assert!(s.wait_exit(), "{}", s.contents());
-        let sessions: String = sandbox
-            .sessions()
-            .iter()
-            .map(|f| std::fs::read_to_string(f).unwrap())
-            .collect();
-        (during, sessions)
+        during
     })
-    .await
-    .unwrap();
+    .await;
     // The command ran mid-turn, echoed with its number hidden.
-    assert!(screen.contains("/login --key …3456"), "{screen}");
+    assert!(ended.out.contains("/login --key …3456"), "{}", ended.out);
+    let sessions: String = ended
+        .sandbox
+        .sessions()
+        .iter()
+        .map(|f| std::fs::read_to_string(f).unwrap())
+        .collect();
     let bodies = serde_json::to_string(&fake.chat_bodies()).unwrap();
     assert_eq!(fake.hits("/v1/chat/completions"), 2);
     for secret in ["9012", "3456"] {
@@ -314,22 +340,15 @@ async fn a_command_typed_during_a_run_never_reaches_the_model() {
 async fn a_doubled_slash_sends_a_message_that_starts_with_a_slash() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
-    let sandbox = Sandbox::default();
-    let url = fake.url.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut s = Session::start(&sandbox, &url);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.wait_for("MANUAL");
         s.type_text("//etc/hosts is odd");
         s.send("\r");
         s.wait_for("Hello there!");
-        s.send("\x04");
-        assert!(s.wait_exit(), "{}", s.contents());
     })
-    .await
-    .unwrap();
+    .await;
     let bodies = fake.chat_bodies();
-    let user = &bodies[0]["messages"][1]["content"];
-    assert_eq!(user, "/etc/hosts is odd");
+    assert_eq!(bodies[0]["messages"][1]["content"], "/etc/hosts is odd");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -342,9 +361,7 @@ async fn manual_mode_shows_the_edit_and_applies_it_once_approved() {
     ]);
     let sandbox = Sandbox::default();
     sandbox.copy_project("calc");
-    let url = fake.url.clone();
-    let (screen, sandbox) = tokio::task::spawn_blocking(move || {
-        let mut s = Session::start(&sandbox, &url);
+    let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.wait_for("MANUAL");
         s.type_text("fix the sum");
         s.send("\r");
@@ -353,23 +370,16 @@ async fn manual_mode_shows_the_edit_and_applies_it_once_approved() {
         s.wait_for("1 Yes");
         s.send("1");
         s.wait_for("Fixed: 2 + 2 = 4.");
-        s.send("\x04");
-        s.wait_exit();
-        (s.contents(), sandbox)
     })
-    .await
-    .unwrap();
-    let fixed = std::fs::read_to_string(sandbox.project.path().join("src/calc.txt")).unwrap();
-    assert_eq!(fixed, "2 + 2 = 4\n", "{screen}");
+    .await;
+    let fixed = std::fs::read_to_string(ended.sandbox.project.path().join("src/calc.txt")).unwrap();
+    assert_eq!(fixed, "2 + 2 = 4\n", "{}", ended.screen);
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
     let fake = Fake::start().await;
-    let sandbox = Sandbox::default();
-    let url = fake.url.clone();
-    let screen = tokio::task::spawn_blocking(move || {
-        let mut s = Session::start(&sandbox, &url);
+    let ended = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.wait_for("MANUAL");
         s.type_text("/mo");
         s.wait_for("╭ commands");
@@ -389,18 +399,14 @@ async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
         s.wait_for("╭ Models");
         s.wait_for("fake-coder");
         s.wait_gone("╭ commands");
-        // The session screen goes when crowbot exits, so read it first.
-        let screen = s.contents();
+        let picked = s.contents();
         // ← closes the picker, like Esc.
         s.send("\x1b[D");
         s.wait_gone("╭ Models");
-        s.send("\x04");
-        s.wait_exit();
-        screen
+        picked
     })
-    .await
-    .unwrap();
-    assert!(screen.contains("/models"), "{screen}");
+    .await;
+    assert!(ended.out.contains("/models"), "{}", ended.out);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -408,10 +414,7 @@ async fn slash_login_pairs_this_device_and_the_session_chats_at_once() {
     let fake = Fake::start().await;
     fake.pair_after(1);
     fake.script([Reply::sse("hello.sse")]);
-    let sandbox = Sandbox::default();
-    let url = fake.url.clone();
-    let (screen, sandbox) = tokio::task::spawn_blocking(move || {
-        let mut s = Session::start_as(&sandbox, &url, None);
+    let ended = in_session(&fake, Sandbox::default(), None, |s| {
         s.wait_for("type /login");
         s.type_text("/login");
         s.send("\r");
@@ -423,24 +426,16 @@ async fn slash_login_pairs_this_device_and_the_session_chats_at_once() {
         s.type_text("hi");
         s.send("\r");
         s.wait_for("Hello there!");
-        let screen = s.contents();
-        s.send("\x04");
-        s.wait_exit();
-        (screen, sandbox)
     })
-    .await
-    .unwrap();
-    assert!(screen.contains("$12.30"), "{screen}");
-    assert!(sandbox.home().join("auth.json").exists());
+    .await;
+    assert!(ended.screen.contains("$12.30"), "{}", ended.screen);
+    assert!(ended.sandbox.home().join("auth.json").exists());
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn slash_login_takes_a_masked_account_number_and_retries_a_wrong_one() {
     let fake = Fake::start().await;
-    let sandbox = Sandbox::default();
-    let url = fake.url.clone();
-    let (screen, sandbox) = tokio::task::spawn_blocking(move || {
-        let mut s = Session::start_as(&sandbox, &url, None);
+    let ended = in_session(&fake, Sandbox::default(), None, |s| {
         s.wait_for("type /login");
         s.type_text("/login");
         s.send("\r");
@@ -455,25 +450,17 @@ async fn slash_login_takes_a_masked_account_number_and_retries_a_wrong_one() {
         assert!(!s.contents().contains("1234 5678"), "{}", s.contents());
         s.send("\r");
         s.wait_for("Logged in with account number …3456");
-        let screen = s.contents();
-        s.send("\x04");
-        s.wait_exit();
-        (screen, sandbox)
     })
-    .await
-    .unwrap();
-    assert!(!screen.contains("1234 5678"), "{screen}");
-    assert!(sandbox.home().join("auth.json").exists());
+    .await;
+    assert!(!ended.screen.contains("1234 5678"), "{}", ended.screen);
+    assert!(ended.sandbox.home().join("auth.json").exists());
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn thinking_collapses_opens_on_click_and_ctrl_t_toggles_it_all() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
-    let sandbox = Sandbox::default();
-    let url = fake.url.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut s = Session::start(&sandbox, &url);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.wait_for("MANUAL");
         s.type_text("hi");
         s.send("\r");
@@ -489,21 +476,15 @@ async fn thinking_collapses_opens_on_click_and_ctrl_t_toggles_it_all() {
         s.wait_for("The user greets me.");
         s.click(row);
         s.wait_gone("The user greets me.");
-        s.send("\x04");
-        s.wait_exit();
     })
-    .await
-    .unwrap();
+    .await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
-    let sandbox = Sandbox::default();
-    let url = fake.url.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut s = Session::start(&sandbox, &url);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.wait_for("MANUAL");
         s.type_text("/models");
         s.send("\r");
@@ -516,21 +497,15 @@ async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
         s.type_text("hi");
         s.send("\r");
         s.wait_for("Hello there!");
-        s.send("\x04");
-        s.wait_exit();
     })
-    .await
-    .unwrap();
+    .await;
     assert_eq!(fake.chat_bodies()[0]["model"], "fake-coder");
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_command_popup_floats_over_the_conversation_without_moving_it() {
     let fake = Fake::start().await;
-    let sandbox = Sandbox::default();
-    let url = fake.url.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut s = Session::start(&sandbox, &url);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.wait_for("MANUAL");
         // More output than the screen holds, so the conversation fills every row above the bar.
         for _ in 0..3 {
@@ -558,9 +533,6 @@ async fn the_command_popup_floats_over_the_conversation_without_moving_it() {
             "the conversation moved; screen:\n{}",
             s.contents()
         );
-        s.send("\x04");
-        s.wait_exit();
     })
-    .await
-    .unwrap();
+    .await;
 }
