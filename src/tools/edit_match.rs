@@ -311,6 +311,8 @@ fn without_line_numbers(needle: &str) -> Option<String> {
 }
 
 /// First and last lines match exactly (trimmed); the middle only has to be similar.
+/// CEILING: no total budget; a file with many anchor pairs costs anchors × windows × middle².
+/// Upgrade: spend from a shared cell budget like `closest` does.
 fn block_anchor(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
     let limits = &limits::get().edit;
     let (lines, newline) = needle_lines(needle);
@@ -354,8 +356,15 @@ fn block_anchor(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
 
 /// The line most like the needle's first line, to point the model at the right place.
 fn closest(doc: &Doc<'_>, needle: &str) -> Option<String> {
+    let limits = &limits::get().edit;
     let first = needle.lines().find(|l| !l.trim().is_empty())?.trim();
-    if first.len() * doc.lines.len() > limits::get().edit.similarity_max_chars.value * 100 {
+    let width = first.chars().count();
+    let cells: usize = doc
+        .lines
+        .iter()
+        .map(|(_, l)| l.trim().chars().count() * width)
+        .sum();
+    if cells > limits.hint_max_cells.value {
         return None;
     }
     let (index, score) = doc
@@ -364,7 +373,7 @@ fn closest(doc: &Doc<'_>, needle: &str) -> Option<String> {
         .enumerate()
         .map(|(i, (_, l))| (i, similarity(l.trim(), first)))
         .max_by(|a, b| a.1.total_cmp(&b.1))?;
-    (score >= 0.5).then(|| {
+    (score * 100.0 >= limits.hint_similarity_pct.value as f64).then(|| {
         format!(
             "The closest line is {} ({:.0}% similar): `{}`",
             index + 1,
@@ -452,6 +461,15 @@ mod tests {
             ),
             Some("line numbers stripped")
         );
+    }
+
+    #[test]
+    fn the_closest_line_hint_counts_the_work_not_the_lines() {
+        let first = "x".repeat(1000);
+        let near = format!("{first}{}\n", "y".repeat(500));
+        assert!(closest(&Doc::new(&near), &first).is_some());
+        // 100 such lines cost 1.5e8 cells, far past the budget, though there are few of them.
+        assert_eq!(closest(&Doc::new(&near.repeat(100)), &first), None);
     }
 
     #[test]

@@ -138,7 +138,15 @@ reason = "a fuzzy match this much longer or shorter than the text it replaces is
 
 [edit.similarity_max_chars]
 value = 20000
-reason = "edit distance is quadratic; beyond this the closest-match hint is skipped"
+reason = "edit distance is quadratic; longer texts count as unlike, both as block middles and as closest lines"
+
+[edit.hint_max_cells]
+value = 2000000
+reason = "edit-distance cells the closest-line hint may spend over the whole file; past this it is skipped"
+
+[edit.hint_similarity_pct]
+value = 50
+reason = "a closest line less alike than this points the model at the wrong place"
 
 [tui.frame_ms]
 value = 16

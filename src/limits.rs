@@ -124,6 +124,8 @@ pub struct EditLimits {
     pub anchor_similarity_pct: Limit<u64>,
     pub size_tolerance_pct: Limit<u64>,
     pub similarity_max_chars: Limit<usize>,
+    pub hint_max_cells: Limit<usize>,
+    pub hint_similarity_pct: Limit<u64>,
 }
 
 #[derive(Debug, Deserialize)]
