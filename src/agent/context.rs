@@ -28,7 +28,7 @@ pub fn build(messages: &[Message]) -> Vec<Message> {
                     .tool_calls()
                     .map(|c| (c.id.clone(), c.name.clone()))
                     .collect();
-                out.push(message.clone());
+                out.push(Message::Assistant(whole_arguments(a)));
             }
             Message::Tool(result) => {
                 if dropped.contains(&result.call_id) {
@@ -57,6 +57,20 @@ fn answer_open(out: &mut Vec<Message>, open: &mut Vec<(String, String)>) {
             details: None,
         }));
     }
+}
+
+/// A reply cut off at the output limit may end in a call whose JSON stops halfway; it was never
+/// run (its result says so), and it goes back as `{}` so the history is one a vendor accepts.
+fn whole_arguments(a: &Assistant) -> Assistant {
+    let mut a = a.clone();
+    for part in &mut a.parts {
+        if let Part::ToolCall(call) = part
+            && serde_json::from_str::<serde_json::Value>(&call.arguments).is_err()
+        {
+            call.arguments = "{}".into();
+        }
+    }
+    a
 }
 
 /// A cut-off turn keeps only its finished prose; a partial call or trace is not worth replaying.
@@ -118,6 +132,24 @@ mod tests {
                 Message::Tool(r) => format!("tool:{}:{}", r.call_id, r.content),
             })
             .collect()
+    }
+
+    #[test]
+    fn a_call_cut_off_mid_json_is_replayed_with_empty_arguments() {
+        let cut = Part::ToolCall(ToolCall {
+            id: "a".into(),
+            name: "write".into(),
+            arguments: r#"{"path": "x.txt", "content": "half"#.into(),
+        });
+        let out = build(&[
+            Message::user_text("go"),
+            assistant(Finish::Length, vec![call("b"), cut]),
+        ]);
+        let Message::Assistant(a) = &out[1] else {
+            panic!("{out:?}");
+        };
+        let args: Vec<&str> = a.tool_calls().map(|c| c.arguments.as_str()).collect();
+        assert_eq!(args, ["{}", "{}"]);
     }
 
     #[test]
