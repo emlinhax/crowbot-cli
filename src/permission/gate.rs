@@ -134,6 +134,30 @@ mod tests {
     }
 
     #[test]
+    fn plan_allows_only_commands_that_cannot_run_or_write() {
+        let rules = defaults();
+        let cases = [
+            ("git status", true),
+            ("git diff", true),
+            ("git diff HEAD~1 -- src", true),
+            ("git log --oneline -5", true),
+            ("ls -la src", true),
+            ("pwd", true),
+            ("git difftool --extcmd='rm -rf ~' -y", false),
+            ("git diff --output=/home/u/.bashrc HEAD~1", false),
+            ("git log -p --ext-diff", false),
+            ("git diff --no-index /etc/passwd x", false),
+            ("rg --pre=/tmp/evil --pre-glob '*' x .", false),
+            ("cat .env", false),
+            ("lsof -i", false),
+        ];
+        for (command, allowed) in cases {
+            let got = policy("plan", &rules).decide(&[Ask::new("bash", command)]);
+            assert_eq!(got == Decision::Allow, allowed, "{command}: {got:?}");
+        }
+    }
+
+    #[test]
     fn user_denies_hold_in_manual_but_not_in_auto() {
         let mut rules = defaults();
         rules.push(Rule {

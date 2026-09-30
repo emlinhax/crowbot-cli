@@ -41,29 +41,57 @@ permission = "bash_write"
 pattern = "*"
 action = "deny"
 
+# Each command matches alone or followed by words, so `git difftool` or `lsof` doesn't pass as
+# `git diff` or `ls`. No file reader here: `cat` and friends would skip the read tool's secret
+# rules, so PLAN reads through read, grep and glob.
 [[lock]]
 permission = "bash"
-pattern = "git status*"
+pattern = "git status"
 action = "allow"
 
 [[lock]]
 permission = "bash"
-pattern = "git log*"
+pattern = "git status *"
 action = "allow"
 
 [[lock]]
 permission = "bash"
-pattern = "git diff*"
+pattern = "git log"
 action = "allow"
 
 [[lock]]
 permission = "bash"
-pattern = "git show*"
+pattern = "git log *"
 action = "allow"
 
 [[lock]]
 permission = "bash"
-pattern = "ls*"
+pattern = "git diff"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "git diff *"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "git show"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "git show *"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "ls"
+action = "allow"
+
+[[lock]]
+permission = "bash"
+pattern = "ls *"
 action = "allow"
 
 [[lock]]
@@ -71,27 +99,18 @@ permission = "bash"
 pattern = "pwd"
 action = "allow"
 
+# Flags that make an allowed git command write, run a diff program, or read outside the repo.
 [[lock]]
 permission = "bash"
-pattern = "cat *"
-action = "allow"
+pattern = "git *--output*"
+action = "deny"
 
 [[lock]]
 permission = "bash"
-pattern = "head *"
-action = "allow"
+pattern = "git *--ext-diff*"
+action = "deny"
 
 [[lock]]
 permission = "bash"
-pattern = "tail *"
-action = "allow"
-
-[[lock]]
-permission = "bash"
-pattern = "wc *"
-action = "allow"
-
-[[lock]]
-permission = "bash"
-pattern = "rg *"
-action = "allow"
+pattern = "git *--no-index*"
+action = "deny"
