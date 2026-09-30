@@ -1,0 +1,22 @@
+description = "A Cloudflare challenge is reported to the model, never passed off as the page"
+args = ["--mode", "auto", "-p", "read the docs"]
+replies = ["web/fetch_blocked.sse", "web/done.sse"]
+
+[expect]
+exit = 0
+stdout_contains = ["Done."]
+# A challenged profile is followed by another before giving up; how many follows cffetch.
+min_hits = { "/web/blocked" = 2 }
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "Cloudflare challenge"
+lacks = "Just a moment"
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "do not retry"

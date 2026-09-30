@@ -35,6 +35,12 @@ struct Expect {
     files: BTreeMap<String, String>,
     #[serde(default)]
     requests: Vec<RequestCheck>,
+    /// Requests the fake served, exactly, by path.
+    #[serde(default)]
+    hits: BTreeMap<String, usize>,
+    /// At least this many; for counts that follow cffetch's own retries.
+    #[serde(default)]
+    min_hits: BTreeMap<String, usize>,
 }
 
 /// A check on one chat request the model was sent.
@@ -45,7 +51,11 @@ struct RequestCheck {
     /// Which message in it; negative counts from the end.
     message: i64,
     role: String,
-    contains: String,
+    #[serde(default)]
+    contains: Option<String>,
+    /// What must not reach the model there.
+    #[serde(default)]
+    lacks: Option<String>,
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -101,26 +111,48 @@ async fn check(name: &str, scenario: &Scenario) {
         scenario.replies.len(),
         "requests made\n{context}"
     );
+    for (path, want) in &expect.hits {
+        assert_eq!(fake.hits(path), *want, "hits on {path}\n{context}");
+    }
+    for (path, least) in &expect.min_hits {
+        let got = fake.hits(path);
+        assert!(
+            got >= *least,
+            "{got} hits on {path}, want at least {least}\n{context}"
+        );
+    }
     for check in &expect.requests {
-        let messages = bodies[check.index]["messages"].as_array().unwrap();
-        let at = if check.message < 0 {
+        let at = format!("request {} message {}", check.index, check.message);
+        assert!(
+            check.contains.is_some() || check.lacks.is_some(),
+            "{at} checks nothing\n{context}"
+        );
+        let messages = bodies
+            .get(check.index)
+            .and_then(|b| b["messages"].as_array())
+            .unwrap_or_else(|| panic!("{at}: no such request\n{context}"));
+        let index = if check.message < 0 {
             messages.len() as i64 + check.message
         } else {
             check.message
         };
-        let message: &Value = &messages[at as usize];
-        assert_eq!(
-            message["role"], check.role,
-            "request {} message {}\n{context}",
-            check.index, check.message
-        );
+        let message: &Value = usize::try_from(index)
+            .ok()
+            .and_then(|i| messages.get(i))
+            .unwrap_or_else(|| panic!("{at}: no such message\n{context}"));
+        assert_eq!(message["role"], check.role, "{at}\n{context}");
         let content = message["content"].as_str().unwrap_or_default();
-        assert!(
-            content.contains(&check.contains),
-            "request {} message {} lacks {:?}: {content}\n{context}",
-            check.index,
-            check.message,
-            check.contains
-        );
+        if let Some(want) = &check.contains {
+            assert!(
+                content.contains(want),
+                "{at} lacks {want:?}: {content}\n{context}"
+            );
+        }
+        if let Some(unwanted) = &check.lacks {
+            assert!(
+                !content.contains(unwanted),
+                "{at} has {unwanted:?}: {content}\n{context}"
+            );
+        }
     }
 }
