@@ -53,6 +53,8 @@ pub async fn run(
         // No console window, and our own Ctrl+C is not delivered to the child.
         command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
     }
+    // CEILING: a child that calls setsid or runs under `set -m` leaves the group and survives;
+    // closing that needs PR_SET_CHILD_SUBREAPER or a cgroup.
     #[cfg(unix)]
     command.process_group(0);
 
@@ -131,20 +133,27 @@ impl Tree {
             if job.is_null() {
                 return Err(io::Error::last_os_error());
             }
+            // From here every early return closes the job, and the caller's `?` drops the
+            // child, which `kill_on_drop` ends: nothing runs untracked.
+            let tree = Self { job };
             let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
             info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            SetInformationJobObject(
+            if SetInformationJobObject(
                 job,
                 JobObjectExtendedLimitInformation,
                 (&raw const info).cast(),
                 std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-            );
+            ) == 0
+            {
+                return Err(io::Error::last_os_error());
+            }
             // CEILING: a grandchild spawned before this line escapes the job; closing that gap
             // needs CREATE_SUSPENDED and resuming the main thread after assignment.
-            if let Some(handle) = child.raw_handle() {
-                AssignProcessToJobObject(job, handle);
+            let handle = child.raw_handle().ok_or_else(untracked)?;
+            if AssignProcessToJobObject(job, handle) == 0 {
+                return Err(io::Error::last_os_error());
             }
-            Ok(Self { job })
+            Ok(tree)
         }
     }
 
@@ -153,7 +162,7 @@ impl Tree {
         let group = child
             .id()
             .and_then(|id| i32::try_from(id).ok())
-            .ok_or_else(|| io::Error::other("the command exited before it could be tracked"))?;
+            .ok_or_else(untracked)?;
         Ok(Self { group })
     }
 
@@ -169,6 +178,10 @@ impl Tree {
             libc::killpg(self.group, libc::SIGKILL);
         }
     }
+}
+
+fn untracked() -> io::Error {
+    io::Error::other("the command exited before it could be tracked")
 }
 
 impl Drop for Tree {
