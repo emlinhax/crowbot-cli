@@ -111,6 +111,8 @@ pub struct ToolLimits {
     pub bash_timeout_secs: Limit<u64>,
     pub bash_max_timeout_secs: Limit<u64>,
     pub bash_drain_ms: Limit<u64>,
+    pub bash_memory_bytes: Limit<usize>,
+    pub bash_spill_max_bytes: Limit<usize>,
     pub webfetch_max_bytes: Limit<usize>,
     pub webfetch_timeout_secs: Limit<u64>,
 }

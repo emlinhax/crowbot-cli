@@ -152,6 +152,20 @@ pub fn list_dir(path: &Path) -> io::Result<Vec<Entry>> {
     Ok(entries)
 }
 
+/// A file created for appending, never one that was already there.
+pub struct Appender(std::fs::File);
+
+impl Appender {
+    pub fn create(path: &Path, access: Access) -> io::Result<Self> {
+        ensure_parent(path)?;
+        open_new(path, access).map(Self)
+    }
+
+    pub fn append(&mut self, bytes: &[u8]) -> io::Result<()> {
+        self.0.write_all(bytes)
+    }
+}
+
 /// Appends one line, creating the file and its directory on first use.
 pub fn append_line(path: &Path, line: &str) -> io::Result<()> {
     ensure_parent(path)?;

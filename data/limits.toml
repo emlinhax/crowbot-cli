@@ -108,6 +108,14 @@ reason = "the longest a model may ask to wait on one command"
 value = 250
 reason = "after the shell exits, output still in flight gets this long before the pipes close"
 
+[tools.bash_memory_bytes]
+value = 262144
+reason = "output held in memory before the rest goes to a spill file; a few max_bytes, since escapes and redrawn progress lines shrink it"
+
+[tools.bash_spill_max_bytes]
+value = 67108864
+reason = "a spill the model can page through; a command printing forever stops filling the disk here"
+
 [tools.webfetch_max_bytes]
 value = 5242880
 reason = "larger pages are rarely text a model can use"

@@ -30,17 +30,13 @@ pub enum Ended {
     Cancelled,
 }
 
-pub struct ShellRun {
-    /// stdout and stderr interleaved as they arrived.
-    pub output: Vec<u8>,
-    pub ended: Ended,
-}
-
+/// Output goes to `on_output` as it arrives (stdout and stderr interleaved) and is not kept
+/// here, so a command that prints forever costs the caller only what it chooses to keep.
 pub async fn run(
     cmd: &ShellCommand<'_>,
     cancel: &CancellationToken,
     on_output: &mut (dyn FnMut(&[u8]) + Send),
-) -> io::Result<ShellRun> {
+) -> io::Result<Ended> {
     let mut command = tokio::process::Command::new(cmd.program);
     command
         .args(cmd.args)
@@ -70,15 +66,11 @@ pub async fn run(
         tokio::spawn(pump(err, tx));
     }
 
-    let mut output = Vec::new();
     let deadline = tokio::time::sleep(cmd.timeout);
     tokio::pin!(deadline);
     let ended = loop {
         tokio::select! {
-            Some(chunk) = rx.recv() => {
-                on_output(&chunk);
-                output.extend(chunk);
-            }
+            Some(chunk) = rx.recv() => on_output(&chunk),
             status = child.wait() => break Ended::Exited(status.ok().and_then(|s| s.code())),
             () = &mut deadline => break Ended::TimedOut,
             () = cancel.cancelled() => break Ended::Cancelled,
@@ -92,10 +84,7 @@ pub async fn run(
     loop {
         tokio::select! {
             chunk = rx.recv() => match chunk {
-                Some(chunk) => {
-                    on_output(&chunk);
-                    output.extend(chunk);
-                }
+                Some(chunk) => on_output(&chunk),
                 None => break,
             },
             () = &mut drain => break,
@@ -104,7 +93,7 @@ pub async fn run(
     // CEILING: background processes (dev servers) die with the command; running one detached
     // would need its own lifecycle and output channel.
     tree.kill();
-    Ok(ShellRun { output, ended })
+    Ok(ended)
 }
 
 async fn pump(mut from: impl tokio::io::AsyncRead + Unpin, to: mpsc::UnboundedSender<Vec<u8>>) {
@@ -208,10 +197,16 @@ mod tests {
         }
     }
 
-    async fn run_line(line: &str, timeout: Duration, cancel: &CancellationToken) -> ShellRun {
+    /// What the line printed, and how it ended.
+    async fn run_line(
+        line: &str,
+        timeout: Duration,
+        cancel: &CancellationToken,
+    ) -> (Vec<u8>, Ended) {
         let (program, args) = shell();
         let cwd = std::env::temp_dir();
-        run(
+        let mut output = Vec::new();
+        let ended = run(
             &ShellCommand {
                 program: &program,
                 args: &args,
@@ -222,22 +217,23 @@ mod tests {
                 drain: Duration::from_millis(200),
             },
             cancel,
-            &mut |_| {},
+            &mut |chunk| output.extend_from_slice(chunk),
         )
         .await
-        .unwrap()
+        .unwrap();
+        (output, ended)
     }
 
     #[tokio::test]
     async fn captures_output_and_exit_code() {
-        let run = run_line(
+        let (output, ended) = run_line(
             "echo hello; exit 3",
             Duration::from_secs(20),
             &CancellationToken::new(),
         )
         .await;
-        assert!(String::from_utf8_lossy(&run.output).contains("hello"));
-        assert_eq!(run.ended, Ended::Exited(Some(3)));
+        assert!(String::from_utf8_lossy(&output).contains("hello"));
+        assert_eq!(ended, Ended::Exited(Some(3)));
     }
 
     #[tokio::test]
@@ -248,8 +244,9 @@ mod tests {
         } else {
             "sleep 30"
         };
-        let run = run_line(sleep, Duration::from_millis(500), &CancellationToken::new()).await;
-        assert_eq!(run.ended, Ended::TimedOut);
+        let (_, ended) =
+            run_line(sleep, Duration::from_millis(500), &CancellationToken::new()).await;
+        assert_eq!(ended, Ended::TimedOut);
         assert!(started.elapsed() < Duration::from_secs(10));
     }
 
@@ -266,7 +263,7 @@ mod tests {
         } else {
             "sleep 30"
         };
-        let run = run_line(sleep, Duration::from_secs(60), &cancel).await;
-        assert_eq!(run.ended, Ended::Cancelled);
+        let (_, ended) = run_line(sleep, Duration::from_secs(60), &cancel).await;
+        assert_eq!(ended, Ended::Cancelled);
     }
 }

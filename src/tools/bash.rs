@@ -85,7 +85,8 @@ impl Tool for Bash {
                 .timeout
                 .unwrap_or(limits.bash_timeout_secs.value)
                 .clamp(1, limits.bash_max_timeout_secs.value);
-            let run = shell::run(
+            let mut sink = Sink::new(cx.app.paths.tmp_dir());
+            let ended = shell::run(
                 &ShellCommand {
                     program,
                     args: &self.shell.args,
@@ -96,16 +97,16 @@ impl Tool for Bash {
                     drain: limits.bash_drain_ms.ms(),
                 },
                 &cx.cancel,
-                &mut |_| {},
+                &mut |chunk| sink.take(chunk),
             )
             .await;
-            let run = match run {
-                Ok(run) => run,
+            let ended = match ended {
+                Ok(ended) => ended,
                 Err(e) => {
                     return Output::error(format!("Could not start {}: {e}", self.shell.name));
                 }
             };
-            let text = clean(&String::from_utf8_lossy(&run.output));
+            let text = clean(&String::from_utf8_lossy(&sink.held));
             let cut = truncate::cut(
                 &text,
                 Keep::Tail,
@@ -113,14 +114,25 @@ impl Tool for Bash {
                 limits.max_bytes.value,
             );
             let mut content = String::new();
-            let mut spill = None;
-            if cut.truncated() {
-                spill = save_full(cx, &text);
+            let mut spill = sink.spill.as_ref().map(|s| s.path.display().to_string());
+            if cut.truncated() || spill.is_some() {
+                let total = if spill.is_some() {
+                    sink.lines()
+                } else {
+                    cut.total_lines
+                };
+                if spill.is_none() {
+                    spill = save_full(cx, &text);
+                }
+                let stopped = if sink.spill.as_ref().is_some_and(|s| s.stopped) {
+                    format!(" It stops at {} bytes.", limits.bash_spill_max_bytes.value)
+                } else {
+                    String::new()
+                };
                 let _ = writeln!(
                     content,
-                    "[Showing the last {} of {} lines.{}]",
+                    "[Showing the last {} of {total} lines.{}{stopped}]",
                     cut.kept_lines,
-                    cut.total_lines,
                     spill
                         .as_ref()
                         .map(|p| format!(" Full output: {p}"))
@@ -128,7 +140,7 @@ impl Tool for Bash {
                 );
             }
             content.push_str(&cut.text);
-            let (status, failed, code) = match run.ended {
+            let (status, failed, code) = match ended {
                 Ended::Exited(Some(0)) => (String::new(), false, Some(0)),
                 Ended::Exited(Some(code)) => (format!("[exit code {code}]"), true, Some(code)),
                 Ended::Exited(None) => ("[terminated by a signal]".into(), true, None),
@@ -153,6 +165,83 @@ impl Tool for Bash {
                 json!({"exit_code": code, "full_output": spill, "shell": self.shell.name}),
             )
         })
+    }
+}
+
+/// What a command printed, within bounds: all of it while small, then only the latest part in
+/// memory and the whole, up to a cap, in a spill file the model can read.
+struct Sink {
+    held: Vec<u8>,
+    spill: Option<Spill>,
+    spill_dir: std::path::PathBuf,
+    newlines: usize,
+    ends_mid_line: bool,
+}
+
+struct Spill {
+    file: io::fs::Appender,
+    path: std::path::PathBuf,
+    written: usize,
+    stopped: bool,
+}
+
+impl Sink {
+    fn new(spill_dir: std::path::PathBuf) -> Self {
+        Self {
+            held: Vec::new(),
+            spill: None,
+            spill_dir,
+            newlines: 0,
+            ends_mid_line: false,
+        }
+    }
+
+    fn take(&mut self, chunk: &[u8]) {
+        self.newlines += chunk.iter().filter(|&&b| b == b'\n').count();
+        if let Some(&last) = chunk.last() {
+            self.ends_mid_line = last != b'\n';
+        }
+        if let Some(spill) = &mut self.spill {
+            spill.write(chunk);
+        }
+        self.held.extend_from_slice(chunk);
+        let keep = limits::get().tools.bash_memory_bytes.value;
+        if self.held.len() > keep {
+            if self.spill.is_none() {
+                self.spill = Spill::open(&self.spill_dir, &self.held);
+            }
+            let excess = self.held.len() - keep;
+            self.held.drain(..excess);
+        }
+    }
+
+    fn lines(&self) -> usize {
+        self.newlines + usize::from(self.ends_mid_line)
+    }
+}
+
+impl Spill {
+    fn open(dir: &std::path::Path, start: &[u8]) -> Option<Self> {
+        let path = dir.join(format!("bash-{:08x}.log", fastrand::u32(..)));
+        let file = io::fs::Appender::create(&path, Access::Shared).ok()?;
+        let mut spill = Self {
+            file,
+            path,
+            written: 0,
+            stopped: false,
+        };
+        spill.write(start);
+        Some(spill)
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        if self.stopped {
+            return;
+        }
+        let room = limits::get().tools.bash_spill_max_bytes.value - self.written;
+        let part = &bytes[..bytes.len().min(room)];
+        self.stopped = part.len() < bytes.len() || self.file.append(part).is_err();
+        self.written += part.len();
     }
 }
 
@@ -208,6 +297,28 @@ mod tests {
     #[test]
     fn cleans_escapes_and_carriage_returns() {
         assert_eq!(clean("\u{1b}[31mred\u{1b}[0m\n10%\r50%\r100%"), "red\n100%");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_flood_of_output_is_held_in_bounds_and_spilled_whole() {
+        let project = Project::new();
+        let bash = Bash::new(shell::resolve(None));
+        let out = bash
+            .run(json!({"command": "seq 1 200000"}), &project.cx())
+            .await;
+        assert!(!out.is_error, "{}", out.content);
+        assert!(out.content.contains("of 200000 lines"), "{}", out.content);
+        assert!(out.content.ends_with("200000"), "{}", out.content);
+        let spill = out.details.as_ref().unwrap()["full_output"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let spilled = io::fs::read_string(std::path::Path::new(&spill))
+            .unwrap()
+            .unwrap();
+        assert_eq!(spilled.lines().count(), 200_000);
+        assert!(out.content.len() <= limits::get().tools.max_bytes.value + 200);
     }
 
     #[tokio::test]
