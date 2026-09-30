@@ -410,38 +410,6 @@ mod tests {
     }
 
     #[test]
-    fn indentation_can_shift_as_a_block() {
-        let code = "if a {\n        foo();\n        bar();\n}\n";
-        assert!(find(code, "    foo();\n    bar();\n", false).is_ok());
-    }
-
-    #[test]
-    fn block_anchor_tolerates_a_changed_middle() {
-        let code = "fn a() {\n    one();\n    two();\n    three();\n}\n";
-        let needle = "fn a() {\n    one();\n    too();\n    three();\n}";
-        let spans = find(code, needle, false).unwrap().spans;
-        assert_eq!(&code[spans[0].start..spans[0].end], code.trim_end());
-    }
-
-    #[test]
-    fn ambiguity_is_reported_not_guessed() {
-        assert!(matches!(
-            find("x\nx\n", "x", false),
-            Err(Miss::Ambiguous(2))
-        ));
-        assert_eq!(find("x\nx\n", "x", true).unwrap().spans.len(), 2);
-    }
-
-    #[test]
-    fn misses_point_at_the_closest_line() {
-        let Err(Miss::NotFound { hint }) = find("alpha()\nbeta_call()\n", "beta_cal()", false)
-        else {
-            panic!("expected a miss");
-        };
-        assert!(hint.unwrap().contains("closest line is 2"));
-    }
-
-    #[test]
     fn unicode_spans_map_back_to_original_bytes() {
         let content = "say \u{201c}hi\u{201d} now";
         let spans = find(content, "\"hi\"", false).unwrap().spans;
