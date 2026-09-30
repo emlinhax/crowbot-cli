@@ -59,15 +59,16 @@ pub fn load(paths: &Paths) -> anyhow::Result<Option<Key>> {
     let Some(text) = io::fs::read_string(&path)? else {
         return Ok(None);
     };
-    let stored: Stored = serde_json::from_str(&text).with_context(|| {
+    let unreadable = || {
         format!(
             "{} is unreadable; `crowbot logout` removes it",
             path.display()
         )
-    })?;
-    let sealed = BASE64.decode(&stored.secret).context("auth.json secret")?;
-    let secret = String::from_utf8(io::secret::open(&stored.scheme, &sealed)?)
-        .context("auth.json secret")?;
+    };
+    let stored: Stored = serde_json::from_str(&text).with_context(unreadable)?;
+    let sealed = BASE64.decode(&stored.secret).with_context(unreadable)?;
+    let opened = io::secret::open(&stored.scheme, &sealed).with_context(unreadable)?;
+    let secret = String::from_utf8(opened).with_context(unreadable)?;
     Ok(Some(Key {
         secret,
         origin: Origin::File {
@@ -151,5 +152,28 @@ mod tests {
         );
         assert!(remove(&paths).unwrap());
         assert!(load(&paths).unwrap().is_none());
+    }
+
+    #[test]
+    fn every_way_the_file_can_be_unreadable_names_it_and_the_fix() {
+        let home = tempfile::tempdir().unwrap();
+        let paths = Paths::at(home.path().into(), home.path().into());
+        save(&paths, "4192 0837 5561 2094", KeyKind::Account).unwrap();
+        let good: serde_json::Value =
+            serde_json::from_str(&io::fs::read_string(&paths.auth()).unwrap().unwrap()).unwrap();
+        let mut bad_secret = good.clone();
+        bad_secret["secret"] = "not base64!".into();
+        let mut bad_scheme = good;
+        bad_scheme["scheme"] = "rot13".into();
+        for broken in [
+            "{".to_owned(),
+            bad_secret.to_string(),
+            bad_scheme.to_string(),
+        ] {
+            io::fs::write_atomic(&paths.auth(), broken.as_bytes(), Access::Private).unwrap();
+            let err = format!("{:#}", load(&paths).err().expect("unreadable"));
+            assert!(err.contains(&paths.auth().display().to_string()), "{err}");
+            assert!(err.contains("crowbot logout"), "{err}");
+        }
     }
 }
