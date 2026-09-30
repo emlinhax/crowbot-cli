@@ -7,8 +7,8 @@ use crate::app::App;
 use crate::commands::{self, Ctx, Scope};
 use crate::frontend::print::{self, Format};
 use crate::io::term;
-use crate::settings::Overrides;
-use crate::tui;
+use crate::settings::{Overrides, Untrusted};
+use crate::{trust, tui};
 
 #[derive(Parser)]
 #[command(
@@ -60,17 +60,35 @@ pub async fn run() -> ExitCode {
 }
 
 async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
-    let app = App::load(&Overrides {
+    let flags = Overrides {
         model: cli.model,
         effort: cli.effort,
         mode: cli.mode,
-    })?;
+    };
+    let mut app = App::load(&flags)?;
     let words = match cli.command {
         Some(Sub::Words(words)) => words,
         None => Vec::new(),
     };
     let headless = cli.print || cli.json;
-    if let (Some(command), false) = (words.first().and_then(|w| commands::find(w)), headless) {
+    let command = words
+        .first()
+        .and_then(|w| commands::find(w))
+        .filter(|_| !headless);
+    let session =
+        command.is_none() && !headless && term::stdin_is_terminal() && term::stdout_is_terminal();
+    if let Some(untrusted) = app.settings.untrusted.take() {
+        if !session {
+            term::err(&format!(
+                "crowbot: {}\n",
+                trust::ignored(&untrusted.file, &untrusted.keys)
+            ));
+        } else if confirm_trust(&untrusted)? {
+            trust::trust(&app.paths)?;
+            app = App::load(&flags)?;
+        }
+    }
+    if let Some(command) = command {
         if !command.spec().scope.contains(&Scope::Cli) {
             bail!(
                 "`{}` only works inside a session: /{}",
@@ -94,7 +112,7 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
 
     let prompt = words.join(" ");
     // A person at a terminal gets the session, with any words already typed in for review.
-    if !headless && term::stdin_is_terminal() && term::stdout_is_terminal() {
+    if session {
         let initial = (!prompt.trim().is_empty()).then_some(prompt);
         return tui::run(&app, initial).await;
     }
@@ -112,4 +130,16 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
     }
     let format = if cli.json { Format::Json } else { Format::Text };
     print::run(&app, prompt, format).await
+}
+
+/// Shows what the project's config would loosen and asks whether to trust the folder.
+fn confirm_trust(untrusted: &Untrusted) -> anyhow::Result<bool> {
+    term::out(&trust::warning(&untrusted.file, &untrusted.keys));
+    term::out(trust::question());
+    let answer = term::read_line()?.unwrap_or_default();
+    let yes = matches!(answer.trim().to_lowercase().as_str(), "y" | "yes");
+    if !yes {
+        term::out(&format!("{}\n", trust::declined()));
+    }
+    Ok(yes)
 }

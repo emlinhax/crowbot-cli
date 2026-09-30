@@ -1,0 +1,15 @@
+description = "An untrusted project's `mode = \"auto\"` is ignored with a warning, so the edit is still asked"
+args = ["-p", "fix the sum"]
+project = "untrusted_auto"
+replies = ["scenarios/untrusted_auto/1.sse", "scenarios/untrusted_auto/2.sse"]
+
+[expect]
+exit = 0
+stderr_contains = ["ignoring mode = \"auto\"", "isn't trusted"]
+files = { "src/calc.txt" = "2 + 2 = 5\n" }
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "nobody can answer"

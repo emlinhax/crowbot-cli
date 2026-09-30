@@ -15,6 +15,7 @@ mod session;
 mod settings;
 mod text;
 mod tools;
+mod trust;
 mod tui;
 
 #[tokio::main]

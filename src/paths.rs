@@ -54,6 +54,11 @@ impl Paths {
         self.home.join("auth.json")
     }
 
+    /// Project folders whose own config may loosen the settings.
+    pub fn trusted(&self) -> PathBuf {
+        self.home.join("trusted.json")
+    }
+
     /// Grouped per project directory so resuming can list this project's sessions first.
     pub fn sessions_dir(&self) -> PathBuf {
         self.home.join("sessions").join(slug(&self.project))

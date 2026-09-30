@@ -1,0 +1,6 @@
+# What crowbot says when a project's .crowbot/config.toml sets what only a trusted folder may.
+warning = "{file} changes what crowbot may do without asking:"
+danger = "A malicious repository can use this to make crowbot run commands without asking."
+question = "Trust this folder and use these settings? [y/N] "
+declined = "Not trusted; ignoring them."
+ignored = "ignoring {keys} from {file}: the folder isn't trusted. Start crowbot here in a terminal to trust it."

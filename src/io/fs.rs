@@ -39,6 +39,14 @@ pub fn write_atomic(path: &Path, bytes: &[u8], access: Access) -> io::Result<()>
     std::fs::rename(&tmp, path)
 }
 
+/// Whether both paths name one existing file, with links and `..` resolved.
+pub fn same_file(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
 pub fn read_bytes(path: &Path) -> io::Result<Vec<u8>> {
     std::fs::read(path)
 }
