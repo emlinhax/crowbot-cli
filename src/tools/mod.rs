@@ -73,8 +73,8 @@ impl Check {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Refusal {
-    /// The arguments do not fit the schema.
-    #[error("invalid arguments: {0}")]
+    /// The arguments do not fit the schema; the model is told so once, in batch.
+    #[error("{0}")]
     InvalidArgs(String),
     /// Well-formed, but cannot be done (e.g. a missing file).
     #[error("{0}")]

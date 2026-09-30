@@ -589,6 +589,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_refusal_reaches_the_model_as_what_it_is() {
+        let h = Harness::new(vec![
+            reply(
+                "",
+                &[
+                    ("c1", "write", json!({"path": "d", "content": "x"})),
+                    ("c2", "write", json!({"path": "e.txt"})),
+                ],
+                "tool_calls",
+            ),
+            text("ok"),
+        ])
+        .await;
+        h.write("d/inner.txt", "x");
+        h.run(&shared("auto"), |_, _| {}).await;
+        let messages = h.requests()[1]["messages"].as_array().unwrap().clone();
+        let results: Vec<&str> = messages[messages.len() - 2..]
+            .iter()
+            .map(|m| m["content"].as_str().unwrap())
+            .collect();
+        assert_eq!(results[0], "d is a directory.");
+        assert_eq!(
+            results[1]
+                .to_lowercase()
+                .matches("invalid arguments")
+                .count(),
+            1,
+            "{}",
+            results[1]
+        );
+    }
+
+    #[tokio::test]
     async fn leaving_plan_mode_is_told_to_the_model_once() {
         let h = Harness::new(Vec::new()).await;
         let told = |i: usize| {

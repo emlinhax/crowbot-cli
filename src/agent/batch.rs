@@ -18,7 +18,7 @@ use crate::limits;
 use crate::mode::{DoomLoop, Mode};
 use crate::permission::gate::{self, Ask, Decision, Policy};
 use crate::text::template::fill;
-use crate::tools::{Output, Tool, ToolCx, permissions};
+use crate::tools::{Output, Refusal, Tool, ToolCx, permissions};
 
 pub struct Batch {
     pub results: Vec<ToolResult>,
@@ -124,11 +124,12 @@ async fn clear<'a>(
     }
     let check = tool
         .check(&args, &tool_cx(cx, shared, cancel, &call.id))
-        .map_err(|refusal| {
-            fill(
+        .map_err(|refusal| match refusal {
+            Refusal::InvalidArgs(error) => fill(
                 &text.invalid_arguments,
-                &[("name", &call.name), ("error", &refusal.to_string())],
-            )
+                &[("name", &call.name), ("error", &error)],
+            ),
+            Refusal::Refused(why) => why,
         })?;
     asks.extend(check.asks);
 
