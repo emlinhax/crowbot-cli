@@ -1,12 +1,13 @@
 # How the client treats each error. Keys are crowbot's `error.type`, plus our own kinds for
-# failures that never reached crowbot. `retry` marks errors worth trying again automatically.
+# failures that never reached crowbot. `retry` says whether an error is worth trying again
+# automatically; without it the HTTP status decides (429 and 5xx are, other statuses are not).
 
 [unknown]
 title = "Request failed"
 
+# Any status: a body that is not crowbot's envelope (a proxy's page, say).
 [http_error]
 title = "crowbot answered with an error"
-retry = true
 
 [network]
 title = "Could not reach crowbot"
@@ -65,6 +66,7 @@ retry = true
 
 [tool_error]
 title = "A crowbot tool failed upstream"
+retry = false
 
 [no_model]
 title = "No models are live right now"
@@ -73,6 +75,7 @@ retry = true
 [no_provider]
 title = "That model's upstream is not configured"
 hint = "Pick another model from `crowbot models`."
+retry = false
 
 [no_price]
 title = "That model has no price quote yet"
@@ -81,15 +84,16 @@ retry = true
 [price_fault]
 title = "That model is off sale while its price settles"
 hint = "Pick another model from `crowbot models`."
+retry = false
 
 [upstream_unavailable]
 title = "The model's upstream is unavailable"
 hint = "crowbot's side, not yours; try again or pick another model."
 retry = true
 
+# The vendor's own status passes through, so a 400 is final and a 429 or 5xx is not.
 [upstream_error]
 title = "The model's vendor refused the request"
-retry = true
 
 [content_filter]
 title = "The model's content filter stopped the reply"

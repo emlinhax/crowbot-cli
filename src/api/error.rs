@@ -20,8 +20,9 @@ pub struct Entry {
     pub title: String,
     #[serde(default)]
     pub hint: Option<String>,
+    /// Whether it is worth trying again; `None` leaves that to the status.
     #[serde(default)]
-    pub retry: bool,
+    pub retry: Option<bool>,
 }
 
 /// An error as stored in sessions and shown to the user. `kind` is crowbot's `error.type`, or

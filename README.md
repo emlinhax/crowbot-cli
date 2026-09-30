@@ -70,7 +70,7 @@ lines instead of sending.
 | `data/limits.toml` | Every limit, each with its reason. |
 | `data/endpoints.toml` | crowbot's origins and endpoints; `CROWBOT_API_URL` / `CROWBOT_CHAT_URL` override origins. |
 | `data/commands/` | One spec per command (name, summary, usage, where it works). |
-| `data/errors.toml` | Every error kind: title, hint, whether it is retried. |
+| `data/errors.toml` | Every error kind: title, hint, and whether it is retried (else its status decides). |
 | `data/prompts/` | System prompt pieces and mode reminders. |
 | `data/modes/` | One file per permission mode (MANUAL, AUTO, PLAN): colour, verdicts, locked rules. |
 | `data/tools/` | Each tool's description (`.md`) and argument schema (`.schema.json`). |

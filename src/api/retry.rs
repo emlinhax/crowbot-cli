@@ -22,9 +22,13 @@ pub fn delay(error: &ErrorInfo, retry_after: Option<Duration>, attempt: u32) -> 
     Some(Duration::from_millis(jittered))
 }
 
-/// Client errors other than rate limiting will fail the same way again.
+/// The catalog's flag, where it has one; otherwise rate limits and server errors are worth
+/// another try, and client errors would fail the same way again.
 pub fn retryable(error: &ErrorInfo) -> bool {
-    error.entry().retry && !matches!(error.status, Some(400..=428 | 430..=499))
+    error
+        .entry()
+        .retry
+        .unwrap_or(matches!(error.status, Some(429 | 500..=599)))
 }
 
 #[cfg(test)]
@@ -72,5 +76,19 @@ mod tests {
         assert!(delay(&error("insufficient_balance", Some(402)), None, 1).is_none());
         assert!(delay(&error("http_error", Some(404)), None, 1).is_none());
         assert!(delay(&error("http_error", Some(502)), None, 1).is_some());
+        // A vendor's own status passes through: its 400 is final, its 429 is not.
+        assert!(delay(&error("upstream_error", Some(400)), None, 1).is_none());
+        assert!(delay(&error("upstream_error", Some(429)), None, 1).is_some());
+    }
+
+    #[test]
+    fn the_catalog_flag_decides_and_the_status_only_fills_in() {
+        assert!(!retryable(&error("pow_required", Some(428))));
+        assert!(!retryable(&error("no_provider", Some(503))));
+        assert!(retryable(&error("upstream_unavailable", Some(503))));
+        assert!(retryable(&error("network", None)));
+        assert!(retryable(&error("a_kind_from_a_newer_crowbot", Some(503))));
+        assert!(!retryable(&error("a_kind_from_a_newer_crowbot", Some(409))));
+        assert!(!retryable(&error("bad_stream", None)));
     }
 }
