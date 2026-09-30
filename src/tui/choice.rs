@@ -9,7 +9,7 @@ use crate::permission::gate;
 use crate::text::diff;
 use crate::text::markdown;
 use crate::text::styled::{Line, Style};
-use crate::tui::boxed::boxed;
+use crate::tui::boxed::{boxed, capped};
 use crate::tui::editor::Editor;
 use crate::tui::keymap::Action;
 use crate::tui::ui::{self, PermissionReply};
@@ -115,7 +115,7 @@ impl Choice {
                 };
                 let body = preview
                     .as_deref()
-                    .map(|p| diff::render(p, inner, max))
+                    .map(|p| capped(diff::render(p, inner), max))
                     .unwrap_or_default();
                 let options = text
                     .permission
@@ -133,15 +133,7 @@ impl Choice {
                 Self::new(id, question.clone(), Vec::new(), opts)
             }
             Prompt::PlanExit { plan, choices } => {
-                let mut body = markdown::render(plan, inner);
-                if body.len() > max {
-                    let rest = body.len() - max;
-                    body.truncate(max);
-                    body.push(Line::styled(
-                        ui::get().text.more_lines.of(rest),
-                        Style::fg("muted"),
-                    ));
-                }
+                let body = capped(markdown::render(plan, inner), max);
                 let mut opts = indexed(choices);
                 opts.push(Opt::text(text.plan_other.clone()));
                 Self::new(id, text.plan_title.clone(), body, opts)

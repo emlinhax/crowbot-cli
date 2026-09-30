@@ -10,6 +10,7 @@ use crate::agent::message::ToolResult;
 use crate::limits;
 use crate::text::diff;
 use crate::text::styled::{Line, Style};
+use crate::tui::boxed::capped;
 
 const SRC: &str = include_str!("../../data/tool_cards.toml");
 
@@ -122,7 +123,7 @@ fn body(tool: &str, result: &ToolResult, width: usize) -> Vec<Line> {
                 .as_ref()
                 .and_then(|d| d["diff"].as_str())
                 .unwrap_or_default();
-            diff::render(text, width, max)
+            capped(diff::render(text, width), max)
         }
         Body::Head => lines.iter().take(max).map(|l| dim(l)).collect(),
         Body::Tail => {
