@@ -1,0 +1,6 @@
+[
+  {
+    "old_text": "fn a() {\n    one();\n    too();\n    if x {\n    }\n}",
+    "new_text": "fn a() {\n    done();\n}"
+  }
+]

@@ -16,40 +16,72 @@ pub enum Miss {
     Ambiguous(usize),
 }
 
-type Strategy = fn(&Doc<'_>, &str) -> Vec<Span>;
+/// How a match relates to the text the model wrote, so the edit can fit its replacement.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fit {
+    /// The span is the text as written.
+    Span,
+    /// The written text had whitespace around it that the span leaves out.
+    Trimmed,
+    /// Matched line by line with other indentation or spacing: re-indent the replacement.
+    Lines,
+}
+
+struct Strategy {
+    name: &'static str,
+    find: fn(&Doc<'_>, &str) -> Vec<Span>,
+    fit: Fit,
+}
+
+const fn strategy(name: &'static str, find: fn(&Doc<'_>, &str) -> Vec<Span>, fit: Fit) -> Strategy {
+    Strategy { name, find, fit }
+}
 
 /// Tried in order; the first that finds anything decides.
-const STRATEGIES: &[(&str, Strategy)] = &[
-    ("exact", exact),
-    ("trimmed boundary", trimmed_boundary),
-    ("line trimmed", line_trimmed),
-    ("whitespace normalized", whitespace_normalized),
-    ("indentation flexible", indentation_flexible),
-    ("escape normalized", escape_normalized),
-    ("unicode normalized", unicode_normalized),
-    ("line numbers stripped", line_numbers_stripped),
-    ("block anchor", block_anchor),
+const STRATEGIES: &[Strategy] = &[
+    strategy("exact", exact, Fit::Span),
+    strategy("trimmed boundary", trimmed_boundary, Fit::Trimmed),
+    strategy("line trimmed", line_trimmed, Fit::Lines),
+    strategy("whitespace normalized", whitespace_normalized, Fit::Lines),
+    strategy("indentation flexible", indentation_flexible, Fit::Lines),
+    strategy("escape normalized", escape_normalized, Fit::Span),
+    strategy("unicode normalized", unicode_normalized, Fit::Span),
+    strategy("line numbers stripped", line_numbers_stripped, Fit::Span),
+    strategy(
+        "line numbers stripped, trimmed",
+        line_numbers_trimmed,
+        Fit::Lines,
+    ),
+    strategy("block anchor", block_anchor, Fit::Span),
 ];
 
 pub struct Found {
     pub spans: Vec<Span>,
-    /// Matched line by line, ignoring indentation: the replacement should be re-indented.
-    pub by_lines: bool,
+    pub fit: Fit,
+    /// Which strategy matched; "exact" unless the model's text had drifted.
+    pub strategy: &'static str,
 }
 
-/// Where `needle` occurs in `content`: every occurrence when `all`, else exactly one.
+/// Where `needle` occurs in `content`: every occurrence when `all`, else exactly one. Without
+/// `all`, two matches are ambiguous even when they overlap: either could be the one meant.
 pub fn find(content: &str, needle: &str, all: bool) -> Result<Found, Miss> {
     let doc = Doc::new(content);
-    for (name, strategy) in STRATEGIES {
-        let mut spans = strategy(&doc, needle);
+    for s in STRATEGIES {
+        let mut spans = (s.find)(&doc, needle);
         spans.sort();
         spans.dedup();
-        spans = non_overlapping(spans);
-        let by_lines = matches!(*name, "line trimmed" | "indentation flexible");
+        if all {
+            spans = non_overlapping(spans);
+        }
+        let found = |spans| Found {
+            spans,
+            fit: s.fit,
+            strategy: s.name,
+        };
         match spans.len() {
             0 => continue,
-            1 => return Ok(Found { spans, by_lines }),
-            _ if all => return Ok(Found { spans, by_lines }),
+            1 => return Ok(found(spans)),
+            _ if all => return Ok(found(spans)),
             n => return Err(Miss::Ambiguous(n)),
         }
     }
@@ -111,17 +143,22 @@ fn needle_lines(needle: &str) -> (Vec<&str>, bool) {
     (body.split('\n').collect(), newline)
 }
 
+/// Every occurrence, overlapping ones included (`aa` is in `aaa` twice).
 fn exact(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
+    let mut found = Vec::new();
     if needle.is_empty() {
-        return Vec::new();
+        return found;
     }
-    doc.text
-        .match_indices(needle)
-        .map(|(start, m)| Span {
+    let mut from = 0;
+    while let Some(at) = doc.text[from..].find(needle) {
+        let start = from + at;
+        found.push(Span {
             start,
-            end: start + m.len(),
-        })
-        .collect()
+            end: start + needle.len(),
+        });
+        from = start + doc.text[start..].chars().next().map_or(1, char::len_utf8);
+    }
+    found
 }
 
 fn trimmed_boundary(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
@@ -242,6 +279,15 @@ fn unicode_normalized(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
 
 /// Text copied from `read` output still carrying its `   12\t` prefixes.
 fn line_numbers_stripped(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
+    without_line_numbers(needle).map_or_else(Vec::new, |n| exact(doc, &n))
+}
+
+/// The same, where the copied lines also drifted in indentation.
+fn line_numbers_trimmed(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
+    without_line_numbers(needle).map_or_else(Vec::new, |n| line_trimmed(doc, &n))
+}
+
+fn without_line_numbers(needle: &str) -> Option<String> {
     let (lines, newline) = needle_lines(needle);
     let stripped: Option<Vec<&str>> = lines
         .iter()
@@ -257,19 +303,11 @@ fn line_numbers_stripped(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
                 .flatten()
         })
         .collect();
-    let Some(stripped) = stripped else {
-        return Vec::new();
-    };
-    let mut joined = stripped.join("\n");
+    let mut joined = stripped?.join("\n");
     if newline {
         joined.push('\n');
     }
-    let found = exact(doc, &joined);
-    if found.is_empty() {
-        line_trimmed(doc, &joined)
-    } else {
-        found
-    }
+    Some(joined)
 }
 
 /// First and last lines match exactly (trimmed); the middle only has to be similar.
@@ -290,6 +328,7 @@ fn block_anchor(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
         if doc.lines[i].1.trim() != first {
             continue;
         }
+        let mut here = Vec::new();
         for len in shortest..=longest {
             let j = i + len - 1;
             if j >= doc.lines.len() {
@@ -300,8 +339,14 @@ fn block_anchor(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
             }
             let window: Vec<&str> = doc.lines[i + 1..j].iter().map(|(_, l)| *l).collect();
             if similarity(&window.join("\n"), &middle) >= threshold {
-                found.push(doc.span(i, len, newline));
+                here.push((len, doc.span(i, len, newline)));
             }
+        }
+        // A block as long as the one written is the one meant, not a shorter one ending at an
+        // inner closing line.
+        match here.iter().find(|(len, _)| *len == n) {
+            Some(&(_, span)) => found.push(span),
+            None => found.extend(here.into_iter().map(|(_, span)| span)),
         }
     }
     found
@@ -375,10 +420,10 @@ mod tests {
 
     fn one(content: &str, needle: &str) -> Option<&'static str> {
         let doc = Doc::new(content);
-        STRATEGIES.iter().find_map(|(name, s)| {
-            let mut spans = s(&doc, needle);
+        STRATEGIES.iter().find_map(|s| {
+            let mut spans = (s.find)(&doc, needle);
             spans.dedup();
-            (spans.len() == 1).then_some(*name)
+            (spans.len() == 1).then_some(s.name)
         })
     }
 

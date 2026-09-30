@@ -4,7 +4,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::edit_match::{self, Miss};
+use super::edit_match::{self, Fit, Miss};
 use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
 use crate::io::{self, fs::Access, fs::Kind};
@@ -138,8 +138,13 @@ impl Tool for Edit {
             }
             cx.files().saw(&target.path);
             let diff = diff(&before, &applied.text, &target.shown);
+            let loose = if applied.loose.is_empty() {
+                String::new()
+            } else {
+                format!(" (loose match: {})", applied.loose.join("; "))
+            };
             Output::ok(format!(
-                "Edited {}: {} replacement{}.",
+                "Edited {}: {} replacement{}{loose}.",
                 target.shown,
                 applied.replacements,
                 if applied.replacements == 1 { "" } else { "s" }
@@ -160,6 +165,9 @@ fn diff(before: &str, after: &str, shown: &str) -> String {
 pub struct Applied {
     pub text: String,
     pub replacements: usize,
+    /// Each replacement found by a loose strategy, `whitespace normalized, line 12`: the diff
+    /// only reaches the user, so the model hears this and knows to check its edit.
+    pub loose: Vec<String>,
 }
 
 /// Applies every edit to `original`, all matched against the original text.
@@ -170,6 +178,7 @@ pub fn apply(original: &str, edits: &[EditSpec]) -> Result<Applied, String> {
     let content = body.replace("\r\n", "\n");
 
     let mut replacements = Vec::new();
+    let mut loose = Vec::new();
     for (i, edit) in edits.iter().enumerate() {
         let label = if edits.len() == 1 {
             String::from("old_text")
@@ -199,14 +208,18 @@ pub fn apply(original: &str, edits: &[EditSpec]) -> Result<Applied, String> {
             ),
         })?;
         for span in found.spans {
-            let new = if found.by_lines {
-                reindent(
+            if found.strategy != "exact" {
+                let line = content[..span.start].matches('\n').count() + 1;
+                loose.push(format!("{}, line {line}", found.strategy));
+            }
+            let new = match found.fit {
+                Fit::Span => new.clone(),
+                Fit::Trimmed => trim_like(&new, &old),
+                Fit::Lines => reindent(
                     &new,
                     edit_match::indent_of(&old),
                     edit_match::indent_of(&content[span.start..span.end]),
-                )
-            } else {
-                new.clone()
+                ),
             };
             replacements.push((span, i, new));
         }
@@ -240,24 +253,31 @@ pub fn apply(original: &str, edits: &[EditSpec]) -> Result<Applied, String> {
     Ok(Applied {
         text,
         replacements: count,
+        loose,
     })
 }
 
-/// When a block matched at a deeper indent than the model wrote, shift the replacement to match.
+/// A block that matched at another indent than the model wrote: the written indent becomes the
+/// actual one on every line of the replacement, deeper or shallower.
 fn reindent(new: &str, written: &str, actual: &str) -> String {
-    let Some(extra) = actual.strip_prefix(written).filter(|e| !e.is_empty()) else {
+    if written == actual {
         return new.to_owned();
-    };
+    }
     new.split('\n')
-        .map(|line| {
-            if line.trim().is_empty() {
-                line.to_owned()
-            } else {
-                format!("{extra}{line}")
-            }
+        .map(|line| match line.strip_prefix(written) {
+            Some(rest) if !line.trim().is_empty() => format!("{actual}{rest}"),
+            _ => line.to_owned(),
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// The needle matched without the whitespace around it, so the replacement drops the same.
+fn trim_like(new: &str, old: &str) -> String {
+    let lead = &old[..old.len() - old.trim_start().len()];
+    let trail = &old[old.trim_end().len()..];
+    let new = new.strip_prefix(lead).unwrap_or(new);
+    new.strip_suffix(trail).unwrap_or(new).to_owned()
 }
 
 #[cfg(test)]
@@ -333,6 +353,23 @@ mod tests {
                 .unwrap()
                 .contains("+    2")
         );
+    }
+
+    #[test]
+    fn a_loose_match_is_named_with_its_line() {
+        let edit = |old: &str, new: &str| EditSpec {
+            old_text: old.into(),
+            new_text: new.into(),
+            replace_all: false,
+        };
+        let applied = apply(
+            "a\nfn f() {\n    let  x = 1;\n}\n",
+            &[edit("let x  = 1;", "let x = 2;")],
+        )
+        .unwrap();
+        assert_eq!(applied.loose, vec!["whitespace normalized, line 3"]);
+        let exact = apply("a\nb\n", &[edit("b", "c")]).unwrap();
+        assert!(exact.loose.is_empty());
     }
 
     #[tokio::test]
