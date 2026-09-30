@@ -72,7 +72,7 @@ pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<Ex
     };
     let prompt = vec![Part::Text { text: prompt }];
     let outcome = tokio::select! {
-        outcome = run::run(&cx, &mut transcript, &shared, prompt) => outcome?,
+        outcome = run::run(&cx, &mut transcript, &shared, prompt) => outcome,
         () = interrupt => unreachable!("the interrupt future never finishes"),
     };
     Ok(out.finish(outcome))
@@ -138,6 +138,11 @@ impl Printer<'_> {
                 *delay_ms as f64 / 1000.0
             )),
             AgentEvent::Notice { text } => self.note(text),
+            AgentEvent::Unsaved { path, error } => {
+                self.note(&format!(
+                    "crowbot: no longer saving this session to {path}: {error}"
+                ));
+            }
             _ => {}
         }
     }

@@ -202,6 +202,10 @@ impl Feed {
                 self.retry = Some((until, error.entry().title.clone()));
             }
             AgentEvent::Notice { text } => self.notice(text, "warn"),
+            AgentEvent::Unsaved { path, error } => {
+                let text = fill(&ui::get().text.unsaved, &[("path", path), ("error", error)]);
+                self.notice(&text, "warn");
+            }
             AgentEvent::RunEnd { outcome } => {
                 self.finish_reasoning(now);
                 self.finish_text();

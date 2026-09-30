@@ -30,6 +30,7 @@ unknown_command = "Unknown command {command}. {help} lists them."
 elsewhere = "{command} only works as {places}."
 more_below = "↓ {n} more · PgDn"
 saved = "Session saved to {path}"
+unsaved = "No longer saving this session to {path}: {error}. The conversation goes on unsaved."
 spent = "Spent about {cost} this session."
 
 # The line above the bar while crowbot works: a flapping raven, a verb with a glint running

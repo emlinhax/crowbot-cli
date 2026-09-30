@@ -48,7 +48,7 @@ use crate::tui::status::{self, Progress};
 use crate::tui::view::View;
 use crate::tui::{frame, layout, ui, welcome};
 
-type Turn<'a> = Pin<Box<dyn Future<Output = (Transcript, anyhow::Result<Outcome>)> + 'a>>;
+type Turn<'a> = Pin<Box<dyn Future<Output = (Transcript, Outcome)> + 'a>>;
 
 /// What every turn shares. The model and system prompt are not here: the session can switch
 /// them between turns.
@@ -101,11 +101,16 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
         default_hook(info);
     }));
     let mut tui = Tui::new(app, catalog, model, &shared, initial);
-    let spent = tui.run(turns, transcript, rx).await;
+    let (spent, transcript) = tui.run(turns, transcript, rx).await;
     drop(raw);
 
     let text = &ui::get().text;
-    if let Some(path) = session_file {
+    // Only a file that still holds the whole conversation counts as saved.
+    let saved = match &transcript {
+        Some(transcript) => transcript.path().map(|p| p.display().to_string()),
+        None => session_file,
+    };
+    if let Some(path) = saved {
         term::out(&format!(
             "{}\n",
             template::fill(&text.saved, &[("path", &path)])
@@ -206,13 +211,14 @@ impl<'a> Tui<'a> {
         }
     }
 
-    /// Runs until the user quits; returns what the session spent, in micro-dollars.
+    /// Runs until the user quits; returns what the session spent, in micro-dollars, and the
+    /// transcript unless a turn still held it.
     async fn run(
         &mut self,
         turns: Turns<'a>,
         transcript: Transcript,
         mut events: mpsc::UnboundedReceiver<AgentEvent>,
-    ) -> u64 {
+    ) -> (u64, Option<Transcript>) {
         let mut transcript = Some(transcript);
         let mut turn: Option<Turn<'a>> = None;
         let mut job: Option<BoxFuture<'a, login::Done>> = None;
@@ -262,16 +268,13 @@ impl<'a> Tui<'a> {
                         self.agent(event);
                     }
                 }
-                (owned, outcome) = async { turn.as_mut().expect("guarded by the branch condition").await }, if turn.is_some() => {
+                (owned, _) = async { turn.as_mut().expect("guarded by the branch condition").await }, if turn.is_some() => {
                     turn = None;
                     transcript = Some(owned);
                     self.progress = None;
                     self.queue.clear();
                     while let Ok(event) = events.try_recv() {
                         self.agent(event);
-                    }
-                    if let Err(e) = outcome {
-                        self.feed.notice(&format!("{e:#}"), "error");
                     }
                 }
                 done = async { job.as_mut().expect("guarded by the branch condition").await }, if job.is_some() => {
@@ -296,7 +299,7 @@ impl<'a> Tui<'a> {
                 job = None;
             }
         }
-        self.cost_micros
+        (self.cost_micros, transcript)
     }
 
     fn input(&mut self, input: Input, running: bool) -> Step<'a> {

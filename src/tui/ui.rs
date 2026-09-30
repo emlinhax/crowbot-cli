@@ -129,6 +129,7 @@ pub struct Text {
     pub elsewhere: String,
     pub more_below: String,
     pub saved: String,
+    pub unsaved: String,
     pub spent: String,
 }
 

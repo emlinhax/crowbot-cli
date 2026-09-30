@@ -31,11 +31,10 @@ pub async fn run(
     transcript: &mut Transcript,
     shared: &Shared,
     prompt: Vec<Part>,
-) -> anyhow::Result<Outcome> {
+) -> Outcome {
     let cancel = shared.begin_run();
-    transcript.push(Message::User {
-        parts: with_reminder(cx, shared, prompt),
-    })?;
+    let parts = with_reminder(cx, shared, prompt);
+    record(cx, transcript, Message::User { parts });
     let tools = cx.tools.wire();
     let max_turns = limits::get().agent.max_turns.value;
     let mut turns = 0;
@@ -76,7 +75,7 @@ pub async fn run(
                 });
             })
             .await;
-            transcript.push(Message::Assistant(reply.clone()))?;
+            record(cx, transcript, Message::Assistant(reply.clone()));
             let finish = reply.finish;
             let calls: Vec<ToolCall> = reply.tool_calls().cloned().collect();
             (cx.emit)(AgentEvent::MessageEnd { message: reply });
@@ -96,7 +95,7 @@ pub async fn run(
                 };
                 let Batch { results, stop } = batch;
                 for result in results {
-                    transcript.push(Message::Tool(result))?;
+                    record(cx, transcript, Message::Tool(result));
                 }
                 if cancel.is_cancelled() {
                     break 'run Outcome::Aborted;
@@ -109,7 +108,7 @@ pub async fn run(
             let steered = shared.drain_steer();
             if !steered.is_empty() {
                 for parts in steered {
-                    deliver(cx, shared, transcript, parts)?;
+                    deliver(cx, shared, transcript, parts);
                 }
                 continue;
             }
@@ -122,20 +121,26 @@ pub async fn run(
             break Outcome::Done;
         }
         for parts in queued {
-            deliver(cx, shared, transcript, parts)?;
+            deliver(cx, shared, transcript, parts);
         }
     };
     (cx.emit)(AgentEvent::RunEnd { outcome });
-    Ok(outcome)
+    outcome
+}
+
+/// Keeps `message`; a session file that can no longer be written is reported once, and the
+/// run goes on without it.
+fn record(cx: &RunCtx<'_>, transcript: &mut Transcript, message: Message) {
+    if let Err(unsaved) = transcript.push(message) {
+        (cx.emit)(AgentEvent::Unsaved {
+            path: unsaved.path.display().to_string(),
+            error: unsaved.error,
+        });
+    }
 }
 
 /// Hands a message typed mid-run to the model, and tells the frontend it landed.
-fn deliver(
-    cx: &RunCtx<'_>,
-    shared: &Shared,
-    transcript: &mut Transcript,
-    parts: Vec<Part>,
-) -> anyhow::Result<()> {
+fn deliver(cx: &RunCtx<'_>, shared: &Shared, transcript: &mut Transcript, parts: Vec<Part>) {
     let text = parts
         .iter()
         .filter_map(|p| match p {
@@ -145,9 +150,8 @@ fn deliver(
         .collect::<Vec<_>>()
         .join("\n");
     (cx.emit)(AgentEvent::Delivered { text });
-    transcript.push(Message::User {
-        parts: with_reminder(cx, shared, parts),
-    })
+    let parts = with_reminder(cx, shared, parts);
+    record(cx, transcript, Message::User { parts });
 }
 
 /// Mode changes reach the model as a reminder on the next user message, so the system prompt
@@ -296,7 +300,7 @@ mod tests {
             };
             let mut transcript = Transcript::new(None);
             let prompt = vec![Part::Text { text: "go".into() }];
-            let outcome = run(&cx, &mut transcript, shared, prompt).await.unwrap();
+            let outcome = run(&cx, &mut transcript, shared, prompt).await;
             (outcome, transcript, events.into_inner().unwrap())
         }
 

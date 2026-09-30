@@ -41,6 +41,11 @@ pub enum AgentEvent {
     Notice {
         text: String,
     },
+    /// The session file stopped being written; the run goes on, unsaved from here.
+    Unsaved {
+        path: String,
+        error: String,
+    },
     /// A message typed while the run was going has just been handed to the model.
     Delivered {
         text: String,
