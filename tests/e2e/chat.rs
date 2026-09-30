@@ -179,3 +179,24 @@ async fn a_flag_after_the_prompt_is_refused_not_sent() {
     );
     assert_eq!(fake.hits("/v1/chat/completions"), 0);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_session_command_on_the_command_line_names_where_it_works() {
+    let fake = Fake::start().await;
+    let run = Sandbox::default().run(&fake.url, &["mode"], WITH_KEY).await;
+    assert_ne!(run.code(), Some(0));
+    assert!(
+        run.stderr().contains("`mode` only works as `/mode`"),
+        "{}",
+        run.stderr()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn headless_with_nothing_to_send_says_so() {
+    let fake = Fake::start().await;
+    let run = Sandbox::default().run(&fake.url, &["-p"], WITH_KEY).await;
+    assert_ne!(run.code(), Some(0));
+    assert!(run.stderr().contains("nothing to send"), "{}", run.stderr());
+    assert_eq!(fake.hits("/v1/chat/completions"), 0);
+}
