@@ -477,6 +477,22 @@ async fn slash_login_takes_a_masked_account_number_and_retries_a_wrong_one() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn slash_login_takes_the_same_arguments_as_the_command_line() {
+    let fake = Fake::start().await;
+    let ended = in_session(&fake, Sandbox::default(), None, |s| {
+        s.wait_for("type /login");
+        s.type_text("/login --status");
+        s.send("\r");
+        s.wait_for("Not logged in. Run /login");
+        s.type_text("/login --key 1234 5678 9012 3456");
+        s.send("\r");
+        s.wait_for("Logged in with account number …3456");
+    })
+    .await;
+    assert!(ended.sandbox.home().join("auth.json").exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn thinking_collapses_opens_on_click_and_ctrl_t_toggles_it_all() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);

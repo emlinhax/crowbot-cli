@@ -53,24 +53,28 @@ impl Command for Login {
         args: &'a [String],
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
-            // A session logs in through its own card, where the number is typed out of sight.
+            let number = match args {
+                [flag] if flag == "--status" => return Ok(status(cx)?.into()),
+                [] => None,
+                [flag, number @ ..] if flag == "--key" && !number.is_empty() => {
+                    Some(number.join(" "))
+                }
+                _ => return Err(cx.usage(&SPEC)),
+            };
+            // A session waits in its own card, which runs beside input.
             if cx.scope == Scope::Session {
                 return Ok(Outcome {
                     text: String::new(),
-                    effects: vec![Effect::Login],
+                    effects: vec![Effect::Login { number }],
                 });
             }
-            let app = cx.app;
-            let text = match args {
-                [] => pair_here(app).await,
-                [flag, number @ ..] if flag == "--key" && !number.is_empty() => {
-                    let number = number.join(" ");
-                    let me = auth::adopt(app, &number, KeyKind::Account).await?;
-                    Ok(logged_in(KeyKind::Account, &number, &me))
+            let text = match number {
+                None => pair_here(cx.app).await?,
+                Some(number) => {
+                    let me = auth::adopt(cx.app, &number, KeyKind::Account).await?;
+                    logged_in(KeyKind::Account, &number, &me)
                 }
-                [flag] if flag == "--status" => status(app),
-                _ => return Err(cx.usage(&SPEC)),
-            }?;
+            };
             Ok(text.into())
         })
     }
@@ -132,9 +136,9 @@ fn what(kind: KeyKind) -> &'static str {
     }
 }
 
-fn status(app: &App) -> anyhow::Result<String> {
-    Ok(match auth::load(&app.paths)? {
-        None => TEXT.logged_out.clone(),
+fn status(cx: &Ctx<'_>) -> anyhow::Result<String> {
+    Ok(match auth::load(&cx.app.paths)? {
+        None => fill(&TEXT.logged_out, &[("login", &cx.scope.invoke("login"))]),
         Some(key) => match key.origin {
             Origin::Env => TEXT.from_env.clone(),
             Origin::File { kind, hint } => {

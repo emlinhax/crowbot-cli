@@ -119,8 +119,10 @@ pub enum Effect {
     /// Switch to the next mode, as Shift+Tab does.
     CycleMode,
     SetMode(String),
-    /// Open the session's login card.
-    Login,
+    /// Open the session's login card, at its check step when a number was given.
+    Login {
+        number: Option<String>,
+    },
     /// Open the session's model picker, after fetching a fresh list when asked.
     PickModel {
         refresh: bool,

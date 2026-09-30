@@ -288,6 +288,7 @@ impl<'a> Tui<'a> {
                     match self.finish(done) {
                         Step::Quit => break,
                         Step::Work(run) => work.push(run),
+                        Step::Login(next) => job = Some(login::run(self.app, next)),
                         _ => {}
                     }
                 }
@@ -643,7 +644,13 @@ impl<'a> Tui<'a> {
                         self.shared.set_mode(mode);
                     }
                 }
-                Effect::Login => self.login = Some(Login::new()),
+                Effect::Login { number: None } => self.login = Some(Login::new()),
+                Effect::Login {
+                    number: Some(number),
+                } => {
+                    self.login = Some(Login::checking());
+                    return Step::Login(login::Job::Check(number));
+                }
                 Effect::PickModel { refresh: true } => {
                     return Step::Work(command::refresh_catalog(self.app));
                 }

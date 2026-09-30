@@ -84,6 +84,14 @@ impl Login {
         }
     }
 
+    /// The card while a number given with `/login --key` is checked; a refusal returns to the
+    /// menu, as it does for a number typed into the card.
+    pub fn checking() -> Self {
+        Self {
+            stage: Stage::Checking,
+        }
+    }
+
     pub fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Next {
         let Stage::Choose(card) = &mut self.stage else {
             // Only cancelling is left once crowbot is being asked.
