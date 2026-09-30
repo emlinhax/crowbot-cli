@@ -240,6 +240,50 @@ async fn an_untrusted_folder_is_asked_about_once_before_its_config_loosens_anyth
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_command_typed_during_a_run_never_reaches_the_model() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("pty/sleep.sse"), Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    std::fs::create_dir_all(sandbox.home.path()).unwrap();
+    std::fs::write(sandbox.home.path().join("config.toml"), "mode = \"auto\"\n").unwrap();
+    let url = fake.url.clone();
+    let (screen, sessions) = tokio::task::spawn_blocking(move || {
+        let mut s = Session::start(&sandbox, &url);
+        s.wait_for("AUTO");
+        s.type_text("go");
+        s.send("\r");
+        s.wait_for("sleep 3");
+        s.type_text("/login --key 1234 5678 9012 3456");
+        s.send("\r");
+        s.wait_for("Hello there!");
+        let during = s.contents();
+        s.send("\x1b");
+        s.wait_gone("Log in to crowbot");
+        s.send("\x04");
+        assert!(s.wait_exit(), "{}", s.contents());
+        let sessions: String = sandbox
+            .sessions()
+            .iter()
+            .map(|f| std::fs::read_to_string(f).unwrap())
+            .collect();
+        (during, sessions)
+    })
+    .await
+    .unwrap();
+    // The command ran mid-turn, echoed with its number hidden.
+    assert!(screen.contains("/login --key …3456"), "{screen}");
+    let bodies = serde_json::to_string(&fake.chat_bodies()).unwrap();
+    assert_eq!(fake.hits("/v1/chat/completions"), 2);
+    for secret in ["9012", "3456"] {
+        assert!(
+            !bodies.contains(secret),
+            "{secret} reached the model: {bodies}"
+        );
+        assert!(!sessions.contains(secret), "{secret} was saved: {sessions}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn manual_mode_shows_the_edit_and_applies_it_once_approved() {
     let fake = Fake::start().await;
     fake.script([

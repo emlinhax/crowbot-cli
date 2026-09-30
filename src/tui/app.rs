@@ -11,6 +11,7 @@ use std::time::Instant;
 use anyhow::anyhow;
 use futures_util::StreamExt;
 use futures_util::future::BoxFuture;
+use futures_util::stream::FuturesUnordered;
 use tokio::sync::mpsc;
 
 use crate::agent::event::{AgentEvent, Outcome};
@@ -20,7 +21,7 @@ use crate::agent::state::Shared;
 use crate::agent::system_prompt;
 use crate::api::models::{self, Catalog, Model};
 use crate::app::App;
-use crate::commands::{self, Ctx, Effect, Missing, Scope};
+use crate::commands::{self, Effect, Outcome as CommandOutcome, Scope};
 use crate::io::clock;
 use crate::io::term::{self, Input, KeyCode, KeyModifiers};
 use crate::limits;
@@ -33,6 +34,7 @@ use crate::text::theme;
 use crate::text::units;
 use crate::tools::{self, Registry};
 use crate::tui::choice::{self, Choice};
+use crate::tui::command::{self, Work};
 use crate::tui::editor::Editor;
 use crate::tui::feed::{Block, Feed};
 use crate::tui::input::Burst;
@@ -57,12 +59,14 @@ struct Turns<'a> {
 }
 
 /// What the loop should do after an input.
-enum Step {
+enum Step<'a> {
     Continue,
     Send(String),
     Quit,
     /// Start network work for the login card.
     Login(login::Job),
+    /// Run beside input: a session command, or what one of them asked for.
+    Work(BoxFuture<'a, Work>),
 }
 
 pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode> {
@@ -212,6 +216,7 @@ impl<'a> Tui<'a> {
         let mut transcript = Some(transcript);
         let mut turn: Option<Turn<'a>> = None;
         let mut job: Option<BoxFuture<'a, login::Done>> = None;
+        let mut work: FuturesUnordered<BoxFuture<'a, Work>> = FuturesUnordered::new();
         let mut inputs = Box::pin(term::inputs());
         let mut tick = tokio::time::interval(limits::get().tui.frame_ms.ms());
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -221,10 +226,11 @@ impl<'a> Tui<'a> {
             tokio::select! {
                 input = inputs.next() => {
                     let Some(input) = input else { break };
-                    match self.input(input, turn.is_some()).await {
+                    match self.input(input, turn.is_some()) {
                         Step::Continue => {}
                         Step::Quit => break,
                         Step::Login(next) => job = Some(login::run(self.app, next)),
+                        Step::Work(run) => work.push(run),
                         Step::Send(text) => {
                             let Some(mut owned) = transcript.take() else { continue };
                             let progress = Progress::start(clock::instant(), self.last_verb, &mut self.rng);
@@ -276,6 +282,13 @@ impl<'a> Tui<'a> {
                         .and_then(|next| self.login_next(next))
                         .map(|next| login::run(self.app, next));
                 }
+                Some(done) = work.next(), if !work.is_empty() => {
+                    match self.finish(done) {
+                        Step::Quit => break,
+                        Step::Work(run) => work.push(run),
+                        _ => {}
+                    }
+                }
                 _ = tick.tick(), if turn.is_some() => {}
             }
             // Closing the login card drops whatever it was waiting on.
@@ -286,7 +299,7 @@ impl<'a> Tui<'a> {
         self.cost_micros
     }
 
-    async fn input(&mut self, input: Input, running: bool) -> Step {
+    fn input(&mut self, input: Input, running: bool) -> Step<'a> {
         match input {
             Input::Resize(width, height) => {
                 self.screen.resize(width, height);
@@ -364,11 +377,11 @@ impl<'a> Tui<'a> {
                                 }
                                 palette::Step::Run(name) => {
                                     self.editor.set_text(&Scope::Session.invoke(&name));
-                                    return self.submit(running).await;
+                                    return self.submit(running);
                                 }
                             }
                         }
-                        self.action(action, running).await
+                        self.action(action, running)
                     }
                     None => {
                         let plain = !key
@@ -401,7 +414,7 @@ impl<'a> Tui<'a> {
         }
     }
 
-    fn login_key(&mut self, key: &crate::io::term::KeyEvent) -> Step {
+    fn login_key(&mut self, key: &crate::io::term::KeyEvent) -> Step<'a> {
         let action = keymap::get().action(key);
         if action == Some(Action::CycleMode) {
             self.cycle_mode();
@@ -461,9 +474,11 @@ impl<'a> Tui<'a> {
         }
     }
 
-    async fn action(&mut self, action: Action, running: bool) -> Step {
+    fn action(&mut self, action: Action, running: bool) -> Step<'a> {
         match action {
-            Action::Submit => return self.submit(running).await,
+            Action::Submit => return self.submit(running),
+            // A command is never steering: it would reach the model as text.
+            Action::Tab if running && self.is_command() => return self.submit(running),
             Action::Tab if running => self.enqueue(Kind::Steering),
             Action::Tab => self.complete(),
             Action::CycleMode => self.cycle_mode(),
@@ -496,7 +511,7 @@ impl<'a> Tui<'a> {
         Step::Continue
     }
 
-    async fn submit(&mut self, running: bool) -> Step {
+    fn submit(&mut self, running: bool) -> Step<'a> {
         let text = self.editor.text();
         // A trailing backslash asks for a new line, for terminals that cannot send Shift+Enter.
         if let Some(stripped) = text.strip_suffix('\\') {
@@ -506,10 +521,8 @@ impl<'a> Tui<'a> {
         if text.trim().is_empty() {
             return Step::Continue;
         }
-        if running {
-            self.enqueue(Kind::Queued);
-            return Step::Continue;
-        }
+        // Checked before a run gets the text: a command queued as a message would send its
+        // arguments (a `--key`) to the model.
         if let Some(line) = self
             .editor
             .text()
@@ -519,7 +532,11 @@ impl<'a> Tui<'a> {
             let line = line.to_owned();
             let shown = Scope::Session.invoke(&commands::redact_line(&line));
             self.editor.take_remembering(shown);
-            return self.command(&line).await;
+            return self.command(&line);
+        }
+        if running {
+            self.enqueue(Kind::Queued);
+            return Step::Continue;
         }
         let text = self.editor.take();
         self.feed.user(&text);
@@ -586,64 +603,62 @@ impl<'a> Tui<'a> {
         }
     }
 
-    async fn command(&mut self, line: &str) -> Step {
-        let words: Vec<String> = line.split_whitespace().map(str::to_owned).collect();
-        let Some((name, args)) = words.split_first() else {
-            return Step::Continue;
-        };
-        let command = match commands::lookup(name, Scope::Session) {
-            Ok(command) => command,
-            Err(missing) => {
-                let text = &ui::get().text;
-                let typed = Scope::Session.invoke(name);
-                let note = match missing {
-                    Missing::Unknown => template::fill(
-                        &text.unknown_command,
-                        &[
-                            ("command", &typed),
-                            ("help", &Scope::Session.invoke("help")),
-                        ],
-                    ),
-                    Missing::Elsewhere(spec) => template::fill(
-                        &text.elsewhere,
-                        &[("command", &typed), ("places", &commands::places(spec))],
-                    ),
-                };
-                self.feed.notice(&note, "warn");
+    fn is_command(&self) -> bool {
+        self.editor
+            .text()
+            .trim_start()
+            .starts_with(Scope::Session.prefix())
+    }
+
+    fn command(&mut self, line: &str) -> Step<'a> {
+        match command::start(self.app, line) {
+            Ok(started) => {
+                self.feed.user(&started.echo);
+                Step::Work(started.run)
+            }
+            Err(note) => {
+                if !note.is_empty() {
+                    self.feed.notice(&note, "warn");
+                }
+                Step::Continue
+            }
+        }
+    }
+
+    /// Applies what a command finished with.
+    fn finish(&mut self, done: Work) -> Step<'a> {
+        let outcome: CommandOutcome = match done {
+            Work::Catalog(catalog) => {
+                self.catalog = catalog;
+                self.picker = Some(Picker::new(&self.catalog, &self.model.id));
                 return Step::Continue;
             }
+            Work::Command(Err(e)) => {
+                self.feed.notice(&format!("{e:#}"), "error");
+                return Step::Continue;
+            }
+            Work::Command(Ok(outcome)) => outcome,
         };
-        self.feed
-            .user(&Scope::Session.invoke(&commands::redact_line(line)));
-        let cx = Ctx {
-            app: self.app,
-            scope: Scope::Session,
-        };
-        match command.run(&cx, args).await {
-            Ok(outcome) => {
-                if !outcome.text.is_empty() {
-                    self.feed.markdown(&outcome.text);
-                }
-                for effect in outcome.effects {
-                    match effect {
-                        Effect::Quit => return Step::Quit,
-                        Effect::CycleMode => self.cycle_mode(),
-                        Effect::SetMode(id) => {
-                            if let Some(mode) = mode::get(&id) {
-                                self.shared.set_mode(mode);
-                            }
-                        }
-                        Effect::Login => self.login = Some(Login::new()),
-                        Effect::PickModel { refresh } => {
-                            if refresh {
-                                self.catalog = models::load(self.app, true).await;
-                            }
-                            self.picker = Some(Picker::new(&self.catalog, &self.model.id));
-                        }
+        if !outcome.text.is_empty() {
+            self.feed.markdown(&outcome.text);
+        }
+        for effect in outcome.effects {
+            match effect {
+                Effect::Quit => return Step::Quit,
+                Effect::CycleMode => self.cycle_mode(),
+                Effect::SetMode(id) => {
+                    if let Some(mode) = mode::get(&id) {
+                        self.shared.set_mode(mode);
                     }
                 }
+                Effect::Login => self.login = Some(Login::new()),
+                Effect::PickModel { refresh: true } => {
+                    return Step::Work(command::refresh_catalog(self.app));
+                }
+                Effect::PickModel { refresh: false } => {
+                    self.picker = Some(Picker::new(&self.catalog, &self.model.id));
+                }
             }
-            Err(e) => self.feed.notice(&format!("{e:#}"), "error"),
         }
         Step::Continue
     }

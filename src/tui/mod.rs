@@ -4,6 +4,7 @@ mod app;
 mod boxed;
 mod cards;
 mod choice;
+mod command;
 mod editor;
 mod feed;
 mod frame;
