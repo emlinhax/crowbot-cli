@@ -113,6 +113,13 @@ mod tests {
             // (mode, ask, expected)
             ("manual", Ask::new("read", "src/a.rs"), Decision::Allow),
             ("manual", Ask::new("read", ".env"), Decision::Ask),
+            ("manual", Ask::new("search", ".env"), Decision::Ask),
+            (
+                "manual",
+                Ask::new("search", "config/.env.local"),
+                Decision::Ask,
+            ),
+            ("manual", Ask::new("search", "src"), Decision::Allow),
             ("manual", Ask::new("edit", "src/a.rs"), Decision::Ask),
             ("manual", Ask::new("bash", "cargo test"), Decision::Ask),
             ("auto", Ask::new("edit", "src/a.rs"), Decision::Allow),

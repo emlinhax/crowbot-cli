@@ -29,6 +29,17 @@ permission = "search"
 pattern = "*"
 action = "allow"
 
+# grep and glob read contents too; a secret as their root asks like a read does.
+[[permission]]
+permission = "search"
+pattern = "*.env"
+action = "ask"
+
+[[permission]]
+permission = "search"
+pattern = "*.env.*"
+action = "ask"
+
 [[permission]]
 permission = "codesearch"
 pattern = "*"
