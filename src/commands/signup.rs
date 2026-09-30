@@ -31,7 +31,7 @@ impl Command for Signup {
                 _ => bail!("usage: {}", SPEC.usage),
             };
             // A new account would replace the stored key, and an account number has no recovery.
-            if !force && auth::load(&app.paths)?.is_some() {
+            if !force && auth::stored(&app.paths)?.is_some() {
                 bail!(
                     "this machine is already logged in; `crowbot logout` first, or pass --force if the current key is saved elsewhere"
                 );
@@ -46,7 +46,10 @@ impl Command for Signup {
                 app.paths.auth().display()
             ));
             confirm(&account.account_number)?;
-            Ok(Outcome::from("Next: fund it at https://chat.crowbot.sh."))
+            Ok(Outcome::from(format!(
+                "Next: fund it at https://chat.crowbot.sh.{}",
+                super::login::env_note()
+            )))
         })
     }
 }

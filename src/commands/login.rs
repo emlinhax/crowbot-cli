@@ -35,6 +35,7 @@ struct Text {
     cannot_spend: String,
     status: String,
     from_env: String,
+    env_note: String,
     logged_out: String,
     account: String,
     device: String,
@@ -112,7 +113,17 @@ pub fn logged_in(kind: KeyKind, secret: &str, me: &Me) -> String {
     if !me.can_spend {
         out.push_str(&TEXT.cannot_spend);
     }
+    out.push_str(env_note());
     out
+}
+
+/// Said after login, logout and signup while the environment's key shadows the stored one.
+pub fn env_note() -> &'static str {
+    if auth::from_env().is_some() {
+        &TEXT.env_note
+    } else {
+        ""
+    }
 }
 
 fn what(kind: KeyKind) -> &'static str {

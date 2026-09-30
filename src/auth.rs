@@ -48,13 +48,24 @@ fn version() -> u32 {
     1
 }
 
+/// The key this process uses: the environment's, else the stored one.
 pub fn load(paths: &Paths) -> anyhow::Result<Option<Key>> {
-    if let Some(secret) = settings::env("CROWBOT_API_KEY") {
-        return Ok(Some(Key {
-            secret: normalize(&secret),
-            origin: Origin::Env,
-        }));
+    match from_env() {
+        Some(key) => Ok(Some(key)),
+        None => stored(paths),
     }
+}
+
+/// `CROWBOT_API_KEY`, which wins over a stored key while it is set.
+pub fn from_env() -> Option<Key> {
+    settings::env("CROWBOT_API_KEY").map(|secret| Key {
+        secret: normalize(&secret),
+        origin: Origin::Env,
+    })
+}
+
+/// The key saved on this machine, whatever the environment says.
+pub fn stored(paths: &Paths) -> anyhow::Result<Option<Key>> {
     let path = paths.auth();
     let Some(text) = io::fs::read_string(&path)? else {
         return Ok(None);
@@ -145,13 +156,14 @@ mod tests {
         save(&paths, "4192 0837 5561 2094", KeyKind::Account).unwrap();
         let text = io::fs::read_string(&paths.auth()).unwrap().unwrap();
         assert!(!text.contains("4192083755612094") || cfg!(not(windows)));
-        let key = load(&paths).unwrap().unwrap();
+        // `stored`, not `load`: a developer's exported CROWBOT_API_KEY must not win here.
+        let key = stored(&paths).unwrap().unwrap();
         assert_eq!(key.secret, "4192083755612094");
         assert!(
             matches!(key.origin, Origin::File { kind: KeyKind::Account, ref hint } if hint == "…2094")
         );
         assert!(remove(&paths).unwrap());
-        assert!(load(&paths).unwrap().is_none());
+        assert!(stored(&paths).unwrap().is_none());
     }
 
     #[test]
@@ -171,7 +183,7 @@ mod tests {
             bad_scheme.to_string(),
         ] {
             io::fs::write_atomic(&paths.auth(), broken.as_bytes(), Access::Private).unwrap();
-            let err = format!("{:#}", load(&paths).err().expect("unreadable"));
+            let err = format!("{:#}", stored(&paths).err().expect("unreadable"));
             assert!(err.contains(&paths.auth().display().to_string()), "{err}");
             assert!(err.contains("crowbot logout"), "{err}");
         }

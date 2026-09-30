@@ -5,7 +5,6 @@ use futures_util::future::BoxFuture;
 
 use super::{Command, Ctx, Outcome, Spec};
 use crate::auth;
-use crate::settings;
 
 static SPEC: LazyLock<Spec> =
     LazyLock::new(|| Spec::parse(include_str!("../../data/commands/logout.toml")));
@@ -36,9 +35,7 @@ impl Command for Logout {
             } else {
                 "No key was stored on this machine.".to_owned()
             };
-            if settings::env("CROWBOT_API_KEY").is_some() {
-                out.push_str(" CROWBOT_API_KEY is still set in this environment.");
-            }
+            out.push_str(super::login::env_note());
             Ok(out.into())
         })
     }
