@@ -9,14 +9,17 @@ use crate::text::table::{self, Align};
 /// Longest a horizontal rule gets, so it reads as a divider rather than a wall.
 const RULE_MAX: usize = 80;
 
+/// The markdown crowbot draws; the stream cut parses with the same, so both see one structure.
+pub fn options() -> Options {
+    Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS
+}
+
 pub fn render(md: &str, width: usize) -> Vec<Line> {
     let mut r = Renderer {
         width: width.max(8),
         ..Renderer::default()
     };
-    let options =
-        Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
-    for event in Parser::new_ext(md, options) {
+    for event in Parser::new_ext(md, options()) {
         r.event(event);
     }
     r.flush();
