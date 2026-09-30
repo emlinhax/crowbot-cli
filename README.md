@@ -18,9 +18,11 @@ crowbot help                     # every command
 ```
 
 `--model <id>`, `--effort low|medium|high|max` and `--mode manual|auto|plan` apply to any run.
-MANUAL asks before edits, commands and fetches; AUTO allows everything, deny rules included;
-PLAN is read-only apart from its plan file and ends by handing the plan over. A headless run
-declines every prompt, so use `--mode auto` there. The key comes from `CROWBOT_API_KEY`, else
+MANUAL asks before edits, commands and fetches; AUTO allows everything, deny rules included.
+PLAN locks out edits outside its plan file and runs, unasked, only the commands its allowlist
+names (`data/modes/plan.toml`); the allowlist is not a sandbox. It ends by handing the plan over.
+A headless run declines every prompt: allow what it needs with `[[permission]]` rules, or use
+`--mode auto`. The key comes from `CROWBOT_API_KEY`, else
 `~/.crowbot/auth.json` (DPAPI-sealed on Windows, 0600 elsewhere).
 
 ## The session
@@ -91,9 +93,13 @@ lines instead of sending.
 | `reference/` | Gitignored clones of opencode and pi plus crowbot's docs; designs are ported from here. |
 
 Settings layer in this order, later wins: `data/defaults.toml`, `~/.crowbot/config.toml`,
-`.crowbot/config.toml` in the project, then flags; `[[permission]]` rules append instead. That is
-also where permanent allowances go, e.g. `permission = "bash"`, `pattern = "cargo *"`,
-`action = "allow"`. `CROWBOT_HOME` moves `~/.crowbot`.
+`.crowbot/config.toml` in the start directory, then flags; `[[permission]]` rules append instead.
+Permanent allowances go in `~/.crowbot/config.toml`, e.g. `permission = "bash"`,
+`pattern = "cargo *"`, `action = "allow"`. A folder's own `.crowbot/config.toml` may set `model`,
+`effort` and deny rules; anything else (mode, shell, allow or ask rules) needs the folder trusted.
+A session started there shows what the file asks for and asks first, and remembers a yes in
+`~/.crowbot/trusted.json`; a headless run ignores those settings and says so on stderr.
+`CROWBOT_HOME` moves `~/.crowbot`.
 
 ## Checks
 
