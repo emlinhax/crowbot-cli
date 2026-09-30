@@ -15,6 +15,7 @@ use crate::io::{self, fs::Access};
 use crate::limits;
 use crate::permission::gate::Ask;
 use crate::permission::shell_split;
+use crate::text::controls;
 
 static SPEC: LazyLock<Spec> = LazyLock::new(|| {
     Spec::load(
@@ -157,32 +158,8 @@ impl Tool for Bash {
 
 /// Drops terminal escapes and keeps only what a `\r`-redrawn progress line last showed.
 fn clean(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\u{1b}' {
-            if chars.peek() == Some(&'[') {
-                chars.next();
-                while let Some(&n) = chars.peek() {
-                    chars.next();
-                    if n.is_ascii_alphabetic() || n == '~' {
-                        break;
-                    }
-                }
-            } else if chars.peek() == Some(&']') {
-                // OSC sequences end with BEL or ESC \.
-                while let Some(n) = chars.next() {
-                    if n == '\u{7}' || (n == '\u{1b}' && chars.peek() == Some(&'\\')) {
-                        chars.next();
-                        break;
-                    }
-                }
-            }
-            continue;
-        }
-        out.push(c);
-    }
-    out.lines()
+    controls::strip_escapes(text)
+        .lines()
         .map(|line| line.rsplit('\r').find(|s| !s.is_empty()).unwrap_or(""))
         .collect::<Vec<_>>()
         .join("\n")

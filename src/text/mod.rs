@@ -1,3 +1,4 @@
+pub mod controls;
 pub mod diff;
 pub mod highlight;
 pub mod markdown;

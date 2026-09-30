@@ -6,6 +6,7 @@ use std::fmt::Write as _;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+use crate::text::controls;
 use crate::text::theme::{self, Depth, Theme};
 
 /// Tabs become this many spaces so every cell is accounted for.
@@ -93,7 +94,11 @@ impl Line {
     }
 
     pub fn push(&mut self, text: impl Into<String>, style: Style) {
-        let text: String = text.into().replace('\t', TAB);
+        let mut text: String = text.into().replace('\t', TAB);
+        // Spans hold text from anywhere; only rendering adds escapes.
+        if text.chars().any(char::is_control) {
+            text = controls::for_terminal(&text).into_owned();
+        }
         if text.is_empty() {
             return;
         }
@@ -201,7 +206,7 @@ impl Line {
         for span in &self.spans {
             let sgr = sgr(&span.style, theme, depth);
             if let Some(url) = &span.style.link {
-                let _ = write!(out, "\x1b]8;;{url}\x1b\\");
+                let _ = write!(out, "\x1b]8;;{}\x1b\\", controls::osc_url(url));
             }
             if sgr.is_empty() {
                 out.push_str(&span.text);
@@ -322,6 +327,18 @@ fn sgr(style: &Style, theme: &Theme, depth: Depth) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_from_outside_cannot_put_escapes_on_the_terminal() {
+        let line = Line::plain("done\u{1b}]52;c;cm0gLXJmIH4=\u{7} \u{1b}[2Jok");
+        assert_eq!(line.text(), "done ok");
+        let link = Style {
+            link: Some("https://x.dev/\u{1b}\\\u{1b}]0;pwned\u{7}".into()),
+            ..Style::default()
+        };
+        let ansi = Line::styled("x", link).to_ansi(theme::get(), Depth::None);
+        assert_eq!(ansi.matches('\u{1b}').count(), 4, "{ansi:?}");
+    }
 
     fn texts(lines: &[Line]) -> Vec<String> {
         lines.iter().map(Line::text).collect()
