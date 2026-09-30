@@ -9,7 +9,10 @@ use crate::{effort, io, mode, trust};
 
 const DEFAULTS: &str = include_str!("../data/defaults.toml");
 
+/// Unknown keys are refused: a misspelled `[[permissions]]` would otherwise drop a deny rule
+/// without a word.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Settings {
     pub model: String,
     /// `None` leaves effort to the model's own default.
@@ -47,6 +50,7 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
     let user = paths.user_config();
     if let Some(layer) = read_layer(&user)? {
         merge(&mut merged, layer);
+        check(&merged, &user)?;
     }
     let mut untrusted = None;
     let project = paths.project_config();
@@ -60,13 +64,14 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
             let (safe, keys) = split_untrusted(layer);
             if !keys.is_empty() {
                 untrusted = Some(Untrusted {
-                    file: project,
+                    file: project.clone(),
                     keys,
                 });
             }
             safe
         };
         merge(&mut merged, layer);
+        check(&merged, &project)?;
     }
     let mut settings: Settings = toml::Value::Table(merged).try_into()?;
     settings.untrusted = untrusted;
@@ -84,6 +89,15 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
     }
     mode::find(&settings.mode).map_err(|e| anyhow!(e))?;
     Ok(settings)
+}
+
+/// The layers merged so far must still make settings; what came before was valid, so an error
+/// belongs to the layer just added and names its file.
+fn check(merged: &toml::Table, file: &Path) -> anyhow::Result<()> {
+    toml::Value::Table(merged.clone())
+        .try_into::<Settings>()
+        .map(drop)
+        .with_context(|| file.display().to_string())
 }
 
 fn read_layer(file: &Path) -> anyhow::Result<Option<toml::Table>> {
@@ -290,6 +304,32 @@ mod tests {
         let settings = load(&paths, &Overrides::default()).unwrap();
         assert_eq!(settings.mode, "auto");
         assert!(settings.untrusted.is_none());
+    }
+
+    #[test]
+    fn a_misspelled_or_mistyped_key_is_refused_naming_its_file() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = Paths::at(root.path().join("home"), root.path().join("repo"));
+        let deny = "[[permissions]]\npermission = 'bash'\npattern = 'rm *'\naction = 'deny'";
+        io::fs::write_atomic(
+            &paths.user_config(),
+            deny.as_bytes(),
+            io::fs::Access::Shared,
+        )
+        .unwrap();
+        let err = format!("{:#}", load(&paths, &Overrides::default()).unwrap_err());
+        assert!(err.contains("permissions"), "{err}");
+        assert!(
+            err.contains(&paths.user_config().display().to_string()),
+            "{err}"
+        );
+
+        let (_root, paths) = project_with("model = 5");
+        let err = format!("{:#}", load(&paths, &Overrides::default()).unwrap_err());
+        assert!(
+            err.contains(&paths.project_config().display().to_string()),
+            "{err}"
+        );
     }
 
     #[test]
