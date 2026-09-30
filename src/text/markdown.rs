@@ -52,48 +52,40 @@ enum Container {
 struct Table {
     aligns: Vec<Align>,
     rows: Vec<Vec<Line>>,
-    cell: Line,
     row: Vec<Line>,
 }
 
 impl Renderer {
     fn event(&mut self, event: Event<'_>) {
+        // A table keeps only its structure here; cell content takes the inline path below.
         if let Some(table) = &mut self.table {
             match event {
-                Event::End(TagEnd::Table) => {}
-                Event::Start(Tag::TableCell) => table.cell = Line::default(),
-                Event::End(TagEnd::TableCell) => table.row.push(std::mem::take(&mut table.cell)),
-                Event::End(TagEnd::TableRow | TagEnd::TableHead) => {
+                Event::Start(Tag::TableHead) => {
+                    self.styles.push(self.current().bold());
+                    return;
+                }
+                Event::Start(Tag::TableRow | Tag::TableCell) => return,
+                Event::End(TagEnd::TableCell) => {
+                    table.row.push(std::mem::take(&mut self.inline));
+                    return;
+                }
+                Event::End(TagEnd::TableHead | TagEnd::TableRow) => {
+                    if matches!(event, Event::End(TagEnd::TableHead)) {
+                        self.styles.pop();
+                    }
                     let row = std::mem::take(&mut table.row);
                     table.rows.push(row);
                     return;
                 }
-                Event::Text(t) | Event::Code(t) => {
-                    let style = self.styles.last().cloned().unwrap_or_default();
-                    table.cell.push(t.to_string(), style);
+                Event::End(TagEnd::Table) => {
+                    let table = self.table.take().unwrap_or_default();
+                    self.block_start();
+                    self.table_lines(table);
+                    self.gap = true;
                     return;
                 }
-                Event::Start(Tag::Strong) => {
-                    self.styles.push(self.current().bold());
-                    return;
-                }
-                Event::End(TagEnd::Strong | TagEnd::Emphasis) => {
-                    self.styles.pop();
-                    return;
-                }
-                Event::Start(Tag::Emphasis) => {
-                    self.styles.push(self.current().italic());
-                    return;
-                }
-                _ => return,
+                _ => {}
             }
-            if matches!(event, Event::End(TagEnd::Table)) {
-                let table = self.table.take().unwrap_or_default();
-                self.block_start();
-                self.table_lines(table);
-                self.gap = true;
-            }
-            return;
         }
 
         match event {
@@ -260,7 +252,8 @@ impl Renderer {
             }
             TagEnd::Link => {
                 self.styles.pop();
-                if let Some(url) = self.link.take() {
+                // In a table cell the link itself carries the URL; a suffix would crowd it.
+                if let Some(url) = self.link.take().filter(|_| self.table.is_none()) {
                     let shown = self.inline.text();
                     if !shown.ends_with(&url) {
                         self.inline.push(format!(" ({url})"), Style::fg("muted"));
@@ -372,12 +365,7 @@ impl Renderer {
         for (r, row) in table.rows.iter().enumerate() {
             let mut line = Line::styled("│", border.clone());
             for (i, w) in widths.iter().enumerate() {
-                let mut cell = row.get(i).cloned().unwrap_or_default();
-                if r == 0 {
-                    for span in &mut cell.spans {
-                        span.style.bold = true;
-                    }
-                }
+                let cell = row.get(i).cloned().unwrap_or_default();
                 let align = table.aligns.get(i).copied().unwrap_or_default();
                 line.push(" ", Style::default());
                 line.extend(table::fit(&cell, *w, align));
@@ -407,6 +395,17 @@ mod tests {
     }
 
     const SAMPLE: &str = "# Title\n\nSome *emphasis*, **strong** and `code` with a [link](https://crowbot.sh).\n\n- one\n- two\n  - nested item that is long enough to wrap around\n\n1. first\n2. second\n\n> quoted text\n\n```rust\nfn main() {}\n```\n\n| a | b |\n|---|---|\n| 1 | 22 |\n\n---\n\n- [x] done\n- [ ] todo\n";
+
+    #[test]
+    fn table_cells_keep_their_inline_styles() {
+        let md = "| a | b |\n|---|---|\n| `x` | [site](https://s.dev) ~~old~~ |\n";
+        let out = tagged(md, 60);
+        assert!(out.contains("[bold]a[/]"), "{out}");
+        assert!(out.contains("[code]x[/]"), "{out}");
+        assert!(out.contains("link]site[/]"), "{out}");
+        assert!(out.contains("strike]old[/]"), "{out}");
+        assert!(!out.contains("(https://s.dev)"), "{out}");
+    }
 
     #[test]
     fn renders_every_element() {
