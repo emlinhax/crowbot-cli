@@ -23,7 +23,7 @@ pub fn delay(error: &ErrorInfo, retry_after: Option<Duration>, attempt: u32) -> 
 }
 
 /// Client errors other than rate limiting will fail the same way again.
-fn retryable(error: &ErrorInfo) -> bool {
+pub fn retryable(error: &ErrorInfo) -> bool {
     error.entry().retry && !matches!(error.status, Some(400..=428 | 430..=499))
 }
 

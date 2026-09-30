@@ -1,5 +1,5 @@
 use crate::Sandbox;
-use crate::fake_crowbot::{Fake, Reply};
+use crate::fake_crowbot::{Fake, PairPoll, Reply};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn pairing_saves_a_device_key_that_chat_then_uses() {
@@ -23,6 +23,29 @@ async fn pairing_saves_a_device_key_that_chat_then_uses() {
     fake.script([Reply::sse("hello.sse")]);
     let chat = sandbox.run(&fake.url, &["-p", "hi"], None).await;
     assert_eq!(chat.success().stdout(), "Hello there!\n");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn pairing_waits_out_a_passing_error_and_stops_at_a_final_one() {
+    let fake = Fake::start().await;
+    let blip = PairPoll::Error {
+        status: 503,
+        kind: "upstream_unavailable",
+    };
+    fake.pair_polls([blip]);
+    let sandbox = Sandbox::default();
+    let run = sandbox.run(&fake.url, &["login"], None).await;
+    assert!(run.success().stdout().contains("Logged in with device key"));
+    assert_eq!(fake.hits("/api/pair/dev1"), 2);
+
+    let fake = Fake::start().await;
+    fake.pair_polls([PairPoll::Error {
+        status: 401,
+        kind: "invalid_api_key",
+    }]);
+    let run = sandbox.run(&fake.url, &["login"], None).await;
+    assert_eq!(run.code(), Some(1));
+    assert_eq!(fake.hits("/api/pair/dev1"), 1);
 }
 
 #[tokio::test(flavor = "multi_thread")]

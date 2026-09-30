@@ -5,10 +5,10 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::api::endpoints;
 use crate::api::error::{ApiError, ErrorInfo};
 use crate::api::{Api, Call};
-use crate::limits;
+use crate::api::{endpoints, retry};
+use crate::{io, limits};
 
 /// No `Debug`: it holds the device code.
 #[derive(Deserialize)]
@@ -29,8 +29,9 @@ struct Ready {
     api_key: String,
 }
 
-pub async fn start(api: &Api, hostname: &str) -> Result<Started, ApiError> {
-    let body = serde_json::json!({ "hostname": hostname });
+/// Asks for a code under this machine's name, which the key list shows once it is approved.
+pub async fn start(api: &Api) -> Result<Started, ApiError> {
+    let body = serde_json::json!({ "hostname": io::proc::hostname() });
     let resp = api
         .call(
             "pair_start",
@@ -62,7 +63,7 @@ pub async fn poll(api: &Api, device_code: &str) -> Result<Poll, ApiError> {
     Ok(Poll::Ready(ready.api_key))
 }
 
-/// Polls until the code is approved, backing off when rate-limited, until it expires.
+/// Polls until the code is approved, backing off on any error worth retrying, until it expires.
 pub async fn wait(api: &Api, started: &Started) -> Result<String, ApiError> {
     let limits = &limits::get().pair;
     let collect = async {
@@ -70,7 +71,7 @@ pub async fn wait(api: &Api, started: &Started) -> Result<String, ApiError> {
             match poll(api, &started.device_code).await {
                 Ok(Poll::Ready(key)) => return Ok(key),
                 Ok(Poll::Pending) => tokio::time::sleep(limits.poll_interval_ms.ms()).await,
-                Err(e) if e.info.kind == "rate_limited" => {
+                Err(e) if retry::retryable(&e.info) => {
                     tokio::time::sleep(limits.backoff_ms.ms()).await;
                 }
                 Err(e) => return Err(e),

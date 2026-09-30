@@ -9,7 +9,7 @@ use crate::api::pair::{self, Started};
 use crate::app::App;
 use crate::auth::{self, KeyKind};
 use crate::commands::login::{logged_in, open_browser};
-use crate::io::{self, term::KeyEvent};
+use crate::io::term::KeyEvent;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
 use crate::tui::boxed::boxed;
@@ -56,7 +56,7 @@ pub fn run(app: &App, job: Job) -> BoxFuture<'_, Done> {
     Box::pin(async move {
         let (key, kind) = match job {
             Job::Start => {
-                return match pair::start(&app.api, &io::proc::hostname()).await {
+                return match pair::start(&app.api).await {
                     Ok(started) => Done::Started(started),
                     Err(e) => Done::Failed(format!("{e:#}")),
                 };

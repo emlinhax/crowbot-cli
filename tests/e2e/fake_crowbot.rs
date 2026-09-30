@@ -39,13 +39,20 @@ struct Inner {
     paths: Vec<String>,
     chat_bodies: Vec<Value>,
     script: VecDeque<Reply>,
-    pair_pending: usize,
+    /// Answers to pairing polls before the approval, in order.
+    pair_polls: VecDeque<PairPoll>,
     pair_collected: bool,
     /// Signups to refuse with 428 before accepting one.
     stale_proofs: usize,
 }
 
 type Shared = Arc<Mutex<Inner>>;
+
+/// One scripted answer to a pairing poll.
+pub enum PairPoll {
+    Pending,
+    Error { status: u16, kind: &'static str },
+}
 
 /// A local stand-in for crowbot: serves fixtures, follows a script, records what it was asked.
 pub struct Fake {
@@ -87,7 +94,12 @@ impl Fake {
 
     /// How many polls answer "pending" before the pairing is approved.
     pub fn pair_after(&self, pending: usize) {
-        self.inner.lock().unwrap().pair_pending = pending;
+        self.pair_polls((0..pending).map(|_| PairPoll::Pending));
+    }
+
+    /// Polls answer these, in order, before the pairing is approved.
+    pub fn pair_polls(&self, polls: impl IntoIterator<Item = PairPoll>) {
+        self.inner.lock().unwrap().pair_polls.extend(polls);
     }
 
     pub fn stale_proofs(&self, count: usize) {
@@ -226,13 +238,16 @@ async fn pair_poll(State(inner): State<Shared>, Path(code): Path<String>) -> Res
     if code != "dev1" || inner.pair_collected {
         return error(410, "pair_expired", None);
     }
-    if inner.pair_pending > 0 {
-        inner.pair_pending -= 1;
-        return (
-            StatusCode::ACCEPTED,
-            axum::Json(json!({"status": "pending"})),
-        )
-            .into_response();
+    match inner.pair_polls.pop_front() {
+        Some(PairPoll::Pending) => {
+            return (
+                StatusCode::ACCEPTED,
+                axum::Json(json!({"status": "pending"})),
+            )
+                .into_response();
+        }
+        Some(PairPoll::Error { status, kind }) => return error(status, kind, None),
+        None => {}
     }
     inner.pair_collected = true;
     axum::Json(json!({"status": "ready", "api_key": DEVICE_KEY})).into_response()

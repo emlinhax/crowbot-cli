@@ -77,7 +77,7 @@ impl Command for Login {
 }
 
 async fn pair_here(app: &App) -> anyhow::Result<String> {
-    let started = pair::start(&app.api, &io::proc::hostname()).await?;
+    let started = pair::start(&app.api).await?;
     let url = pair::page();
     let code = started.user_code.as_str();
     term::out(&format!(
