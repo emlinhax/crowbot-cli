@@ -46,14 +46,6 @@ pub async fn run<'a>(
     cancel: &'a CancellationToken,
 ) -> Batch {
     let mode = shared.mode();
-    let earlier: Vec<&ToolCall> = history
-        .iter()
-        .filter_map(|m| match m {
-            Message::Assistant(a) => Some(a.tool_calls()),
-            _ => None,
-        })
-        .flatten()
-        .collect();
 
     let mut cleared = Vec::with_capacity(calls.len());
     let mut stop = false;
@@ -61,8 +53,8 @@ pub async fn run<'a>(
         let slot = if stop {
             Err(Refused::from(model_text::get().rejected.clone()))
         } else {
-            let seen = earlier.iter().copied().chain(&calls[..i]);
-            clear(cx, shared, cancel, mode, seen, call).await
+            let repeats = doom_loop::repeats(history, calls, i);
+            clear(cx, shared, cancel, mode, repeats, call).await
         };
         if let Err(refused) = &slot {
             stop |= refused.stop;
@@ -105,7 +97,7 @@ async fn clear<'a>(
     shared: &'a Shared,
     cancel: &'a CancellationToken,
     mode: &Mode,
-    seen: impl DoubleEndedIterator<Item = &'a ToolCall>,
+    repeats: usize,
     call: &'a ToolCall,
 ) -> Result<(Arc<dyn Tool>, Value), Refused> {
     let text = model_text::get();
@@ -122,11 +114,10 @@ async fn clear<'a>(
         .map_err(|e| fill(&text.bad_json, &[("error", &e.to_string())]))?;
 
     let mut asks = Vec::new();
-    let count = doom_loop::repeats(seen, call);
-    if count >= limits::get().agent.doom_loop_repeats.value {
+    if repeats >= limits::get().agent.doom_loop_repeats.value {
         match mode.verdicts.doom_loop {
             DoomLoop::TellModel => {
-                return Err(fill(&text.doom_loop, &[("count", &count.to_string())]).into());
+                return Err(fill(&text.doom_loop, &[("count", &repeats.to_string())]).into());
             }
             DoomLoop::Ask => asks.push(Ask::new(permissions::DOOM_LOOP.name, call.name.clone())),
         }
