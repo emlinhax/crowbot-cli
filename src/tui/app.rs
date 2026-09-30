@@ -152,7 +152,9 @@ struct Tui<'a> {
     braille: bool,
     last_ctrl_c: Option<Instant>,
     cost_micros: u64,
-    context_pct: Option<u64>,
+    /// Input tokens of the last request; the bar divides by the current model's window, so a
+    /// switch of model shows its own share at once.
+    context_tokens: Option<u64>,
 }
 
 impl<'a> Tui<'a> {
@@ -206,7 +208,7 @@ impl<'a> Tui<'a> {
             braille: term::braille(),
             last_ctrl_c: None,
             cost_micros: 0,
-            context_pct: None,
+            context_tokens: None,
         }
     }
 
@@ -668,8 +670,7 @@ impl<'a> Tui<'a> {
             AgentEvent::MessageEnd { message } => {
                 if let Some(usage) = message.usage {
                     self.cost_micros += usage.cost_micros;
-                    let window = self.model.context_window.max(1);
-                    self.context_pct = Some(usage.input * 100 / window);
+                    self.context_tokens = Some(usage.input);
                 }
             }
             AgentEvent::Delivered { text } => {
@@ -736,7 +737,9 @@ impl<'a> Tui<'a> {
             &frame::Info {
                 model: &self.model.id,
                 effort: self.model.effort(self.app.settings.effort.as_deref()),
-                context_pct: self.context_pct,
+                context_pct: self
+                    .context_tokens
+                    .map(|tokens| tokens * 100 / self.model.context_window.max(1)),
                 cost_micros: self.cost_micros,
             },
             width,

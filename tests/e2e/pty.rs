@@ -517,6 +517,32 @@ async fn thinking_collapses_opens_on_click_and_ctrl_t_toggles_it_all() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn the_context_share_follows_a_switch_of_model_at_once() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("pty/long_context.sse")]);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.wait_for("MANUAL");
+        s.type_text("hi");
+        s.send("\r");
+        s.wait_for("Read it all.");
+        // 100k tokens: a tenth of crow-2's million, three quarters of fake-coder's 131k.
+        s.poll(WAIT, "ctx 10% on crow-2", |s| {
+            s.bottom_row().contains("ctx 10%").then_some(())
+        });
+        s.type_text("/models");
+        s.send("\r");
+        s.wait_for("╭ Models");
+        s.send("\x1b[B");
+        s.send("\r");
+        s.wait_for("Model: fake-coder for this session.");
+        s.poll(WAIT, "ctx 76% on fake-coder", |s| {
+            s.bottom_row().contains("ctx 76%").then_some(())
+        });
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
