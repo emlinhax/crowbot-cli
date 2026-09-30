@@ -8,9 +8,9 @@ use crate::agent::event::{AgentEvent, DeltaKind, Outcome};
 use crate::agent::message::{Assistant, Finish, ToolResult};
 use crate::api::error::ErrorInfo;
 use crate::limits;
-use crate::text::markdown;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
+use crate::text::{markdown, stream};
 use crate::tui::cards::{self, State};
 use crate::tui::{ui, welcome};
 
@@ -296,7 +296,7 @@ impl Feed {
             }
             groups.push(lines);
         }
-        let tail = markdown::trim_partial_fence(&self.text[self.committed..]);
+        let tail = stream::trim_partial_fence(&self.text[self.committed..]);
         if !tail.trim().is_empty() {
             groups.push(markdown::render(tail, width));
         }
@@ -326,7 +326,7 @@ impl Feed {
 
     fn commit_complete(&mut self) {
         let pending = &self.text[self.committed..];
-        let cut = markdown::complete_prefix(pending);
+        let cut = stream::complete_prefix(pending);
         if cut > 0 {
             let chunk = pending[..cut].to_owned();
             self.committed += cut;
