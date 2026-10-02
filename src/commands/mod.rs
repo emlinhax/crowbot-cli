@@ -10,6 +10,7 @@ pub mod models;
 mod new;
 mod quit;
 mod signup;
+mod status;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
@@ -103,6 +104,20 @@ impl Spec {
 pub struct Ctx<'a> {
     pub app: &'a App,
     pub scope: Scope,
+    /// What a running session reports about itself; `None` on the command line.
+    pub session: Option<Session>,
+}
+
+pub struct Session {
+    pub model: String,
+    /// The effort each request carries: none for a model that does not reason.
+    pub effort: Option<String>,
+    pub mode: String,
+    /// Share of the context window the last request used.
+    pub context_pct: Option<u64>,
+    pub cost_micros: u64,
+    /// Where the conversation is saved, from its first message on.
+    pub file: String,
 }
 
 impl Ctx<'_> {
@@ -176,6 +191,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &login::Login,
     &logout::Logout,
     &signup::Signup,
+    &status::Status,
     &models::Models,
     &mode::Mode,
     &new::New,
@@ -273,7 +289,11 @@ mod tests {
             ),
             (Scope::Cli, "logout", "please", "usage: crowbot logout"),
         ] {
-            let cx = Ctx { app: &app, scope };
+            let cx = Ctx {
+                app: &app,
+                scope,
+                session: None,
+            };
             let command = lookup(name, scope).ok().unwrap();
             let err = command.run(&cx, &words(args)).await.expect_err(name);
             assert_eq!(err.to_string(), usage);

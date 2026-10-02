@@ -641,6 +641,22 @@ async fn slash_clear_starts_a_fresh_conversation_in_a_new_file() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn slash_status_shows_the_balance_model_and_mode() {
+    let fake = Fake::start().await;
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.wait_for("MANUAL");
+        s.type_text("/status");
+        s.send("\r");
+        s.wait_for("Balance $12.30");
+        let screen = s.contents();
+        assert!(screen.contains("Model: crow-2"), "{screen}");
+        assert!(screen.contains("Mode: MANUAL"), "{screen}");
+        assert!(screen.contains("nothing sent yet"), "{screen}");
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);

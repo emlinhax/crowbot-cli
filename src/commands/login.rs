@@ -136,7 +136,8 @@ fn what(kind: KeyKind) -> &'static str {
     }
 }
 
-fn status(cx: &Ctx<'_>) -> anyhow::Result<String> {
+/// Which key this machine uses, or how to get one.
+pub fn status(cx: &Ctx<'_>) -> anyhow::Result<String> {
     Ok(match auth::load(&cx.app.paths)? {
         None => fill(&TEXT.logged_out, &[("login", &cx.scope.invoke("login"))]),
         Some(key) => match key.origin {

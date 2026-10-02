@@ -135,6 +135,7 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
     }
     if let Some(command) = command {
         let cx = Ctx {
+            session: None,
             app: &app,
             scope: Scope::Cli,
         };

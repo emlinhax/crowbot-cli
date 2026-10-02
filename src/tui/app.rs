@@ -21,7 +21,7 @@ use crate::agent::state::Shared;
 use crate::agent::system_prompt;
 use crate::api::models::{self, Catalog, Model};
 use crate::app::App;
-use crate::commands::{self, Effect, Outcome as CommandOutcome, Scope};
+use crate::commands::{self, Effect, Outcome as CommandOutcome, Scope, Session};
 use crate::io::term::{self, Button, Input, KeyCode};
 use crate::io::{clipboard, clock};
 use crate::limits;
@@ -207,6 +207,27 @@ impl<'a> Tui<'a> {
         let welcome = tui.welcome();
         tui.feed.push(Block::Welcome(welcome));
         tui
+    }
+
+    /// Share of the current model's window the last request used.
+    fn context_pct(&self) -> Option<u64> {
+        self.context_tokens
+            .map(|tokens| tokens * 100 / self.model.context_window.max(1))
+    }
+
+    /// What this session reports about itself to a command.
+    fn session(&self) -> Session {
+        Session {
+            model: self.model.id.clone(),
+            effort: self
+                .model
+                .effort(self.app.settings.effort.as_deref())
+                .map(str::to_owned),
+            mode: self.shared.mode().label.clone(),
+            context_pct: self.context_pct(),
+            cost_micros: self.cost_micros,
+            file: self.session_file.clone(),
+        }
     }
 
     fn welcome(&self) -> welcome::Info {
@@ -665,7 +686,7 @@ impl<'a> Tui<'a> {
     }
 
     fn command(&mut self, line: &str) -> Step<'a> {
-        match command::start(self.app, line) {
+        match command::start(self.app, line, self.session()) {
             Ok(started) => {
                 self.feed.user(&started.echo);
                 Step::Work(started.run)
@@ -797,9 +818,7 @@ impl<'a> Tui<'a> {
             &frame::Info {
                 model: &self.model.id,
                 effort: self.model.effort(self.app.settings.effort.as_deref()),
-                context_pct: self
-                    .context_tokens
-                    .map(|tokens| tokens * 100 / self.model.context_window.max(1)),
+                context_pct: self.context_pct(),
                 cost_micros: self.cost_micros,
             },
             width,

@@ -5,7 +5,7 @@ use futures_util::future::BoxFuture;
 
 use crate::api::models::{self, Catalog};
 use crate::app::App;
-use crate::commands::{self, Ctx, Missing, Outcome, Scope};
+use crate::commands::{self, Ctx, Missing, Outcome, Scope, Session};
 use crate::text::template;
 use crate::tui::ui;
 
@@ -23,7 +23,7 @@ pub struct Started<'a> {
 
 /// Starts `line` (what followed the `/`); `Err` is the notice for a command that does not run
 /// here.
-pub fn start<'a>(app: &'a App, line: &str) -> Result<Started<'a>, String> {
+pub fn start<'a>(app: &'a App, line: &str, session: Session) -> Result<Started<'a>, String> {
     let words: Vec<String> = line.split_whitespace().map(str::to_owned).collect();
     let (name, args) = words.split_first().ok_or_else(String::new)?;
     let command = commands::lookup(name, Scope::Session).map_err(|missing| {
@@ -50,6 +50,7 @@ pub fn start<'a>(app: &'a App, line: &str) -> Result<Started<'a>, String> {
             let cx = Ctx {
                 app,
                 scope: Scope::Session,
+                session: Some(session),
             };
             Work::Command(command.run(&cx, &args).await)
         }),
