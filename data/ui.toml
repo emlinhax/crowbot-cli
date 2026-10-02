@@ -45,13 +45,14 @@ effort_unsent = " {model} does not reason, so it sends none."
 new_conversation = "A new conversation."
 new_saved = "A new conversation. The last one is saved in {path}."
 
-# The line above the bar while crowbot works: a flapping raven, a verb with a glint running
+# The line above the bar while crowbot works: a murmuration of crows, a verb with a glint running
 # along it, then elapsed time and tokens.
 [status]
-# One wingbeat: up, level, down and back, a frame per `tui.wing_ms`.
-wings = ["⠑⠤⠊", "⠢⠤⠔", "⠒⠒⠒", "⠔⠒⠢", "⡠⠒⢄", "⠔⠒⠢", "⠒⠒⠒", "⠢⠤⠔"]
+# A murmuration: a ribbon of crows rising and falling, drawn in braille dots two to a cell, a
+# frame per `tui.status_frame_ms`. Every frame is the same width, so the verb never moves.
+frames = ["⠑⢄⡠⠊⠑", "⠢⣀⠔⠉⠢", "⢄⡠⠊⠑⢄", "⣀⠔⠉⠢⣀", "⡠⠊⠑⢄⡠", "⠔⠉⠢⣀⠔", "⠊⠑⢄⡠⠊", "⠉⠢⣀⠔⠉"]
 # For terminals without braille (legacy Windows conhost).
-plain = ["·", "•", "●", "•"]
+plain = ["'._-'", "-_.'-", "._-'.", "_.'-_", "_-'._", ".'-_.", "-'._-", "'-_.'"]
 # One per turn, never the same twice running.
 verbs = ["Gooning", "Tweaking", "Cooking", "Pasting", "Maffing", "Napping", "Trapping", "Crowing", "Bypassing", "Caw-cawing"]
 tokens = "↓ {n} tok"

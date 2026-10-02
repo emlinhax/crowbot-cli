@@ -82,7 +82,7 @@ pub struct PickerText {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StatusText {
-    pub wings: Vec<String>,
+    pub frames: Vec<String>,
     pub plain: Vec<String>,
     pub verbs: Vec<String>,
     pub tokens: String,

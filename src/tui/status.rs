@@ -1,4 +1,4 @@
-//! The line above the bar while crowbot works: a raven flapping, a verb with a glint running
+//! The line above the bar while crowbot works: a murmuration of crows, a verb with a glint running
 //! along it, then time, tokens and how to stop. A retry says why and how long instead.
 
 use std::time::Instant;
@@ -63,13 +63,13 @@ impl Progress {
         self.output + (self.streaming / CHARS_PER_TOKEN) as u64
     }
 
-    /// `color` is the mode's; `braille` picks the raven over plain dots.
+    /// `color` is the mode's; `braille` picks the braille flock over plain characters.
     pub fn render(&self, now: Instant, color: &str, braille: bool, width: usize) -> Line {
         let words = &ui::get().status;
         let limits = &limits::get().tui;
         let elapsed = now.duration_since(self.started).as_millis();
-        let frames = if braille { &words.wings } else { &words.plain };
-        let step = (elapsed / u128::from(limits.wing_ms.value.max(1))) as usize;
+        let frames = if braille { &words.frames } else { &words.plain };
+        let step = (elapsed / u128::from(limits.status_frame_ms.value.max(1))) as usize;
         let frame = frames
             .get(step % frames.len().max(1))
             .map_or("", String::as_str);
@@ -136,15 +136,38 @@ mod tests {
     }
 
     #[test]
-    fn the_line_has_a_raven_a_verb_and_the_stats() {
+    fn the_line_has_the_flock_a_verb_and_the_stats() {
         let (p, t0) = progress(2);
+        let frames = &ui::get().status.frames;
         let line = p.render(t0, "mode_auto", true, 80);
-        assert_eq!(line.text(), "⠑⠤⠊ Cooking…  0s · ↓ 0 tok · esc to interrupt");
-        let wing = limits::get().tui.wing_ms.value;
-        let later = p.render(t0 + Duration::from_millis(wing), "mode_auto", true, 80);
-        assert!(later.text().starts_with("⠢⠤⠔ "), "{}", later.text());
+        assert_eq!(
+            line.text(),
+            format!("{} Cooking…  0s · ↓ 0 tok · esc to interrupt", frames[0])
+        );
+        let step = limits::get().tui.status_frame_ms.value;
+        let later = p.render(t0 + Duration::from_millis(step), "mode_auto", true, 80);
+        assert!(
+            later.text().starts_with(&format!("{} ", frames[1])),
+            "{}",
+            later.text()
+        );
         let plain = p.render(t0, "mode_auto", false, 80);
-        assert!(plain.text().starts_with("· Cooking…"));
+        let first = &ui::get().status.plain[0];
+        assert!(plain.text().starts_with(&format!("{first} Cooking…")));
+    }
+
+    #[test]
+    fn every_frame_is_as_wide_as_the_first_so_the_verb_stays_put() {
+        let status = &ui::get().status;
+        for frames in [&status.frames, &status.plain] {
+            let first = crate::text::styled::width(&frames[0]);
+            assert!(
+                frames
+                    .iter()
+                    .all(|f| crate::text::styled::width(f) == first),
+                "{frames:?}"
+            );
+        }
     }
 
     #[test]

@@ -212,9 +212,9 @@ reason = "prompts kept for Up/Down in one session"
 value = 16
 reason = "a permission preview shows this much of a diff before cutting it short"
 
-[tui.wing_ms]
+[tui.status_frame_ms]
 value = 90
-reason = "eight frames make one wingbeat of about three quarters of a second, a calm flap"
+reason = "eight frames carry the flock through one rise and fall in about three quarters of a second, calm but alive"
 
 [tui.shimmer_ms]
 value = 70
