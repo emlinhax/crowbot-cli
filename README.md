@@ -16,8 +16,8 @@ Read `AGENTS.md` before changing anything; `NEXT_PLAN.md` tracks the phases.
 on Windows, `~/.local/bin` elsewhere) and puts it on your PATH: on Windows itself, with an
 Apps & Features entry; elsewhere it tells you the line for your shell's profile. `crowbot
 uninstall` takes it away again and leaves `~/.crowbot` (keys, sessions) alone. The binaries are
-unsigned, so the first start of a downloaded copy may need "More info → Run anyway" (Windows) or
-right-click → Open (macOS).
+unsigned: on Windows the first start asks for "More info → Run anyway"; on macOS a copy saved by a
+browser (not by `curl`) is blocked until System Settings → Privacy & Security → Open Anyway.
 
 Once a day, an interactive session checks for a newer release in the background, checks the
 download against the release's SHA256SUMS and swaps it in; the next start says it updated.
