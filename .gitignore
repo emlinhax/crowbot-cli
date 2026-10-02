@@ -3,5 +3,7 @@
 /crates/cffetch/target/
 /crates/cffetch/Cargo.lock
 /reference/
+# Local research notes, never published.
+/THE_REFINATION/
 *.snap.new
 *.pending-snap

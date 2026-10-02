@@ -154,3 +154,8 @@ Asset names never change, so these always serve the newest release:
 
 A target is one entry in `ci.yml`'s matrix. The binaries are unsigned, so macOS Gatekeeper and
 Windows SmartScreen warn about a copy downloaded by a browser; `curl` downloads are not flagged.
+
+## Licence
+
+crowbot is licensed under either of [Apache License 2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT), at
+your option. Unless you say otherwise, a contribution you submit is licensed the same way.
