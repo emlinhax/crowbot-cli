@@ -59,6 +59,11 @@ impl Paths {
         self.home.join("trusted.json")
     }
 
+    /// When the updater last looked, and news of an update for the next start.
+    pub fn update_state(&self) -> PathBuf {
+        self.home.join("update.json")
+    }
+
     /// Grouped per project directory so resuming can list this project's sessions first.
     pub fn sessions_dir(&self) -> PathBuf {
         self.home.join("sessions").join(slug(&self.project))

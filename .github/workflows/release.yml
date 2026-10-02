@@ -15,13 +15,28 @@ permissions:
   contents: read
 
 jobs:
+  # The tag is worked out once: the release builds carry it (`crowbot --version`, the updater)
+  # and the release is published under it.
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: tag
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          echo "tag=v$version-$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+
   check:
+    needs: tag
     uses: ./.github/workflows/ci.yml
     with:
       publish: true
+      release: ${{ needs.tag.outputs.tag }}
 
   publish:
-    needs: check
+    needs: [tag, check]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -32,13 +47,10 @@ jobs:
           path: dist
           merge-multiple: true
       - run: cd dist && sha256sum crowbot-* > SHA256SUMS
-      # CEILING: the binary reports Cargo.toml's version, not the run number; bump the version
-      # for a release people need to tell apart from the last.
       - env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.tag.outputs.tag }}
         run: |
-          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
-          tag="v$version-$GITHUB_RUN_NUMBER"
-          gh release create "$tag" dist/* \
-            --target "$GITHUB_SHA" --title "$tag" --generate-notes --latest
+          gh release create "$TAG" dist/* \
+            --target "$GITHUB_SHA" --title "$TAG" --generate-notes --latest

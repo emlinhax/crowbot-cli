@@ -1,0 +1,12 @@
+# What the updater says; {placeholders} are filled in. These reach `crowbot update` and the
+# notice at the start of a session after an update.
+[text]
+updated = "crowbot updated to {to} (from {from})."
+up_to_date = "Already the newest release, {tag}."
+development = "This is a development build, with no release to update from; install a release to get updates."
+listing = "The release list did not load: {error}"
+no_platform = "Releases have no build for this platform ({os} {arch})."
+missing = "Release {tag} has no {file}."
+not_writable = "crowbot cannot write to {dir}, where it is installed (by an administrator or a package manager, perhaps); update it there."
+mismatch = "The download of {file} does not match its checksum; nothing was changed."
+http = "{url} answered {status}."

@@ -22,6 +22,8 @@ pub struct Settings {
     /// Every layer's rules, in layer order; the last match wins.
     #[serde(default)]
     pub permission: Vec<Rule>,
+    /// Whether a release build updates itself (see data/defaults.toml).
+    pub auto_update: bool,
     /// A shell to run commands in, overriding the search in data/shells.toml.
     #[serde(default)]
     pub shell: Option<String>,

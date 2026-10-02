@@ -252,6 +252,22 @@ async fn help_names_the_commands_and_what_print_does_with_them() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_development_build_says_it_has_no_release_to_update_from() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    let update = sandbox.run(&fake.url, &["update"], None).await;
+    assert_eq!(update.code(), Some(1));
+    assert!(
+        update.stderr().contains("development build"),
+        "{}",
+        update.stderr()
+    );
+    let version = sandbox.run(&fake.url, &["--version"], None).await;
+    let out = version.success().stdout();
+    assert_eq!(out.trim(), format!("crowbot {}", env!("CARGO_PKG_VERSION")));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn headless_with_nothing_to_send_says_so() {
     let fake = Fake::start().await;
     let run = Sandbox::default().run(&fake.url, &["-p"], WITH_KEY).await;

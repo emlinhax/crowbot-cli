@@ -188,6 +188,63 @@ pub fn append_line(path: &Path, line: &str) -> io::Result<()> {
     file.write_all(format!("{line}\n").as_bytes())
 }
 
+/// Writes `bytes` as a program (mode 0755 on Unix), over any file already there.
+pub fn write_executable(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    std::fs::write(path, bytes)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))?;
+    }
+    Ok(())
+}
+
+/// Whether a file can be made in `dir`.
+pub fn writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(".crowbot-probe-{}", std::process::id()));
+    let made = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)
+        .is_ok();
+    if made {
+        let _ = std::fs::remove_file(&probe);
+    }
+    made
+}
+
+/// Puts the program `new` where `current` is, though `current` may be running. Unix renames over
+/// it (a running process keeps its image). Windows cannot replace a running exe but can rename
+/// it, so the old one moves aside and is swept on a later start.
+pub fn replace_executable(new: &Path, current: &Path) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        let aside = current.with_extension(format!("old-{}", std::process::id()));
+        std::fs::rename(current, &aside)?;
+        if let Err(e) = std::fs::rename(new, current) {
+            let _ = std::fs::rename(&aside, current);
+            return Err(e);
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    std::fs::rename(new, current)
+}
+
+/// Removes what earlier replacements of `current` left beside it: renamed-aside programs (some
+/// may still run, and stay) and staged downloads.
+pub fn sweep_replaced(current: &Path) {
+    let (Some(dir), Some(stem)) = (current.parent(), current.file_stem()) else {
+        return;
+    };
+    let old = format!("{}.old-", stem.to_string_lossy());
+    for entry in list_dir(dir).unwrap_or_default() {
+        if entry.name.starts_with(&old) {
+            let _ = std::fs::remove_file(dir.join(&entry.name));
+        }
+    }
+}
+
 /// `Ok(false)` when there was nothing to remove.
 pub fn remove(path: &Path) -> io::Result<bool> {
     match std::fs::remove_file(path) {
@@ -249,6 +306,36 @@ mod tests {
             .map(|e| e.is_dir)
             .collect();
         assert_eq!(dirs, [true, true]);
+    }
+
+    #[test]
+    fn a_program_is_replaced_where_it_stands_and_its_leftovers_swept() {
+        let dir = tempfile::tempdir().unwrap();
+        let current = dir.path().join(if cfg!(windows) {
+            "crowbot.exe"
+        } else {
+            "crowbot"
+        });
+        write_executable(&current, b"old").unwrap();
+        let new = dir.path().join(".crowbot.new");
+        write_executable(&new, b"new").unwrap();
+        assert!(writable(dir.path()));
+        replace_executable(&new, &current).unwrap();
+        assert_eq!(read_bytes(&current).unwrap(), b"new");
+        assert!(!new.exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&current).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o755);
+        }
+        sweep_replaced(&current);
+        let left: Vec<String> = list_dir(dir.path())
+            .unwrap()
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert_eq!(left.len(), 1, "{left:?}");
     }
 
     #[test]

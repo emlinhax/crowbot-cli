@@ -2,6 +2,9 @@
 # order. `[[permission]]` rules are appended instead, and the last matching rule wins.
 model = "crow-2"
 mode = "manual"
+# A release build replaces itself with the newest release once a day, in the background of an
+# interactive session; `crowbot update` does it on demand. CROWBOT_NO_UPDATE turns it off too.
+auto_update = true
 
 [[permission]]
 permission = "*"

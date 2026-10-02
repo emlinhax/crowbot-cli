@@ -7,6 +7,11 @@ env = "CROWBOT_API_URL"
 url = "https://chat.crowbot.sh"
 env = "CROWBOT_CHAT_URL"
 
+# Where crowbot's own releases are listed, for the updater.
+[origins.releases]
+url = "https://api.github.com"
+env = "CROWBOT_RELEASES_URL"
+
 [endpoints.models]
 origin = "api"
 method = "GET"
@@ -55,3 +60,9 @@ origin = "api"
 method = "POST"
 path = "/v1/tools/codesearch"
 auth = true
+
+# The newest release: its tag and its files.
+[endpoints.latest_release]
+origin = "releases"
+method = "GET"
+path = "/repos/emlinhax/crowbot-cli/releases/latest"

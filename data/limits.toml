@@ -112,6 +112,14 @@ reason = "more matches than this means the search should be narrower"
 value = 500
 reason = "a match line is context, not content; read the file for the rest"
 
+[update.check_interval_secs]
+value = 86400
+reason = "a day: releases come a few times a week, and a check costs a request to GitHub, which allows 60 an hour per address"
+
+[update.download_timeout_secs]
+value = 300
+reason = "a release binary is about 16 MB; five minutes allows a slow link without hanging forever"
+
 [tools.question_max]
 value = 4
 reason = "a card of tabs a person answers in one go; more is a form, not a question"

@@ -10,6 +10,10 @@ on:
         description: Keep each release target's binary for the release job.
         type: boolean
         default: false
+      release:
+        description: The release tag the binaries are built as (`crowbot --version`, the updater).
+        type: string
+        default: ""
 
 # Nothing here writes to the repository, so third-party actions get a read-only token.
 permissions:
@@ -45,6 +49,8 @@ jobs:
       - run: make test
       - run: make e2e
       - run: make build TARGET=${{ matrix.target }}
+        env:
+          CROWBOT_RELEASE: ${{ inputs.release }}
       - if: inputs.publish && matrix.target
         uses: ./.github/actions/asset
         with:
@@ -63,6 +69,8 @@ jobs:
         with:
           target: x86_64-unknown-linux-musl
       - run: make build TARGET=x86_64-unknown-linux-musl
+        env:
+          CROWBOT_RELEASE: ${{ inputs.release }}
       - if: inputs.publish
         uses: ./.github/actions/asset
         with:

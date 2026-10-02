@@ -9,7 +9,7 @@ use crate::commands::{self, Ctx, Missing, Scope};
 use crate::frontend::print::{self, Format};
 use crate::io::term;
 use crate::settings::{Overrides, Untrusted};
-use crate::{effort, mode, trust, tui};
+use crate::{effort, mode, release, trust, tui};
 
 /// The help for `--effort`, `--mode` and the commands is filled in from their catalogs by
 /// `command()`, so a new level, mode or command shows up with no edit here.
@@ -61,6 +61,7 @@ fn command() -> clap::Command {
         .map(|s| s.name.as_str())
         .collect();
     Cli::command()
+        .version(release::version())
         .mut_arg("effort", |a| {
             a.help(format!("Reasoning effort for this run: {efforts}"))
         })

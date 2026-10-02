@@ -14,6 +14,7 @@ mod new;
 mod quit;
 mod signup;
 mod status;
+mod update;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
@@ -201,6 +202,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &logout::Logout,
     &signup::Signup,
     &status::Status,
+    &update::Update,
     &models::Models,
     &mode::Mode,
     &effort::Effort,

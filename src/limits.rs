@@ -42,6 +42,7 @@ pub struct Limits {
     pub signup: SignupLimits,
     pub agent: AgentLimits,
     pub tools: ToolLimits,
+    pub update: UpdateLimits,
     pub edit: EditLimits,
     pub tui: TuiLimits,
 }
@@ -123,6 +124,13 @@ pub struct ToolLimits {
     pub bash_spill_keep_days: Limit<u64>,
     pub webfetch_max_bytes: Limit<usize>,
     pub webfetch_timeout_secs: Limit<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateLimits {
+    pub check_interval_secs: Limit<u64>,
+    pub download_timeout_secs: Limit<u64>,
 }
 
 #[derive(Debug, Deserialize)]

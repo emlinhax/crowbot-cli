@@ -1,0 +1,4 @@
+name = "update"
+summary = "Replace crowbot with the newest release now (it also does so by itself once a day)"
+usage = "update"
+scope = ["cli"]

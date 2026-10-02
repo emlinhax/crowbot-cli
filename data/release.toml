@@ -1,0 +1,19 @@
+# Which file of a release each platform runs, by Rust's names for the OS and CPU
+# (std::env::consts). The release workflow names its assets `crowbot-<target>`; a test holds
+# these to the targets .github/workflows/ci.yml builds.
+sums = "SHA256SUMS"
+
+[[asset]]
+os = "linux"
+arch = "x86_64"
+file = "crowbot-x86_64-unknown-linux-musl"
+
+[[asset]]
+os = "macos"
+arch = "aarch64"
+file = "crowbot-aarch64-apple-darwin"
+
+[[asset]]
+os = "windows"
+arch = "x86_64"
+file = "crowbot-x86_64-pc-windows-msvc.exe"

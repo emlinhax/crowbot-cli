@@ -48,6 +48,7 @@ use crate::tui::status::{self, Progress};
 use crate::tui::toast::Toast;
 use crate::tui::view::View;
 use crate::tui::{frame, layout, ui, welcome};
+use crate::{settings, update};
 
 type Turn<'a> = Pin<Box<dyn Future<Output = (Transcript, Outcome)> + 'a>>;
 
@@ -97,6 +98,21 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
 
     let raw = term::Raw::fullscreen()?;
     let mut tui = Tui::new(app, catalog, model, &shared, initial, session_file);
+    // An update an earlier run installed is news once; the next look is due once a day, beside
+    // the session, and only records what it did.
+    if let Ok(exe) = crate::io::proc::current_exe() {
+        crate::io::fs::sweep_replaced(&exe);
+    }
+    if let Some(change) = update::take_news(&app.paths) {
+        tui.feed.notice(&change.say(), "done");
+    }
+    let enabled = app.settings.auto_update && settings::env("CROWBOT_NO_UPDATE").is_none();
+    if update::due(&update::load(&app.paths), clock::now(), enabled) {
+        let paths = app.paths.clone();
+        tokio::spawn(async move {
+            let _ = update::now(&paths).await;
+        });
+    }
     let (spent, transcript) = tui.run(turns, transcript, rx).await;
     drop(raw);
 
