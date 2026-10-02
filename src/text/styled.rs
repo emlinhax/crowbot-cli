@@ -55,6 +55,12 @@ impl Style {
         self
     }
 
+    /// The same, on a background role.
+    pub fn on(mut self, role: &str) -> Self {
+        self.bg = Some(role.to_owned());
+        self
+    }
+
     /// `self`, with anything `over` sets taking precedence.
     pub fn patch(&self, over: &Style) -> Style {
         Style {
@@ -106,6 +112,13 @@ impl Line {
             Some(last) if last.style == style => last.text.push_str(&text),
             _ => self.spans.push(Span { text, style }),
         }
+    }
+
+    /// Filled with `style` out to `width` cells, so a background reaches the edge.
+    pub fn padded(mut self, width: usize, style: &Style) -> Line {
+        let room = width.saturating_sub(self.width());
+        self.push(" ".repeat(room), style.clone());
+        self
     }
 
     pub fn extend(&mut self, other: Line) {

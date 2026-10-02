@@ -2,6 +2,8 @@
 
 spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 prompt = "› "
+# Starts each stretch of the model's prose; what follows it hangs under the text.
+reply_mark = "◆ "
 placeholder = "Ask crowbot anything  ·  / for commands"
 tips = [
   "/help lists commands",

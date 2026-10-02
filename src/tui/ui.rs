@@ -20,6 +20,7 @@ pub fn get() -> &'static Ui {
 pub struct Ui {
     pub spinner: Vec<String>,
     pub prompt: String,
+    pub reply_mark: String,
     pub placeholder: String,
     pub tips: Vec<String>,
     pub footer: Footer,

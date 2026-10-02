@@ -17,6 +17,12 @@ use crate::tui::{ui, welcome};
 pub enum Block {
     Welcome(welcome::Info),
     User(String),
+    /// The model's prose; `first` starts a stretch of it, after the user or a tool card.
+    Reply {
+        md: String,
+        first: bool,
+    },
+    /// Anything else in markdown: what a command answered.
     Markdown(String),
     Notice {
         text: String,
@@ -298,7 +304,7 @@ impl Feed {
         }
         let tail = stream::trim_partial_fence(&self.text[self.committed..]);
         if !tail.trim().is_empty() {
-            groups.push(markdown::render(tail, width));
+            groups.push(reply_lines(tail, self.committed == 0, width));
         }
         let limits = &limits::get().tui;
         if !self.running.is_empty() {
@@ -328,16 +334,18 @@ impl Feed {
         let pending = &self.text[self.committed..];
         let cut = stream::complete_prefix(pending);
         if cut > 0 {
-            let chunk = pending[..cut].to_owned();
+            let md = pending[..cut].to_owned();
+            let first = self.committed == 0;
             self.committed += cut;
-            self.markdown(&chunk);
+            self.push(Block::Reply { md, first });
         }
     }
 
     fn finish_text(&mut self) {
         let rest = self.text[self.committed..].to_owned();
         if !rest.trim().is_empty() {
-            self.markdown(&rest);
+            let first = self.committed == 0;
+            self.push(Block::Reply { md: rest, first });
         }
         self.text.clear();
         self.committed = 0;
@@ -369,6 +377,7 @@ fn render(block: &Block, open: bool, width: usize) -> Vec<Line> {
     match block {
         Block::Welcome(info) => welcome::render(info, width),
         Block::User(text) => user_lines(text, width),
+        Block::Reply { md, first } => reply_lines(md, *first, width),
         Block::Markdown(md) => markdown::render(md, width),
         Block::Notice { text, role } => {
             Line::styled(text, Style::fg(role)).wrap(width, &Line::default())
@@ -405,20 +414,45 @@ fn thinking_lines(mark: &str, header: &str, text: &str, width: usize) -> Vec<Lin
     lines
 }
 
+/// The user's message on a full-width band, a blank band row above and below it.
 fn user_lines(text: &str, width: usize) -> Vec<Line> {
-    let prompt = Line::styled(&ui::get().prompt, Style::fg("user").bold());
-    let indent = Line::plain(" ".repeat(prompt.width()));
-    let mut lines = Vec::new();
+    let band = Style::fg("user_text").on("user_band");
+    let prompt = Line::styled(&ui::get().prompt, Style::fg("user").bold().on("user_band"));
+    let indent = Line::styled(" ".repeat(prompt.width()), band.clone());
+    let mut lines = vec![Line::default()];
     for (i, raw) in text.lines().enumerate() {
         let mut line = if i == 0 {
             prompt.clone()
         } else {
             indent.clone()
         };
-        line.push(raw, Style::default());
+        line.push(raw, band.clone());
         lines.extend(line.wrap(width, &indent));
     }
-    lines
+    lines.push(Line::default());
+    lines.into_iter().map(|l| l.padded(width, &band)).collect()
+}
+
+/// The model's prose under a hanging indent, marked where a stretch of it starts.
+fn reply_lines(md: &str, first: bool, width: usize) -> Vec<Line> {
+    let mark = Line::styled(&ui::get().reply_mark, Style::fg("reply").bold());
+    let indent = Line::plain(" ".repeat(mark.width()));
+    let mut unmarked = first;
+    markdown::render(md, width.saturating_sub(indent.width()))
+        .into_iter()
+        .map(|line| {
+            if line.spans.is_empty() {
+                return line;
+            }
+            let mut out = if std::mem::take(&mut unmarked) {
+                mark.clone()
+            } else {
+                indent.clone()
+            };
+            out.extend(line);
+            out
+        })
+        .collect()
 }
 
 fn error_lines(error: &ErrorInfo, width: usize) -> Vec<Line> {
@@ -481,8 +515,12 @@ mod tests {
             .collect()
     }
 
+    /// Without the padding that carries a band's background to the edge.
     fn texts(feed: &mut Feed, now: Instant) -> Vec<String> {
-        shown(feed, 60, now).into_iter().map(|(t, _)| t).collect()
+        shown(feed, 60, now)
+            .into_iter()
+            .map(|(t, _)| t.trim_end().to_owned())
+            .collect()
     }
 
     #[test]
@@ -490,23 +528,24 @@ mod tests {
         let now = crate::io::clock::instant();
         let mut feed = Feed::new();
         feed.event(&delta(DeltaKind::Text, "First para"), now);
-        assert_eq!(shown(&mut feed, 60, now), [("First para".into(), None)]);
+        assert_eq!(shown(&mut feed, 60, now), [("◆ First para".into(), None)]);
+        // Committed paragraphs keep one mark for the stretch; the rest hang under it.
         feed.event(&delta(DeltaKind::Text, "graph.\n\nSecond"), now);
         assert_eq!(
             shown(&mut feed, 60, now),
             [
-                ("First paragraph.".into(), Some(0)),
+                ("◆ First paragraph.".into(), Some(0)),
                 (String::new(), None),
-                ("Second".into(), None)
+                ("  Second".into(), None)
             ]
         );
         feed.event(&end(None, Finish::Done), now);
         assert_eq!(
             shown(&mut feed, 60, now),
             [
-                ("First paragraph.".into(), Some(0)),
+                ("◆ First paragraph.".into(), Some(0)),
                 (String::new(), None),
-                ("Second".into(), Some(1))
+                ("  Second".into(), Some(1))
             ]
         );
     }
@@ -519,7 +558,7 @@ mod tests {
         assert_eq!(texts(&mut feed, t0), ["▾ Thinking… 0s", "│ let me think"]);
         let t4 = t0 + Duration::from_secs(4);
         feed.event(&delta(DeltaKind::Text, "Answer"), t4);
-        assert_eq!(texts(&mut feed, t4), ["▸ Thought for 4s", "", "Answer"]);
+        assert_eq!(texts(&mut feed, t4), ["▸ Thought for 4s", "", "◆ Answer"]);
         assert!(feed.toggle(0));
         assert_eq!(
             texts(&mut feed, t4)[..2],
@@ -596,11 +635,42 @@ mod tests {
         feed.user("hi");
         feed.event(&delta(DeltaKind::Text, "hello"), now);
         feed.event(&end(None, Finish::Done), now);
-        assert_eq!(texts(&mut feed, now), ["› hi", "", "hello"]);
+        assert_eq!(texts(&mut feed, now), ["", "› hi", "", "", "◆ hello"]);
         feed.markdown(&"word ".repeat(20));
         let wide = feed.measure(60, now);
         let narrow = feed.measure(20, now);
         assert!(narrow > wide, "{narrow} vs {wide}");
         assert_eq!(feed.rows(1, 3).len(), 2);
+    }
+
+    #[test]
+    fn the_users_messages_sit_on_a_band_and_each_stretch_of_prose_is_marked() {
+        let now = crate::io::clock::instant();
+        let mut feed = Feed::new();
+        feed.user("first line\nsecond line");
+        let band: Vec<Line> = {
+            feed.measure(40, now);
+            feed.rows(0, 4).into_iter().map(|(l, _)| l).collect()
+        };
+        for line in &band {
+            assert_eq!(line.width(), 40, "{:?}", line.text());
+            assert!(
+                line.spans
+                    .iter()
+                    .all(|s| s.style.bg.as_deref() == Some("user_band"))
+            );
+        }
+        assert_eq!(band[2].text().trim_end(), "  second line");
+
+        feed.event(&delta(DeltaKind::Text, "Looking."), now);
+        feed.event(&end(None, Finish::ToolCalls), now);
+        feed.event(&delta(DeltaKind::Text, "Found it."), now);
+        feed.event(&end(None, Finish::Done), now);
+        feed.markdown("Commands: help");
+        let rows = texts(&mut feed, now);
+        assert_eq!(
+            rows[rows.len() - 5..],
+            ["◆ Looking.", "", "◆ Found it.", "", "Commands: help"]
+        );
     }
 }
