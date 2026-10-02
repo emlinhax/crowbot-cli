@@ -147,6 +147,7 @@ pub struct TuiLimits {
     pub history_max: Limit<usize>,
     pub prompt_body_lines: Limit<usize>,
     pub palette_rows: Limit<usize>,
+    pub toast_ms: Limit<u64>,
     pub scroll_lines: Limit<usize>,
     pub wing_ms: Limit<u64>,
     pub shimmer_ms: Limit<u64>,

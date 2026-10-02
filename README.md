@@ -37,8 +37,9 @@ The session takes over the whole terminal (the alternate screen) and gives it ba
 conversation scrolls above; the message bar is pinned to the bottom, between two rules in the
 mode's colour: the top one names the mode, the bottom one shows the model and effort, context
 use and cost. While crowbot works, a raven flaps above the bar beside the time and tokens so far.
-Select text with Shift+drag (the mouse otherwise belongs to crowbot); the session file under
-`~/.crowbot/sessions/` keeps the whole conversation.
+Right-click copies a message whole (yours, a reply, a tool's output, the pairing code), with a
+"Copied" note at the top right; Shift+drag selects any text, since the mouse otherwise belongs to
+crowbot. The session file under `~/.crowbot/sessions/` keeps the whole conversation.
 
 | Key | Does |
 |---|---|

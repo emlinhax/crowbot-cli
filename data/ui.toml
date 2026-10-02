@@ -10,6 +10,7 @@ tips = [
   "Shift+Tab cycles MANUAL → AUTO → PLAN",
   "Enter sends · while working, Enter queues and Tab steers",
   "Shift+Enter or Ctrl+J starts a new line",
+  "Right-click copies a message",
 ]
 
 [footer]
@@ -35,6 +36,7 @@ more_below = "↓ {n} more · PgDn"
 saved = "Session saved to {path}"
 unsaved = "No longer saving this session to {path}: {error}. The conversation goes on unsaved."
 spent = "Spent about {cost} this session."
+copied = "✓ Copied"
 
 # The line above the bar while crowbot works: a flapping raven, a verb with a glint running
 # along it, then elapsed time and tokens.
@@ -73,6 +75,7 @@ number = "Enter my account number"
 starting = "Asking crowbot for a pairing code…"
 open = "Open {url}"
 code = "and enter the code  "
+copy_code = "  (right-click copies it)"
 waiting = "Waiting for approval…"
 checking = "Checking with crowbot…"
 failed = "Login failed: {error}"

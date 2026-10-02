@@ -24,6 +24,8 @@ const KEY_GAP: Duration = Duration::from_millis(30);
 
 struct Session {
     screen: vt100::Parser,
+    /// Every byte crowbot wrote, for what the emulator does not show (OSC 52).
+    written: Vec<u8>,
     output: mpsc::Receiver<Vec<u8>>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn portable_pty::Child + Send + Sync>,
@@ -80,6 +82,7 @@ impl Session {
         let writer = pty.master.take_writer().unwrap();
         Self {
             screen: vt100::Parser::new(ROWS, COLS, 500),
+            written: Vec::new(),
             output,
             writer,
             child,
@@ -119,6 +122,7 @@ impl Session {
                 self.send(&format!("\x1b[{};{}R", row + 1, col + 1));
             }
             self.screen.process(&bytes);
+            self.written.extend(bytes);
         }
         any
     }
@@ -186,7 +190,18 @@ impl Session {
 
     /// A left click as a terminal reports it (SGR mouse encoding, one-based).
     fn click(&mut self, row: usize) {
-        self.send(&format!("\x1b[<0;3;{0}M\x1b[<0;3;{0}m", row + 1));
+        self.press(row, 0);
+    }
+
+    fn right_click(&mut self, row: usize) {
+        self.press(row, 2);
+    }
+
+    fn press(&mut self, row: usize, button: u8) {
+        self.send(&format!(
+            "\x1b[<{button};3;{0}M\x1b[<{button};3;{0}m",
+            row + 1
+        ));
     }
 
     #[track_caller]
@@ -488,6 +503,59 @@ async fn slash_login_takes_the_same_arguments_as_the_command_line() {
     })
     .await;
     assert!(ended.sandbox.home().join("auth.json").exists());
+}
+
+// Elsewhere a system clipboard is always there, and a test must not overwrite the developer's;
+// here DISPLAY is cleared, so the copy goes out as OSC 52, which the test can read.
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread")]
+async fn right_click_copies_a_reply_and_says_so_at_the_top_right() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse")]);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.wait_for("MANUAL");
+        s.type_text("hi");
+        s.send("\r");
+        s.wait_for("Hello there!");
+        let row = s.row_of("Hello there!");
+        s.right_click(row);
+        s.poll(WAIT, "no copied note", |s| {
+            s.row(0).contains("✓ Copied").then_some(())
+        });
+        // "Hello there!" in base64, as OSC 52 carries it.
+        let osc = String::from_utf8_lossy(&s.written).contains("\x1b]52;c;SGVsbG8gdGhlcmUh\x07");
+        assert!(osc, "no OSC 52 with the reply");
+        s.poll(WAIT, "the copied note stayed", |s| {
+            (!s.row(0).contains("✓ Copied")).then_some(())
+        });
+    })
+    .await;
+}
+
+// Linux only, as above.
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread")]
+async fn right_click_copies_the_pairing_code_from_its_card() {
+    let fake = Fake::start().await;
+    fake.pair_after(100);
+    in_session(&fake, Sandbox::default(), None, |s| {
+        s.wait_for("type /login");
+        s.type_text("/login");
+        s.send("\r");
+        s.wait_for("Log in to crowbot");
+        s.send("1");
+        s.wait_for("right-click copies it");
+        s.right_click(2);
+        s.poll(WAIT, "no copied note", |s| {
+            s.row(0).contains("✓ Copied").then_some(())
+        });
+        // "ABCD-1234" in base64.
+        let osc = String::from_utf8_lossy(&s.written).contains("\x1b]52;c;QUJDRC0xMjM0\x07");
+        assert!(osc, "no OSC 52 with the code");
+        s.send("\x1b");
+        s.wait_gone("Log in to crowbot");
+    })
+    .await;
 }
 
 #[tokio::test(flavor = "multi_thread")]

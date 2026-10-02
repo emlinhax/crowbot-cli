@@ -92,6 +92,14 @@ impl Login {
         }
     }
 
+    /// The pairing code while it waits to be entered, for copying.
+    pub fn code(&self) -> Option<&str> {
+        match &self.stage {
+            Stage::Waiting { code, .. } => Some(code),
+            _ => None,
+        }
+    }
+
     pub fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Next {
         let Stage::Choose(card) = &mut self.stage else {
             // Only cancelling is left once crowbot is being asked.
@@ -148,6 +156,7 @@ impl Login {
             Stage::Waiting { url, code } => {
                 let mut code_line = Line::plain(&text.code);
                 code_line.push(code, Style::fg("accent").bold());
+                code_line.push(&text.copy_code, muted.clone());
                 vec![
                     Line::plain(fill(&text.open, &[("url", url)])),
                     code_line,

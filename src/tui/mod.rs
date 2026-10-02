@@ -17,6 +17,7 @@ mod picker;
 mod queue;
 mod screen;
 mod status;
+mod toast;
 mod ui;
 mod view;
 mod welcome;

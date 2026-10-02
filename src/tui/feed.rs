@@ -125,6 +125,32 @@ impl Feed {
         });
     }
 
+    /// What copying block `index` puts on the clipboard: a message as it was written, a reply
+    /// whole (all the blocks of its stretch), a tool card's output.
+    pub fn copy_text(&self, index: usize) -> Option<String> {
+        let text = match &self.entries.get(index)?.block {
+            Block::Welcome(_) => return None,
+            Block::User(text) | Block::Markdown(text) | Block::Notice { text, .. } => text.clone(),
+            Block::Thinking { text, .. } => text.clone(),
+            Block::Tool { result, .. } => result.content.clone(),
+            Block::Error(error) => error.to_string(),
+            Block::Reply { .. } => {
+                let reply = |i: usize| match &self.entries[i].block {
+                    Block::Reply { md, first } => Some((md.as_str(), *first)),
+                    _ => None,
+                };
+                let start = (0..=index)
+                    .rev()
+                    .find(|&i| reply(i).is_some_and(|(_, first)| first))?;
+                (start..self.entries.len())
+                    .map_while(|i| reply(i).filter(|&(_, first)| !first || i == start))
+                    .map(|(md, _)| md)
+                    .collect()
+            }
+        };
+        Some(text.trim_end().to_owned())
+    }
+
     /// Opens or closes the thinking block at `index`; `false` when it is not one.
     pub fn toggle(&mut self, index: usize) -> bool {
         match self.entries.get_mut(index) {
@@ -641,6 +667,23 @@ mod tests {
         let narrow = feed.measure(20, now);
         assert!(narrow > wide, "{narrow} vs {wide}");
         assert_eq!(feed.rows(1, 3).len(), 2);
+    }
+
+    #[test]
+    fn copying_takes_a_block_whole_and_a_reply_with_all_its_paragraphs() {
+        let now = crate::io::clock::instant();
+        let mut feed = Feed::new();
+        feed.user("fix it");
+        feed.event(&delta(DeltaKind::Text, "First.\n\nSecond."), now);
+        feed.event(&end(None, Finish::ToolCalls), now);
+        feed.event(&delta(DeltaKind::Text, "Done."), now);
+        feed.event(&end(None, Finish::Done), now);
+        assert_eq!(feed.copy_text(0).as_deref(), Some("fix it"));
+        // The second paragraph was its own block; either one copies the reply.
+        assert_eq!(feed.copy_text(1).as_deref(), Some("First.\n\nSecond."));
+        assert_eq!(feed.copy_text(2).as_deref(), Some("First.\n\nSecond."));
+        assert_eq!(feed.copy_text(3).as_deref(), Some("Done."));
+        assert_eq!(feed.copy_text(9), None);
     }
 
     #[test]

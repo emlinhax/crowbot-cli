@@ -223,3 +223,7 @@ reason = "rows one wheel notch scrolls the transcript; terminals scroll their ow
 [tui.palette_rows]
 value = 8
 reason = "the command popup lists this many before it scrolls; the editor stays in view"
+
+[tui.toast_ms]
+value = 1500
+reason = "long enough to read one word, gone before it hides anything for long"

@@ -131,10 +131,13 @@ const RUN_LIMIT: std::time::Duration = std::time::Duration::from_secs(60);
 /// Makes crowbot use the fake's accepted test key.
 pub const WITH_KEY: Option<&str> = Some(fake_crowbot::ENV_KEY);
 
-/// What the developer's shell must not bring into a test: their key, and what picks colour
-/// depth, glyphs or the clock (io/term.rs, io/clock.rs), so local and CI runs see the same.
+/// What the developer's shell must not bring into a test: their key, what picks colour depth,
+/// glyphs or the clock (io/term.rs, io/clock.rs), so local and CI runs see the same, and their
+/// desktop's clipboard (io/clipboard.rs).
 pub const CLEARED: &[&str] = &[
     "CROWBOT_API_KEY",
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
     "NO_COLOR",
     "COLORTERM",
     "WT_SESSION",

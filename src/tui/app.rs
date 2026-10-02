@@ -22,8 +22,8 @@ use crate::agent::system_prompt;
 use crate::api::models::{self, Catalog, Model};
 use crate::app::App;
 use crate::commands::{self, Effect, Outcome as CommandOutcome, Scope};
-use crate::io::clock;
-use crate::io::term::{self, Input, KeyCode};
+use crate::io::term::{self, Button, Input, KeyCode};
+use crate::io::{clipboard, clock};
 use crate::limits;
 use crate::mode;
 use crate::session::store::Store;
@@ -45,6 +45,7 @@ use crate::tui::picker::{self, Picker};
 use crate::tui::queue::{self, Kind};
 use crate::tui::screen::Screen;
 use crate::tui::status::{self, Progress};
+use crate::tui::toast::Toast;
 use crate::tui::view::View;
 use crate::tui::{frame, layout, ui, welcome};
 
@@ -151,6 +152,7 @@ struct Tui<'a> {
     rng: fastrand::Rng,
     braille: bool,
     last_ctrl_c: Option<Instant>,
+    toast: Option<Toast>,
     cost_micros: u64,
     /// Input tokens of the last request; the bar divides by the current model's window, so a
     /// switch of model shows its own share at once.
@@ -207,6 +209,7 @@ impl<'a> Tui<'a> {
             rng: fastrand::Rng::new(),
             braille: term::braille(),
             last_ctrl_c: None,
+            toast: None,
             cost_micros: 0,
             context_tokens: None,
         }
@@ -294,7 +297,8 @@ impl<'a> Tui<'a> {
                         _ => {}
                     }
                 }
-                _ = tick.tick(), if turn.is_some() => {}
+                // Frames tick while something moves: a turn, or a toast that has to go away.
+                _ = tick.tick(), if turn.is_some() || self.toast.is_some() => {}
             }
             // Closing the login card drops whatever it was waiting on.
             if self.login.is_none() {
@@ -325,9 +329,32 @@ impl<'a> Tui<'a> {
                 self.view.scroll(notches * lines);
                 Step::Continue
             }
-            Input::Click { row } => {
+            Input::Click {
+                row,
+                button: Button::Left,
+            } => {
                 if let Some(Some(block)) = self.blocks.get(row) {
                     self.feed.toggle(*block);
+                }
+                Step::Continue
+            }
+            // The login card's code wherever it is clicked, else the block under the pointer.
+            Input::Click {
+                row,
+                button: Button::Right,
+            } => {
+                let text = self
+                    .login
+                    .as_ref()
+                    .and_then(Login::code)
+                    .map(str::to_owned)
+                    .or_else(|| {
+                        let block = self.blocks.get(row).copied().flatten()?;
+                        self.feed.copy_text(block)
+                    });
+                if let Some(text) = text {
+                    clipboard::copy(&text);
+                    self.toast = Some(Toast::new(&ui::get().text.copied, clock::instant()));
                 }
                 Step::Continue
             }
@@ -744,7 +771,7 @@ impl<'a> Tui<'a> {
             },
             width,
         ));
-        let frame = layout::compose(
+        let mut frame = layout::compose(
             &mut self.feed,
             &mut self.view,
             &live,
@@ -753,6 +780,12 @@ impl<'a> Tui<'a> {
             now,
         );
         self.blocks = frame.blocks;
+        if self.toast.as_ref().is_some_and(|t| !t.shown(now)) {
+            self.toast = None;
+        }
+        if let Some(toast) = &self.toast {
+            toast.overlay(&mut frame.rows, width);
+        }
         let bytes = self.screen.frame(&frame.rows);
         if !bytes.is_empty() {
             term::out(&bytes);

@@ -64,6 +64,7 @@ pub struct LoginText {
     pub starting: String,
     pub open: String,
     pub code: String,
+    pub copy_code: String,
     pub waiting: String,
     pub checking: String,
     pub failed: String,
@@ -156,6 +157,7 @@ pub struct Text {
     pub elsewhere: String,
     pub more_below: String,
     pub saved: String,
+    pub copied: String,
     pub unsaved: String,
     pub spent: String,
 }
