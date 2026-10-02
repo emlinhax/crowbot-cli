@@ -110,6 +110,14 @@ impl Shared {
         }
     }
 
+    /// A new conversation: the model has been told nothing, read nothing, and nothing waits.
+    pub fn start_over(&self) {
+        *self.reminded.lock().unwrap() = None;
+        self.steer.lock().unwrap().clear();
+        self.follow.lock().unwrap().clear();
+        self.files.forget_all();
+    }
+
     /// Delivered after the current tool calls finish.
     pub fn steer(&self, parts: Vec<Part>) {
         self.steer.lock().unwrap().push_back(parts);

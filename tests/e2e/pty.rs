@@ -611,6 +611,36 @@ async fn the_context_share_follows_a_switch_of_model_at_once() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn slash_clear_starts_a_fresh_conversation_in_a_new_file() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
+    let ended = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.wait_for("MANUAL");
+        s.type_text("first question");
+        s.send("\r");
+        s.wait_for("Hello there!");
+        s.type_text("/clear");
+        s.send("\r");
+        s.wait_for("The last one is saved in");
+        assert!(!s.contents().contains("first question"), "{}", s.contents());
+        s.type_text("second question");
+        s.send("\r");
+        s.wait_for("Hello there!");
+    })
+    .await;
+    let second = fake.chat_bodies()[1]["messages"].to_string();
+    assert!(second.contains("second question"), "{second}");
+    assert!(!second.contains("first question"), "{second}");
+    assert_eq!(ended.sandbox.sessions().len(), 2);
+    assert_eq!(
+        ended.exited.matches("Session saved").count(),
+        2,
+        "{}",
+        ended.exited
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);

@@ -56,7 +56,6 @@ type Turn<'a> = Pin<Box<dyn Future<Output = (Transcript, Outcome)> + 'a>>;
 struct Turns<'a> {
     tools: &'a Registry,
     emit: &'a (dyn Fn(AgentEvent) + Send + Sync),
-    plan_file: String,
 }
 
 /// What the loop should do after an input.
@@ -66,6 +65,8 @@ enum Step<'a> {
     Quit,
     /// Start network work for the login card.
     Login(login::Job),
+    /// Put the conversation away and start a fresh one.
+    NewConversation,
     /// Run beside input: a session command, or what one of them asked for.
     Work(BoxFuture<'a, Work>),
 }
@@ -82,10 +83,8 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
     let mode = mode::get(&app.settings.mode).ok_or_else(|| anyhow!("mode was validated"))?;
     let registry = Registry::builtin(app);
     let store = Store::create(&app.paths);
-    // A turn still holding the transcript at exit has already written its prompt there.
     let session_file = store.path.display().to_string();
     let transcript = Transcript::new(Some(store));
-    let plan_file = tools::plan_file(&app.paths, &transcript.id());
     let shared = Shared::new(mode);
     let (tx, rx) = mpsc::unbounded_channel();
     let emit = move |event: AgentEvent| {
@@ -94,24 +93,24 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
     let turns = Turns {
         tools: &registry,
         emit: &emit,
-        plan_file,
     };
 
     let raw = term::Raw::fullscreen()?;
-    let mut tui = Tui::new(app, catalog, model, &shared, initial);
+    let mut tui = Tui::new(app, catalog, model, &shared, initial, session_file);
     let (spent, transcript) = tui.run(turns, transcript, rx).await;
     drop(raw);
 
     let text = &ui::get().text;
-    // Only a file that still holds the whole conversation counts as saved.
-    let saved = match &transcript {
+    // Only a file that still holds the whole conversation counts as saved; a turn still
+    // holding the transcript at exit has already written its prompt there.
+    let last = match &transcript {
         Some(transcript) => transcript.path().map(|p| p.display().to_string()),
-        None => Some(session_file),
+        None => Some(tui.session_file.clone()),
     };
-    if let Some(path) = saved {
+    for path in tui.earlier.iter().chain(&last) {
         term::out(&format!(
             "{}\n",
-            template::fill(&text.saved, &[("path", &path)])
+            template::fill(&text.saved, &[("path", path)])
         ));
     }
     if spent > 0 {
@@ -154,6 +153,9 @@ struct Tui<'a> {
     last_ctrl_c: Option<Instant>,
     toast: Option<Toast>,
     cost_micros: u64,
+    /// The current conversation's session file, and those of conversations `/new` put away.
+    session_file: String,
+    earlier: Vec<String>,
     /// Input tokens of the last request; the bar divides by the current model's window, so a
     /// switch of model shows its own share at once.
     context_tokens: Option<u64>,
@@ -166,35 +168,22 @@ impl<'a> Tui<'a> {
         model: Model,
         shared: &'a Shared,
         initial: Option<String>,
+        session_file: String,
     ) -> Self {
         let limits = &limits::get().tui;
         let (width, height) = term::size();
-        let mut feed = Feed::new();
-        let mode = shared.mode();
-        feed.push(Block::Welcome(welcome::Info {
-            version: env!("CARGO_PKG_VERSION"),
-            cwd: app.paths.project.display().to_string(),
-            model: model.id.clone(),
-            effort: model
-                .effort(app.settings.effort.as_deref())
-                .map(str::to_owned),
-            mode_label: mode.label.clone(),
-            mode_color: mode.color.clone(),
-            logged_in: app.api.has_key(),
-            braille: term::braille(),
-        }));
         let mut editor = Editor::new(limits.history_max.value);
         if let Some(text) = initial {
             editor.set_text(&text);
         }
-        Self {
+        let mut tui = Self {
             app,
             catalog,
             system: system_prompt::build(&app.paths, &model),
             model,
             shared,
             screen: Screen::new(width, height, theme::get(), term::color_depth()),
-            feed,
+            feed: Feed::new(),
             view: View::default(),
             blocks: Vec::new(),
             editor,
@@ -211,8 +200,57 @@ impl<'a> Tui<'a> {
             last_ctrl_c: None,
             toast: None,
             cost_micros: 0,
+            session_file,
+            earlier: Vec::new(),
             context_tokens: None,
+        };
+        let welcome = tui.welcome();
+        tui.feed.push(Block::Welcome(welcome));
+        tui
+    }
+
+    fn welcome(&self) -> welcome::Info {
+        let mode = self.shared.mode();
+        welcome::Info {
+            version: env!("CARGO_PKG_VERSION"),
+            cwd: self.app.paths.project.display().to_string(),
+            model: self.model.id.clone(),
+            effort: self
+                .model
+                .effort(self.app.settings.effort.as_deref())
+                .map(str::to_owned),
+            mode_label: mode.label.clone(),
+            mode_color: mode.color.clone(),
+            logged_in: self.app.api.has_key(),
+            braille: term::braille(),
         }
+    }
+
+    /// A new conversation: a new session file, a clean screen, nothing the model was told.
+    fn fresh(&mut self, old: Transcript) -> Transcript {
+        let store = Store::create(&self.app.paths);
+        let put_away = std::mem::replace(&mut self.session_file, store.path.display().to_string());
+        self.shared.start_over();
+        // AGENTS.md may have changed (/init writes it), and the prompt is read at a start.
+        self.system = system_prompt::build(&self.app.paths, &self.model);
+        self.feed = Feed::new();
+        let welcome = self.welcome();
+        self.feed.push(Block::Welcome(welcome));
+        self.view = View::default();
+        self.queue.clear();
+        self.context_tokens = None;
+        let text = &ui::get().text;
+        match old.path() {
+            Some(_) => {
+                self.feed.notice(
+                    &template::fill(&text.new_saved, &[("path", &put_away)]),
+                    "muted",
+                );
+                self.earlier.push(put_away);
+            }
+            None => self.feed.notice(&text.new_conversation, "muted"),
+        }
+        Transcript::new(Some(store))
     }
 
     /// Runs until the user quits; returns what the session spent, in micro-dollars, and the
@@ -233,44 +271,17 @@ impl<'a> Tui<'a> {
         let shared = self.shared;
         loop {
             self.draw(turn.is_some());
-            tokio::select! {
+            let step = tokio::select! {
                 input = inputs.next() => {
                     let Some(input) = input else { break };
-                    match self.input(input, turn.is_some()) {
-                        Step::Continue => {}
-                        Step::Quit => break,
-                        Step::Login(next) => job = Some(login::run(self.app, next)),
-                        Step::Work(run) => work.push(run),
-                        Step::Send(text) => {
-                            let Some(mut owned) = transcript.take() else { continue };
-                            let progress = Progress::start(clock::instant(), self.last_verb, &mut self.rng);
-                            self.last_verb = Some(progress.verb());
-                            self.progress = Some(progress);
-                            let parts = vec![Part::Text { text }];
-                            let (app, tools, emit) = (self.app, turns.tools, turns.emit);
-                            let plan_file = turns.plan_file.clone();
-                            let (model, system) = (self.model.clone(), self.system.clone());
-                            turn = Some(Box::pin(async move {
-                                let cx = RunCtx {
-                                    app,
-                                    model: &model,
-                                    effort: app.settings.effort.as_deref(),
-                                    system: &system,
-                                    tools,
-                                    plan_file,
-                                    emit,
-                                };
-                                let outcome = run::run(&cx, &mut owned, shared, parts).await;
-                                (owned, outcome)
-                            }));
-                        }
-                    }
+                    self.input(input, turn.is_some())
                 }
                 Some(event) = events.recv() => {
                     self.agent(event);
                     while let Ok(event) = events.try_recv() {
                         self.agent(event);
                     }
+                    Step::Continue
                 }
                 (owned, _) = async { turn.as_mut().expect("guarded by the branch condition").await }, if turn.is_some() => {
                     turn = None;
@@ -280,6 +291,7 @@ impl<'a> Tui<'a> {
                     while let Ok(event) = events.try_recv() {
                         self.agent(event);
                     }
+                    Step::Continue
                 }
                 done = async { job.as_mut().expect("guarded by the branch condition").await }, if job.is_some() => {
                     job = self
@@ -288,17 +300,47 @@ impl<'a> Tui<'a> {
                         .map(|card| card.finished(done))
                         .and_then(|next| self.login_next(next))
                         .map(|next| login::run(self.app, next));
+                    Step::Continue
                 }
-                Some(done) = work.next(), if !work.is_empty() => {
-                    match self.finish(done) {
-                        Step::Quit => break,
-                        Step::Work(run) => work.push(run),
-                        Step::Login(next) => job = Some(login::run(self.app, next)),
-                        _ => {}
-                    }
-                }
+                Some(done) = work.next(), if !work.is_empty() => self.finish(done),
                 // Frames tick while something moves: a turn, or a toast that has to go away.
-                _ = tick.tick(), if turn.is_some() || self.toast.is_some() => {}
+                _ = tick.tick(), if turn.is_some() || self.toast.is_some() => Step::Continue,
+            };
+            match step {
+                Step::Continue => {}
+                Step::Quit => break,
+                Step::Login(next) => job = Some(login::run(self.app, next)),
+                Step::Work(run) => work.push(run),
+                Step::Send(text) => {
+                    let Some(mut owned) = transcript.take() else {
+                        continue;
+                    };
+                    let progress = Progress::start(clock::instant(), self.last_verb, &mut self.rng);
+                    self.last_verb = Some(progress.verb());
+                    self.progress = Some(progress);
+                    let parts = vec![Part::Text { text }];
+                    let (app, tools, emit) = (self.app, turns.tools, turns.emit);
+                    let plan_file = tools::plan_file(&app.paths, &owned.id());
+                    let (model, system) = (self.model.clone(), self.system.clone());
+                    turn = Some(Box::pin(async move {
+                        let cx = RunCtx {
+                            app,
+                            model: &model,
+                            effort: app.settings.effort.as_deref(),
+                            system: &system,
+                            tools,
+                            plan_file,
+                            emit,
+                        };
+                        let outcome = run::run(&cx, &mut owned, shared, parts).await;
+                        (owned, outcome)
+                    }));
+                }
+                // A turn holds the transcript while it runs.
+                Step::NewConversation => match transcript.take() {
+                    Some(old) => transcript = Some(self.fresh(old)),
+                    None => self.feed.notice(&ui::get().text.busy, "warn"),
+                },
             }
             // Closing the login card drops whatever it was waiting on.
             if self.login.is_none() {
@@ -609,19 +651,9 @@ impl<'a> Tui<'a> {
     /// Completes a slash command name when only one fits.
     fn complete(&mut self) {
         let text = self.editor.text();
-        let Some(prefix) = text
-            .strip_prefix(Scope::Session.prefix())
-            .filter(|p| !p.contains(' '))
-        else {
-            return;
-        };
-        let matches: Vec<&str> = commands::available(Scope::Session)
-            .map(|c| c.spec().name.as_str())
-            .filter(|name| name.starts_with(prefix))
-            .collect();
-        if let [only] = matches.as_slice() {
+        if let [only] = palette::matches(&text).as_slice() {
             self.editor
-                .set_text(&Scope::Session.invoke(&format!("{only} ")));
+                .set_text(&Scope::Session.invoke(&format!("{} ", only.name)));
         }
     }
 
@@ -686,6 +718,7 @@ impl<'a> Tui<'a> {
                 Effect::PickModel { refresh: false } => {
                     self.picker = Some(Picker::new(&self.catalog, &self.model.id));
                 }
+                Effect::NewConversation => return Step::NewConversation,
             }
         }
         Step::Continue

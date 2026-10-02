@@ -158,6 +158,9 @@ pub struct Text {
     pub more_below: String,
     pub saved: String,
     pub copied: String,
+    pub busy: String,
+    pub new_conversation: String,
+    pub new_saved: String,
     pub unsaved: String,
     pub spent: String,
 }

@@ -39,7 +39,7 @@ pub fn matches(text: &str) -> Vec<&'static Spec> {
     };
     let mut found: Vec<&'static Spec> = commands::available(Scope::Session)
         .map(|c| c.spec())
-        .filter(|s| !s.hidden && s.name.starts_with(prefix))
+        .filter(|s| !s.hidden && s.names().any(|n| n.starts_with(prefix)))
         .collect();
     found.sort_by(|a, b| a.name.cmp(&b.name));
     found
@@ -126,6 +126,12 @@ mod tests {
 
     fn names(found: &[&Spec]) -> Vec<String> {
         found.iter().map(|s| s.name.clone()).collect()
+    }
+
+    #[test]
+    fn an_alias_finds_its_command_once() {
+        assert_eq!(names(&matches("/cle")), ["new"]);
+        assert_eq!(names(&matches("/ex")), ["quit"]);
     }
 
     #[test]

@@ -7,6 +7,7 @@ pub mod login;
 mod logout;
 mod mode;
 pub mod models;
+mod new;
 mod quit;
 mod signup;
 
@@ -42,6 +43,9 @@ impl Scope {
 #[derive(Debug, Deserialize)]
 pub struct Spec {
     pub name: String,
+    /// Other names it answers to (`/clear` for `/new`).
+    #[serde(default)]
+    pub aliases: Vec<String>,
     pub summary: String,
     pub usage: String,
     #[serde(default)]
@@ -60,6 +64,11 @@ fn everywhere() -> Vec<Scope> {
 impl Spec {
     pub fn parse(src: &str) -> Self {
         toml::from_str(src).expect("command specs are checked by tests")
+    }
+
+    /// Its name and its aliases.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        std::iter::once(self.name.as_str()).chain(self.aliases.iter().map(String::as_str))
     }
 
     /// `args` as they may be shown and remembered: a secret flag's value becomes a hint.
@@ -123,6 +132,8 @@ pub enum Effect {
     Login {
         number: Option<String>,
     },
+    /// Start a fresh conversation with a new session file.
+    NewConversation,
     /// Open the session's model picker, after fetching a fresh list when asked.
     PickModel {
         refresh: bool,
@@ -167,13 +178,17 @@ pub static COMMANDS: &[&dyn Command] = &[
     &signup::Signup,
     &models::Models,
     &mode::Mode,
+    &new::New,
     &quit::Quit,
     &keytest::KeyTest,
 ];
 
-/// A command by name, if it exists at all (whatever its scope).
+/// A command by name or alias, if it exists at all (whatever its scope).
 pub fn find(name: &str) -> Option<&'static dyn Command> {
-    COMMANDS.iter().copied().find(|c| c.spec().name == name)
+    COMMANDS
+        .iter()
+        .copied()
+        .find(|c| c.spec().names().any(|n| n == name))
 }
 
 pub enum Missing {
@@ -280,8 +295,15 @@ mod tests {
     }
 
     #[test]
+    fn an_alias_finds_its_command() {
+        assert_eq!(find("clear").unwrap().spec().name, "new");
+        assert_eq!(find("exit").unwrap().spec().name, "quit");
+        assert!(lookup("clear", Scope::Session).is_ok());
+    }
+
+    #[test]
     fn specs_parse_with_unique_names_and_a_scope() {
-        let mut names: Vec<&str> = COMMANDS.iter().map(|c| c.spec().name.as_str()).collect();
+        let mut names: Vec<&str> = COMMANDS.iter().flat_map(|c| c.spec().names()).collect();
         let count = names.len();
         names.sort_unstable();
         names.dedup();

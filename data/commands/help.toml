@@ -1,3 +1,9 @@
 name = "help"
 summary = "List commands"
 usage = "help"
+
+# What /help shows; {placeholders} are filled in.
+[text]
+heading = "Commands:"
+item = "- `{usage}`{aliases} — {summary}"
+aliases = " (or {names})"

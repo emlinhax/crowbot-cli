@@ -1,4 +1,5 @@
 name = "quit"
+aliases = ["exit"]
 summary = "Leave the session"
 usage = "quit"
 scope = ["session"]

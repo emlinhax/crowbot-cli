@@ -1,0 +1,5 @@
+name = "new"
+aliases = ["clear"]
+summary = "Start a fresh conversation; the last one stays in its session file"
+usage = "new"
+scope = ["session"]

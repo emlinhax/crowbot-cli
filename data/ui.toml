@@ -38,6 +38,9 @@ saved = "Session saved to {path}"
 unsaved = "No longer saving this session to {path}: {error}. The conversation goes on unsaved."
 spent = "Spent about {cost} this session."
 copied = "✓ Copied"
+busy = "Finish or interrupt the reply first (Esc)."
+new_conversation = "A new conversation."
+new_saved = "A new conversation. The last one is saved in {path}."
 
 # The line above the bar while crowbot works: a flapping raven, a verb with a glint running
 # along it, then elapsed time and tokens.

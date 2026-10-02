@@ -15,6 +15,11 @@ pub struct Files {
 }
 
 impl Files {
+    /// Forgets every file, for a conversation that has read none yet.
+    pub fn forget_all(&self) {
+        self.seen.lock().unwrap().clear();
+    }
+
     /// Remembers the file as the model now knows it.
     pub fn saw(&self, path: &Path) {
         let mtime = io::fs::modified(path);
