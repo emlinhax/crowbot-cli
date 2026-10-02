@@ -1,0 +1,9 @@
+name = "effort"
+summary = "Set reasoning effort for this session; reasoning bills as output"
+usage = "effort [low|medium|high|max]"
+scope = ["session"]
+
+# What /effort with no level says; {placeholders} are filled in.
+[text]
+current = "Effort: {effort}. Levels: {levels}."
+unset = "the model's default"

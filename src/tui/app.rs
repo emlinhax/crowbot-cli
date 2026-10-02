@@ -128,6 +128,8 @@ struct Tui<'a> {
     catalog: Catalog,
     /// The model for the next turn, and the system prompt written for it.
     model: Model,
+    /// The effort asked for: the setting until `/effort` changes it.
+    effort: Option<String>,
     system: String,
     shared: &'a Shared,
     screen: Screen,
@@ -181,6 +183,7 @@ impl<'a> Tui<'a> {
             catalog,
             system: system_prompt::build(&app.paths, &model),
             model,
+            effort: app.settings.effort.clone(),
             shared,
             screen: Screen::new(width, height, theme::get(), term::color_depth()),
             feed: Feed::new(),
@@ -219,10 +222,7 @@ impl<'a> Tui<'a> {
     fn session(&self) -> Session {
         Session {
             model: self.model.id.clone(),
-            effort: self
-                .model
-                .effort(self.app.settings.effort.as_deref())
-                .map(str::to_owned),
+            effort: self.model.effort(self.effort.as_deref()).map(str::to_owned),
             mode: self.shared.mode().label.clone(),
             context_pct: self.context_pct(),
             cost_micros: self.cost_micros,
@@ -236,10 +236,7 @@ impl<'a> Tui<'a> {
             version: env!("CARGO_PKG_VERSION"),
             cwd: self.app.paths.project.display().to_string(),
             model: self.model.id.clone(),
-            effort: self
-                .model
-                .effort(self.app.settings.effort.as_deref())
-                .map(str::to_owned),
+            effort: self.model.effort(self.effort.as_deref()).map(str::to_owned),
             mode_label: mode.label.clone(),
             mode_color: mode.color.clone(),
             logged_in: self.app.api.has_key(),
@@ -343,11 +340,12 @@ impl<'a> Tui<'a> {
                     let (app, tools, emit) = (self.app, turns.tools, turns.emit);
                     let plan_file = tools::plan_file(&app.paths, &owned.id());
                     let (model, system) = (self.model.clone(), self.system.clone());
+                    let effort = self.effort.clone();
                     turn = Some(Box::pin(async move {
                         let cx = RunCtx {
                             app,
                             model: &model,
-                            effort: app.settings.effort.as_deref(),
+                            effort: effort.as_deref(),
                             system: &system,
                             tools,
                             plan_file,
@@ -528,6 +526,20 @@ impl<'a> Tui<'a> {
                 self.switch_model(&id);
             }
         }
+    }
+
+    /// Asks for `effort` from the next turn on, for this session only.
+    fn set_effort(&mut self, effort: String) {
+        let text = &ui::get().text;
+        let mut note = template::fill(&text.effort_set, &[("effort", &effort)]);
+        if self.model.effort(Some(&effort)).is_none() {
+            note.push_str(&template::fill(
+                &text.effort_unsent,
+                &[("model", &self.model.id)],
+            ));
+        }
+        self.effort = Some(effort);
+        self.feed.notice(&note, "done");
     }
 
     /// Uses `id` from the next turn on, for this session only.
@@ -740,6 +752,7 @@ impl<'a> Tui<'a> {
                     self.picker = Some(Picker::new(&self.catalog, &self.model.id));
                 }
                 Effect::NewConversation => return Step::NewConversation,
+                Effect::SetEffort(id) => self.set_effort(id),
             }
         }
         Step::Continue
@@ -817,7 +830,7 @@ impl<'a> Tui<'a> {
             mode,
             &frame::Info {
                 model: &self.model.id,
-                effort: self.model.effort(self.app.settings.effort.as_deref()),
+                effort: self.model.effort(self.effort.as_deref()),
                 context_pct: self.context_pct(),
                 cost_micros: self.cost_micros,
             },

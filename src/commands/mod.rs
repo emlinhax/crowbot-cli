@@ -1,6 +1,7 @@
 //! Commands: `crowbot <name>` on the command line, `/name` inside a session. One file per
 //! command, one line in `COMMANDS`; where each works is data (`scope` in its spec).
 
+mod effort;
 mod help;
 mod keytest;
 pub mod login;
@@ -149,6 +150,8 @@ pub enum Effect {
     },
     /// Start a fresh conversation with a new session file.
     NewConversation,
+    /// Ask for this reasoning effort from the next turn on.
+    SetEffort(String),
     /// Open the session's model picker, after fetching a fresh list when asked.
     PickModel {
         refresh: bool,
@@ -194,6 +197,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &status::Status,
     &models::Models,
     &mode::Mode,
+    &effort::Effort,
     &new::New,
     &quit::Quit,
     &keytest::KeyTest,

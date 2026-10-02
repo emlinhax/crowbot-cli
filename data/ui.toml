@@ -39,6 +39,8 @@ unsaved = "No longer saving this session to {path}: {error}. The conversation go
 spent = "Spent about {cost} this session."
 copied = "✓ Copied"
 busy = "Finish or interrupt the reply first (Esc)."
+effort_set = "Effort: {effort} for this session."
+effort_unsent = " {model} does not reason, so it sends none."
 new_conversation = "A new conversation."
 new_saved = "A new conversation. The last one is saved in {path}."
 

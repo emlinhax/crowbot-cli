@@ -657,6 +657,29 @@ async fn slash_status_shows_the_balance_model_and_mode() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn slash_effort_sets_what_the_next_requests_carry() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse")]);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.wait_for("MANUAL");
+        s.type_text("/effort ludicrous");
+        s.send("\r");
+        s.wait_for("unknown effort");
+        s.type_text("/effort high");
+        s.send("\r");
+        s.wait_for("Effort: high for this session.");
+        s.poll(WAIT, "the bar shows the effort", |s| {
+            s.bottom_row().contains("crow-2 high").then_some(())
+        });
+        s.type_text("hi");
+        s.send("\r");
+        s.wait_for("Hello there!");
+    })
+    .await;
+    assert_eq!(fake.chat_bodies()[0]["reasoning_effort"], "high");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
