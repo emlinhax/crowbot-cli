@@ -196,7 +196,8 @@ mod tests {
     async fn reading_records_the_file_as_seen() {
         let project = Project::new();
         project.write("a.txt", "x");
-        let path = project.app.paths.project.join("a.txt");
+        // Tools record a file by its resolved path (macOS temp dirs sit behind /var -> /private/var).
+        let path = crate::io::fs::canonical(&project.app.paths.project.join("a.txt"));
         assert!(project.shared.files.check_fresh(&path, "a.txt").is_err());
         read(&project, json!({"path": "a.txt"})).await;
         assert!(project.shared.files.check_fresh(&path, "a.txt").is_ok());
