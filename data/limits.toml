@@ -112,6 +112,10 @@ reason = "more matches than this means the search should be narrower"
 value = 500
 reason = "a match line is context, not content; read the file for the rest"
 
+[tools.question_max]
+value = 4
+reason = "a card of tabs a person answers in one go; more is a form, not a question"
+
 [tools.list_entries]
 value = 500
 reason = "a directory listing past this is better explored with glob"

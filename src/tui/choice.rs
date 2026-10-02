@@ -1,7 +1,7 @@
-//! The numbered card that replaces the editor when crowbot needs an answer: permission, a
-//! question, or what to do with a finished plan; `/login` builds its menu from it too.
+//! The numbered card that replaces the editor when crowbot needs an answer: permission, or what
+//! to do with a finished plan; `/login` builds its menu from it too.
 
-use crate::agent::prompt::{Prompt, Reply};
+use crate::agent::prompt::Reply;
 use crate::auth;
 use crate::io::term::{KeyCode, KeyEvent};
 use crate::limits;
@@ -10,6 +10,7 @@ use crate::text::diff;
 use crate::text::markdown;
 use crate::text::styled::{Line, Style};
 use crate::tui::boxed::{boxed, capped};
+use crate::tui::card::{Card, Step};
 use crate::tui::editor::Editor;
 use crate::tui::keymap::Action;
 use crate::tui::ui::{self, PermissionReply};
@@ -57,7 +58,7 @@ impl Opt {
 }
 
 pub struct Choice {
-    pub id: u64,
+    id: u64,
     title: String,
     body: Vec<Line>,
     options: Vec<Opt>,
@@ -66,12 +67,6 @@ pub struct Choice {
     input: Option<Editor>,
     /// What the typed words answer: a reason for "No", or free text.
     input_for: Pick,
-}
-
-/// What a key did to the card.
-pub enum Step {
-    Stay,
-    Answer(Reply),
 }
 
 impl Choice {
@@ -88,60 +83,79 @@ impl Choice {
         }
     }
 
-    /// The card for a prompt from the agent.
-    pub fn from_prompt(id: u64, prompt: &Prompt, width: usize) -> Self {
+    /// Asks to allow a call; every ask is on the card, since approving one call approves all.
+    pub fn permission(
+        id: u64,
+        tool: &str,
+        asks: &[gate::Ask],
+        preview: Option<&str>,
+        width: usize,
+    ) -> Self {
         let text = &ui::get().card;
         let inner = width.saturating_sub(4).max(1);
         let max = limits::get().tui.prompt_body_lines.value;
-        let indexed = |labels: &[String]| -> Vec<Opt> {
-            labels
-                .iter()
-                .enumerate()
-                .map(|(i, label)| Opt::index(label.clone(), i))
-                .collect()
+        let title = match asks {
+            [only] if only.permission == tool => format!("{tool} {}", only.patterns.join(", ")),
+            _ => format!("{tool}: {}", gate::describe(asks)),
         };
-        match prompt {
-            Prompt::Permission {
-                tool,
-                asks,
-                preview,
-            } => {
-                // Every ask is on the card: approving one call approves all of them.
-                let title = match asks.as_slice() {
-                    [only] if only.permission == *tool => {
-                        format!("{tool} {}", only.patterns.join(", "))
-                    }
-                    _ => format!("{tool}: {}", gate::describe(asks)),
-                };
-                let body = preview
-                    .as_deref()
-                    .map(|p| capped(diff::render(p, inner), max))
-                    .unwrap_or_default();
-                let options = text
-                    .permission
-                    .iter()
-                    .map(|c| Opt {
-                        label: c.label.clone(),
-                        pick: Pick::Reply(c.reply),
-                    })
-                    .collect();
-                Self::new(id, title, body, options)
-            }
-            Prompt::Question { question, options } => {
-                let mut opts = indexed(options);
-                opts.push(Opt::text(text.other.clone()));
-                Self::new(id, question.clone(), Vec::new(), opts)
-            }
-            Prompt::PlanExit { plan, choices } => {
-                let body = capped(markdown::render(plan, inner), max);
-                let mut opts = indexed(choices);
-                opts.push(Opt::text(text.plan_other.clone()));
-                Self::new(id, text.plan_title.clone(), body, opts)
-            }
+        let body = preview
+            .map(|p| capped(diff::render(p, inner), max))
+            .unwrap_or_default();
+        let options = text
+            .permission
+            .iter()
+            .map(|c| Opt {
+                label: c.label.clone(),
+                pick: Pick::Reply(c.reply),
+            })
+            .collect();
+        Self::new(id, title, body, options)
+    }
+
+    /// PLAN mode's finished plan, and what to do with it.
+    pub fn plan(id: u64, plan: &str, choices: &[String], width: usize) -> Self {
+        let text = &ui::get().card;
+        let inner = width.saturating_sub(4).max(1);
+        let max = limits::get().tui.prompt_body_lines.value;
+        let body = capped(markdown::render(plan, inner), max);
+        let mut options: Vec<Opt> = choices
+            .iter()
+            .enumerate()
+            .map(|(i, label)| Opt::index(label.clone(), i))
+            .collect();
+        options.push(Opt::text(text.plan_other.clone()));
+        Self::new(id, text.plan_title.clone(), body, options)
+    }
+
+    fn pick(&mut self, i: usize) -> Step {
+        let pick = self.options[i].pick;
+        match pick {
+            Pick::Reply(PermissionReply::Yes) => Step::Answer(Reply::Yes),
+            Pick::Reply(PermissionReply::No) => Step::Answer(Reply::No { feedback: None }),
+            Pick::Index(n) => Step::Answer(Reply::Choice(n)),
+            Pick::Reply(PermissionReply::NoWhy) => self.open_input(pick, false),
+            Pick::Text { masked } => self.open_input(pick, masked),
         }
     }
 
-    pub fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Step {
+    fn open_input(&mut self, pick: Pick, masked: bool) -> Step {
+        let input = Editor::new(0);
+        self.input = Some(if masked {
+            input.masked(auth::HINT_CHARS)
+        } else {
+            input
+        });
+        self.input_for = pick;
+        Step::Stay
+    }
+}
+
+impl Card for Choice {
+    fn id(&self) -> u64 {
+        self.id
+    }
+
+    fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Step {
         if let Some(input) = &mut self.input {
             match action {
                 Some(Action::Submit) => {
@@ -183,35 +197,13 @@ impl Choice {
     }
 
     /// Typed or pasted text, when the card has a line open for it.
-    pub fn insert(&mut self, text: &str) {
+    fn insert(&mut self, text: &str) {
         if let Some(input) = &mut self.input {
             input.insert(text);
         }
     }
 
-    fn pick(&mut self, i: usize) -> Step {
-        let pick = self.options[i].pick;
-        match pick {
-            Pick::Reply(PermissionReply::Yes) => Step::Answer(Reply::Yes),
-            Pick::Reply(PermissionReply::No) => Step::Answer(Reply::No { feedback: None }),
-            Pick::Index(n) => Step::Answer(Reply::Choice(n)),
-            Pick::Reply(PermissionReply::NoWhy) => self.open_input(pick, false),
-            Pick::Text { masked } => self.open_input(pick, masked),
-        }
-    }
-
-    fn open_input(&mut self, pick: Pick, masked: bool) -> Step {
-        let input = Editor::new(0);
-        self.input = Some(if masked {
-            input.masked(auth::HINT_CHARS)
-        } else {
-            input
-        });
-        self.input_for = pick;
-        Step::Stay
-    }
-
-    pub fn render(&self, width: usize) -> Vec<Line> {
+    fn render(&self, width: usize) -> Vec<Line> {
         let text = &ui::get().card;
         let border = Style::fg("muted");
         let title = Line::styled(&self.title, Style::default().bold());
@@ -250,13 +242,11 @@ mod tests {
     }
 
     fn permission() -> Choice {
-        Choice::from_prompt(
+        Choice::permission(
             7,
-            &Prompt::Permission {
-                tool: "edit".into(),
-                asks: vec![Ask::new("edit", "src/calc.txt")],
-                preview: Some("@@ -1 +1 @@\n-2 + 2 = 5\n+2 + 2 = 4\n".into()),
-            },
+            "edit",
+            &[Ask::new("edit", "src/calc.txt")],
+            Some("@@ -1 +1 @@\n-2 + 2 = 5\n+2 + 2 = 4\n"),
             50,
         )
     }
@@ -276,18 +266,11 @@ mod tests {
 
     #[test]
     fn a_call_that_asks_twice_shows_both_asks() {
-        let card = Choice::from_prompt(
-            8,
-            &Prompt::Permission {
-                tool: "read".into(),
-                asks: vec![
-                    Ask::new("read", "/etc/app.conf"),
-                    Ask::new("external_directory", "/etc/app.conf"),
-                ],
-                preview: None,
-            },
-            100,
-        );
+        let asks = [
+            Ask::new("read", "/etc/app.conf"),
+            Ask::new("external_directory", "/etc/app.conf"),
+        ];
+        let card = Choice::permission(8, "read", &asks, None, 100);
         let top = card.render(100)[0].text();
         assert!(
             top.contains("read: read /etc/app.conf; external_directory /etc/app.conf"),
@@ -336,47 +319,6 @@ mod tests {
         assert!(matches!(
             card.key(Some(Action::Escape), &press(KeyCode::Esc)),
             Step::Answer(Reply::No { feedback: None })
-        ));
-    }
-
-    #[test]
-    fn other_keeps_a_digit_with_the_most_options_a_question_may_have() {
-        let options = (1..=8).map(|i| format!("option {i}")).collect();
-        let question = Prompt::Question {
-            question: "Which?".into(),
-            options,
-        };
-        let mut card = Choice::from_prompt(1, &question, 40);
-        assert!(matches!(
-            card.key(None, &press(KeyCode::Char('9'))),
-            Step::Stay
-        ));
-        card.insert("my own");
-        assert!(matches!(
-            card.key(Some(Action::Submit), &press(KeyCode::Enter)),
-            Step::Answer(Reply::Text(t)) if t == "my own"
-        ));
-    }
-
-    #[test]
-    fn questions_offer_other() {
-        let mut card = Choice::from_prompt(
-            1,
-            &Prompt::Question {
-                question: "Which DB?".into(),
-                options: vec!["sqlite".into(), "postgres".into()],
-            },
-            40,
-        );
-        assert!(matches!(
-            card.key(None, &press(KeyCode::Char('2'))),
-            Step::Answer(Reply::Choice(1))
-        ));
-        card.key(None, &press(KeyCode::Char('3')));
-        card.insert("duckdb");
-        assert!(matches!(
-            card.key(Some(Action::Submit), &press(KeyCode::Enter)),
-            Step::Answer(Reply::Text(t)) if t == "duckdb"
         ));
     }
 }

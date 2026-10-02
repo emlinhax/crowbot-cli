@@ -13,7 +13,8 @@ use crate::io::term::KeyEvent;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
 use crate::tui::boxed::boxed;
-use crate::tui::choice::{self, Choice, Opt};
+use crate::tui::card::{Card, Step};
+use crate::tui::choice::{Choice, Opt};
 use crate::tui::keymap::Action;
 use crate::tui::ui;
 
@@ -109,16 +110,16 @@ impl Login {
             };
         };
         match card.key(action, key) {
-            choice::Step::Stay => Next::Stay,
-            choice::Step::Answer(Reply::Choice(_)) => {
+            Step::Stay => Next::Stay,
+            Step::Answer(Reply::Choice(_)) => {
                 self.stage = Stage::Starting;
                 Next::Run(Job::Start)
             }
-            choice::Step::Answer(Reply::Text(number)) => {
+            Step::Answer(Reply::Text(number)) => {
                 self.stage = Stage::Checking;
                 Next::Run(Job::Check(number))
             }
-            choice::Step::Answer(_) => Next::Close(None),
+            Step::Answer(_) => Next::Close(None),
         }
     }
 

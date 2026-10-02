@@ -46,9 +46,10 @@ body = "head"
 max_lines = 12
 
 [question]
-title = ["question"]
+title = ["questions.0.question"]
 body = "head"
-max_lines = 1
+# "The user answered:", then a question and its answer on two lines each.
+max_lines = 9
 
 [plan_exit]
 title = []

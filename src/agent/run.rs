@@ -181,7 +181,7 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::*;
-    use crate::agent::prompt::Reply;
+    use crate::agent::prompt::{Answer, Reply};
     use crate::api::Api;
     use crate::api::models::{Capabilities, Pricing};
     use crate::io::http::Http;
@@ -464,7 +464,10 @@ mod tests {
                 &[(
                     "c1",
                     "question",
-                    json!({"question": "Which DB?", "options": ["sqlite", "postgres"]}),
+                    json!({"questions": [
+                        {"question": "Which DB?", "options": ["sqlite", "postgres"]},
+                        {"question": "Which checks?", "options": ["lint", "test"], "multiple": true}
+                    ]}),
                 )],
                 "tool_calls",
             ),
@@ -474,13 +477,25 @@ mod tests {
         let (_, _, events) = h
             .run(&shared("manual"), |event, shared| {
                 if let AgentEvent::Prompt { id, .. } = event {
-                    shared.answer(*id, Reply::Choice(1));
+                    let answers = vec![
+                        Answer {
+                            picked: vec![1],
+                            text: None,
+                        },
+                        Answer {
+                            picked: vec![0, 1],
+                            text: None,
+                        },
+                    ];
+                    shared.answer(*id, Reply::Answers(answers));
                 }
             })
             .await;
         assert_eq!(events.iter().filter(|e| *e == "prompt").count(), 1);
         let result = last_message(&h.requests()[1]);
-        assert!(result["content"].as_str().unwrap().contains("postgres"));
+        let content = result["content"].as_str().unwrap();
+        assert!(content.contains("Which DB?\n  postgres"), "{content}");
+        assert!(content.contains("Which checks?\n  lint, test"), "{content}");
     }
 
     #[tokio::test]

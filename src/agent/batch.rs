@@ -152,10 +152,12 @@ async fn clear<'a>(
                 Some(Reply::No { feedback: Some(f) } | Reply::Text(f)) => {
                     Err(fill(&text.rejected_with_feedback, &[("feedback", &f)]).into())
                 }
-                Some(Reply::No { feedback: None } | Reply::Choice(_)) => Err(Refused {
-                    why: text.rejected.clone(),
-                    stop: true,
-                }),
+                Some(Reply::No { feedback: None } | Reply::Choice(_) | Reply::Answers(_)) => {
+                    Err(Refused {
+                        why: text.rejected.clone(),
+                        stop: true,
+                    })
+                }
                 Some(Reply::Unavailable) => {
                     Err(fill(&text.non_interactive, &[("what", &gate::describe(&asks))]).into())
                 }

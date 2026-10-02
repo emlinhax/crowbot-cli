@@ -33,7 +33,7 @@ use crate::text::template;
 use crate::text::theme;
 use crate::text::units;
 use crate::tools::{self, Registry};
-use crate::tui::choice::{self, Choice};
+use crate::tui::card::{self, Card};
 use crate::tui::command::{self, Work};
 use crate::tui::editor::Editor;
 use crate::tui::feed::{Block, Feed};
@@ -142,7 +142,7 @@ struct Tui<'a> {
     burst: Burst,
     queue: Vec<(Kind, String)>,
     /// Prompts waiting on the user; the first is on screen in place of the editor.
-    cards: VecDeque<Choice>,
+    cards: VecDeque<Box<dyn Card>>,
     /// The `/login` card, on screen in place of the editor while open.
     login: Option<Login>,
     /// The `/models` card, likewise.
@@ -492,8 +492,8 @@ impl<'a> Tui<'a> {
         let Some(card) = self.cards.front_mut() else {
             return;
         };
-        if let choice::Step::Answer(reply) = card.key(action, key) {
-            self.shared.answer(card.id, reply);
+        if let card::Step::Answer(reply) = card.key(action, key) {
+            self.shared.answer(card.id(), reply);
             self.cards.pop_front();
         }
     }
@@ -786,7 +786,7 @@ impl<'a> Tui<'a> {
             }
             AgentEvent::Prompt { id, prompt, .. } => {
                 self.cards
-                    .push_back(Choice::from_prompt(*id, prompt, self.screen.width()));
+                    .push_back(card::from_prompt(*id, prompt, self.screen.width()));
             }
             _ => {}
         }
@@ -817,7 +817,7 @@ impl<'a> Tui<'a> {
         }
         // Prompts answered elsewhere (AUTO approved them, the run was interrupted) go away.
         let shared = self.shared;
-        self.cards.retain(|card| shared.waiting(card.id));
+        self.cards.retain(|card| shared.waiting(card.id()));
         // The command popup floats over the conversation instead of growing the bar.
         let mut floating = Vec::new();
         match (&self.login, &self.picker, self.cards.front()) {

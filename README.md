@@ -56,7 +56,8 @@ crowbot. The session file under `~/.crowbot/sessions/` keeps the whole conversat
 | ↑ ↓ | history at the editor's edges |
 
 Prompts replace the editor with a numbered card: permission (`1` yes, `2` no, `3` no and say
-why, with a diff or command preview), a question from crowbot, or a finished plan. Inside the
+why, with a diff or command preview), crowbot's questions (up to four on one card, a tab each,
+some taking several answers, all reviewed before they go back), or a finished plan. Inside the
 session, `/help` lists the commands:
 
 | Command | Does |

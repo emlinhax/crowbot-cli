@@ -1,7 +1,7 @@
 //! Everything that waits on the user has one shape: a `Prompt` goes out as an event, and a `Reply`
 //! comes back through `Shared::answer`. Headless runs answer `Unavailable` to all of them.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::event::AgentEvent;
@@ -19,13 +19,61 @@ pub enum Prompt {
         #[serde(skip_serializing_if = "Option::is_none")]
         preview: Option<String>,
     },
-    /// The model asks the user to choose.
-    Question {
-        question: String,
-        options: Vec<String>,
-    },
+    /// The model asks the user to choose; several questions share one card.
+    Question { questions: Vec<Question> },
     /// PLAN mode's plan is ready; the user decides what happens next.
     PlanExit { plan: String, choices: Vec<String> },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Question {
+    pub question: String,
+    /// A word or two naming it on the card's tabs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub header: Option<String>,
+    pub options: Vec<Offer>,
+    /// More than one option may be picked.
+    #[serde(default)]
+    pub multiple: bool,
+}
+
+/// One option on a question. A bare string from the model is its label.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "OfferIn")]
+pub struct Offer {
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum OfferIn {
+    Label(String),
+    Full {
+        label: String,
+        #[serde(default)]
+        description: Option<String>,
+    },
+}
+
+impl From<OfferIn> for Offer {
+    fn from(offer: OfferIn) -> Self {
+        match offer {
+            OfferIn::Label(label) => Self {
+                label,
+                description: None,
+            },
+            OfferIn::Full { label, description } => Self { label, description },
+        }
+    }
+}
+
+/// One question's answer: the options picked, by index, and the user's own words if any.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Answer {
+    pub picked: Vec<usize>,
+    pub text: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -40,6 +88,8 @@ pub enum Reply {
     Choice(usize),
     /// A free-text answer ("Other…").
     Text(String),
+    /// A question card's answers, one per question, in order.
+    Answers(Vec<Answer>),
     /// Nobody can answer (a headless run).
     Unavailable,
 }

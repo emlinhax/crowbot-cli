@@ -739,6 +739,34 @@ async fn slash_init_asks_for_an_agents_md_that_the_next_conversation_reads() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn the_models_questions_are_answered_on_one_card() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("pty/questions.sse"), Reply::sse("hello.sse")]);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.wait_for("MANUAL");
+        s.type_text("set it up");
+        s.send("\r");
+        s.wait_for("Which database should the app use?");
+        s.wait_for("what production runs");
+        s.send("2");
+        s.wait_for("Which checks run before a push?");
+        s.send("1");
+        s.wait_for("[x] lint");
+        s.send("3");
+        s.wait_for("[x] e2e");
+        s.send("\r");
+        s.wait_for("Your answers");
+        s.wait_for("lint, e2e");
+        s.send("\r");
+        s.wait_for("Hello there!");
+    })
+    .await;
+    let answered = fake.chat_bodies()[1]["messages"].to_string();
+    assert!(answered.contains("Postgres"), "{answered}");
+    assert!(answered.contains("lint, e2e"), "{answered}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);

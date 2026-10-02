@@ -113,6 +113,7 @@ pub struct ToolLimits {
     pub max_results: Limit<usize>,
     pub grep_line_chars: Limit<usize>,
     pub list_entries: Limit<usize>,
+    pub question_max: Limit<usize>,
     pub binary_sniff_bytes: Limit<usize>,
     pub bash_timeout_secs: Limit<u64>,
     pub bash_max_timeout_secs: Limit<u64>,

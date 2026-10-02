@@ -2,6 +2,7 @@
 
 mod app;
 mod boxed;
+mod card;
 mod cards;
 mod choice;
 mod command;
@@ -14,6 +15,7 @@ mod login;
 mod palette;
 mod paste;
 mod picker;
+mod questions;
 mod queue;
 mod screen;
 mod status;

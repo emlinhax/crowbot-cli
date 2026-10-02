@@ -1,14 +1,35 @@
 {
   "type": "object",
   "properties": {
-    "question": { "type": "string", "description": "What to decide, in one sentence" },
-    "options": {
+    "questions": {
       "type": "array",
-      "description": "Up to eight short, distinct choices",
-      "items": { "type": "string" },
+      "description": "The questions, asked together on one card; the user answers each before it comes back",
       "minItems": 1,
-      "maxItems": 8
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "properties": {
+          "question": { "type": "string", "description": "What to decide, in one sentence" },
+          "header": { "type": "string", "description": "A word or two naming the question on the card's tabs, e.g. \"Database\"" },
+          "options": {
+            "type": "array",
+            "description": "Up to eight short, distinct choices; the user can always answer in their own words instead",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": { "type": "string", "description": "The choice, in a few words" },
+                "description": { "type": "string", "description": "What picking it means, in a short line" }
+              },
+              "required": ["label"]
+            }
+          },
+          "multiple": { "type": "boolean", "description": "Let the user pick more than one option" }
+        },
+        "required": ["question", "options"]
+      }
     }
   },
-  "required": ["question", "options"]
+  "required": ["questions"]
 }

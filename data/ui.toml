@@ -96,6 +96,16 @@ input_hint = "enter send · esc back"
 other = "Other…"
 plan_title = "Plan ready"
 plan_other = "Tell crowbot what to change…"
+# The model's questions: one tab each, then a review before the answers go back.
+questions_title = "crowbot asks"
+question_tab = "Question {n}"
+review_tab = "Send"
+review_title = "Your answers"
+own_words = "“{text}”"
+unanswered = "not answered yet"
+question_hint = "↑↓ move · enter choose · 1-9 pick · ←→ questions · esc dismiss"
+multiple_hint = "↑↓ move · space or 1-9 tick · enter done · ←→ questions · esc dismiss"
+review_hint = "enter send · ← or 1-9 change an answer · esc dismiss"
 
 # Permission answers: `reply` is yes, no, or no_why (asks for the reason).
 [[card.permission]]

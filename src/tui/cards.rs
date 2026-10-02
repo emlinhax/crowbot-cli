@@ -88,7 +88,7 @@ pub fn header(tool: &str, arguments: &str, state: State<'_>) -> Line {
         .title
         .unwrap_or_default()
         .iter()
-        .find_map(|key| args[key].as_str().map(str::to_owned));
+        .find_map(|key| at(&args, key).as_str().map(str::to_owned));
     if let Some(title) = title {
         line.push(" ", Style::default());
         line.push(title.lines().next().unwrap_or_default(), Style::fg("muted"));
@@ -158,20 +158,25 @@ fn body(tool: &str, result: &ToolResult, width: usize) -> Vec<Line> {
     }
 }
 
+/// The value at a dotted path, `a.0.b`: keys, and indices into arrays.
+fn at(value: &Value, path: &str) -> Value {
+    let mut value = value.clone();
+    for part in path.split('.') {
+        value = match part.parse::<usize>() {
+            Ok(i) => value[i].clone(),
+            Err(_) => value[part].clone(),
+        };
+    }
+    value
+}
+
 /// `{a.b}` reads `details.a.b` (array indices too).
 fn fill(template: &str, result: &ToolResult) -> String {
     template::fill_with(template, |key| Some(lookup(key, result).into()))
 }
 
 fn lookup(key: &str, result: &ToolResult) -> String {
-    let mut value = result.details.clone().unwrap_or(Value::Null);
-    for part in key.split('.') {
-        value = match part.parse::<usize>() {
-            Ok(i) => value[i].clone(),
-            Err(_) => value[part].clone(),
-        };
-    }
-    match value {
+    match at(result.details.as_ref().unwrap_or(&Value::Null), key) {
         Value::String(s) => s,
         Value::Null => "?".into(),
         other => other.to_string(),

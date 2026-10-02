@@ -112,6 +112,15 @@ pub struct CardText {
     pub other: String,
     pub plan_title: String,
     pub plan_other: String,
+    pub questions_title: String,
+    pub question_tab: String,
+    pub review_tab: String,
+    pub review_title: String,
+    pub own_words: String,
+    pub unanswered: String,
+    pub question_hint: String,
+    pub multiple_hint: String,
+    pub review_hint: String,
     pub permission: Vec<PermissionChoice>,
 }
 

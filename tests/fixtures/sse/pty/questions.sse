@@ -1,0 +1,8 @@
+data: {"choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "id": "q1", "type": "function", "function": {"name": "question", "arguments": "{\"questions\": [{\"question\": \"Which database should the app use?\", \"header\": \"Database\", \"options\": [{\"label\": \"SQLite\", \"description\": \"one file, nothing to run\"}, {\"label\": \"Postgres\", \"description\": \"what production runs\"}]}, {\"question\": \"Which checks run before a push?\", \"header\": \"Checks\", \"options\": [\"lint\", \"test\", \"e2e\"], \"multiple\": true}]}"}}]}}]}
+
+data: {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: {"choices": [], "usage": {"prompt_tokens": 100, "completion_tokens": 10}}
+
+data: [DONE]
+
