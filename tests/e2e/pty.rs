@@ -193,6 +193,8 @@ impl Session {
         self.press(row, 0);
     }
 
+    // Only the Linux copy tests right-click (see them for why).
+    #[cfg(target_os = "linux")]
     fn right_click(&mut self, row: usize) {
         self.press(row, 2);
     }
