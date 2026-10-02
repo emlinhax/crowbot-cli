@@ -125,3 +125,18 @@ BoringSSL for the web.
 | `make golden` | rewrite failing goldens and snapshots | only for a deliberate change |
 | `make smoke` | real API round trip, needs `CROWBOT_SMOKE_KEY` (costs a fraction of a cent) | by hand, never in CI |
 | `make build` | static release binary | as needed |
+
+## Releases
+
+Pushing `prod` (on an explicit go only) runs `.github/workflows/release.yml`: the full CI checks,
+then a GitHub release tagged `v<version>-<run>` holding one binary per target and `SHA256SUMS`.
+Asset names never change, so these always serve the newest release:
+
+| Platform | Download |
+|---|---|
+| Linux x86_64 (static) | `https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-x86_64-unknown-linux-musl` |
+| macOS Apple silicon | `https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-aarch64-apple-darwin` |
+| Windows x86_64 | `https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-x86_64-pc-windows-msvc.exe` |
+
+A target is one entry in `ci.yml`'s matrix. The binaries are unsigned, so macOS Gatekeeper and
+Windows SmartScreen warn about a copy downloaded by a browser; `curl` downloads are not flagged.

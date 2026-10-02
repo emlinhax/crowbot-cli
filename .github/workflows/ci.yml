@@ -3,6 +3,13 @@ name: ci
 on:
   push:
     branches: [main]
+  # release.yml runs these same checks on `prod`, then publishes the binaries they built.
+  workflow_call:
+    inputs:
+      publish:
+        description: Keep each release target's binary for the release job.
+        type: boolean
+        default: false
 
 # Nothing here writes to the repository, so third-party actions get a read-only token.
 permissions:
@@ -17,7 +24,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+          # A release target is built where it is the host, so the checks above it cover it.
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            exe: .exe
     runs-on: ${{ matrix.os }}
     # A hung PTY test would otherwise hold three runners for six hours; cold BoringSSL builds
     # set the bound.
@@ -25,17 +39,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
+        with:
+          target: ${{ matrix.target }}
       - run: make lint
       - run: make test
       - run: make e2e
-      # The release build README documents; a release job for `prod` comes later (NEXT_PLAN M7).
-      - run: make build && ls -l target/release/
+      - run: make build TARGET=${{ matrix.target }}
+      - if: inputs.publish && matrix.target
+        uses: ./.github/actions/asset
+        with:
+          target: ${{ matrix.target }}
+          exe: ${{ matrix.exe }}
 
-  # Fully static Linux. BoringSSL needs a musl C++ cross toolchain, which this image carries.
-  # Allowed to fail until a green run proves it; until then glibc above is the Linux target.
+  # Fully static Linux, the Linux release target. BoringSSL needs a musl C++ cross toolchain,
+  # which this image carries.
   release-musl:
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 60
     container: ghcr.io/rust-cross/rust-musl-cross:x86_64-musl
     steps:
@@ -43,4 +62,8 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           target: x86_64-unknown-linux-musl
-      - run: make build TARGET=x86_64-unknown-linux-musl && ls -l target/x86_64-unknown-linux-musl/release/
+      - run: make build TARGET=x86_64-unknown-linux-musl
+      - if: inputs.publish
+        uses: ./.github/actions/asset
+        with:
+          target: x86_64-unknown-linux-musl

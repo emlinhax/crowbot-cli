@@ -1,0 +1,25 @@
+name: Release asset
+description: Keeps a release build's binary under its asset name, crowbot-<target>, for release.yml.
+inputs:
+  target:
+    description: The target triple it was built for, e.g. aarch64-apple-darwin.
+    required: true
+  exe:
+    description: The executable suffix, `.exe` on Windows.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        mkdir -p dist
+        cp "target/${{ inputs.target }}/release/crowbot${{ inputs.exe }}" \
+          "dist/crowbot-${{ inputs.target }}${{ inputs.exe }}"
+    # Only release.yml's publish job, later in the same run, reads it.
+    - uses: actions/upload-artifact@v4
+      with:
+        name: crowbot-${{ inputs.target }}
+        path: dist/crowbot-${{ inputs.target }}${{ inputs.exe }}
+        if-no-files-found: error
+        retention-days: 1

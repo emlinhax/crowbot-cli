@@ -172,3 +172,8 @@ interstitial passed off as the article. The API stays on reqwest.
 ## M5 — Context + sessions (compaction, shadow-git /undo)
 ## M6 — Subagents + MCP
 ## M7 — Release (`prod` → GitHub Releases, installers)
+- Added 2026-10-02, untried until the first `prod` push: every push to `prod` runs `ci.yml`
+  through `release.yml` and publishes `crowbot-<target>` for musl Linux, Apple-silicon macOS and
+  Windows, plus `SHA256SUMS`.
+- Open: installers, signing, Intel macOS and arm64 Linux targets, and public downloads (the repo is
+  private, so `releases/latest/download` needs a login).

@@ -1,0 +1,44 @@
+name: release
+
+# Every push to `prod` is a release: the full checks, then one binary per target, published
+# under fixed names so `releases/latest/download/crowbot-<target>` always serves the newest.
+on:
+  push:
+    branches: [prod]
+
+# Releases go out one at a time, in push order.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+    with:
+      publish: true
+
+  publish:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: cd dist && sha256sum crowbot-* > SHA256SUMS
+      # CEILING: the binary reports Cargo.toml's version, not the run number; bump the version
+      # for a release people need to tell apart from the last.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          tag="v$version-$GITHUB_RUN_NUMBER"
+          gh release create "$tag" dist/* \
+            --target "$GITHUB_SHA" --title "$tag" --generate-notes --latest
