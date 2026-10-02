@@ -80,6 +80,31 @@ pub fn braille() -> bool {
     !cfg!(windows)
         || settings::env("WT_SESSION").is_some()
         || settings::env("TERM_PROGRAM").is_some()
+        || hosted_console()
+}
+
+/// A program a terminal hosts (Windows Terminal opening a double-clicked .exe, which sets no
+/// variable) owns a hidden pseudo-console window; legacy conhost draws its own window instead.
+#[cfg(windows)]
+fn hosted_console() -> bool {
+    use windows_sys::Win32::System::Console::GetConsoleWindow;
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetClassNameW;
+    let mut class = [0u16; 64];
+    // SAFETY: plain Win32 calls; the buffer outlives the call, which is told its length.
+    let len = unsafe {
+        let window = GetConsoleWindow();
+        if window.is_null() {
+            return false;
+        }
+        GetClassNameW(window, class.as_mut_ptr(), class.len() as i32)
+    };
+    let len = usize::try_from(len).unwrap_or(0);
+    String::from_utf16_lossy(&class[..len]) == "PseudoConsoleWindow"
+}
+
+#[cfg(not(windows))]
+fn hosted_console() -> bool {
+    false
 }
 
 /// One line from stdin without its newline; `None` at end of input.
