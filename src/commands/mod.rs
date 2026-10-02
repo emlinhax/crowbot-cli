@@ -4,6 +4,7 @@
 mod copy;
 mod effort;
 mod help;
+mod init;
 mod keytest;
 pub mod login;
 mod logout;
@@ -155,6 +156,8 @@ pub enum Effect {
     SetEffort(String),
     /// Put the model's last reply on the clipboard.
     CopyLastReply,
+    /// Send this to the model as the user's next message (the transcript shows the command).
+    Send(String),
     /// Open the session's model picker, after fetching a fresh list when asked.
     PickModel {
         refresh: bool,
@@ -202,6 +205,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &mode::Mode,
     &effort::Effort,
     &copy::Copy,
+    &init::Init,
     &new::New,
     &quit::Quit,
     &keytest::KeyTest,

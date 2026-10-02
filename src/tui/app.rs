@@ -330,7 +330,9 @@ impl<'a> Tui<'a> {
                 Step::Login(next) => job = Some(login::run(self.app, next)),
                 Step::Work(run) => work.push(run),
                 Step::Send(text) => {
+                    // Typed text queues while a turn runs; only a command's message gets here.
                     let Some(mut owned) = transcript.take() else {
+                        self.feed.notice(&ui::get().text.busy, "warn");
                         continue;
                     };
                     let progress = Progress::start(clock::instant(), self.last_verb, &mut self.rng);
@@ -758,6 +760,7 @@ impl<'a> Tui<'a> {
                 }
                 Effect::NewConversation => return Step::NewConversation,
                 Effect::SetEffort(id) => self.set_effort(id),
+                Effect::Send(text) => return Step::Send(text),
                 Effect::CopyLastReply => match self.feed.last_reply() {
                     Some(text) => self.copy(&text),
                     None => self.feed.notice(&ui::get().text.nothing_to_copy, "muted"),

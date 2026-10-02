@@ -101,6 +101,7 @@ pub struct SignupLimits {
 pub struct AgentLimits {
     pub max_turns: Limit<u32>,
     pub doom_loop_repeats: Limit<usize>,
+    pub instructions_bytes: Limit<usize>,
 }
 
 #[derive(Debug, Deserialize)]

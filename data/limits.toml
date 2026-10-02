@@ -84,6 +84,10 @@ reason = "the most work a person waits for on one machine; crowbot itself caps s
 value = 100
 reason = "a runaway loop on crow-2 costs real money; a run that needs more should be continued deliberately"
 
+[agent.instructions_bytes]
+value = 32768
+reason = "a project's AGENTS.md is a few KiB; more would crowd every request it rides on"
+
 [agent.doom_loop_repeats]
 value = 3
 reason = "the same call three times in a row is a loop, not persistence (opencode's threshold)"

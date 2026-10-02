@@ -706,6 +706,39 @@ async fn slash_effort_sets_what_the_next_requests_carry() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn slash_init_asks_for_an_agents_md_that_the_next_conversation_reads() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    let agents = sandbox.project.path().join("AGENTS.md");
+    in_session(&fake, sandbox, Some(ENV_KEY), move |s| {
+        s.wait_for("MANUAL");
+        s.type_text("/init");
+        s.send("\r");
+        s.wait_for("Hello there!");
+        // What the model would have written, then a conversation that starts after it.
+        std::fs::write(&agents, "Run make test before a push.").unwrap();
+        s.type_text("/new");
+        s.send("\r");
+        s.wait_for("A new conversation");
+        s.type_text("hi");
+        s.send("\r");
+        s.wait_for("Hello there!");
+    })
+    .await;
+    let bodies = fake.chat_bodies();
+    let asked = bodies[0]["messages"]
+        .as_array()
+        .unwrap()
+        .last()
+        .unwrap()
+        .to_string();
+    assert!(asked.contains("Write an AGENTS.md"), "{asked}");
+    let system = bodies[1]["messages"][0]["content"].to_string();
+    assert!(system.contains("Run make test before a push."), "{system}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);

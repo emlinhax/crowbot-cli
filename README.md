@@ -56,10 +56,22 @@ crowbot. The session file under `~/.crowbot/sessions/` keeps the whole conversat
 | ↑ ↓ | history at the editor's edges |
 
 Prompts replace the editor with a numbered card: permission (`1` yes, `2` no, `3` no and say
-why, with a diff or command preview), a question from crowbot, or a finished plan. `/help`,
-`/models`, `/mode [id]`, `/login`, `/logout` and `/quit` work inside the session. `/models` lists
-the models to pick from (↑↓, then → or Enter) for the rest of the session; `/login` pairs this
-device or takes an account number (shown masked); both take effect without a restart. Pasting works everywhere; on Windows,
+why, with a diff or command preview), a question from crowbot, or a finished plan. Inside the
+session, `/help` lists the commands:
+
+| Command | Does |
+|---|---|
+| `/new` (or `/clear`) | a fresh conversation in a new session file; the last one stays saved |
+| `/models`, `/effort [level]`, `/mode [id]` | model, reasoning effort or permission mode for the rest of the session |
+| `/status` | account and balance, model, mode, context use, cost so far, session file |
+| `/copy` | the last reply to the clipboard, as markdown |
+| `/init` | crowbot studies the project and writes its `AGENTS.md` |
+| `/login`, `/logout` | pair this device or take an account number (shown masked), or forget the key |
+| `/quit` (or `/exit`) | leave |
+
+`/models` lists the models to pick from (↑↓, then → or Enter); `/login` takes effect without a
+restart. The project's `AGENTS.md` (or else `CLAUDE.md`) joins the system prompt when a
+conversation starts, up to `agent.instructions_bytes`. Pasting works everywhere; on Windows,
 where a paste arrives as keystrokes, a burst of keys is recognised as a paste so its Enters add
 lines instead of sending.
 

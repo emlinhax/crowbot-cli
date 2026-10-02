@@ -1,0 +1,4 @@
+name = "init"
+summary = "Have crowbot study the project and write its AGENTS.md (read from the next conversation)"
+usage = "init"
+scope = ["session"]
