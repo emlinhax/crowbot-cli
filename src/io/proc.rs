@@ -54,6 +54,22 @@ pub fn open_url(url: &str) -> io::Result<()> {
     }
 }
 
+/// Runs `command` in cmd.exe once this process has had time to exit, detached from it; how a
+/// program removes the folder it runs from.
+#[cfg(windows)]
+pub fn after_exit(command: &str) -> io::Result<()> {
+    use std::os::windows::process::CommandExt;
+    use windows_sys::Win32::System::Threading::DETACHED_PROCESS;
+    std::process::Command::new("cmd")
+        .raw_arg(format!("/c ping 127.0.0.1 -n 3 > nul & {command}"))
+        .creation_flags(DETACHED_PROCESS)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(drop)
+}
+
 /// The program this process runs from.
 pub fn current_exe() -> io::Result<PathBuf> {
     std::env::current_exe()

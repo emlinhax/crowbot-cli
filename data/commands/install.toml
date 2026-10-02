@@ -1,0 +1,4 @@
+name = "install"
+summary = "Install crowbot for this user: a folder of its own, put on your PATH"
+usage = "install"
+scope = ["cli"]

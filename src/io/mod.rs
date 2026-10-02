@@ -11,3 +11,4 @@ pub mod search;
 pub mod secret;
 pub mod shell;
 pub mod term;
+pub mod user_path;

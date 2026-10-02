@@ -5,6 +5,7 @@ mod copy;
 mod effort;
 mod help;
 mod init;
+mod install;
 mod keytest;
 pub mod login;
 mod logout;
@@ -14,6 +15,7 @@ mod new;
 mod quit;
 mod signup;
 mod status;
+mod uninstall;
 mod update;
 
 use futures_util::future::BoxFuture;
@@ -203,6 +205,8 @@ pub static COMMANDS: &[&dyn Command] = &[
     &signup::Signup,
     &status::Status,
     &update::Update,
+    &install::Install,
+    &uninstall::Uninstall,
     &models::Models,
     &mode::Mode,
     &effort::Effort,

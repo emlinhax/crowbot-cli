@@ -199,6 +199,20 @@ pub fn write_executable(path: &Path, bytes: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
+pub fn make_dir(dir: &Path) -> io::Result<()> {
+    std::fs::create_dir_all(dir)
+}
+
+/// Removes `dir` and all it holds; absent is fine. Only Windows installs into a folder of
+/// crowbot's own.
+#[cfg(windows)]
+pub fn remove_dir(dir: &Path) -> io::Result<()> {
+    match std::fs::remove_dir_all(dir) {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
+}
+
 /// Whether a file can be made in `dir`.
 pub fn writable(dir: &Path) -> bool {
     let probe = dir.join(format!(".crowbot-probe-{}", std::process::id()));
@@ -219,6 +233,9 @@ pub fn writable(dir: &Path) -> bool {
 pub fn replace_executable(new: &Path, current: &Path) -> io::Result<()> {
     #[cfg(windows)]
     {
+        if !current.exists() {
+            return std::fs::rename(new, current);
+        }
         let aside = current.with_extension(format!("old-{}", std::process::id()));
         std::fs::rename(current, &aside)?;
         if let Err(e) = std::fs::rename(new, current) {

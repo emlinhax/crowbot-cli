@@ -6,6 +6,7 @@ mod cli;
 mod commands;
 mod effort;
 mod frontend;
+mod install;
 mod io;
 mod limits;
 mod mode;

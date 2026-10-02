@@ -9,7 +9,7 @@ use crate::commands::{self, Ctx, Missing, Scope};
 use crate::frontend::print::{self, Format};
 use crate::io::term;
 use crate::settings::{Overrides, Untrusted};
-use crate::{effort, mode, release, trust, tui};
+use crate::{effort, install, mode, release, trust, tui};
 
 /// The help for `--effort`, `--mode` and the commands is filled in from their catalogs by
 /// `command()`, so a new level, mode or command shows up with no edit here.
@@ -123,6 +123,9 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
     };
     let session =
         command.is_none() && !headless && term::stdin_is_terminal() && term::stdout_is_terminal();
+    if session {
+        install::offer(&app.paths)?;
+    }
     if let Some(untrusted) = app.settings.untrusted.take() {
         if !session {
             term::err(&format!(

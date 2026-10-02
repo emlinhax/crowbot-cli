@@ -1,0 +1,4 @@
+name = "uninstall"
+summary = "Remove the installed crowbot and take it off your PATH (keys and sessions stay)"
+usage = "uninstall"
+scope = ["cli"]

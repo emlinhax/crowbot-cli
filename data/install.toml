@@ -1,0 +1,23 @@
+# Where `crowbot install` puts the program: a folder of the user's own, never one that needs an
+# administrator. {local} is the user's local app data (%LOCALAPPDATA% on Windows), {home} their
+# home folder.
+[folder]
+windows = "{local}/Programs/crowbot"
+unix = "{home}/.local/bin"
+
+# The Apps & Features entry on Windows, under
+# HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\{key}.
+[entry]
+key = "crowbot"
+name = "crowbot"
+publisher = "crowbot.sh"
+
+# What installing says; {placeholders} are filled in.
+[text]
+offer = "crowbot is not installed for you yet. Install it to {dir} and put it on your PATH, so `crowbot` works in any terminal? [Y/n] "
+installed = "Installed to {dir}."
+added = " Open a new terminal and type crowbot."
+already = " crowbot works in any terminal."
+profile = " {dir} is not on your PATH yet; add it in your shell's profile: export PATH=\"{dir}:$PATH\""
+uninstalled = "Uninstalled from {dir}. Your keys and sessions stay in {home}; delete it to remove them too."
+missing = "crowbot is not installed at {dir}."
