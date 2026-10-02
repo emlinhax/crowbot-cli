@@ -175,5 +175,10 @@ interstitial passed off as the article. The API stays on reqwest.
 - Added 2026-10-02, untried until the first `prod` push: every push to `prod` runs `ci.yml`
   through `release.yml` and publishes `crowbot-<target>` for musl Linux, Apple-silicon macOS and
   Windows, plus `SHA256SUMS`.
-- Open: installers, signing, Intel macOS and arm64 Linux targets, and public downloads (the repo is
-  private, so `releases/latest/download` needs a login).
+- Added 2026-10-03: the repository is public (MIT OR Apache-2.0, history rewritten to a noreply
+  author and without cffetch's live-site probes); release builds carry their tag; `crowbot update`
+  and a daily background update for interactive release builds (SHA256SUMS-checked, the program
+  swapped where it stands); `crowbot install` / `uninstall`, and on Windows a double-clicked
+  release offers to install itself (user PATH in the registry, Apps & Features entry).
+- Open: signing (minisign for updates, Authenticode and notarisation for SmartScreen and
+  Gatekeeper), Intel macOS and arm64 Linux targets, a website installer script.

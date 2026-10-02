@@ -4,6 +4,26 @@ A small terminal coding agent for [crowbot.sh](https://crowbot.sh). One backend,
 
 Read `AGENTS.md` before changing anything; `NEXT_PLAN.md` tracks the phases.
 
+## Install
+
+| Platform | Do |
+|---|---|
+| Windows | Download [crowbot-x86_64-pc-windows-msvc.exe](https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-x86_64-pc-windows-msvc.exe) and double-click it; it offers to install itself for you and puts `crowbot` on your PATH. |
+| macOS (Apple silicon) | `curl -fsSL -o crowbot https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-aarch64-apple-darwin && chmod +x crowbot && ./crowbot install` |
+| Linux (x86_64) | `curl -fsSL -o crowbot https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-x86_64-unknown-linux-musl && chmod +x crowbot && ./crowbot install` |
+
+`crowbot install` copies the program to a folder of your own (`%LOCALAPPDATA%\Programs\crowbot`
+on Windows, `~/.local/bin` elsewhere) and puts it on your PATH: on Windows itself, with an
+Apps & Features entry; elsewhere it tells you the line for your shell's profile. `crowbot
+uninstall` takes it away again and leaves `~/.crowbot` (keys, sessions) alone. The binaries are
+unsigned, so the first start of a downloaded copy may need "More info → Run anyway" (Windows) or
+right-click → Open (macOS).
+
+Once a day, an interactive session checks for a newer release in the background, checks the
+download against the release's SHA256SUMS and swaps it in; the next start says it updated.
+`crowbot update` does it on demand. `auto_update = false` in `~/.crowbot/config.toml`, or
+`CROWBOT_NO_UPDATE=1`, turns that off; development builds never update themselves.
+
 ## Commands
 
 ```sh
@@ -14,6 +34,8 @@ crowbot signup                   # create an account: no email, no password, no 
 crowbot -p "explain this repo"   # headless: one prompt, reply on stdout (pipe input works too)
 crowbot --json "..."             # headless, one JSON event per line (fields stable; additions only)
 crowbot models [--refresh]       # live models, prices and limits
+crowbot update                   # the newest release, now
+crowbot install / uninstall      # put crowbot on your PATH, or take it off
 crowbot help                     # every command
 ```
 
@@ -144,6 +166,7 @@ BoringSSL for the web.
 
 Pushing `prod` (on an explicit go only) runs `.github/workflows/release.yml`: the full CI checks,
 then a GitHub release tagged `v<version>-<run>` holding one binary per target and `SHA256SUMS`.
+The binaries are built with that tag (`CROWBOT_RELEASE`), which `--version` and the updater read.
 Asset names never change, so these always serve the newest release:
 
 | Platform | Download |
