@@ -414,8 +414,7 @@ impl<'a> Tui<'a> {
                         self.feed.copy_text(block)
                     });
                 if let Some(text) = text {
-                    clipboard::copy(&text);
-                    self.toast = Some(Toast::new(&ui::get().text.copied, clock::instant()));
+                    self.copy(&text);
                 }
                 Step::Continue
             }
@@ -526,6 +525,12 @@ impl<'a> Tui<'a> {
                 self.switch_model(&id);
             }
         }
+    }
+
+    /// Puts `text` on the clipboard and says so at the top right.
+    fn copy(&mut self, text: &str) {
+        clipboard::copy(text);
+        self.toast = Some(Toast::new(&ui::get().text.copied, clock::instant()));
     }
 
     /// Asks for `effort` from the next turn on, for this session only.
@@ -753,6 +758,10 @@ impl<'a> Tui<'a> {
                 }
                 Effect::NewConversation => return Step::NewConversation,
                 Effect::SetEffort(id) => self.set_effort(id),
+                Effect::CopyLastReply => match self.feed.last_reply() {
+                    Some(text) => self.copy(&text),
+                    None => self.feed.notice(&ui::get().text.nothing_to_copy, "muted"),
+                },
             }
         }
         Step::Continue

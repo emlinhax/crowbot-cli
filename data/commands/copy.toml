@@ -1,0 +1,4 @@
+name = "copy"
+summary = "Copy crowbot's last reply to the clipboard, as markdown"
+usage = "copy"
+scope = ["session"]

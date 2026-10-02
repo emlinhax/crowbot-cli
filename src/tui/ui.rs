@@ -158,6 +158,7 @@ pub struct Text {
     pub more_below: String,
     pub saved: String,
     pub copied: String,
+    pub nothing_to_copy: String,
     pub busy: String,
     pub effort_set: String,
     pub effort_unsent: String,

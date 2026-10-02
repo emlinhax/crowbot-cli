@@ -151,6 +151,15 @@ impl Feed {
         Some(text.trim_end().to_owned())
     }
 
+    /// The model's last reply, whole, for copying.
+    pub fn last_reply(&self) -> Option<String> {
+        let start = self
+            .entries
+            .iter()
+            .rposition(|e| matches!(e.block, Block::Reply { first: true, .. }))?;
+        self.copy_text(start)
+    }
+
     /// Opens or closes the thinking block at `index`; `false` when it is not one.
     pub fn toggle(&mut self, index: usize) -> bool {
         match self.entries.get_mut(index) {
@@ -684,6 +693,8 @@ mod tests {
         assert_eq!(feed.copy_text(2).as_deref(), Some("First.\n\nSecond."));
         assert_eq!(feed.copy_text(3).as_deref(), Some("Done."));
         assert_eq!(feed.copy_text(9), None);
+        assert_eq!(feed.last_reply().as_deref(), Some("Done."));
+        assert_eq!(Feed::new().last_reply(), None);
     }
 
     #[test]
