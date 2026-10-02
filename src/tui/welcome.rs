@@ -4,6 +4,8 @@ use crate::text::styled::{Line, Style, width};
 use crate::tui::ui;
 
 const RAVEN: &str = include_str!("../../data/raven.txt");
+/// The same bird for consoles without a braille font.
+const RAVEN_ASCII: &str = include_str!("../../data/raven_ascii.txt");
 
 /// Columns between the raven and the text beside it.
 const GUTTER: usize = 3;
@@ -25,20 +27,23 @@ pub struct Info {
 }
 
 pub fn render(info: &Info, width: usize) -> Vec<Line> {
-    let raven: Vec<&str> = RAVEN.lines().collect();
+    let art = if info.braille { RAVEN } else { RAVEN_ASCII };
+    let raven: Vec<&str> = art.lines().collect();
     let raven_width = raven.iter().map(|l| self::width(l)).max().unwrap_or(0);
+    // Every row as wide as the widest, so text beside the bird lines up.
+    let bird =
+        |row: &str| Line::styled(row, Style::fg("accent")).padded(raven_width, &Style::default());
     let text = text(info);
     let mut out = Vec::new();
 
-    if !info.braille || width < raven_width {
-        out.push(Line::styled("CROWBOT", Style::fg("accent").bold()));
+    if width < raven_width {
         out.extend(text);
     } else if width >= raven_width + GUTTER + MIN_TEXT {
         // Text sits beside the raven, vertically centred on it.
         let top = raven.len().saturating_sub(text.len()) / 2;
         let avail = width - raven_width - GUTTER;
         for (i, row) in raven.iter().enumerate() {
-            let mut line = Line::styled(*row, Style::fg("accent"));
+            let mut line = bird(row);
             if let Some(t) = i.checked_sub(top).and_then(|j| text.get(j)) {
                 line.push(" ".repeat(GUTTER), Style::default());
                 line.extend(t.truncate(avail));
@@ -46,7 +51,7 @@ pub fn render(info: &Info, width: usize) -> Vec<Line> {
             out.push(line);
         }
     } else {
-        out.extend(raven.iter().map(|r| Line::styled(*r, Style::fg("accent"))));
+        out.extend(raven.iter().map(|r| bird(r)));
         out.push(Line::default());
         out.extend(text);
     }
@@ -111,6 +116,19 @@ mod tests {
         for row in rows {
             assert_eq!(row.chars().count(), 23);
             assert!(row.chars().all(|c| ('\u{2800}'..='\u{28ff}').contains(&c)));
+        }
+    }
+
+    #[test]
+    fn the_ascii_raven_is_the_same_size_in_plain_characters() {
+        let rows: Vec<&str> = RAVEN_ASCII.lines().collect();
+        assert_eq!(rows.len(), RAVEN.lines().count());
+        for row in rows {
+            assert!(row.chars().count() <= 23, "{row:?}");
+            assert!(
+                row.chars().all(|c| c == ' ' || c.is_ascii_graphic()),
+                "{row:?}"
+            );
         }
     }
 
