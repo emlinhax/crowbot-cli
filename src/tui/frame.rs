@@ -1,5 +1,5 @@
-//! The two rules framing the message bar, in the mode's colour: the top one carries the mode's
-//! label, the bottom one the model, effort, context use and cost, right-aligned (order in
+//! The two rules framing the message bar, in the mode's colour. The bottom one carries all the
+//! status, right-aligned: the mode, model and effort, context use and cost (order in
 //! data/ui.toml). When the terminal is narrow the dashes shrink before any item is cut.
 
 use crate::effort;
@@ -22,20 +22,14 @@ pub struct Info<'a> {
 }
 
 pub fn top(mode: &Mode, width: usize) -> Line {
-    let style = Style::fg(&mode.color);
-    let mut line = Line::styled(format!("{RULE}{RULE} "), style.clone());
-    line.push(&mode.label, style.clone().bold());
-    line.push(" ", style.clone());
-    let used = line.width();
-    line.push(RULE.repeat(width.saturating_sub(used)), style);
-    line.truncate(width)
+    Line::styled(RULE.repeat(width), Style::fg(&mode.color))
 }
 
 pub fn bottom(mode: &Mode, info: &Info<'_>, width: usize) -> Line {
     let style = Style::fg(&mode.color);
     // Dashes, a space, the items, a space, the tail.
     let room = width.saturating_sub(LEAD + TAIL + 2);
-    let items = items(info);
+    let items = items(mode, info);
     if room == 0 || items.spans.is_empty() {
         return Line::styled(RULE.repeat(width), style);
     }
@@ -49,11 +43,11 @@ pub fn bottom(mode: &Mode, info: &Info<'_>, width: usize) -> Line {
     line
 }
 
-fn items(info: &Info<'_>) -> Line {
+fn items(mode: &Mode, info: &Info<'_>) -> Line {
     let footer = &ui::get().footer;
     let mut line = Line::default();
     for item in &footer.items {
-        let Some(part) = item_line(info, item) else {
+        let Some(part) = item_line(mode, info, item) else {
             continue;
         };
         if !line.spans.is_empty() {
@@ -64,9 +58,10 @@ fn items(info: &Info<'_>) -> Line {
     line
 }
 
-fn item_line(info: &Info<'_>, item: &str) -> Option<Line> {
+fn item_line(mode: &Mode, info: &Info<'_>, item: &str) -> Option<Line> {
     let muted = Style::fg("muted");
     Some(match item {
+        "mode" => Line::styled(&mode.label, Style::fg(&mode.color).bold()),
         "model" => {
             let mut line = Line::styled(info.model, muted.clone());
             if let Some(id) = info.effort {
@@ -110,15 +105,15 @@ mod tests {
     }
 
     #[test]
-    fn the_top_rule_carries_the_mode_and_fills_the_width() {
+    fn the_top_rule_is_a_plain_rule_across_the_width() {
         let line = top(manual(), 30);
-        assert_eq!(line.text(), format!("── MANUAL {}", "─".repeat(20)));
-        assert_eq!(line.width(), 30);
+        assert_eq!(line.text(), "─".repeat(30));
+        assert!(line.to_tagged().starts_with("[mode_manual]"));
     }
 
     #[test]
     fn the_bottom_rule_right_aligns_the_items_and_shrinks_its_dashes_first() {
-        let items = "crow-2 high · ctx 12% · $0.042 est";
+        let items = "MANUAL · crow-2 high · ctx 12% · $0.042 est";
         for width in [100, 60] {
             let line = bottom(manual(), &info(), width);
             assert_eq!(line.width(), width);
@@ -132,7 +127,7 @@ mod tests {
         let narrow = bottom(manual(), &info(), 30);
         assert_eq!(narrow.width(), 30);
         assert!(
-            narrow.text().starts_with("── crow-2 high"),
+            narrow.text().starts_with("── MANUAL · crow-2"),
             "{}",
             narrow.text()
         );
@@ -146,6 +141,7 @@ mod tests {
         let tagged = line.to_tagged();
         assert!(tagged.starts_with("[mode_plan]"), "{tagged}");
         assert!(tagged.contains("[effort_high] high[/]"), "{tagged}");
+        assert!(tagged.contains("[mode_plan+bold]PLAN[/]"), "{tagged}");
     }
 
     #[test]
@@ -158,7 +154,7 @@ mod tests {
         assert!(
             bottom(manual(), &i, 60)
                 .text()
-                .ends_with(" crow-2 · $0.042 est ──")
+                .ends_with(" MANUAL · crow-2 · $0.042 est ──")
         );
     }
 }
