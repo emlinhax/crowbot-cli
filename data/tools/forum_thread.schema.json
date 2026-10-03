@@ -1,15 +1,37 @@
 {
   "type": "object",
   "properties": {
-    "forum": { "type": "string", "description": "The forum's name or host" },
+    "forum": {
+      "type": "string",
+      "description": "The forum's name or host"
+    },
     "topic": {
       "description": "A topic id, or several ids to read at once",
       "oneOf": [
-        { "type": "string" },
-        { "type": "array", "items": { "type": "string" } }
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "integer"
+            ]
+          }
+        }
       ]
     },
-    "page": { "type": "integer", "description": "1-based page of posts; default 1" }
+    "page": {
+      "type": "integer",
+      "description": "1-based page of posts; default 1"
+    }
   },
-  "required": ["forum", "topic"]
+  "required": [
+    "forum",
+    "topic"
+  ]
 }

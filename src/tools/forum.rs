@@ -101,20 +101,38 @@ fn finish(text: String) -> Output {
     Output::ok(content)
 }
 
-/// One value or a list of them, so a tool arg takes a single id or a batch in one call.
+/// An id or search word, which the model may send as a string or a bare number.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Id {
+    Str(String),
+    Int(i64),
+}
+
+impl Id {
+    fn into_string(self) -> String {
+        match self {
+            Self::Str(s) => s,
+            Self::Int(n) => n.to_string(),
+        }
+    }
+}
+
+/// One value or a list of them, so a tool arg takes a single id or a batch in one call. Numbers are
+/// accepted too: models often send an id like `42` rather than `"42"`.
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum Many {
-    One(String),
-    Set(Vec<String>),
+    One(Id),
+    Set(Vec<Id>),
 }
 
 impl Many {
-    /// The items, capped to the batch limit so one call cannot hammer a forum.
+    /// The items as strings, capped to the batch limit so one call cannot hammer a forum.
     fn capped(self) -> Vec<String> {
         let mut items = match self {
-            Self::One(s) => vec![s],
-            Self::Set(v) => v,
+            Self::One(id) => vec![id.into_string()],
+            Self::Set(v) => v.into_iter().map(Id::into_string).collect(),
         };
         items.truncate(limits::get().forums.batch_max.value);
         items
@@ -623,10 +641,15 @@ mod tests {
     }
 
     #[test]
-    fn a_batch_arg_caps_to_the_limit_and_a_single_stays_single() {
-        assert_eq!(Many::One("a".into()).capped(), ["a"]);
-        let many = Many::Set((0..50).map(|i| i.to_string()).collect());
-        assert_eq!(many.capped().len(), limits::get().forums.batch_max.value);
+    fn a_batch_arg_takes_strings_numbers_and_arrays_and_caps() {
+        let parse = |v: Value| serde_json::from_value::<Many>(v).unwrap().capped();
+        assert_eq!(parse(serde_json::json!("a")), ["a"]);
+        // A bare number is accepted and coerced, which is how models often send an id.
+        assert_eq!(parse(serde_json::json!(42)), ["42"]);
+        assert_eq!(parse(serde_json::json!(["a", "b"])), ["a", "b"]);
+        assert_eq!(parse(serde_json::json!([1, 2])), ["1", "2"]);
+        let big = serde_json::json!((0..50).collect::<Vec<_>>());
+        assert_eq!(parse(big).len(), limits::get().forums.batch_max.value);
     }
 
     #[tokio::test]
