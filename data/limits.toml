@@ -120,6 +120,12 @@ reason = "a day: releases come a few times a week, and a check costs a request t
 value = 300
 reason = "a release binary is about 16 MB; five minutes allows a slow link without hanging forever"
 
+
+[forums.page_size]
+value = 20
+reason = "topics or posts fetched per page, matching what the Tapatalk app requests"
+
+
 [tools.question_max]
 value = 4
 reason = "a card of tabs a person answers in one go; more is a form, not a question"

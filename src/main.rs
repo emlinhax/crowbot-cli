@@ -5,6 +5,7 @@ mod auth;
 mod cli;
 mod commands;
 mod effort;
+mod forums;
 mod frontend;
 mod install;
 mod io;
