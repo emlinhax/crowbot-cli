@@ -3,6 +3,7 @@
 
 mod copy;
 mod effort;
+mod forums;
 mod help;
 mod init;
 mod install;
@@ -208,6 +209,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &install::Install,
     &uninstall::Uninstall,
     &models::Models,
+    &forums::Forums,
     &mode::Mode,
     &effort::Effort,
     &copy::Copy,

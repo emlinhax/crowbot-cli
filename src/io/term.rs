@@ -116,6 +116,35 @@ pub fn read_line() -> io::Result<Option<String>> {
     Ok(Some(line.trim_end_matches(['\n', '\r']).to_owned()))
 }
 
+/// Reads a secret from the terminal without echoing it: Enter ends it, Esc or Ctrl+C cancels.
+/// `None` when cancelled. The caller checks `stdin_is_terminal` first.
+pub fn read_secret(prompt: &str) -> io::Result<Option<String>> {
+    out(prompt);
+    crossterm::terminal::enable_raw_mode()?;
+    let mut secret = String::new();
+    let result = loop {
+        match crossterm::event::read() {
+            Ok(Event::Key(key)) if key.kind != KeyEventKind::Release => match key.code {
+                KeyCode::Enter => break Ok(Some(secret)),
+                KeyCode::Esc => break Ok(None),
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    break Ok(None);
+                }
+                KeyCode::Char(c) => secret.push(c),
+                KeyCode::Backspace => {
+                    secret.pop();
+                }
+                _ => {}
+            },
+            Ok(_) => {}
+            Err(e) => break Err(e),
+        }
+    };
+    let _ = crossterm::terminal::disable_raw_mode();
+    out("\n");
+    result
+}
+
 /// Resolves on Ctrl+C.
 pub async fn interrupted() {
     if tokio::signal::ctrl_c().await.is_err() {
