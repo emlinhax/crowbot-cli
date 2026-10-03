@@ -96,6 +96,9 @@ fn list(cx: &Ctx<'_>) -> String {
             ),
             None => fill(&TEXT.row_guest, &[("name", &f.name), ("host", &host(f))]),
         });
+        if !f.hint.is_empty() {
+            out.push_str(&format!("\n    {}", f.hint));
+        }
     }
     out
 }

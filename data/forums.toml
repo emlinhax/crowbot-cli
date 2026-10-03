@@ -14,6 +14,7 @@ app_key = "hdp3jtrujmsUis3r"
 [[seed]]
 id = "79565"
 name = "UnknownCheats"
+hint = "Game hacking and reverse engineering community (UC). Cheats, aimbots, ESP/wallhacks, memory editing, internal/external hacks, anti-cheat (BattlEye, EAC, Vanguard) bypasses, DLL injection; per-game boards (CS2, CoD/Warzone, Apex, Fortnite, Rust, Valorant, GTA and more); C/C++, C#, x86/x64 assembly, IDA/Cheat Engine, and tutorials/source releases."
 base_url = "https://www.unknowncheats.me/forum"
 mobiquo_dir = "euehhp13n8dqw77"
 ext = "php"

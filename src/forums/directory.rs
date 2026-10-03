@@ -80,6 +80,12 @@ fn from_json(entry: &Json) -> Option<Forum> {
             .unwrap_or("")
             .to_owned(),
         name,
+        hint: entry
+            .get("description")
+            .or_else(|| entry.get("desc"))
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_owned(),
         base_url,
         mobiquo_dir: entry
             .get("mobiquo_dir")

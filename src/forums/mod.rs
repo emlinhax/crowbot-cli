@@ -57,6 +57,10 @@ pub struct Suggestion {
 pub struct Forum {
     pub id: String,
     pub name: String,
+    /// What this forum is about and the kind of thing found there, so the agent can pick wisely;
+    /// shown when it lists forums. From the seed or the directory's description.
+    #[serde(default)]
+    pub hint: String,
     pub base_url: String,
     #[serde(default)]
     pub mobiquo_dir: String,

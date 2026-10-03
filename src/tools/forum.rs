@@ -112,6 +112,9 @@ fn render_forums(list: &[Forum]) -> String {
             None => "guest".to_owned(),
         };
         out.push_str(&format!("- {} ({}) — {who}\n", f.name, forum_host(f)));
+        if !f.hint.is_empty() {
+            out.push_str(&format!("  {}\n", f.hint));
+        }
     }
     out
 }
@@ -206,7 +209,13 @@ impl Tool for Sections {
                 Err(out) => return out,
             };
             match mobiquo::sections(&cx.app.fetch, &forum).await {
-                Ok(sections) => finish(render_sections(&sections)),
+                Ok(sections) => {
+                    let mut text = render_sections(&sections);
+                    if !forum.hint.is_empty() {
+                        text = format!("{} — {}\n\n{text}", forum.name, forum.hint);
+                    }
+                    finish(text)
+                }
                 Err(e) => Output::error(format!("{e:#}")),
             }
         })
@@ -489,6 +498,7 @@ mod tests {
         let list = vec![
             Forum {
                 name: "UnknownCheats".into(),
+                hint: "Game hacking and reverse engineering.".into(),
                 base_url: "https://www.unknowncheats.me/forum".into(),
                 username: Some("crow".into()),
                 ..Forum::default()
@@ -501,6 +511,7 @@ mod tests {
         ];
         let text = render_forums(&list);
         assert!(text.contains("UnknownCheats (www.unknowncheats.me) — logged in as crow"));
+        assert!(text.contains("  Game hacking and reverse engineering."));
         assert!(text.contains("Other (other.example) — guest"));
     }
 

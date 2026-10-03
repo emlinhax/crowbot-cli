@@ -38,7 +38,21 @@ pub fn load(paths: &Paths) -> Result<Vec<Forum>> {
     let sealed: Sealed = serde_json::from_str(&text).with_context(unreadable)?;
     let bytes = BASE64.decode(&sealed.blob).with_context(unreadable)?;
     let opened = io::secret::open(&sealed.scheme, &bytes).with_context(unreadable)?;
-    serde_json::from_slice(&opened).with_context(unreadable)
+    let mut forums: Vec<Forum> = serde_json::from_slice(&opened).with_context(unreadable)?;
+    enrich_hints(&mut forums);
+    Ok(forums)
+}
+
+/// Fill a stored forum's empty hint from a matching seed, so a forum added before hints existed
+/// still describes itself without being re-added (and losing its login).
+fn enrich_hints(forums: &mut [Forum]) {
+    for forum in forums.iter_mut().filter(|f| f.hint.is_empty()) {
+        if let Some(seed) = forums::data().seed.iter().find(|s| {
+            (!s.id.is_empty() && s.id == forum.id) || host(&s.base_url) == host(&forum.base_url)
+        }) {
+            forum.hint = seed.hint.clone();
+        }
+    }
 }
 
 fn save(paths: &Paths, forums: &[Forum]) -> Result<()> {
@@ -93,10 +107,18 @@ pub fn add(paths: &Paths, forum: Forum) -> Result<()> {
     }
     let mut list = load(paths)?;
     if let Some(slot) = list.iter_mut().find(|f| same(f, &forum)) {
-        let (cookies, username) = (slot.cookies.clone(), slot.username.clone());
+        let (cookies, username, hint) = (
+            slot.cookies.clone(),
+            slot.username.clone(),
+            slot.hint.clone(),
+        );
         *slot = forum;
         slot.cookies = cookies;
         slot.username = username;
+        // Keep a curated hint when the new source (e.g. the directory) gave none.
+        if slot.hint.is_empty() {
+            slot.hint = hint;
+        }
     } else {
         list.push(forum);
     }
@@ -157,6 +179,25 @@ mod tests {
             list.iter().any(|f| f.name == "UnknownCheats"),
             "the seed should enable UnknownCheats"
         );
+    }
+
+    #[test]
+    fn a_stored_forum_without_a_hint_gets_one_from_the_seed() {
+        let (_home, paths) = paths();
+        // Added before hints existed: same host as the seeded UnknownCheats, but no hint.
+        add(
+            &paths,
+            Forum {
+                name: "UnknownCheats".into(),
+                base_url: "https://www.unknowncheats.me/forum".into(),
+                mobiquo_dir: "x".into(),
+                kind: "mobiquo".into(),
+                ..Forum::default()
+            },
+        )
+        .unwrap();
+        let forum = get(&paths, "www.unknowncheats.me").unwrap().unwrap();
+        assert!(forum.hint.contains("hacking"), "{}", forum.hint);
     }
 
     #[test]
