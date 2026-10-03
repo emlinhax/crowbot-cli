@@ -2,7 +2,13 @@
   "type": "object",
   "properties": {
     "forum": { "type": "string", "description": "The forum's name or host" },
-    "section": { "type": "string", "description": "A section id from forum_sections" },
+    "section": {
+      "description": "A section id from forum_sections, or several to list at once",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ]
+    },
     "page": { "type": "integer", "description": "1-based page of topics; default 1" }
   },
   "required": ["forum", "section"]

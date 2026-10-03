@@ -93,12 +93,7 @@ pub fn header(tool: &str, arguments: &str, state: State<'_>) -> Line {
         .title
         .unwrap_or_default()
         .into_iter()
-        .filter_map(|key| {
-            at(&args, &key)
-                .as_str()
-                .map(|s| s.lines().next().unwrap_or_default().to_owned())
-                .filter(|s| !s.is_empty())
-        })
+        .filter_map(|key| arg_text(&at(&args, &key)))
         .collect();
     // With `title_join` several present args fold onto one line (a forum and its section or search
     // term); otherwise the first present one titles the card, as every other tool does.
@@ -175,6 +170,26 @@ fn body(tool: &str, result: &ToolResult, width: usize) -> Vec<Line> {
     }
 }
 
+/// A title arg as one short line: a string's first line, or a batch array as its items (a few, then
+/// `+N`); `None` when there is nothing to show.
+fn arg_text(value: &Value) -> Option<String> {
+    match value {
+        Value::String(s) => {
+            let line = s.lines().next().unwrap_or_default();
+            (!line.is_empty()).then(|| line.to_owned())
+        }
+        Value::Array(items) => {
+            let parts: Vec<&str> = items.iter().filter_map(Value::as_str).collect();
+            match parts.len() {
+                0 => None,
+                1..=3 => Some(parts.join(", ")),
+                n => Some(format!("{}, +{}", parts[..2].join(", "), n - 2)),
+            }
+        }
+        _ => None,
+    }
+}
+
 /// The value at a dotted path, `a.0.b`: keys, and indices into arrays.
 fn at(value: &Value, path: &str) -> Value {
     let mut value = value.clone();
@@ -248,6 +263,16 @@ mod tests {
         assert_eq!(
             thread.to_tagged(),
             "[done]● [/][bold]forum_thread[/] [muted]uc[/]"
+        );
+        // A batched call shows its ids on the one line.
+        let batched = header(
+            "forum_thread",
+            r#"{"forum":"uc","topic":["318822","318823"]}"#,
+            State::Done,
+        );
+        assert_eq!(
+            batched.to_tagged(),
+            "[done]● [/][bold]forum_thread[/] [muted]uc › 318822, 318823[/]"
         );
         // forum_search asks for one line only: no body.
         let card = finished(

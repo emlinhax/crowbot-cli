@@ -101,6 +101,55 @@ fn finish(text: String) -> Output {
     Output::ok(content)
 }
 
+/// One value or a list of them, so a tool arg takes a single id or a batch in one call.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Many {
+    One(String),
+    Set(Vec<String>),
+}
+
+impl Many {
+    /// The items, capped to the batch limit so one call cannot hammer a forum.
+    fn capped(self) -> Vec<String> {
+        let mut items = match self {
+            Self::One(s) => vec![s],
+            Self::Set(v) => v,
+        };
+        items.truncate(limits::get().forums.batch_max.value);
+        items
+    }
+}
+
+/// Run `each` over the items at once and stitch the results, labelling and inlining per-item
+/// errors so one bad id does not sink the batch. A single item gets no label or divider.
+async fn batch<F, Fut>(items: Vec<String>, label: impl Fn(&str) -> String, each: F) -> String
+where
+    F: Fn(String) -> Fut,
+    Fut: std::future::Future<Output = anyhow::Result<String>>,
+{
+    let solo = items.len() == 1;
+    let each = &each;
+    let runs = items
+        .into_iter()
+        .map(move |item| async move { (item.clone(), each(item).await) });
+    let mut out = String::new();
+    for (item, result) in futures_util::future::join_all(runs).await {
+        if !out.is_empty() {
+            out.push_str("\n\n───\n\n");
+        }
+        if !solo {
+            out.push_str(&label(&item));
+            out.push('\n');
+        }
+        match result {
+            Ok(text) => out.push_str(&text),
+            Err(e) => out.push_str(&format!("could not read {item}: {e:#}")),
+        }
+    }
+    out
+}
+
 fn render_forums(list: &[Forum]) -> String {
     if list.is_empty() {
         return TEXT.no_forums.clone();
@@ -237,7 +286,7 @@ static TOPICS: LazyLock<Spec> = LazyLock::new(|| {
 #[derive(Deserialize)]
 struct TopicsArgs {
     forum: String,
-    section: String,
+    section: Many,
 }
 
 impl Tool for Topics {
@@ -263,10 +312,18 @@ impl Tool for Topics {
                 Ok(f) => f,
                 Err(out) => return out,
             };
-            match mobiquo::topics(&cx.app.fetch, &forum, &parsed.section, page_of(&args)).await {
-                Ok(list) => finish(render_topics(&list)),
-                Err(e) => Output::error(format!("{e:#}")),
-            }
+            let page = page_of(&args);
+            let (fetch, forum) = (&cx.app.fetch, &forum);
+            let text = batch(
+                parsed.section.capped(),
+                |section| format!("Section {section}:"),
+                |section| async move {
+                    let list = mobiquo::topics(fetch, forum, &section, page).await?;
+                    Ok(render_topics(&list))
+                },
+            )
+            .await;
+            finish(text)
         })
     }
 }
@@ -286,7 +343,7 @@ static THREAD: LazyLock<Spec> = LazyLock::new(|| {
 #[derive(Deserialize)]
 struct ThreadArgs {
     forum: String,
-    topic: String,
+    topic: Many,
 }
 
 impl Tool for ThreadTool {
@@ -312,10 +369,18 @@ impl Tool for ThreadTool {
                 Ok(f) => f,
                 Err(out) => return out,
             };
-            match mobiquo::thread(&cx.app.fetch, &forum, &parsed.topic, page_of(&args)).await {
-                Ok(thread) => finish(render_thread(&thread)),
-                Err(e) => Output::error(format!("{e:#}")),
-            }
+            let page = page_of(&args);
+            let (fetch, forum) = (&cx.app.fetch, &forum);
+            let text = batch(
+                parsed.topic.capped(),
+                |topic| format!("Topic {topic}:"),
+                |topic| async move {
+                    let thread = mobiquo::thread(fetch, forum, &topic, page).await?;
+                    Ok(render_thread(&thread))
+                },
+            )
+            .await;
+            finish(text)
         })
     }
 }
@@ -335,7 +400,7 @@ static SEARCH: LazyLock<Spec> = LazyLock::new(|| {
 #[derive(Deserialize)]
 struct SearchArgs {
     forum: String,
-    query: String,
+    query: Many,
 }
 
 impl Tool for Search {
@@ -361,10 +426,18 @@ impl Tool for Search {
                 Ok(f) => f,
                 Err(out) => return out,
             };
-            match mobiquo::search(&cx.app.fetch, &forum, &parsed.query, page_of(&args)).await {
-                Ok(list) => finish(render_topics(&list)),
-                Err(e) => Output::error(format!("{e:#}")),
-            }
+            let page = page_of(&args);
+            let (fetch, forum) = (&cx.app.fetch, &forum);
+            let text = batch(
+                parsed.query.capped(),
+                |query| format!("\"{query}\":"),
+                |query| async move {
+                    let list = mobiquo::search(fetch, forum, &query, page).await?;
+                    Ok(render_topics(&list))
+                },
+            )
+            .await;
+            finish(text)
         })
     }
 }
@@ -547,6 +620,41 @@ mod tests {
         let text = render_topics(&list);
         assert!(text.contains("3 topics in total"));
         assert!(text.contains("[42] aimbot — crow (7 replies)"));
+    }
+
+    #[test]
+    fn a_batch_arg_caps_to_the_limit_and_a_single_stays_single() {
+        assert_eq!(Many::One("a".into()).capped(), ["a"]);
+        let many = Many::Set((0..50).map(|i| i.to_string()).collect());
+        assert_eq!(many.capped().len(), limits::get().forums.batch_max.value);
+    }
+
+    #[tokio::test]
+    async fn a_batch_labels_each_and_inlines_a_failure() {
+        let out = batch(
+            vec!["a".into(), "b".into()],
+            |x| format!("[{x}]"),
+            |x| async move {
+                if x == "b" {
+                    anyhow::bail!("nope")
+                } else {
+                    Ok(format!("ok {x}"))
+                }
+            },
+        )
+        .await;
+        assert!(out.contains("[a]\nok a"), "{out}");
+        assert!(out.contains("[b]\ncould not read b: nope"), "{out}");
+        assert!(out.contains("───"), "{out}");
+
+        // A single item carries no label or divider.
+        let solo = batch(
+            vec!["a".into()],
+            |x| format!("[{x}]"),
+            |x| async move { Ok(format!("ok {x}")) },
+        )
+        .await;
+        assert_eq!(solo, "ok a");
     }
 
     #[test]

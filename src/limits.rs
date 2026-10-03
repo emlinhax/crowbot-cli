@@ -138,6 +138,7 @@ pub struct UpdateLimits {
 #[serde(deny_unknown_fields)]
 pub struct ForumLimits {
     pub page_size: Limit<i64>,
+    pub batch_max: Limit<usize>,
 }
 
 #[derive(Debug, Deserialize)]
