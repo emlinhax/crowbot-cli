@@ -56,27 +56,27 @@ title = []
 body = "head"
 max_lines = 1
 
+# The forum tools fold to one line: the forum, then its section, topic or search term.
 [forum_sections]
 title = ["forum"]
-body = "head"
-max_lines = 8
+body = "none"
 
 [forum_topics]
-title = ["forum"]
-body = "head"
-max_lines = 8
+title = ["forum", "section"]
+title_join = " › "
+body = "none"
 
 [forum_thread]
-title = ["forum"]
-body = "head"
-max_lines = 8
+title = ["forum", "topic"]
+title_join = " › "
+body = "none"
 
 [forum_search]
-title = ["query"]
-body = "head"
-max_lines = 8
+title = ["forum", "query"]
+title_join = " · "
+body = "none"
 
 [forum_post]
-title = ["forum"]
-body = "head"
-max_lines = 6
+title = ["forum", "section", "topic"]
+title_join = " › "
+body = "none"

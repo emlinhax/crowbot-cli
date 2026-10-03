@@ -23,6 +23,9 @@ static CARDS: LazyLock<BTreeMap<String, Spec>> =
 struct Spec {
     #[serde(default)]
     title: Option<Vec<String>>,
+    /// When set, the header joins every present title arg with this, instead of showing the first.
+    #[serde(default)]
+    title_join: Option<String>,
     #[serde(default)]
     body: Option<Body>,
     #[serde(default)]
@@ -69,6 +72,7 @@ fn spec(tool: &str) -> Spec {
     let own = CARDS.get(tool).cloned().unwrap_or_default();
     Spec {
         title: own.title.or(default.title),
+        title_join: own.title_join.or(default.title_join),
         body: own.body.or(default.body),
         summary: own.summary.or(default.summary),
         max_lines: own.max_lines.or(default.max_lines),
@@ -84,11 +88,24 @@ pub fn header(tool: &str, arguments: &str, state: State<'_>) -> Line {
     let mut line = Line::styled(format!("{mark} "), Style::fg(role));
     line.push(tool, Style::default().bold());
     let args: Value = serde_json::from_str(arguments).unwrap_or(Value::Null);
-    let title = spec(tool)
+    let spec = spec(tool);
+    let present: Vec<String> = spec
         .title
         .unwrap_or_default()
-        .iter()
-        .find_map(|key| at(&args, key).as_str().map(str::to_owned));
+        .into_iter()
+        .filter_map(|key| {
+            at(&args, &key)
+                .as_str()
+                .map(|s| s.lines().next().unwrap_or_default().to_owned())
+                .filter(|s| !s.is_empty())
+        })
+        .collect();
+    // With `title_join` several present args fold onto one line (a forum and its section or search
+    // term); otherwise the first present one titles the card, as every other tool does.
+    let title = match spec.title_join {
+        Some(sep) => (!present.is_empty()).then(|| present.join(&sep)),
+        None => present.into_iter().next(),
+    };
     if let Some(title) = title {
         line.push(" ", Style::default());
         line.push(title.lines().next().unwrap_or_default(), Style::fg("muted"));
@@ -213,6 +230,33 @@ mod tests {
                 "{tool} in data/tool_cards.toml is not a tool"
             );
         }
+    }
+
+    #[test]
+    fn a_forum_call_folds_onto_one_header_line() {
+        let line = header(
+            "forum_search",
+            r#"{"forum":"unknowncheats","query":"aimbot"}"#,
+            State::Done,
+        );
+        assert_eq!(
+            line.to_tagged(),
+            "[done]● [/][bold]forum_search[/] [muted]unknowncheats · aimbot[/]"
+        );
+        // A missing arg is skipped, not shown as a gap.
+        let thread = header("forum_thread", r#"{"forum":"uc"}"#, State::Done);
+        assert_eq!(
+            thread.to_tagged(),
+            "[done]● [/][bold]forum_thread[/] [muted]uc[/]"
+        );
+        // forum_search asks for one line only: no body.
+        let card = finished(
+            "forum_search",
+            r#"{"forum":"uc","query":"x"}"#,
+            &result("[42] a topic\n[43] another", None, false),
+            60,
+        );
+        assert_eq!(card.len(), 1);
     }
 
     #[test]
