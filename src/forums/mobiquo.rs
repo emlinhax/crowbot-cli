@@ -168,6 +168,26 @@ fn topic_list(value: &Value) -> TopicList {
     }
 }
 
+/// How many posts a thread has, with a one-post fetch, so a caller can jump to the last page.
+pub async fn thread_total(fetch: &Fetch, forum: &Forum, topic_id: &str) -> Result<i64> {
+    let value = call(
+        fetch,
+        forum,
+        "get_thread",
+        &[
+            Arg::Str(topic_id.to_owned()),
+            Arg::Int(0),
+            Arg::Int(0),
+            Arg::Bool(false),
+        ],
+    )
+    .await?;
+    Ok(value
+        .get("total_post_num")
+        .and_then(Value::as_i64)
+        .unwrap_or(0))
+}
+
 pub async fn thread(fetch: &Fetch, forum: &Forum, topic_id: &str, page: i64) -> Result<Thread> {
     let (start, end) = span(page);
     let value = call(

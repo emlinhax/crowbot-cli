@@ -26,8 +26,15 @@
       ]
     },
     "page": {
-      "type": "integer",
-      "description": "1-based page of posts; default 1"
+      "description": "1-based page of posts, or \"last\" for the newest; default 1",
+      "oneOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        }
+      ]
     }
   },
   "required": [
