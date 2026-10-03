@@ -1,0 +1,1 @@
+Post to a forum as the logged-in user: a reply when `topic` is set, or a new topic when it is not (then `subject` is required). `section` is the board id from `forum_sections`; `body` is the message. The user is shown the exact text and must confirm before anything is sent, so write the final wording. Only works on a forum you are logged in to.

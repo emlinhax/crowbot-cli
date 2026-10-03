@@ -1,0 +1,550 @@
+//! The forum tools the model can call: browse sections, topics and threads, search, and post. All
+//! read-only ones are allowed by default; the posting one shows the user the exact text and waits
+//! for a yes every time, even in AUTO. Forum content is untrusted — the descriptions tell the model
+//! so, and nothing here acts on it automatically.
+
+use std::sync::LazyLock;
+
+use futures_util::future::BoxFuture;
+use serde::Deserialize;
+use serde_json::Value;
+
+use super::truncate::{self, Keep};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use crate::agent::prompt::{Prompt, Reply};
+use crate::forums::{Forum, Section, Thread, TopicList, mobiquo, store};
+use crate::limits;
+use crate::permission::gate::Ask;
+use crate::text::template::fill;
+use crate::tools::permissions;
+
+const TEXT_SRC: &str = include_str!("../../data/tools/forum.toml");
+
+static TEXT: LazyLock<Text> =
+    LazyLock::new(|| toml::from_str(TEXT_SRC).expect("data/tools/forum.toml is checked by tests"));
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Text {
+    no_forums: String,
+    unknown: String,
+    no_subject: String,
+    not_confirmed: String,
+    needs_user: String,
+    posted: String,
+    cut: String,
+}
+
+fn spec(name: &'static str, md: &'static str, schema: &str) -> Spec {
+    Spec::load(name, md, schema)
+}
+
+/// The host that a permission rule matches, found from the stored forum when possible.
+fn host_for(cx: &ToolCx<'_>, key: &str) -> String {
+    if key.is_empty() {
+        return "*".to_owned();
+    }
+    store::get(&cx.app.paths, key)
+        .ok()
+        .flatten()
+        .map(|f| forum_host(&f))
+        .unwrap_or_else(|| key.to_lowercase())
+}
+
+fn forum_host(forum: &Forum) -> String {
+    url::Url::parse(&forum.base_url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
+        .unwrap_or_else(|| forum.name.to_lowercase())
+}
+
+/// Find the forum `key` names, or an error the model can act on.
+fn resolve(cx: &ToolCx<'_>, key: &str) -> Result<Forum, Output> {
+    match store::get(&cx.app.paths, key) {
+        Ok(Some(forum)) => Ok(forum),
+        Ok(None) => {
+            let list = store::load(&cx.app.paths).unwrap_or_default();
+            Err(Output::error(if list.is_empty() {
+                TEXT.no_forums.clone()
+            } else {
+                fill(&TEXT.unknown, &[("forum", key)])
+            }))
+        }
+        Err(e) => Err(Output::error(format!("{e:#}"))),
+    }
+}
+
+fn page_of(args: &Value) -> i64 {
+    args.get("page").and_then(Value::as_i64).unwrap_or(1).max(1)
+}
+
+/// Cut long output to the tool limits, noting when it was trimmed.
+fn finish(text: String) -> Output {
+    let limits = &limits::get().tools;
+    let cut = truncate::cut(
+        &text,
+        Keep::Head,
+        limits.max_lines.value,
+        limits.max_bytes.value,
+    );
+    let mut content = cut.text.clone();
+    if cut.truncated() {
+        content.push_str("\n\n");
+        content.push_str(&fill(
+            &TEXT.cut,
+            &[
+                ("kept", &cut.kept_lines.to_string()),
+                ("total", &cut.total_lines.to_string()),
+            ],
+        ));
+    }
+    Output::ok(content)
+}
+
+fn render_forums(list: &[Forum]) -> String {
+    if list.is_empty() {
+        return TEXT.no_forums.clone();
+    }
+    let mut out = String::from("Forums you can browse:\n");
+    for f in list {
+        let who = match &f.username {
+            Some(user) => format!("logged in as {user}"),
+            None => "guest".to_owned(),
+        };
+        out.push_str(&format!("- {} ({}) — {who}\n", f.name, forum_host(f)));
+    }
+    out
+}
+
+fn render_sections(sections: &[Section]) -> String {
+    if sections.is_empty() {
+        return "No sections.".to_owned();
+    }
+    let mut out = String::new();
+    for s in sections {
+        let indent = "  ".repeat(s.depth);
+        let tail = if s.sub_only { "  (heading)" } else { "" };
+        out.push_str(&format!("{indent}[{}] {}{tail}\n", s.id, s.name));
+    }
+    out
+}
+
+fn render_topics(list: &TopicList) -> String {
+    if list.topics.is_empty() {
+        return "No topics.".to_owned();
+    }
+    let mut out = String::new();
+    if let Some(total) = list.total {
+        out.push_str(&format!("{total} topics in total.\n"));
+    }
+    for t in &list.topics {
+        out.push_str(&format!(
+            "[{}] {} — {} ({} replies)\n",
+            t.id, t.title, t.author, t.replies
+        ));
+    }
+    out
+}
+
+fn render_thread(thread: &Thread) -> String {
+    let mut out = thread.title.clone();
+    if let Some(total) = thread.total {
+        out.push_str(&format!(" ({total} posts)"));
+    }
+    out.push('\n');
+    for p in &thread.posts {
+        out.push_str(&format!("\n── #{} {} {}\n", p.id, p.author, p.time));
+        out.push_str(p.content.trim_end());
+        out.push('\n');
+    }
+    out
+}
+
+// --- forum_sections ---------------------------------------------------------
+
+pub struct Sections;
+
+static SECTIONS: LazyLock<Spec> = LazyLock::new(|| {
+    spec(
+        "forum_sections",
+        include_str!("../../data/tools/forum_sections.md"),
+        include_str!("../../data/tools/forum_sections.schema.json"),
+    )
+});
+
+#[derive(Deserialize)]
+struct SectionsArgs {
+    #[serde(default)]
+    forum: String,
+}
+
+impl Tool for Sections {
+    fn spec(&self) -> &Spec {
+        &SECTIONS
+    }
+
+    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+        let args: SectionsArgs = parse(args)?;
+        Ok(Check::new(vec![Ask::new(
+            permissions::FORUM.name,
+            host_for(cx, &args.forum),
+        )]))
+    }
+
+    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+        Box::pin(async move {
+            let args: SectionsArgs = match parse_or_fail(&args) {
+                Ok(a) => a,
+                Err(out) => return out,
+            };
+            if args.forum.is_empty() {
+                let list = store::load(&cx.app.paths).unwrap_or_default();
+                return finish(render_forums(&list));
+            }
+            let forum = match resolve(cx, &args.forum) {
+                Ok(f) => f,
+                Err(out) => return out,
+            };
+            match mobiquo::sections(&cx.app.fetch, &forum).await {
+                Ok(sections) => finish(render_sections(&sections)),
+                Err(e) => Output::error(format!("{e:#}")),
+            }
+        })
+    }
+}
+
+// --- forum_topics -----------------------------------------------------------
+
+pub struct Topics;
+
+static TOPICS: LazyLock<Spec> = LazyLock::new(|| {
+    spec(
+        "forum_topics",
+        include_str!("../../data/tools/forum_topics.md"),
+        include_str!("../../data/tools/forum_topics.schema.json"),
+    )
+});
+
+#[derive(Deserialize)]
+struct TopicsArgs {
+    forum: String,
+    section: String,
+}
+
+impl Tool for Topics {
+    fn spec(&self) -> &Spec {
+        &TOPICS
+    }
+
+    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+        let args: TopicsArgs = parse(args)?;
+        Ok(Check::new(vec![Ask::new(
+            permissions::FORUM.name,
+            host_for(cx, &args.forum),
+        )]))
+    }
+
+    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+        Box::pin(async move {
+            let parsed: TopicsArgs = match parse_or_fail(&args) {
+                Ok(a) => a,
+                Err(out) => return out,
+            };
+            let forum = match resolve(cx, &parsed.forum) {
+                Ok(f) => f,
+                Err(out) => return out,
+            };
+            match mobiquo::topics(&cx.app.fetch, &forum, &parsed.section, page_of(&args)).await {
+                Ok(list) => finish(render_topics(&list)),
+                Err(e) => Output::error(format!("{e:#}")),
+            }
+        })
+    }
+}
+
+// --- forum_thread -----------------------------------------------------------
+
+pub struct ThreadTool;
+
+static THREAD: LazyLock<Spec> = LazyLock::new(|| {
+    spec(
+        "forum_thread",
+        include_str!("../../data/tools/forum_thread.md"),
+        include_str!("../../data/tools/forum_thread.schema.json"),
+    )
+});
+
+#[derive(Deserialize)]
+struct ThreadArgs {
+    forum: String,
+    topic: String,
+}
+
+impl Tool for ThreadTool {
+    fn spec(&self) -> &Spec {
+        &THREAD
+    }
+
+    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+        let args: ThreadArgs = parse(args)?;
+        Ok(Check::new(vec![Ask::new(
+            permissions::FORUM.name,
+            host_for(cx, &args.forum),
+        )]))
+    }
+
+    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+        Box::pin(async move {
+            let parsed: ThreadArgs = match parse_or_fail(&args) {
+                Ok(a) => a,
+                Err(out) => return out,
+            };
+            let forum = match resolve(cx, &parsed.forum) {
+                Ok(f) => f,
+                Err(out) => return out,
+            };
+            match mobiquo::thread(&cx.app.fetch, &forum, &parsed.topic, page_of(&args)).await {
+                Ok(thread) => finish(render_thread(&thread)),
+                Err(e) => Output::error(format!("{e:#}")),
+            }
+        })
+    }
+}
+
+// --- forum_search -----------------------------------------------------------
+
+pub struct Search;
+
+static SEARCH: LazyLock<Spec> = LazyLock::new(|| {
+    spec(
+        "forum_search",
+        include_str!("../../data/tools/forum_search.md"),
+        include_str!("../../data/tools/forum_search.schema.json"),
+    )
+});
+
+#[derive(Deserialize)]
+struct SearchArgs {
+    forum: String,
+    query: String,
+}
+
+impl Tool for Search {
+    fn spec(&self) -> &Spec {
+        &SEARCH
+    }
+
+    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+        let args: SearchArgs = parse(args)?;
+        Ok(Check::new(vec![Ask::new(
+            permissions::FORUM.name,
+            host_for(cx, &args.forum),
+        )]))
+    }
+
+    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+        Box::pin(async move {
+            let parsed: SearchArgs = match parse_or_fail(&args) {
+                Ok(a) => a,
+                Err(out) => return out,
+            };
+            let forum = match resolve(cx, &parsed.forum) {
+                Ok(f) => f,
+                Err(out) => return out,
+            };
+            match mobiquo::search(&cx.app.fetch, &forum, &parsed.query, page_of(&args)).await {
+                Ok(list) => finish(render_topics(&list)),
+                Err(e) => Output::error(format!("{e:#}")),
+            }
+        })
+    }
+}
+
+// --- forum_post -------------------------------------------------------------
+
+pub struct Post;
+
+static POST: LazyLock<Spec> = LazyLock::new(|| {
+    spec(
+        "forum_post",
+        include_str!("../../data/tools/forum_post.md"),
+        include_str!("../../data/tools/forum_post.schema.json"),
+    )
+});
+
+#[derive(Deserialize)]
+struct PostArgs {
+    forum: String,
+    section: String,
+    #[serde(default)]
+    topic: Option<String>,
+    #[serde(default)]
+    subject: Option<String>,
+    body: String,
+}
+
+impl Post {
+    /// What the user sees before anything is sent.
+    fn preview(forum: &Forum, args: &PostArgs) -> String {
+        match &args.topic {
+            Some(topic) => format!(
+                "Reply to topic {topic} on {} as {}:\n\n{}",
+                forum.name,
+                forum.username.as_deref().unwrap_or("?"),
+                args.body
+            ),
+            None => format!(
+                "New topic on {} as {}\nSubject: {}\n\n{}",
+                forum.name,
+                forum.username.as_deref().unwrap_or("?"),
+                args.subject.as_deref().unwrap_or(""),
+                args.body
+            ),
+        }
+    }
+}
+
+impl Tool for Post {
+    fn spec(&self) -> &Spec {
+        &POST
+    }
+
+    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+        let args: PostArgs = parse(args)?;
+        if args.topic.is_none() && args.subject.as_deref().unwrap_or("").trim().is_empty() {
+            return Err(Refusal::InvalidArgs(TEXT.no_subject.clone()));
+        }
+        Ok(Check::new(vec![Ask::new(
+            permissions::FORUM_POST.name,
+            host_for(cx, &args.forum),
+        )]))
+    }
+
+    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+        Box::pin(async move {
+            let parsed: PostArgs = match parse_or_fail(&args) {
+                Ok(a) => a,
+                Err(out) => return out,
+            };
+            let forum = match resolve(cx, &parsed.forum) {
+                Ok(f) => f,
+                Err(out) => return out,
+            };
+
+            // Confirm with the user every time, whatever the mode; a headless run cannot, so it
+            // refuses rather than posting unattended.
+            let prompt = Prompt::Permission {
+                tool: "forum_post".to_owned(),
+                asks: vec![Ask::new(permissions::FORUM_POST.name, forum_host(&forum))],
+                preview: Some(Self::preview(&forum, &parsed)),
+            };
+            match cx.ask(prompt).await {
+                Some(Reply::Yes) => {}
+                Some(Reply::Unavailable) => return Output::error(TEXT.needs_user.clone()),
+                _ => return Output::error(TEXT.not_confirmed.clone()),
+            }
+
+            let result = match &parsed.topic {
+                Some(topic) => {
+                    mobiquo::reply(&cx.app.fetch, &forum, &parsed.section, topic, &parsed.body)
+                        .await
+                }
+                None => {
+                    let subject = parsed.subject.as_deref().unwrap_or("");
+                    mobiquo::new_topic(
+                        &cx.app.fetch,
+                        &forum,
+                        &parsed.section,
+                        subject,
+                        &parsed.body,
+                    )
+                    .await
+                }
+            };
+            match result {
+                Ok(posted) => {
+                    let extra = posted
+                        .url
+                        .map(|u| format!(" {u}"))
+                        .or_else(|| posted.id.map(|id| format!(" (post {id})")))
+                        .unwrap_or_default();
+                    Output::ok(fill(
+                        &TEXT.posted,
+                        &[("forum", &forum.name), ("extra", &extra)],
+                    ))
+                }
+                Err(e) => Output::error(format!("{e:#}")),
+            }
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::forums::{Post as ForumPost, Topic};
+
+    #[test]
+    fn forums_render_with_their_login_state() {
+        let list = vec![
+            Forum {
+                name: "UnknownCheats".into(),
+                base_url: "https://www.unknowncheats.me/forum".into(),
+                username: Some("crow".into()),
+                ..Forum::default()
+            },
+            Forum {
+                name: "Other".into(),
+                base_url: "https://other.example".into(),
+                ..Forum::default()
+            },
+        ];
+        let text = render_forums(&list);
+        assert!(text.contains("UnknownCheats (www.unknowncheats.me) — logged in as crow"));
+        assert!(text.contains("Other (other.example) — guest"));
+    }
+
+    #[test]
+    fn a_thread_renders_each_post() {
+        let thread = Thread {
+            title: "Hi".into(),
+            total: Some(2),
+            posts: vec![ForumPost {
+                id: "5".into(),
+                author: "crow".into(),
+                time: "2026".into(),
+                content: "body".into(),
+            }],
+        };
+        let text = render_thread(&thread);
+        assert!(text.contains("Hi (2 posts)"));
+        assert!(text.contains("── #5 crow 2026"));
+        assert!(text.contains("body"));
+    }
+
+    #[test]
+    fn topics_note_the_total_and_each_id() {
+        let list = TopicList {
+            total: Some(3),
+            topics: vec![Topic {
+                id: "42".into(),
+                title: "aimbot".into(),
+                author: "crow".into(),
+                replies: 7,
+            }],
+        };
+        let text = render_topics(&list);
+        assert!(text.contains("3 topics in total"));
+        assert!(text.contains("[42] aimbot — crow (7 replies)"));
+    }
+
+    #[test]
+    fn a_new_topic_without_a_subject_is_rejected() {
+        let project = crate::tools::testing::Project::new();
+        let args = serde_json::json!({"forum": "x", "section": "1", "body": "hi"});
+        match Post.check(&args, &project.cx()) {
+            Err(Refusal::InvalidArgs(_)) => {}
+            _ => panic!("a new topic with no subject should be rejected"),
+        }
+    }
+}

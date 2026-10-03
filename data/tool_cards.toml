@@ -55,3 +55,28 @@ max_lines = 9
 title = []
 body = "head"
 max_lines = 1
+
+[forum_sections]
+title = ["forum"]
+body = "head"
+max_lines = 8
+
+[forum_topics]
+title = ["forum"]
+body = "head"
+max_lines = 8
+
+[forum_thread]
+title = ["forum"]
+body = "head"
+max_lines = 8
+
+[forum_search]
+title = ["query"]
+body = "head"
+max_lines = 8
+
+[forum_post]
+title = ["forum"]
+body = "head"
+max_lines = 6

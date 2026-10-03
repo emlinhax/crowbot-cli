@@ -5,6 +5,7 @@ mod codesearch;
 mod edit;
 mod edit_match;
 pub mod files;
+mod forum;
 mod glob;
 mod grep;
 pub mod permissions;
@@ -185,6 +186,11 @@ impl Registry {
             Arc::new(glob::Glob),
             Arc::new(grep::Grep),
             Arc::new(webfetch::WebFetch),
+            Arc::new(forum::Sections),
+            Arc::new(forum::Topics),
+            Arc::new(forum::ThreadTool),
+            Arc::new(forum::Search),
+            Arc::new(forum::Post),
             Arc::new(codesearch::CodeSearch),
             Arc::new(todowrite::TodoWrite),
             Arc::new(question::Question),

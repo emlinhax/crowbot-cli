@@ -1,0 +1,1 @@
+Search one forum for topics matching `query`. Most forums only allow search when logged in; if you are browsing as a guest the forum will say so, and the user can log in with /forums. Returns matching topics with their ids for `forum_thread`.

@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "forum": { "type": "string", "description": "The forum's name or host" },
+    "topic": { "type": "string", "description": "A topic id from forum_topics or forum_search" },
+    "page": { "type": "integer", "description": "1-based page of posts; default 1" }
+  },
+  "required": ["forum", "topic"]
+}
