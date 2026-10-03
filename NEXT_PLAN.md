@@ -182,3 +182,26 @@ interstitial passed off as the article. The API stays on reqwest.
   release offers to install itself (user PATH in the registry, Apps & Features entry).
 - Open: signing (minisign for updates, Authenticode and notarisation for SmartScreen and
   Gatekeeper), Intel macOS and arm64 Linux targets, a website installer script.
+
+## M8 — Forums (Tapatalk/mobiquo)
+- Added 2026-10-03: crowbot browses forums that run the Tapatalk plugin. Transport rides
+  `io::fetch` (cffetch's browser TLS, so a Cloudflare WAF that blocks reqwest lets it through);
+  `src/forums/` holds a lenient XML-RPC codec (tolerates the server's dropped `</member>`), the
+  mobiquo backend, Tapatalk directory discovery/resolve, and a sealed store seeded with
+  UnknownCheats. Agent tools: `forum_sections` / `forum_topics` / `forum_thread` / `forum_search`
+  (read, default-allow) and `forum_post` (reply or new topic, confirmed every time even in AUTO,
+  refused headless). `/forums` and `crowbot forums` add, log in (hidden password, never stored),
+  list, logout and remove.
+- Verified by unit tests at every layer against in-process fakes (transport POST/cookies, codec
+  incl. malformed XML and faults, backend against a fake mobiquo, directory against a fake
+  directory, store round-trip, tool rendering, command parsing). Protocol facts came from a live
+  capture (`HANDOFF.md`) but have not yet been re-run live from this build.
+- Open:
+  - a live smoke run against UnknownCheats: confirm `search`/`reply_post`/`new_topic` param shapes
+    and that cffetch clears the WAF (the mobiquo dir can rotate — re-resolve on a 404);
+  - an e2e scenario driving a forum tool through the agent loop (needs a test-only directory URL
+    override and fake mobiquo/directory routes on the fake server, or a seedable unsealed store);
+  - the scrollable discovery picker in-session ("like /models"), using `[[suggest]]` in
+    `data/forums.toml` — today discovery is `forums add <query>` resolving the top match;
+  - prompt-injection hardening of forum content, cookie-expiry refresh, per-forum rate limiting,
+    and more backends (Discourse's JSON API, a plain-HTML reader) behind the same `kind` switch.

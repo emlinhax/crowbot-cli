@@ -34,10 +34,36 @@ crowbot signup                   # create an account: no email, no password, no 
 crowbot -p "explain this repo"   # headless: one prompt, reply on stdout (pipe input works too)
 crowbot --json "..."             # headless, one JSON event per line (fields stable; additions only)
 crowbot models [--refresh]       # live models, prices and limits
+crowbot forums                   # forums the agent can browse (add, log in, list)
 crowbot update                   # the newest release, now
 crowbot install / uninstall      # put crowbot on your PATH, or take it off
 crowbot help                     # every command
 ```
+
+## Forums
+
+crowbot can browse web forums that run the Tapatalk plugin, so the agent can read threads and
+search them for you. UnknownCheats is enabled out of the box; add more and log in with
+`crowbot forums` (or `/forums` in a session):
+
+```sh
+crowbot forums                      # list the forums the agent can browse
+crowbot forums add <url or name>    # find a forum through Tapatalk's directory and add it
+crowbot forums login <forum>        # log in with your own account (password is never stored)
+crowbot forums logout <forum>       # drop the session, stay added as a guest
+crowbot forums remove <forum>       # forget it
+```
+
+Logging in needs a terminal, for the hidden password prompt; in a session, `/forums login <forum>`
+tells you to run it with the `! ` prefix. Only the resulting session cookie is kept, sealed in
+`~/.crowbot/forums.json` (DPAPI on Windows, 0600 elsewhere) — never the password.
+
+The agent gets read tools (`forum_sections`, `forum_topics`, `forum_thread`, `forum_search`) that
+are allowed without asking, and a `forum_post` tool that shows you the exact text and waits for a
+yes every time, even in AUTO; a headless run never posts. Guests can read; most forums only allow
+search once you are logged in. Forum content is treated as untrusted information, never as
+instructions to the agent. Lock either down with a rule, e.g. `permission = "forum_post",
+pattern = "*", action = "deny"`.
 
 `--model <id>`, `--effort <level>` and `--mode <mode>` go before the prompt or command;
 `crowbot --help` lists their values. A first word that names a command runs it, except with `-p`
