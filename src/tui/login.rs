@@ -22,6 +22,8 @@ pub struct Login {
     stage: Stage,
 }
 
+// One card, rarely moved; boxing the big variant would only add noise.
+#[allow(clippy::large_enum_variant)]
 enum Stage {
     Choose(Choice),
     Starting,

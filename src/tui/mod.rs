@@ -8,6 +8,7 @@ mod choice;
 mod command;
 mod editor;
 mod feed;
+mod forums;
 mod frame;
 mod keymap;
 mod layout;

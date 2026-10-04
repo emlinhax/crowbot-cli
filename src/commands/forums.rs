@@ -3,7 +3,8 @@ use std::sync::LazyLock;
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
-use super::{Command, Ctx, Outcome, Scope, Spec};
+use super::{Command, Ctx, Effect, Outcome, Scope, Spec};
+use crate::app::App;
 use crate::forums::{self, Forum, directory, mobiquo, store};
 use crate::io::term;
 use crate::text::template::fill;
@@ -30,7 +31,6 @@ struct Text {
     row_login: String,
     added: String,
     not_found: String,
-    needs_terminal: String,
     cancelled: String,
     logged_in: String,
     logged_out: String,
@@ -54,15 +54,22 @@ impl Command for Forums {
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             let words: Vec<&str> = args.iter().map(String::as_str).collect();
+            let session = cx.scope == Scope::Session;
             let text = match words.as_slice() {
+                // In a session the list is a card to act on; `list` still prints it.
+                [] if session => return Ok(card(None)),
                 [] | ["list"] => list(cx),
                 ["add"] => add_hint(cx),
                 ["add", rest @ ..] => add(cx, &rest.join(" ")).await?,
-                ["login", forum] => login(cx, forum).await?,
-                ["logout", forum] => toggle(cx, forum, store::logout, &TEXT.logged_out)?,
-                ["remove", forum] => toggle(cx, forum, store::remove, &TEXT.removed)?,
-                ["search", forum, rest @ ..] if !rest.is_empty() => {
-                    search(cx, forum, &rest.join(" ")).await?
+                ["login", key] if session => {
+                    let forum = find_or_add(cx, key).await?;
+                    return Ok(card(Some(forum.base_url)));
+                }
+                ["login", key] => login(cx, key).await?,
+                ["logout", key] => act(cx, key, sign_out)?,
+                ["remove", key] => act(cx, key, forget)?,
+                ["search", key, rest @ ..] if !rest.is_empty() => {
+                    search(cx, key, &rest.join(" ")).await?
                 }
                 _ => return Err(cx.usage(&SPEC)),
             };
@@ -71,11 +78,11 @@ impl Command for Forums {
     }
 }
 
-fn host(forum: &Forum) -> String {
-    url::Url::parse(&forum.base_url)
-        .ok()
-        .and_then(|u| u.host_str().map(str::to_owned))
-        .unwrap_or_else(|| forum.name.to_lowercase())
+fn card(login: Option<String>) -> Outcome {
+    Outcome {
+        text: String::new(),
+        effects: vec![Effect::Forums { login }],
+    }
 }
 
 fn list(cx: &Ctx<'_>) -> String {
@@ -92,9 +99,9 @@ fn list(cx: &Ctx<'_>) -> String {
         out.push_str(&match &f.username {
             Some(user) => fill(
                 &TEXT.row_login,
-                &[("name", &f.name), ("host", &host(f)), ("user", user)],
+                &[("name", &f.name), ("host", &f.host()), ("user", user)],
             ),
-            None => fill(&TEXT.row_guest, &[("name", &f.name), ("host", &host(f))]),
+            None => fill(&TEXT.row_guest, &[("name", &f.name), ("host", &f.host())]),
         });
         if !f.hint.is_empty() {
             out.push_str(&format!("\n    {}", f.hint));
@@ -118,37 +125,41 @@ fn add_hint(cx: &Ctx<'_>) -> String {
 
 async fn add(cx: &Ctx<'_>, query: &str) -> anyhow::Result<String> {
     let forum = directory::resolve(&cx.app.fetch, query).await?;
-    store::add(&cx.app.paths, forum.clone())?;
+    keep(cx.app, cx.scope, forum)
+}
+
+/// Stores a forum the directory found, and says how to log in to it.
+pub fn keep(app: &App, scope: Scope, forum: Forum) -> anyhow::Result<String> {
+    store::add(&app.paths, forum.clone())?;
     Ok(fill(
         &TEXT.added,
         &[
             ("name", &forum.name),
-            ("host", &host(&forum)),
+            ("host", &forum.host()),
             (
                 "login",
-                &cx.scope.invoke(&format!("forums login {}", forum.name)),
+                &scope.invoke(&format!("forums login {}", forum.name)),
             ),
         ],
     ))
 }
 
-async fn login(cx: &Ctx<'_>, key: &str) -> anyhow::Result<String> {
-    if cx.scope == Scope::Session {
-        return Ok(fill(&TEXT.needs_terminal, &[("forum", key)]));
+/// The stored forum `key` names, added from the directory first when it is only named, so there
+/// is an endpoint to log in to.
+async fn find_or_add(cx: &Ctx<'_>, key: &str) -> anyhow::Result<Forum> {
+    if let Some(forum) = store::get(&cx.app.paths, key)? {
+        return Ok(forum);
     }
+    let forum = directory::resolve(&cx.app.fetch, key).await?;
+    store::add(&cx.app.paths, forum.clone())?;
+    Ok(forum)
+}
+
+async fn login(cx: &Ctx<'_>, key: &str) -> anyhow::Result<String> {
     if !term::stdin_is_terminal() {
         anyhow::bail!("logging in needs a terminal");
     }
-    // Add the forum first if it is only named, so there is an endpoint to log in to.
-    let forum = match store::get(&cx.app.paths, key)? {
-        Some(forum) => forum,
-        None => {
-            let forum = directory::resolve(&cx.app.fetch, key).await?;
-            store::add(&cx.app.paths, forum.clone())?;
-            forum
-        }
-    };
-
+    let forum = find_or_add(cx, key).await?;
     term::out(&fill(&TEXT.username_prompt, &[("name", &forum.name)]));
     let user = term::read_line()?.unwrap_or_default();
     if user.trim().is_empty() {
@@ -158,26 +169,44 @@ async fn login(cx: &Ctx<'_>, key: &str) -> anyhow::Result<String> {
         Some(password) if !password.is_empty() => password,
         _ => return Ok(TEXT.cancelled.clone()),
     };
+    sign_in(cx.app, &forum, user.trim(), &password).await
+}
 
-    let login = mobiquo::login(&cx.app.fetch, &forum, user.trim(), &password).await?;
-    store::set_login(&cx.app.paths, &forum.base_url, login.clone())?;
+/// Logs in with the user's own account, keeping only the session cookies the forum hands back.
+pub async fn sign_in(
+    app: &App,
+    forum: &Forum,
+    user: &str,
+    password: &str,
+) -> anyhow::Result<String> {
+    let login = mobiquo::login(&app.fetch, forum, user, password).await?;
+    let user = login.username.clone();
+    store::set_login(&app.paths, &forum.base_url, login)?;
     Ok(fill(
         &TEXT.logged_in,
-        &[("name", &forum.name), ("user", &login.username)],
+        &[("name", &forum.name), ("user", &user)],
     ))
 }
 
-fn toggle(
+pub fn sign_out(app: &App, forum: &Forum) -> anyhow::Result<String> {
+    store::logout(&app.paths, &forum.base_url)?;
+    Ok(fill(&TEXT.logged_out, &[("name", &forum.name)]))
+}
+
+pub fn forget(app: &App, forum: &Forum) -> anyhow::Result<String> {
+    store::remove(&app.paths, &forum.base_url)?;
+    Ok(fill(&TEXT.removed, &[("name", &forum.name)]))
+}
+
+fn act(
     cx: &Ctx<'_>,
     key: &str,
-    act: fn(&crate::paths::Paths, &str) -> anyhow::Result<bool>,
-    done: &str,
+    act: fn(&App, &Forum) -> anyhow::Result<String>,
 ) -> anyhow::Result<String> {
-    let Some(forum) = store::get(&cx.app.paths, key)? else {
-        return Ok(not_found(cx, key));
-    };
-    act(&cx.app.paths, key)?;
-    Ok(fill(done, &[("name", &forum.name)]))
+    match store::get(&cx.app.paths, key)? {
+        Some(forum) => act(cx.app, &forum),
+        None => Ok(not_found(cx, key)),
+    }
 }
 
 async fn search(cx: &Ctx<'_>, key: &str, query: &str) -> anyhow::Result<String> {

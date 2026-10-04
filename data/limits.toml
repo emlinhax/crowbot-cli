@@ -250,6 +250,10 @@ reason = "the command popup lists this many before it scrolls; the editor stays 
 value = 1500
 reason = "long enough to read one word, gone before it hides anything for long"
 
+[forums.directory_results]
+value = 10
+reason = "forums a directory search offers to pick from; past this the search words need narrowing, not a longer list"
+
 [forums.batch_max]
 value = 8
 reason = "threads, topic pages or searches fetched in one batched forum tool call, run at once; enough to be useful without hammering the forum"

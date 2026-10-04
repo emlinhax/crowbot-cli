@@ -139,6 +139,7 @@ pub struct UpdateLimits {
 pub struct ForumLimits {
     pub page_size: Limit<i64>,
     pub batch_max: Limit<usize>,
+    pub directory_results: Limit<i64>,
 }
 
 #[derive(Debug, Deserialize)]

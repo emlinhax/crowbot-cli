@@ -3,7 +3,7 @@
 
 mod copy;
 mod effort;
-mod forums;
+pub mod forums;
 mod help;
 mod init;
 mod install;
@@ -165,6 +165,11 @@ pub enum Effect {
     /// Open the session's model picker, after fetching a fresh list when asked.
     PickModel {
         refresh: bool,
+    },
+    /// Open the session's forums card, at the login for the forum with this base URL when one
+    /// was named.
+    Forums {
+        login: Option<String>,
     },
 }
 

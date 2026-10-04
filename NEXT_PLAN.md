@@ -192,6 +192,12 @@ interstitial passed off as the article. The API stays on reqwest.
   (read, default-allow) and `forum_post` (reply or new topic, confirmed every time even in AUTO,
   refused headless). `/forums` and `crowbot forums` add, log in (hidden password, never stored),
   list, logout and remove.
+- 2026-10-04: in a session `/forums` is a card (`src/tui/forums.rs`): the list, a menu per forum
+  (log in / log out / remove), login as a username then a dots-only password, and an add flow that
+  offers the `[[suggest]]` searches not yet added, or the user's own words, and picks from what
+  the directory found. Its network and store work shares the login card's job slot, so closing
+  either card drops what it waited on. e2e: a pty test logs in to a fake forum seeded into a plain
+  sealed store, wrong password first, and checks that no file holds the password.
 - Verified by unit tests at every layer against in-process fakes (transport POST/cookies, codec
   incl. malformed XML and faults, backend against a fake mobiquo, directory against a fake
   directory, store round-trip, tool rendering, command parsing). Protocol facts came from a live
@@ -199,9 +205,8 @@ interstitial passed off as the article. The API stays on reqwest.
 - Open:
   - a live smoke run against UnknownCheats: confirm `search`/`reply_post`/`new_topic` param shapes
     and that cffetch clears the WAF (the mobiquo dir can rotate — re-resolve on a 404);
-  - an e2e scenario driving a forum tool through the agent loop (needs a test-only directory URL
-    override and fake mobiquo/directory routes on the fake server, or a seedable unsealed store);
-  - the scrollable discovery picker in-session ("like /models"), using `[[suggest]]` in
-    `data/forums.toml` — today discovery is `forums add <query>` resolving the top match;
+  - an e2e scenario driving a forum tool through the agent loop (a store seeded the way the
+    `/forums` pty test seeds it, plus fake mobiquo routes for the read calls);
+  - a live run of the card's directory search (the add flow is unit-tested against fakes only);
   - prompt-injection hardening of forum content, cookie-expiry refresh, per-forum rate limiting,
     and more backends (Discourse's JSON API, a plain-HTML reader) behind the same `kind` switch.

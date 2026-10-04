@@ -78,6 +78,16 @@ pub struct Forum {
     pub username: Option<String>,
 }
 
+impl Forum {
+    /// The host it lives on, for display; its name when the URL has none.
+    pub fn host(&self) -> String {
+        url::Url::parse(&self.base_url)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_owned))
+            .unwrap_or_else(|| self.name.to_lowercase())
+    }
+}
+
 fn php() -> String {
     "php".to_owned()
 }

@@ -54,9 +54,10 @@ crowbot forums logout <forum>       # drop the session, stay added as a guest
 crowbot forums remove <forum>       # forget it
 ```
 
-Logging in needs a terminal, for the hidden password prompt; in a session, `/forums login <forum>`
-tells you to run it with the `! ` prefix. Only the resulting session cookie is kept, sealed in
-`~/.crowbot/forums.json` (DPAPI on Windows, 0600 elsewhere) — never the password.
+In a session, `/forums` opens the list as a card: pick a forum to log in (username, then a hidden
+password), log out or remove it, or add one from Tapatalk's directory through the last row.
+`/forums login <forum>` opens it straight at that forum's login. Only the resulting session cookie
+is kept, sealed in `~/.crowbot/forums.json` (DPAPI on Windows, 0600 elsewhere) — never the password.
 
 The agent gets read tools (`forum_sections`, `forum_topics`, `forum_thread`, `forum_search`) that
 are allowed without asking, and a `forum_post` tool that shows you the exact text and waits for a
