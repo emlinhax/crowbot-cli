@@ -210,3 +210,28 @@ interstitial passed off as the article. The API stays on reqwest.
   - a live run of the card's directory search (the add flow is unit-tested against fakes only);
   - prompt-injection hardening of forum content, cookie-expiry refresh, per-forum rate limiting,
     and more backends (Discourse's JSON API, a plain-HTML reader) behind the same `kind` switch.
+
+## M9 — Tool-use battery (planned 2026-10-05, not started)
+- Why: the basic tools (grep context/files/count, multi-path read, read depth, `fs`) and PLAN's
+  allowlist were chosen from habit, not data. Run a large set of realistic sessions against the
+  real model, record every tool call, and let the counts say which patterns to make faster or
+  easier: shell commands the model keeps writing, scripts it writes for basics, calls refused or
+  repeated, steps that always come in the same order.
+- Shape, each a verified step:
+  1. A task corpus as data (`bench/tasks/*.toml`): the prompt, a fixture repo (the existing
+     `tests/fixtures/projects/*`, plus a few small open-source repos pinned by commit), the mode
+     (AUTO for doing, PLAN for planning), a turn limit, and a check command that says whether the
+     task was done.
+  2. A runner (`make battery`, never in CI, like `make smoke`): each task headless
+     (`crowbot --json -p`) in a fresh copy of its repo, N at a time, with a spend cap in
+     `data/limits.toml` that stops the run. The session JSONL each run leaves is the record.
+  3. An analyzer over those JSONL files, unit-tested on the session fixtures: calls per tool;
+     bash by first word, first two words and flags; pipe filters; `python -c`, heredocs, awk and
+     sed programs (the scripts-for-basics smell); refused and declined calls, retries and doom
+     loops; the most common call sequences (n-grams); turns, tokens, cost and time per task;
+     task success from the check.
+  4. A report: each candidate change (a tool, a flag, an allowlist entry, a prompt line) with the
+     count behind it, and the battery re-run after a change to show it moved the numbers.
+- Open, for the user: which model(s) and effort, how many tasks and repeats per task (that sets
+  the spend), which outside repos, and whether to add a headless "approve and record" policy so
+  MANUAL's prompts can be measured too.
