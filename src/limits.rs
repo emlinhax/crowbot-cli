@@ -118,6 +118,7 @@ pub struct ToolLimits {
     pub read_batch_max: Limit<usize>,
     pub read_batch_bytes: Limit<usize>,
     pub list_depth_max: Limit<usize>,
+    pub fs_batch_max: Limit<usize>,
     pub list_entries: Limit<usize>,
     pub question_max: Limit<usize>,
     pub binary_sniff_bytes: Limit<usize>,

@@ -40,6 +40,12 @@ summary = [
   { count = "files", one = "{n} file", many = "{n} files" },
 ]
 
+[fs]
+title = ["action", "path", "to"]
+title_join = " · "
+body = "summary"
+summary = { count = "paths", one = "{n} path", many = "{n} paths" }
+
 [webfetch]
 body = "head"
 max_lines = 3

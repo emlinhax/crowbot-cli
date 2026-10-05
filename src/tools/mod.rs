@@ -6,6 +6,7 @@ mod edit;
 mod edit_match;
 pub mod files;
 mod forum;
+mod fs;
 mod glob;
 mod grep;
 mod many;
@@ -184,11 +185,13 @@ impl Registry {
             ),
             ("read_batch_max", limits.read_batch_max.value.to_string()),
             ("list_depth_max", limits.list_depth_max.value.to_string()),
+            ("fs_batch_max", limits.fs_batch_max.value.to_string()),
         ];
         let tools: Vec<Arc<dyn Tool>> = vec![
             Arc::new(read::Read),
             Arc::new(write::Write),
             Arc::new(edit::Edit),
+            Arc::new(fs::Fs),
             Arc::new(bash::Bash::new(shell)),
             Arc::new(glob::Glob),
             Arc::new(grep::Grep),

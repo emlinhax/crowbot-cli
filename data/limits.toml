@@ -146,6 +146,10 @@ reason = "a batched read stops adding files past three single reads' worth (~37k
 value = 5
 reason = "levels one directory listing goes down; deeper is a search, which glob does better"
 
+[tools.fs_batch_max]
+value = 50
+reason = "paths one fs call moves, copies or deletes; the permission card lists each, and past this it is a script's job"
+
 [tools.list_entries]
 value = 500
 reason = "a directory listing past this is better explored with glob"
