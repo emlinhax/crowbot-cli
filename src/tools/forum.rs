@@ -9,6 +9,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::Value;
 
+use super::many::{Many, join};
 use super::truncate::{self, Keep};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::agent::prompt::{Prompt, Reply};
@@ -154,25 +155,12 @@ impl Id {
     }
 }
 
-/// One value or a list of them, so a tool arg takes a single id or a batch in one call. Numbers are
-/// accepted too: models often send an id like `42` rather than `"42"`.
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum Many {
-    One(Id),
-    Set(Vec<Id>),
-}
-
-impl Many {
-    /// The items as strings, capped to the batch limit so one call cannot hammer a forum.
-    fn capped(self) -> Vec<String> {
-        let mut items = match self {
-            Self::One(id) => vec![id.into_string()],
-            Self::Set(v) => v.into_iter().map(Id::into_string).collect(),
-        };
-        items.truncate(limits::get().forums.batch_max.value);
-        items
-    }
+/// A batch arg's ids as strings, capped to the batch limit so one call cannot hammer a forum.
+fn capped(many: Many<Id>) -> Vec<String> {
+    many.capped(limits::get().forums.batch_max.value)
+        .into_iter()
+        .map(Id::into_string)
+        .collect()
 }
 
 /// Run `each` over the items at once and stitch the results, labelling and inlining per-item
@@ -182,26 +170,19 @@ where
     F: Fn(String) -> Fut,
     Fut: std::future::Future<Output = anyhow::Result<String>>,
 {
-    let solo = items.len() == 1;
     let each = &each;
     let runs = items
         .into_iter()
         .map(move |item| async move { (item.clone(), each(item).await) });
-    let mut out = String::new();
-    for (item, result) in futures_util::future::join_all(runs).await {
-        if !out.is_empty() {
-            out.push_str("\n\n───\n\n");
-        }
-        if !solo {
-            out.push_str(&label(&item));
-            out.push('\n');
-        }
-        match result {
-            Ok(text) => out.push_str(&text),
-            Err(e) => out.push_str(&format!("could not read {item}: {e:#}")),
-        }
-    }
-    out
+    let parts = futures_util::future::join_all(runs)
+        .await
+        .into_iter()
+        .map(|(item, result)| {
+            let text = result.unwrap_or_else(|e| format!("could not read {item}: {e:#}"));
+            (label(&item), text)
+        })
+        .collect();
+    join(parts)
 }
 
 fn render_forums(list: &[Forum]) -> String {
@@ -345,7 +326,7 @@ static TOPICS: LazyLock<Spec> = LazyLock::new(|| {
 #[derive(Deserialize)]
 struct TopicsArgs {
     forum: String,
-    section: Many,
+    section: Many<Id>,
 }
 
 impl Tool for Topics {
@@ -374,7 +355,7 @@ impl Tool for Topics {
             let page = page_of(&args);
             let (fetch, forum) = (&cx.app.fetch, &forum);
             let text = batch(
-                parsed.section.capped(),
+                capped(parsed.section),
                 |section| format!("Section {section}:"),
                 |section| async move {
                     let list = mobiquo::topics(fetch, forum, &section, page).await?;
@@ -402,7 +383,7 @@ static THREAD: LazyLock<Spec> = LazyLock::new(|| {
 #[derive(Deserialize)]
 struct ThreadArgs {
     forum: String,
-    topic: Many,
+    topic: Many<Id>,
 }
 
 impl Tool for ThreadTool {
@@ -431,7 +412,7 @@ impl Tool for ThreadTool {
             let want = page_pref(&args);
             let (fetch, forum) = (&cx.app.fetch, &forum);
             let text = batch(
-                parsed.topic.capped(),
+                capped(parsed.topic),
                 |topic| format!("Topic {topic}:"),
                 |topic| async move {
                     // "last" needs the length first; a one-post probe gets it cheaply.
@@ -464,7 +445,7 @@ static SEARCH: LazyLock<Spec> = LazyLock::new(|| {
 #[derive(Deserialize)]
 struct SearchArgs {
     forum: String,
-    query: Many,
+    query: Many<Id>,
 }
 
 impl Tool for Search {
@@ -493,7 +474,7 @@ impl Tool for Search {
             let page = page_of(&args);
             let (fetch, forum) = (&cx.app.fetch, &forum);
             let text = batch(
-                parsed.query.capped(),
+                capped(parsed.query),
                 |query| format!("\"{query}\":"),
                 |query| async move {
                     let list = mobiquo::search(fetch, forum, &query, page).await?;
@@ -716,7 +697,7 @@ mod tests {
 
     #[test]
     fn a_batch_arg_takes_strings_numbers_and_arrays_and_caps() {
-        let parse = |v: Value| serde_json::from_value::<Many>(v).unwrap().capped();
+        let parse = |v: Value| capped(serde_json::from_value::<Many<Id>>(v).unwrap());
         assert_eq!(parse(serde_json::json!("a")), ["a"]);
         // A bare number is accepted and coerced, which is how models often send an id.
         assert_eq!(parse(serde_json::json!(42)), ["42"]);

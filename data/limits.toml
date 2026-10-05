@@ -108,6 +108,10 @@ reason = "one minified line would otherwise use the whole budget"
 value = 100
 reason = "more matches than this means the search should be narrower"
 
+[tools.grep_context_max]
+value = 10
+reason = "lines grep shows around each match; past this, read the file at that line"
+
 [tools.grep_line_chars]
 value = 500
 reason = "a match line is context, not content; read the file for the rest"
@@ -129,6 +133,18 @@ reason = "topics or posts fetched per page, matching what the Tapatalk app reque
 [tools.question_max]
 value = 4
 reason = "a card of tabs a person answers in one go; more is a form, not a question"
+
+[tools.read_batch_max]
+value = 8
+reason = "files one read call returns; each keeps its own line cap, and past this a turn fills with files skimmed, not read"
+
+[tools.read_batch_bytes]
+value = 153600
+reason = "a batched read stops adding files past three single reads' worth (~37k tokens); the rest are named so they can be read on their own"
+
+[tools.list_depth_max]
+value = 5
+reason = "levels one directory listing goes down; deeper is a search, which glob does better"
 
 [tools.list_entries]
 value = 500

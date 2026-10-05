@@ -45,6 +45,8 @@ enum Summary {
         one: String,
         many: String,
     },
+    /// The first of these whose details are all there: one file's lines, else how many files.
+    First(Vec<Summary>),
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
@@ -157,15 +159,11 @@ fn body(tool: &str, result: &ToolResult, width: usize) -> Vec<Line> {
             lines[skip..].iter().map(|l| dim(l)).collect()
         }
         Body::Summary => {
-            let template = match spec.summary {
-                Some(Summary::Text(text)) => text,
-                Some(Summary::Count { count, one, many }) => {
-                    let n = lookup(&count, result).parse().unwrap_or(0);
-                    units::plural(n, &one, &many)
-                }
-                None => String::new(),
-            };
-            vec![Line::styled(fill(&template, result), Style::fg("muted")).truncate(width)]
+            let text = spec
+                .summary
+                .and_then(|s| summarize(&s, result, false))
+                .unwrap_or_default();
+            vec![Line::styled(text, Style::fg("muted")).truncate(width)]
         }
     }
 }
@@ -203,6 +201,30 @@ fn at(value: &Value, path: &str) -> Value {
 }
 
 /// `{a.b}` reads `details.a.b` (array indices too).
+/// A summary's line. Strict (inside a list) it is `None` unless every detail it names is there;
+/// otherwise a missing one shows as `?`.
+fn summarize(summary: &Summary, result: &ToolResult, strict: bool) -> Option<String> {
+    let has = |key: &str| !at(result.details.as_ref().unwrap_or(&Value::Null), key).is_null();
+    match summary {
+        Summary::Text(text) => {
+            let mut complete = true;
+            template::fill_with(text, |key| {
+                complete &= has(key);
+                None
+            });
+            (complete || !strict).then(|| fill(text, result))
+        }
+        Summary::Count { count, one, many } => {
+            if strict && !has(count) {
+                return None;
+            }
+            let n = lookup(count, result).parse().unwrap_or(0);
+            Some(units::plural(n, one, many))
+        }
+        Summary::First(list) => list.iter().find_map(|s| summarize(s, result, true)),
+    }
+}
+
 fn fill(template: &str, result: &ToolResult) -> String {
     template::fill_with(template, |key| Some(lookup(key, result).into()))
 }
@@ -335,6 +357,12 @@ mod tests {
         assert_eq!(summary("write", json!({"lines": 120})).trim(), "120 lines");
         assert_eq!(summary("glob", json!({"files": 1})).trim(), "1 file");
         assert_eq!(summary("grep", json!({"matches": 0})).trim(), "0 matches");
+        // A list shows the first summary whose details are all there.
+        assert_eq!(summary("grep", json!({"files": 2})).trim(), "2 files");
+        let read = json!({"lines": [1, 5], "total": 9});
+        assert_eq!(summary("read", read).trim(), "lines 1-5 of 9");
+        assert_eq!(summary("read", json!({"files": 3})).trim(), "3 files");
+        assert_eq!(summary("read", json!({"entries": 4})).trim(), "4 entries");
     }
 
     #[test]

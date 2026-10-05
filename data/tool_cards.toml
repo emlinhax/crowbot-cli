@@ -1,7 +1,8 @@
 # How each tool call looks in the transcript. `title` lists argument names; the first one present
 # titles the card. `body` is one of: none, diff (details.diff), head, tail, summary.
 # `summary` fills {placeholders} from the result's details, or counts one of them:
-# `{ count = "<key>", one = "…{n}…", many = "…{n}…" }` picks the form for that number.
+# `{ count = "<key>", one = "…{n}…", many = "…{n}…" }` picks the form for that number. A list of
+# summaries shows the first whose details are all there.
 # Tools without a section use [default].
 
 [default]
@@ -10,7 +11,11 @@ body = "none"
 
 [read]
 body = "summary"
-summary = "lines {lines.0}-{lines.1} of {total}"
+summary = [
+  "lines {lines.0}-{lines.1} of {total}",
+  { count = "files", one = "{n} file", many = "{n} files" },
+  { count = "entries", one = "{n} entry", many = "{n} entries" },
+]
 
 [write]
 body = "summary"
@@ -30,7 +35,10 @@ summary = { count = "files", one = "{n} file", many = "{n} files" }
 
 [grep]
 body = "summary"
-summary = { count = "matches", one = "{n} match", many = "{n} matches" }
+summary = [
+  { count = "matches", one = "{n} match", many = "{n} matches" },
+  { count = "files", one = "{n} file", many = "{n} files" },
+]
 
 [webfetch]
 body = "head"

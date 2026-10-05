@@ -7,6 +7,9 @@ use serde_json::{Value, json};
 
 use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
+use std::path::Path;
+
+use crate::io::search::{FileHits, Report};
 use crate::io::{self, fs::Kind};
 use crate::limits;
 use crate::text::shorten;
@@ -28,6 +31,20 @@ struct Args {
     glob: Option<String>,
     #[serde(default)]
     ignore_case: bool,
+    #[serde(default)]
+    context: usize,
+    #[serde(default)]
+    output: Shape,
+}
+
+/// What the search answers with.
+#[derive(Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Shape {
+    #[default]
+    Content,
+    Files,
+    Count,
 }
 
 pub struct Grep;
@@ -64,6 +81,13 @@ impl Tool for Grep {
             }
             let limits = &limits::get().tools;
             let max = limits.max_results.value;
+            let report = match args.output {
+                Shape::Content => Report::Lines {
+                    context: args.context.min(limits.grep_context_max.value),
+                },
+                Shape::Files => Report::Files,
+                Shape::Count => Report::Counts,
+            };
             let dir = root.path.clone();
             let searched = tokio::task::spawn_blocking(move || {
                 io::search::grep(&io::search::Grep {
@@ -71,35 +95,69 @@ impl Tool for Grep {
                     pattern: &args.pattern,
                     glob: args.glob.as_deref(),
                     ignore_case: args.ignore_case,
+                    report,
                     max,
                 })
             })
             .await;
-            let (hits, capped) = match searched {
+            let (files, capped) = match searched {
                 Ok(Ok(found)) => found,
                 Ok(Err(e)) => return Output::error(format!("Bad pattern: {e}")),
                 Err(e) => return Output::error(e.to_string()),
             };
-            if hits.is_empty() {
+            if files.is_empty() {
                 return Output::ok("No matches.").with_details(json!({"matches": 0}));
             }
-            let mut out: String = hits
-                .iter()
-                .map(|h| {
-                    let shown = target::show(&base, &h.path).0;
-                    format!(
-                        "{shown}:{}: {}\n",
-                        h.line,
-                        shorten::line(h.text.trim(), limits.grep_line_chars.value)
-                    )
-                })
-                .collect();
+            let shown = |path: &Path| target::show(&base, path).0;
+            let matched: usize = files.iter().map(|f| f.matched).sum();
+            let (mut out, details, unit) = match report {
+                Report::Lines { context } => (
+                    lines(&files, context, &shown),
+                    json!({ "matches": matched }),
+                    "matches",
+                ),
+                Report::Files => (
+                    files.iter().map(|f| shown(&f.path) + "\n").collect(),
+                    json!({ "files": files.len() }),
+                    "files",
+                ),
+                Report::Counts => (
+                    files
+                        .iter()
+                        .map(|f| format!("{}: {}\n", shown(&f.path), f.matched))
+                        .collect(),
+                    json!({ "matches": matched, "files": files.len() }),
+                    "files",
+                ),
+            };
             if capped {
-                let _ = write!(out, "\n[Stopped at {max} matches; narrow the search.]");
+                let _ = write!(out, "\n[Stopped at {max} {unit}; narrow the search.]");
             }
-            Output::ok(out.trim_end().to_owned()).with_details(json!({"matches": hits.len()}))
+            Output::ok(out.trim_end().to_owned()).with_details(details)
         })
     }
+}
+
+/// `path:line: text` for each match and `path-line- text` around it, as ripgrep prints them, with
+/// `--` between groups that are not next to each other.
+fn lines(files: &[FileHits], context: usize, shown: &dyn Fn(&Path) -> String) -> String {
+    let cut = limits::get().tools.grep_line_chars.value;
+    let mut out = String::new();
+    for file in files {
+        let name = shown(&file.path);
+        let mut last: Option<u64> = None;
+        for line in &file.lines {
+            let apart = last.is_none_or(|n| line.number > n + 1);
+            if context > 0 && apart && !out.is_empty() {
+                out.push_str("--\n");
+            }
+            last = Some(line.number);
+            let mark = if line.matched { ':' } else { '-' };
+            let text = shorten::line(line.text.trim(), cut);
+            let _ = writeln!(out, "{name}{mark}{}{mark} {text}", line.number);
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -119,5 +177,27 @@ mod tests {
             )
             .await;
         assert_eq!(out.content, "src/a.rs:2: fn two() {}");
+    }
+
+    #[tokio::test]
+    async fn shows_context_lists_files_or_counts_them() {
+        let project = Project::new();
+        project.write("a.txt", "one\nhit\ntwo\nthree\nfour\nhit\n");
+        project.write("b.txt", "hit\nhit\n");
+        let grep = |args: Value| async { Grep.run(args, &project.cx()).await.content };
+        let around = grep(json!({"pattern": "hit", "glob": "a.txt", "context": 1})).await;
+        assert_eq!(
+            around,
+            "a.txt-1- one\na.txt:2: hit\na.txt-3- two\n--\na.txt-5- four\na.txt:6: hit"
+        );
+        let mut files: Vec<String> = grep(json!({"pattern": "hit", "output": "files"}))
+            .await
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        files.sort();
+        assert_eq!(files, ["a.txt", "b.txt"]);
+        let counts = grep(json!({"pattern": "hit", "glob": "b.txt", "output": "count"})).await;
+        assert_eq!(counts, "b.txt: 2");
     }
 }

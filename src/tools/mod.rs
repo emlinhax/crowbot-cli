@@ -8,6 +8,7 @@ pub mod files;
 mod forum;
 mod glob;
 mod grep;
+mod many;
 pub mod permissions;
 mod plan_exit;
 mod question;
@@ -177,6 +178,12 @@ impl Registry {
             ),
             ("max_lines", limits.max_lines.value.to_string()),
             ("max_results", limits.max_results.value.to_string()),
+            (
+                "grep_context_max",
+                limits.grep_context_max.value.to_string(),
+            ),
+            ("read_batch_max", limits.read_batch_max.value.to_string()),
+            ("list_depth_max", limits.list_depth_max.value.to_string()),
         ];
         let tools: Vec<Arc<dyn Tool>> = vec![
             Arc::new(read::Read),
