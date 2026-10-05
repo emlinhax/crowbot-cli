@@ -136,11 +136,14 @@ mod tests {
                 Ask::new("edit", "/home/u/.crowbot/plans/s1.md"),
                 Decision::Allow,
             ),
+            ("plan", Ask::new("bash", "cargo build"), Decision::Allow),
             (
                 "plan",
-                Ask::new("bash", "cargo build"),
-                Decision::Deny("bash cargo build".into()),
+                Ask::new("bash", "cargo run"),
+                Decision::Deny("bash cargo run".into()),
             ),
+            ("manual", Ask::new("webfetch", "docs.rs"), Decision::Ask),
+            ("plan", Ask::new("webfetch", "docs.rs"), Decision::Allow),
         ];
         for (mode, ask, expected) in cases {
             let got = policy(mode, &rules).decide(std::slice::from_ref(&ask));
@@ -149,15 +152,42 @@ mod tests {
     }
 
     #[test]
-    fn plan_allows_only_commands_that_cannot_run_or_write() {
+    fn plan_runs_inspection_and_checks_but_nothing_that_edits() {
         let rules = defaults();
         let cases = [
             ("git status", true),
             ("git diff", true),
             ("git diff HEAD~1 -- src", true),
             ("git log --oneline -5", true),
+            ("git blame src/a.rs", true),
+            ("git branch", true),
+            ("git branch --contains HEAD", true),
             ("ls -la src", true),
             ("pwd", true),
+            ("cd src", true),
+            ("tree -L 2", true),
+            ("find . -name '*.rs'", true),
+            ("wc -l src/a.rs", true),
+            ("cargo test --locked", true),
+            ("cargo test 2>&1", true),
+            ("cargo clippy --all-targets", true),
+            ("make lint", true),
+            ("npm test", true),
+            ("rustc --version", true),
+            ("git branch -D main", false),
+            ("git branch feature", false),
+            ("git tag v1", false),
+            ("git blame --contents .env src/a.rs", false),
+            ("git grep -O sh x", false),
+            ("find . -delete", false),
+            ("find . -exec rm {} ;", false),
+            ("tree -o out.txt", false),
+            ("cargo clippy --fix --allow-dirty", false),
+            ("cargo run", false),
+            ("cargo fmt", false),
+            ("npm test -- -u", false),
+            ("make install", false),
+            ("env", false),
             ("git difftool --extcmd='rm -rf ~' -y", false),
             ("git diff --output=/home/u/.bashrc HEAD~1", false),
             ("git log -p --ext-diff", false),
@@ -196,7 +226,7 @@ mod tests {
             pattern: "cargo *".into(),
             action: Action::Allow,
         });
-        let ask = Ask::new("bash", "cargo build");
+        let ask = Ask::new("bash", "cargo run");
         assert_eq!(
             policy("manual", &rules).decide(std::slice::from_ref(&ask)),
             Decision::Allow

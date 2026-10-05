@@ -75,7 +75,10 @@ interrupted.
 
 MANUAL asks before edits, commands and fetches; AUTO allows everything, deny rules included.
 PLAN locks out edits outside its plan file and runs, unasked, only the commands its allowlist
-names (`data/modes/plan.toml`); the allowlist is not a sandbox. It ends by handing the plan over.
+names (`data/modes/plan.toml`): git's read commands, listings, and builds, tests and linters,
+which run the project's own code. It fetches without asking, and a filter at the end of a pipe
+(`| tail -30`, `data/filters.toml`) needs nothing of its own. The allowlist is not a sandbox. It
+ends by handing the plan over.
 A headless run declines every prompt: allow what it needs with `[[permission]]` rules, or use
 `--mode auto`. The key comes from `CROWBOT_API_KEY`, else
 `~/.crowbot/auth.json` (DPAPI-sealed on Windows, 0600 elsewhere).
@@ -135,10 +138,11 @@ lines instead of sending.
 | `data/commands/` | One spec per command (name, summary, usage, where it works). |
 | `data/errors.toml` | Every error kind: title, hint, and whether it is retried (else its status decides). |
 | `data/prompts/` | System prompt pieces and mode reminders. |
-| `data/modes/` | One file per permission mode (MANUAL, AUTO, PLAN): colour, verdicts, locked rules. |
+| `data/modes/` | One file per permission mode (MANUAL, PLAN, AUTO): colour, verdicts, locked rules. |
 | `data/tools/` | Each tool's description (`.md`) and argument schema (`.schema.json`). |
 | `data/model_text.toml` | Everything crowbot tells the model on the user's behalf (declines, answers, errors). |
 | `data/shells.toml` | Which shell runs commands, per OS, and its environment. |
+| `data/filters.toml` | Pipe filters (`tail -30`, `grep -c ok`): which flags keep a command reading only its input. |
 | `data/theme.toml` | Colours by role, and syntax scopes mapped to roles. |
 | `data/keybinds.toml`, `data/ui.toml` | Keys; the session's words, spinner, bottom-rule items, prompt choices, login card. |
 | `data/tool_cards.toml` | How each tool call looks in the transcript. |
