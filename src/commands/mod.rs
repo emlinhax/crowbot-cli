@@ -310,7 +310,7 @@ mod tests {
                 Scope::Session,
                 "mode",
                 "plan auto",
-                "usage: /mode [manual|auto|plan]",
+                "usage: /mode [manual|plan|auto]",
             ),
             (Scope::Cli, "logout", "please", "usage: crowbot logout"),
         ] {

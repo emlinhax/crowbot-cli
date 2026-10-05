@@ -1,6 +1,8 @@
 //! The first thing on screen: crowbot's raven beside who and where you are.
 
+use crate::mode;
 use crate::text::styled::{Line, Style, width};
+use crate::text::template::fill;
 use crate::tui::ui;
 
 const RAVEN: &str = include_str!("../../data/raven.txt");
@@ -80,7 +82,13 @@ fn text(info: &Info) -> Vec<Line> {
     if !info.logged_in {
         lines.push(Line::styled(&ui.text.not_logged_in, Style::fg("warn")));
     }
-    lines.extend(ui.tips.iter().map(|t| Line::styled(t, Style::fg("muted"))));
+    let modes: Vec<&str> = mode::all().iter().map(|m| m.label.as_str()).collect();
+    let modes = modes.join(" → ");
+    lines.extend(
+        ui.tips
+            .iter()
+            .map(|t| Line::styled(fill(t, &[("modes", &modes)]), Style::fg("muted"))),
+    );
     lines
 }
 

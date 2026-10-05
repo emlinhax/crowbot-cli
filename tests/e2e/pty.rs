@@ -270,7 +270,9 @@ async fn a_session_welcomes_chats_switches_mode_and_quits() {
         s.send("\r");
         s.wait_for("Hello there!");
         s.send("\x1b[Z");
-        s.wait_for("AUTO");
+        s.poll(WAIT, "Shift+Tab never reached PLAN", |s| {
+            s.bottom_row().contains("PLAN").then_some(())
+        });
     })
     .await;
     assert!(ended.exited.contains("Session saved"), "{}", ended.exited);

@@ -7,7 +7,7 @@ reply_mark = "◆ "
 placeholder = "Ask crowbot anything  ·  / for commands"
 tips = [
   "/help lists commands",
-  "Shift+Tab cycles MANUAL → AUTO → PLAN",
+  "Shift+Tab cycles {modes}",
   "Enter sends · while working, Enter queues and Tab steers",
   "Shift+Enter or Ctrl+J starts a new line",
   "Right-click copies a message",

@@ -96,7 +96,7 @@ crowbot. The session file under `~/.crowbot/sessions/` keeps the whole conversat
 | Tab | while crowbot works, steer (delivered after the current tool calls); otherwise complete a `/command` |
 | `/` | at the start of the editor, list commands as you type: ↑↓ pick, Tab complete, Enter run, Esc hide |
 | Shift+Enter, Ctrl+J, `\` then Enter | new line |
-| Shift+Tab | cycle MANUAL (gray) → AUTO (purple) → PLAN (blue); switching to AUTO approves a waiting permission prompt |
+| Shift+Tab | cycle MANUAL (gray) → PLAN (blue) → AUTO (purple); switching to AUTO approves a waiting permission prompt |
 | Esc | interrupt; queued messages come back to the editor |
 | Ctrl+C | clear the editor, else interrupt, else quit on a second press |
 | Ctrl+D | quit when the editor is empty |

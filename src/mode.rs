@@ -9,8 +9,8 @@ use crate::permission::rule::{Action, Rule};
 
 const SOURCES: &[&str] = &[
     include_str!("../data/modes/manual.toml"),
-    include_str!("../data/modes/auto.toml"),
     include_str!("../data/modes/plan.toml"),
+    include_str!("../data/modes/auto.toml"),
 ];
 
 static MODES: LazyLock<Vec<Mode>> = LazyLock::new(|| {
