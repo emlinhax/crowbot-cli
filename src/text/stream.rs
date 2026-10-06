@@ -6,27 +6,40 @@ use pulldown_cmark::{Event, Parser};
 use crate::text::markdown;
 
 /// The byte length of `text` made of finished blocks: everything before the last top-level
-/// block, which may still be growing (a list gains items, a fence its closing line). Parsed as
-/// the renderer parses, so a cut never falls inside a block it draws whole.
+/// block that follows a blank line. What comes after may still be growing (a list gains items,
+/// a fence its closing line), and a block with no blank line before it may still turn out to be
+/// part of the one above: half a table row parses as a paragraph until its cells arrive. Parsed
+/// as the renderer parses, so a cut never falls inside a block it draws whole.
 pub fn complete_prefix(text: &str) -> usize {
     let mut depth = 0usize;
     let mut last = 0;
     for (event, range) in Parser::new_ext(text, markdown::options()).into_offset_iter() {
-        match event {
+        let top = match event {
             Event::Start(_) => {
-                if depth == 0 {
-                    last = range.start;
-                }
                 depth += 1;
+                depth == 1
             }
-            Event::End(_) => depth = depth.saturating_sub(1),
+            Event::End(_) => {
+                depth = depth.saturating_sub(1);
+                false
+            }
             // A block with no start and end of its own, like a rule.
-            _ if depth == 0 => last = range.start,
-            _ => {}
+            _ => depth == 0,
+        };
+        if top {
+            last = after_blank(text, range.start).unwrap_or(last);
         }
     }
-    // Back to the start of that block's line, so its indent stays with it.
-    text[..last].rfind('\n').map_or(0, |i| i + 1)
+    last
+}
+
+/// The start of the line `at` is on, when the line above it is blank; the start of the line
+/// keeps a block's indent with it.
+fn after_blank(text: &str, at: usize) -> Option<usize> {
+    let line = text[..at].rfind('\n')? + 1;
+    let above = &text[..line - 1];
+    let above = &above[above.rfind('\n').map_or(0, |i| i + 1)..];
+    above.trim().is_empty().then_some(line)
 }
 
 /// The byte length of the blank lines `text` opens with; an indent on its first real line stays.
@@ -67,6 +80,18 @@ mod tests {
         }
         let indented = "para\n\n    a\n\n    b\n";
         assert_eq!(&indented[..complete_prefix(indented)], "para\n\n");
+    }
+
+    #[test]
+    fn a_cut_waits_for_a_blank_line_so_a_block_can_still_join_the_one_above() {
+        // The `|` is the next row arriving; parsed alone it would be a paragraph.
+        let table = "| a | b |\n|---|---|\n|";
+        assert_eq!(complete_prefix(table), 0);
+        let after = "Intro\n\n| a | b |\n|---|---|\n| 1";
+        assert_eq!(&after[..complete_prefix(after)], "Intro\n\n");
+        for text in ["# Title\nMore", "para\n---", "> quote\nlazy"] {
+            assert_eq!(complete_prefix(text), 0, "{text:?}");
+        }
     }
 
     #[test]
