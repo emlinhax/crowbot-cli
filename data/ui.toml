@@ -2,6 +2,8 @@
 
 spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 prompt = "› "
+# Runs down the left edge of the user's messages, blank band rows included.
+user_mark = "▌ "
 # Starts each stretch of the model's prose; what follows it hangs under the text.
 reply_mark = "◆ "
 placeholder = "Ask crowbot anything  ·  / for commands"

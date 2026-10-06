@@ -270,6 +270,10 @@ reason = "the command popup lists this many before it scrolls; the editor stays 
 value = 1500
 reason = "long enough to read one word, gone before it hides anything for long"
 
+[tui.side_padding]
+value = 2
+reason = "blank columns on each side of the session keep text off the window's edge"
+
 [forums.directory_results]
 value = 10
 reason = "forums a directory search offers to pick from; past this the search words need narrowing, not a longer list"
