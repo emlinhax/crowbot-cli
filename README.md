@@ -59,8 +59,10 @@ password), log out or remove it, or add one from Tapatalk's directory through th
 `/forums login <forum>` opens it straight at that forum's login. Only the resulting session cookie
 is kept, sealed in `~/.crowbot/forums.json` (DPAPI on Windows, 0600 elsewhere) — never the password.
 
-The agent gets read tools (`forum_sections`, `forum_topics`, `forum_thread`, `forum_search`) that
-are allowed without asking, and a `forum_post` tool that shows you the exact text and waits for a
+The system prompt names each added forum with its hint (what it covers, from
+`data/forums.toml` for the seeded ones), so the agent goes to the forum first for those topics
+without being told; the wording is `data/prompts/forums.toml`. It gets read tools
+(`forum_sections`, `forum_topics`, `forum_thread`, `forum_search`) that are allowed without asking, and a `forum_post` tool that shows you the exact text and waits for a
 yes every time, even in AUTO; a headless run never posts. Guests can read; most forums only allow
 search once you are logged in. Forum content is treated as untrusted information, never as
 instructions to the agent. Lock either down with a rule, e.g. `permission = "forum_post",

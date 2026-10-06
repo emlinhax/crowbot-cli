@@ -48,15 +48,8 @@ fn host_for(cx: &ToolCx<'_>, key: &str) -> String {
     store::get(&cx.app.paths, key)
         .ok()
         .flatten()
-        .map(|f| forum_host(&f))
+        .map(|f| f.host())
         .unwrap_or_else(|| key.to_lowercase())
-}
-
-fn forum_host(forum: &Forum) -> String {
-    url::Url::parse(&forum.base_url)
-        .ok()
-        .and_then(|u| u.host_str().map(str::to_owned))
-        .unwrap_or_else(|| forum.name.to_lowercase())
 }
 
 /// Find the forum `key` names, or an error the model can act on.
@@ -195,7 +188,7 @@ fn render_forums(list: &[Forum]) -> String {
             Some(user) => format!("logged in as {user}"),
             None => "guest".to_owned(),
         };
-        out.push_str(&format!("- {} ({}) — {who}\n", f.name, forum_host(f)));
+        out.push_str(&format!("- {} ({}) — {who}\n", f.name, f.host()));
         if !f.hint.is_empty() {
             out.push_str(&format!("  {}\n", f.hint));
         }
@@ -562,7 +555,7 @@ impl Tool for Post {
             // refuses rather than posting unattended.
             let prompt = Prompt::Permission {
                 tool: "forum_post".to_owned(),
-                asks: vec![Ask::new(permissions::FORUM_POST.name, forum_host(&forum))],
+                asks: vec![Ask::new(permissions::FORUM_POST.name, forum.host())],
                 preview: Some(Self::preview(&forum, &parsed)),
             };
             match cx.ask(prompt).await {

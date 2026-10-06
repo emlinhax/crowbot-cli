@@ -576,10 +576,16 @@ impl<'a> Tui<'a> {
                 next.and_then(|next| self.login_next(next))
                     .map_or(Step::Continue, |job| self.login_job(job))
             }
-            Done::Forums(done) => match self.forums.as_mut().map(|card| card.finished(done)) {
-                Some(next) => self.forums_next(next),
-                None => Step::Continue,
-            },
+            Done::Forums(done) => {
+                // The prompt names the forums to browse; an added or removed one changes it.
+                if matches!(done, forums::Done::Changed { .. }) {
+                    self.system = system_prompt::build(&self.app.paths, &self.model);
+                }
+                match self.forums.as_mut().map(|card| card.finished(done)) {
+                    Some(next) => self.forums_next(next),
+                    None => Step::Continue,
+                }
+            }
         }
     }
 
