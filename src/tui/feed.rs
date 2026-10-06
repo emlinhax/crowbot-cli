@@ -203,6 +203,11 @@ impl Feed {
                     DeltaKind::Text => {
                         self.finish_reasoning(now);
                         self.text.push_str(text);
+                        // Replies often open with blank lines; committed alone they would be an
+                        // empty block, a second blank row and the stretch's mark spent on nothing.
+                        if self.committed == 0 {
+                            self.text.drain(..stream::blank_lead(&self.text));
+                        }
                         self.commit_complete();
                     }
                     DeltaKind::ToolCall => {}
@@ -600,6 +605,21 @@ mod tests {
             ["▾ Thought for 4s", "│ let me think"]
         );
         assert!(!feed.toggle(5));
+    }
+
+    #[test]
+    fn a_reply_opening_with_blank_lines_sits_one_row_under_its_thinking() {
+        let now = crate::io::clock::instant();
+        let mut feed = Feed::new();
+        feed.event(&delta(DeltaKind::Reasoning, "let me think"), now);
+        for chunk in ["\n", " \n\n", "Answer.", "\n\nMore."] {
+            feed.event(&delta(DeltaKind::Text, chunk), now);
+        }
+        feed.event(&end(None, Finish::Done), now);
+        assert_eq!(
+            texts(&mut feed, now),
+            ["▸ Thought for 0s", "", "◆ Answer.", "", "  More."]
+        );
     }
 
     #[test]
