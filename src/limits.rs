@@ -172,6 +172,7 @@ pub struct TuiLimits {
     pub prompt_body_lines: Limit<usize>,
     pub palette_rows: Limit<usize>,
     pub toast_ms: Limit<u64>,
+    pub side_padding: Limit<usize>,
     pub scroll_lines: Limit<usize>,
     pub status_frame_ms: Limit<u64>,
     pub shimmer_ms: Limit<u64>,

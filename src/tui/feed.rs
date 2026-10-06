@@ -203,6 +203,11 @@ impl Feed {
                     DeltaKind::Text => {
                         self.finish_reasoning(now);
                         self.text.push_str(text);
+                        // Replies often open with blank lines; committed alone they would be an
+                        // empty block, a second blank row and the stretch's mark spent on nothing.
+                        if self.committed == 0 {
+                            self.text.drain(..stream::blank_lead(&self.text));
+                        }
                         self.commit_complete();
                     }
                     DeltaKind::ToolCall => {}
@@ -449,22 +454,18 @@ fn thinking_lines(mark: &str, header: &str, text: &str, width: usize) -> Vec<Lin
     lines
 }
 
-/// The user's message on a full-width band, a blank band row above and below it.
+/// The user's message on a full-width band, a blank band row above and below it, and the mark
+/// down its left edge.
 fn user_lines(text: &str, width: usize) -> Vec<Line> {
     let band = Style::fg("user_text").on("user_band");
-    let prompt = Line::styled(&ui::get().prompt, Style::fg("user").bold().on("user_band"));
-    let indent = Line::styled(" ".repeat(prompt.width()), band.clone());
-    let mut lines = vec![Line::default()];
-    for (i, raw) in text.lines().enumerate() {
-        let mut line = if i == 0 {
-            prompt.clone()
-        } else {
-            indent.clone()
-        };
+    let mark = Line::styled(&ui::get().user_mark, Style::fg("user").on("user_band"));
+    let mut lines = vec![mark.clone()];
+    for raw in text.lines() {
+        let mut line = mark.clone();
         line.push(raw, band.clone());
-        lines.extend(line.wrap(width, &indent));
+        lines.extend(line.wrap(width, &mark));
     }
-    lines.push(Line::default());
+    lines.push(mark);
     lines.into_iter().map(|l| l.padded(width, &band)).collect()
 }
 
@@ -603,6 +604,21 @@ mod tests {
     }
 
     #[test]
+    fn a_reply_opening_with_blank_lines_sits_one_row_under_its_thinking() {
+        let now = crate::io::clock::instant();
+        let mut feed = Feed::new();
+        feed.event(&delta(DeltaKind::Reasoning, "let me think"), now);
+        for chunk in ["\n", " \n\n", "Answer.", "\n\nMore."] {
+            feed.event(&delta(DeltaKind::Text, chunk), now);
+        }
+        feed.event(&end(None, Finish::Done), now);
+        assert_eq!(
+            texts(&mut feed, now),
+            ["▸ Thought for 0s", "", "◆ Answer.", "", "  More."]
+        );
+    }
+
+    #[test]
     fn toggling_all_opens_every_block_and_the_next_ones() {
         let t0 = crate::io::clock::instant();
         let mut feed = Feed::new();
@@ -670,7 +686,7 @@ mod tests {
         feed.user("hi");
         feed.event(&delta(DeltaKind::Text, "hello"), now);
         feed.event(&end(None, Finish::Done), now);
-        assert_eq!(texts(&mut feed, now), ["", "› hi", "", "", "◆ hello"]);
+        assert_eq!(texts(&mut feed, now), ["▌", "▌ hi", "▌", "", "◆ hello"]);
         feed.markdown(&"word ".repeat(20));
         let wide = feed.measure(60, now);
         let narrow = feed.measure(20, now);
@@ -714,7 +730,7 @@ mod tests {
                     .all(|s| s.style.bg.as_deref() == Some("user_band"))
             );
         }
-        assert_eq!(band[2].text().trim_end(), "  second line");
+        assert_eq!(band[2].text().trim_end(), "▌ second line");
 
         feed.event(&delta(DeltaKind::Text, "Looking."), now);
         feed.event(&end(None, Finish::ToolCalls), now);

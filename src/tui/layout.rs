@@ -1,10 +1,11 @@
 //! One frame of the whole screen: the transcript in the rows the bar leaves, one blank row that
 //! keeps it off the bar (or says how much is hidden below), then the bar stack on the bottom. A
 //! floating card is drawn over the rows just above the bar instead of taking room from the
-//! transcript, so opening one moves nothing.
+//! transcript, so opening one moves nothing. The whole frame sits between blank side margins.
 
 use std::time::Instant;
 
+use crate::limits;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
 use crate::tui::feed::Feed;
@@ -15,6 +16,29 @@ pub struct Frame {
     pub rows: Vec<Line>,
     /// The transcript block drawn on each row, for clicks.
     pub blocks: Vec<Option<usize>>,
+}
+
+/// The blank columns on each side of a terminal `width` wide, and the width left to draw in.
+pub fn margins(width: usize) -> (usize, usize) {
+    let pad = limits::get().tui.side_padding.value;
+    // A terminal too narrow to spare them uses every column.
+    if width <= pad * 2 {
+        return (0, width);
+    }
+    (pad, width - pad * 2)
+}
+
+/// Moves every row right by `pad` columns; the right margin is what rows drawn narrower leave.
+pub fn inset(rows: &mut [Line], pad: usize) {
+    if pad == 0 {
+        return;
+    }
+    let margin = Line::plain(" ".repeat(pad));
+    for row in rows {
+        let mut line = margin.clone();
+        line.extend(std::mem::take(row));
+        *row = line;
+    }
 }
 
 pub fn compose(
@@ -107,6 +131,17 @@ mod tests {
         let rows = texts(&compose(&mut long, &mut view, &bar, &[], (40, 10), now));
         assert_eq!(rows[8], "↓ 4 more · PgDn");
         assert_eq!(rows[9], "bar");
+    }
+
+    #[test]
+    fn the_frame_sits_between_side_margins_unless_the_terminal_is_too_narrow() {
+        let pad = limits::get().tui.side_padding.value;
+        assert_eq!(margins(80), (pad, 80 - pad * 2));
+        assert_eq!(margins(pad * 2), (0, pad * 2));
+        let mut rows = [Line::plain("hi"), Line::default()];
+        inset(&mut rows, pad);
+        assert_eq!(rows[0].text(), format!("{}hi", " ".repeat(pad)));
+        assert_eq!(rows[1].width(), pad);
     }
 
     #[test]

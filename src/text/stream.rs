@@ -29,6 +29,12 @@ pub fn complete_prefix(text: &str) -> usize {
     text[..last].rfind('\n').map_or(0, |i| i + 1)
 }
 
+/// The byte length of the blank lines `text` opens with; an indent on its first real line stays.
+pub fn blank_lead(text: &str) -> usize {
+    let blank = text.len() - text.trim_start().len();
+    text[..blank].rfind('\n').map_or(0, |i| i + 1)
+}
+
 /// Hides a closing fence that has only partly arrived, so a code block does not flicker shut.
 pub fn trim_partial_fence(tail: &str) -> &str {
     let Some(start) = tail.rfind('\n').map(|i| i + 1).or(Some(0)) else {
@@ -61,6 +67,14 @@ mod tests {
         }
         let indented = "para\n\n    a\n\n    b\n";
         assert_eq!(&indented[..complete_prefix(indented)], "para\n\n");
+    }
+
+    #[test]
+    fn leading_blank_lines_are_measured_up_to_the_first_real_line() {
+        assert_eq!(blank_lead("\n \n\nAnswer"), 4);
+        assert_eq!(blank_lead("\n    code"), 1);
+        assert_eq!(blank_lead("  "), 0);
+        assert_eq!(blank_lead("Answer\n\n"), 0);
     }
 
     #[test]

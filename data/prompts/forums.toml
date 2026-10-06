@@ -1,0 +1,12 @@
+# The forums on this machine, named in the system prompt so the model knows to look there; left out
+# when there are none. {forums} is a `line` per forum ({name}, {host}), each followed by its `hint`
+# when it has one.
+frame = """
+<forums>
+These forums are set up for you to browse with the forum_* tools:
+{forums}
+
+They hold current, first-hand knowledge from the people doing the work (the newest releases, fixes for last week's update, working source and the talk around it) that code search and the web often lack. When the user asks about something a forum here covers, go to that forum first, whether or not they name it: `forum_search` the topic, or, when search needs a login, `forum_sections` and then `forum_topics` on the right board; then `forum_thread` with `page: "last"` for the newest posts. Use codesearch and webfetch to fill gaps or check what the forum says, not in place of it.
+</forums>"""
+line = "- {name} ({host})"
+hint = "  {hint}"

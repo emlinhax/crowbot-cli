@@ -25,6 +25,19 @@ struct Project {
     cut: String,
 }
 
+static FORUMS: LazyLock<Forums> = LazyLock::new(|| {
+    toml::from_str(include_str!("../../data/prompts/forums.toml"))
+        .expect("data/prompts/forums.toml is checked by tests")
+});
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Forums {
+    frame: String,
+    line: String,
+    hint: String,
+}
+
 /// Reminders a mode can name in data/modes/*.toml; one line per prompt file.
 const REMINDERS: &[(&str, &str)] =
     &[("plan_mode", include_str!("../../data/prompts/plan_mode.md"))];
@@ -43,10 +56,41 @@ pub fn build(paths: &Paths, model: &Model) -> String {
     );
     let parts = [
         Some(BASE.trim_end().to_owned()),
+        forums(paths),
         project(paths),
         Some(env.trim_end().to_owned()),
     ];
     parts.into_iter().flatten().collect::<Vec<_>>().join("\n\n")
+}
+
+/// The forums this machine can browse, each with its hint, so the model knows to look there.
+fn forums(paths: &Paths) -> Option<String> {
+    // An unreadable store is reported where forums are used; the prompt just goes without.
+    let list = crate::forums::store::load(paths).ok()?;
+    if list.is_empty() {
+        return None;
+    }
+    let lines: Vec<String> = list
+        .iter()
+        .map(|forum| {
+            let line = template::fill(
+                &FORUMS.line,
+                &[("name", &forum.name), ("host", &forum.host())],
+            );
+            match forum.hint.as_str() {
+                "" => line,
+                hint => format!(
+                    "{line}\n{}",
+                    template::fill(&FORUMS.hint, &[("hint", hint)])
+                ),
+            }
+        })
+        .collect();
+    Some(
+        template::fill(&FORUMS.frame, &[("forums", &lines.join("\n"))])
+            .trim()
+            .to_owned(),
+    )
 }
 
 /// The first instructions file the project has, framed, within `agent.instructions_bytes`.
@@ -115,7 +159,8 @@ mod tests {
             )
             .unwrap();
         };
-        assert!(!build(&paths, &model()).contains("<project-instructions"));
+        let bare = build(&paths, &model());
+        assert!(!bare.contains("<project-instructions"));
         write("CLAUDE.md", "Use tabs.");
         assert!(build(&paths, &model()).contains("file=\"CLAUDE.md\">\nUse tabs."));
         write("AGENTS.md", "Run make test.");
@@ -129,6 +174,27 @@ mod tests {
         write("AGENTS.md", &"é".repeat(max));
         let prompt = build(&paths, &model());
         assert!(prompt.contains("is left out"), "the cut is not said");
-        assert!(prompt.len() < BASE.len() + max + 1000);
+        assert!(prompt.len() < bare.len() + max + 1000);
+    }
+
+    #[test]
+    fn the_forums_to_browse_are_named_with_their_hints() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
+        // With no store yet, the seed is what there is to browse.
+        let seed = &crate::forums::data().seed[0];
+        let prompt = build(&paths, &model());
+        assert!(
+            prompt.contains(&format!(
+                "- {} ({})\n  {}",
+                seed.name,
+                seed.host(),
+                seed.hint
+            )),
+            "{prompt}"
+        );
+        assert!(prompt.find("<forums>") < prompt.find("<env>"));
+        crate::forums::store::remove(&paths, &seed.name).unwrap();
+        assert!(!build(&paths, &model()).contains("<forums>"));
     }
 }

@@ -576,10 +576,16 @@ impl<'a> Tui<'a> {
                 next.and_then(|next| self.login_next(next))
                     .map_or(Step::Continue, |job| self.login_job(job))
             }
-            Done::Forums(done) => match self.forums.as_mut().map(|card| card.finished(done)) {
-                Some(next) => self.forums_next(next),
-                None => Step::Continue,
-            },
+            Done::Forums(done) => {
+                // The prompt names the forums to browse; an added or removed one changes it.
+                if matches!(done, forums::Done::Changed { .. }) {
+                    self.system = system_prompt::build(&self.app.paths, &self.model);
+                }
+                match self.forums.as_mut().map(|card| card.finished(done)) {
+                    Some(next) => self.forums_next(next),
+                    None => Step::Continue,
+                }
+            }
         }
     }
 
@@ -862,7 +868,7 @@ impl<'a> Tui<'a> {
             }
             AgentEvent::Prompt { id, prompt, .. } => {
                 self.cards
-                    .push_back(card::from_prompt(*id, prompt, self.screen.width()));
+                    .push_back(card::from_prompt(*id, prompt, self.draw_width()));
             }
             _ => {}
         }
@@ -874,7 +880,8 @@ impl<'a> Tui<'a> {
 
     fn draw(&mut self, running: bool) {
         let now = clock::instant();
-        let (width, height) = (self.screen.width(), self.screen.height());
+        let (pad, width) = layout::margins(self.screen.width());
+        let height = self.screen.height();
         let mode = self.shared.mode();
         // The bar, pinned to the bottom of the screen.
         let mut live = Vec::new();
@@ -946,10 +953,16 @@ impl<'a> Tui<'a> {
         if let Some(toast) = &self.toast {
             toast.overlay(&mut frame.rows, width);
         }
+        layout::inset(&mut frame.rows, pad);
         let bytes = self.screen.frame(&frame.rows);
         if !bytes.is_empty() {
             term::out(&bytes);
         }
+    }
+
+    /// The columns a frame is drawn in, inside the side margins.
+    fn draw_width(&self) -> usize {
+        layout::margins(self.screen.width()).1
     }
 
     fn status(&self, now: Instant, width: usize) -> Line {
