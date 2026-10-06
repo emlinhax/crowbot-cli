@@ -587,6 +587,30 @@ mod tests {
     }
 
     #[test]
+    fn a_reply_streamed_a_character_at_a_time_draws_as_it_does_whole() {
+        let now = crate::io::clock::instant();
+        let drawn = |md: &str, step: usize| {
+            let mut feed = Feed::new();
+            let chars: Vec<char> = md.chars().collect();
+            for chunk in chars.chunks(step) {
+                let text: String = chunk.iter().collect();
+                feed.event(&delta(DeltaKind::Text, &text), now);
+            }
+            feed.event(&end(None, Finish::Done), now);
+            texts(&mut feed, now)
+        };
+        let table = "Here:\n\n| Object | Test |\n|---|---|\n| X | 17 |\n| Y | 18 |\n\nDone.";
+        assert!(drawn(table, table.len()).contains(&"  │ Y      │ 18   │".to_owned()));
+        for md in [
+            table,
+            "Steps:\n1. one\n2. two\n\n- a\n- b\n  - nested\n\nAfter.",
+            "Run:\n```sh\nls\n\nls -a\n```\nThen:\n\n> quoted\nlazy\n\n# Head\nText",
+        ] {
+            assert_eq!(drawn(md, 1), drawn(md, md.len()), "{md:?}");
+        }
+    }
+
+    #[test]
     fn thinking_streams_live_then_collapses_and_opens_on_toggle() {
         let t0 = crate::io::clock::instant();
         let mut feed = Feed::new();
