@@ -579,6 +579,11 @@ async fn slash_forums_logs_in_with_a_hidden_password_and_retries_a_wrong_one() {
     );
     let forums = std::fs::read_to_string(ended.sandbox.home().join("forums.json")).unwrap();
     let sealed: serde_json::Value = serde_json::from_str(&forums).unwrap();
+    // A DPAPI blob is opaque to the test; `io::secret`'s unit test covers its round trip.
+    if cfg!(windows) {
+        assert_eq!(sealed["scheme"], "dpapi");
+        return;
+    }
     let opened = {
         use base64::Engine;
         let blob = sealed["blob"].as_str().unwrap();
