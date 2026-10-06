@@ -7,3 +7,6 @@
 /THE_REFINATION/
 *.snap.new
 *.pending-snap
+
+# Local handoff notes for the forums work (names a dev machine; the facts live in data/forums.toml)
+/HANDOFF.md

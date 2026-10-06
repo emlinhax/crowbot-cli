@@ -182,3 +182,56 @@ interstitial passed off as the article. The API stays on reqwest.
   release offers to install itself (user PATH in the registry, Apps & Features entry).
 - Open: signing (minisign for updates, Authenticode and notarisation for SmartScreen and
   Gatekeeper), Intel macOS and arm64 Linux targets, a website installer script.
+
+## M8 — Forums (Tapatalk/mobiquo)
+- Added 2026-10-03: crowbot browses forums that run the Tapatalk plugin. Transport rides
+  `io::fetch` (cffetch's browser TLS, so a Cloudflare WAF that blocks reqwest lets it through);
+  `src/forums/` holds a lenient XML-RPC codec (tolerates the server's dropped `</member>`), the
+  mobiquo backend, Tapatalk directory discovery/resolve, and a sealed store seeded with
+  UnknownCheats. Agent tools: `forum_sections` / `forum_topics` / `forum_thread` / `forum_search`
+  (read, default-allow) and `forum_post` (reply or new topic, confirmed every time even in AUTO,
+  refused headless). `/forums` and `crowbot forums` add, log in (hidden password, never stored),
+  list, logout and remove.
+- 2026-10-04: in a session `/forums` is a card (`src/tui/forums.rs`): the list, a menu per forum
+  (log in / log out / remove), login as a username then a dots-only password, and an add flow that
+  offers the `[[suggest]]` searches not yet added, or the user's own words, and picks from what
+  the directory found. Its network and store work shares the login card's job slot, so closing
+  either card drops what it waited on. e2e: a pty test logs in to a fake forum seeded into a plain
+  sealed store, wrong password first, and checks that no file holds the password.
+- Verified by unit tests at every layer against in-process fakes (transport POST/cookies, codec
+  incl. malformed XML and faults, backend against a fake mobiquo, directory against a fake
+  directory, store round-trip, tool rendering, command parsing). Protocol facts came from a live
+  capture (`HANDOFF.md`) but have not yet been re-run live from this build.
+- Open:
+  - a live smoke run against UnknownCheats: confirm `search`/`reply_post`/`new_topic` param shapes
+    and that cffetch clears the WAF (the mobiquo dir can rotate — re-resolve on a 404);
+  - an e2e scenario driving a forum tool through the agent loop (a store seeded the way the
+    `/forums` pty test seeds it, plus fake mobiquo routes for the read calls);
+  - a live run of the card's directory search (the add flow is unit-tested against fakes only);
+  - prompt-injection hardening of forum content, cookie-expiry refresh, per-forum rate limiting,
+    and more backends (Discourse's JSON API, a plain-HTML reader) behind the same `kind` switch.
+
+## M9 — Tool-use battery (planned 2026-10-05, not started)
+- Why: the basic tools (grep context/files/count, multi-path read, read depth, `fs`) and PLAN's
+  allowlist were chosen from habit, not data. Run a large set of realistic sessions against the
+  real model, record every tool call, and let the counts say which patterns to make faster or
+  easier: shell commands the model keeps writing, scripts it writes for basics, calls refused or
+  repeated, steps that always come in the same order.
+- Shape, each a verified step:
+  1. A task corpus as data (`bench/tasks/*.toml`): the prompt, a fixture repo (the existing
+     `tests/fixtures/projects/*`, plus a few small open-source repos pinned by commit), the mode
+     (AUTO for doing, PLAN for planning), a turn limit, and a check command that says whether the
+     task was done.
+  2. A runner (`make battery`, never in CI, like `make smoke`): each task headless
+     (`crowbot --json -p`) in a fresh copy of its repo, N at a time, with a spend cap in
+     `data/limits.toml` that stops the run. The session JSONL each run leaves is the record.
+  3. An analyzer over those JSONL files, unit-tested on the session fixtures: calls per tool;
+     bash by first word, first two words and flags; pipe filters; `python -c`, heredocs, awk and
+     sed programs (the scripts-for-basics smell); refused and declined calls, retries and doom
+     loops; the most common call sequences (n-grams); turns, tokens, cost and time per task;
+     task success from the check.
+  4. A report: each candidate change (a tool, a flag, an allowlist entry, a prompt line) with the
+     count behind it, and the battery re-run after a change to show it moved the numbers.
+- Open, for the user: which model(s) and effort, how many tasks and repeats per task (that sets
+  the spend), which outside repos, and whether to add a headless "approve and record" policy so
+  MANUAL's prompts can be measured too.

@@ -11,9 +11,9 @@ use crate::tui::keymap::Action;
 use crate::tui::ui;
 
 /// Cells between columns.
-const GAP: usize = 2;
+pub const GAP: usize = 2;
 /// The selection marker before each row: `› ` or two spaces.
-const MARKER: usize = 2;
+pub const MARKER: usize = 2;
 
 pub struct Picker {
     ids: Vec<String>,
@@ -93,20 +93,7 @@ impl Picker {
             line.extend(header);
             body.push(line);
         }
-        let rows = limits::get().tui.palette_rows.value.max(1);
-        let start = (self.selected + 1).saturating_sub(rows);
-        for (i, row) in lines.enumerate().skip(start).take(rows) {
-            body.push(if i == self.selected {
-                let chosen = Style::fg("accent").bold();
-                let mut line = Line::styled("› ", chosen.clone());
-                line.push(row.text(), chosen);
-                line
-            } else {
-                let mut line = Line::plain(" ".repeat(MARKER));
-                line.extend(row);
-                line
-            });
-        }
+        body.extend(marked(lines, self.selected));
         body.push(Line::default());
         body.push(Line::styled(&self.note, Style::fg("muted")));
         let title = Line::styled(&words.title, Style::default().bold());
@@ -116,6 +103,29 @@ impl Picker {
         out.push(Line::styled(format!(" {}", words.hint), Style::fg("muted")).truncate(width));
         out
     }
+}
+
+/// `rows` behind the selection marker, scrolled to keep the selected one in view.
+pub fn marked(rows: impl IntoIterator<Item = Line>, selected: usize) -> Vec<Line> {
+    let visible = limits::get().tui.palette_rows.value.max(1);
+    let start = (selected + 1).saturating_sub(visible);
+    rows.into_iter()
+        .enumerate()
+        .skip(start)
+        .take(visible)
+        .map(|(i, row)| {
+            if i == selected {
+                let chosen = Style::fg("accent").bold();
+                let mut line = Line::styled("› ", chosen.clone());
+                line.push(row.text(), chosen);
+                line
+            } else {
+                let mut line = Line::plain(" ".repeat(MARKER));
+                line.extend(row);
+                line
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]

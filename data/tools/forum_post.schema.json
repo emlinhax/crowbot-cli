@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "forum": { "type": "string", "description": "The forum's name or host" },
+    "section": { "type": "string", "description": "The board id from forum_sections to post in" },
+    "topic": { "type": "string", "description": "A topic id to reply to; omit to start a new topic" },
+    "subject": { "type": "string", "description": "The title of a new topic (required when topic is omitted)" },
+    "body": { "type": "string", "description": "The message text" }
+  },
+  "required": ["forum", "section", "body"]
+}

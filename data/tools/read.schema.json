@@ -1,9 +1,16 @@
 {
   "type": "object",
   "properties": {
-    "path": { "type": "string", "description": "File or directory to read" },
+    "path": {
+      "description": "File or directory to read, or a list of files to read at once",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ]
+    },
     "offset": { "type": "integer", "description": "First line to show, 1-based" },
-    "limit": { "type": "integer", "description": "Number of lines to show" }
+    "limit": { "type": "integer", "description": "Number of lines to show" },
+    "depth": { "type": "integer", "description": "For a directory: how many levels to list (default 1)" }
   },
   "required": ["path"]
 }

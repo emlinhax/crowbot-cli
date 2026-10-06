@@ -1,16 +1,18 @@
 id = "plan"
 label = "PLAN"
 color = "mode_plan"
-order = 2
-summary = "Read-only: investigates and writes a plan, changes nothing"
+order = 1
+summary = "Investigates, runs checks and writes a plan; edits nothing else"
 reminder = "plan_mode"
 
+# Nothing PLAN lets through edits the project, so a repeated call is for the model to notice, not
+# a question for the user.
 [verdicts]
 ask = "ask"
 deny = "deny"
-doom_loop = "ask"
+doom_loop = "tell_model"
 
-# Locks apply after every other rule, so no config or approval can lift them.
+# Locks apply after every other rule, so no config or approval can lift them; the last match wins.
 [[lock]]
 permission = "edit"
 pattern = "*"
@@ -41,76 +43,71 @@ permission = "bash_write"
 pattern = "*"
 action = "deny"
 
-# Each command matches alone or followed by words, so `git difftool` or `lsof` doesn't pass as
-# `git diff` or `ls`. No file reader here: `cat` and friends would skip the read tool's secret
-# rules, so PLAN reads through read, grep and glob.
+# Inspection: git's read commands, listings and metadata. No file reader (`cat`, `head`, `grep`
+# on a file): those would skip the read tool's secret rules, so PLAN reads through read, grep and
+# glob. At the end of a pipe they read only what is piped in, and run (data/filters.toml).
 [[lock]]
 permission = "bash"
-pattern = "git status"
 action = "allow"
+commands = [
+  "git status", "git log", "git diff", "git show", "git blame", "git grep", "git shortlog",
+  "git describe", "git rev-parse", "git rev-list", "git ls-files", "git ls-tree", "git cat-file",
+  "git merge-base", "git stash list", "git stash show", "git reflog show", "git remote get-url",
+  "git remote show", "git branch --list", "git branch --contains", "git branch --merged",
+  "git branch --no-merged", "git tag -l", "git tag --list", "git tag --contains",
+  "git tag --points-at",
+  "ls", "pwd", "cd", "tree", "find", "wc", "du", "df", "stat", "file", "which", "type",
+  "command -v", "realpath", "readlink", "dirname", "basename", "echo", "uname", "whoami",
+]
 
+# Exactly these: with a name added, `git branch` and `git tag` create one.
 [[lock]]
 permission = "bash"
-pattern = "git status *"
 action = "allow"
+patterns = [
+  "git branch", "git branch -a", "git branch -r", "git branch -v", "git branch -vv",
+  "git branch -av", "git branch --all", "git branch --show-current", "git tag", "git remote",
+  "git remote -v", "git reflog",
+  "git --version", "cargo --version", "cargo -V", "rustc --version", "rustc -V", "rustc -vV",
+  "rustup show", "node --version", "node -v", "npm --version", "npm -v", "pnpm --version",
+  "yarn --version", "deno --version", "bun --version", "python --version", "python3 --version",
+  "go version", "java -version", "gcc --version", "clang --version", "make --version",
+]
 
+# Checks: builds, tests and linters run the project's own code and write only build output (such
+# as target/), never the source.
 [[lock]]
 permission = "bash"
-pattern = "git log"
 action = "allow"
+commands = [
+  "cargo check", "cargo test", "cargo clippy", "cargo build", "cargo nextest run", "cargo tree",
+  "cargo metadata", "cargo fmt --check", "cargo fmt -- --check", "cargo fmt --all -- --check",
+  "make test", "make lint", "make check", "make build",
+  "npm test", "npm run test", "npm run lint", "npm run build", "npm run check",
+  "npm run typecheck", "pnpm test", "pnpm run test", "pnpm lint", "pnpm run lint", "pnpm build",
+  "pnpm run build", "pnpm typecheck", "pnpm run typecheck", "yarn test", "yarn lint",
+  "yarn build", "npx tsc --noEmit", "tsc --noEmit",
+  "go test", "go vet",
+  "pytest", "python -m pytest", "python3 -m pytest", "ruff check", "mypy",
+]
 
+# Flags that make an allowed command write, run another program, or read outside the repo.
 [[lock]]
 permission = "bash"
-pattern = "git log *"
-action = "allow"
-
-[[lock]]
-permission = "bash"
-pattern = "git diff"
-action = "allow"
-
-[[lock]]
-permission = "bash"
-pattern = "git diff *"
-action = "allow"
-
-[[lock]]
-permission = "bash"
-pattern = "git show"
-action = "allow"
-
-[[lock]]
-permission = "bash"
-pattern = "git show *"
-action = "allow"
-
-[[lock]]
-permission = "bash"
-pattern = "ls"
-action = "allow"
-
-[[lock]]
-permission = "bash"
-pattern = "ls *"
-action = "allow"
-
-[[lock]]
-permission = "bash"
-pattern = "pwd"
-action = "allow"
-
-# Flags that make an allowed git command write, run a diff program, or read outside the repo.
-[[lock]]
-permission = "bash"
-pattern = "git *--output*"
 action = "deny"
+patterns = [
+  "git *--output*", "git *--ext-diff*", "git *--no-index*", "git *--contents*",
+  "git grep *-O*", "git grep *--open-files-in-pager*",
+  "find *-exec*", "find *-ok*", "find *-delete*", "find *-fprint*", "find *-fls*",
+  "tree *-o*", "tree *--fromfile*",
+  "cargo *--fix*", "ruff *--fix*", "npm *--fix*", "pnpm *--fix*", "yarn *--fix*", "npx *--fix*",
+  "npm *--write*", "pnpm *--write*", "yarn *--write*",
+  "npm *-update*", "pnpm *-update*", "yarn *-update*", "pytest *-update*", "python* *-update*",
+  "npm * -u", "npm * -u *", "pnpm * -u", "pnpm * -u *", "yarn * -u", "yarn * -u *",
+]
 
+# Reading the web changes nothing here; a user's deny rule for a host still holds.
 [[lock]]
-permission = "bash"
-pattern = "git *--ext-diff*"
-action = "deny"
-
-[[lock]]
-permission = "bash"
-pattern = "git *--no-index*"
-action = "deny"
+permission = "webfetch"
+pattern = "*"
+action = "allow"

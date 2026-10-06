@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "action": { "type": "string", "enum": ["move", "copy", "delete", "mkdir"], "description": "What to do" },
+    "path": {
+      "description": "The file or directory to act on, or a list of them",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ]
+    },
+    "to": { "type": "string", "description": "For move and copy: the new path, or an existing directory to put the paths in" },
+    "recursive": { "type": "boolean", "description": "For delete: remove a directory and everything in it" }
+  },
+  "required": ["action", "path"]
+}

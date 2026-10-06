@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "properties": {
+    "forum": { "type": "string", "description": "The forum's name or host" },
+    "query": {
+      "description": "Words to search for, or several separate searches to run at once",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ]
+    },
+    "page": { "type": "integer", "description": "1-based page of results; default 1" }
+  },
+  "required": ["forum", "query"]
+}

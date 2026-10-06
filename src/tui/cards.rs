@@ -23,6 +23,9 @@ static CARDS: LazyLock<BTreeMap<String, Spec>> =
 struct Spec {
     #[serde(default)]
     title: Option<Vec<String>>,
+    /// When set, the header joins every present title arg with this, instead of showing the first.
+    #[serde(default)]
+    title_join: Option<String>,
     #[serde(default)]
     body: Option<Body>,
     #[serde(default)]
@@ -42,6 +45,8 @@ enum Summary {
         one: String,
         many: String,
     },
+    /// The first of these whose details are all there: one file's lines, else how many files.
+    First(Vec<Summary>),
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
@@ -69,6 +74,7 @@ fn spec(tool: &str) -> Spec {
     let own = CARDS.get(tool).cloned().unwrap_or_default();
     Spec {
         title: own.title.or(default.title),
+        title_join: own.title_join.or(default.title_join),
         body: own.body.or(default.body),
         summary: own.summary.or(default.summary),
         max_lines: own.max_lines.or(default.max_lines),
@@ -84,11 +90,19 @@ pub fn header(tool: &str, arguments: &str, state: State<'_>) -> Line {
     let mut line = Line::styled(format!("{mark} "), Style::fg(role));
     line.push(tool, Style::default().bold());
     let args: Value = serde_json::from_str(arguments).unwrap_or(Value::Null);
-    let title = spec(tool)
+    let spec = spec(tool);
+    let present: Vec<String> = spec
         .title
         .unwrap_or_default()
-        .iter()
-        .find_map(|key| at(&args, key).as_str().map(str::to_owned));
+        .into_iter()
+        .filter_map(|key| arg_text(&at(&args, &key)))
+        .collect();
+    // With `title_join` several present args fold onto one line (a forum and its section or search
+    // term); otherwise the first present one titles the card, as every other tool does.
+    let title = match spec.title_join {
+        Some(sep) => (!present.is_empty()).then(|| present.join(&sep)),
+        None => present.into_iter().next(),
+    };
     if let Some(title) = title {
         line.push(" ", Style::default());
         line.push(title.lines().next().unwrap_or_default(), Style::fg("muted"));
@@ -145,16 +159,32 @@ fn body(tool: &str, result: &ToolResult, width: usize) -> Vec<Line> {
             lines[skip..].iter().map(|l| dim(l)).collect()
         }
         Body::Summary => {
-            let template = match spec.summary {
-                Some(Summary::Text(text)) => text,
-                Some(Summary::Count { count, one, many }) => {
-                    let n = lookup(&count, result).parse().unwrap_or(0);
-                    units::plural(n, &one, &many)
-                }
-                None => String::new(),
-            };
-            vec![Line::styled(fill(&template, result), Style::fg("muted")).truncate(width)]
+            let text = spec
+                .summary
+                .and_then(|s| summarize(&s, result, false))
+                .unwrap_or_default();
+            vec![Line::styled(text, Style::fg("muted")).truncate(width)]
         }
+    }
+}
+
+/// A title arg as one short line: a string's first line, or a batch array as its items (a few, then
+/// `+N`); `None` when there is nothing to show.
+fn arg_text(value: &Value) -> Option<String> {
+    match value {
+        Value::String(s) => {
+            let line = s.lines().next().unwrap_or_default();
+            (!line.is_empty()).then(|| line.to_owned())
+        }
+        Value::Array(items) => {
+            let parts: Vec<&str> = items.iter().filter_map(Value::as_str).collect();
+            match parts.len() {
+                0 => None,
+                1..=3 => Some(parts.join(", ")),
+                n => Some(format!("{}, +{}", parts[..2].join(", "), n - 2)),
+            }
+        }
+        _ => None,
     }
 }
 
@@ -171,6 +201,30 @@ fn at(value: &Value, path: &str) -> Value {
 }
 
 /// `{a.b}` reads `details.a.b` (array indices too).
+/// A summary's line. Strict (inside a list) it is `None` unless every detail it names is there;
+/// otherwise a missing one shows as `?`.
+fn summarize(summary: &Summary, result: &ToolResult, strict: bool) -> Option<String> {
+    let has = |key: &str| !at(result.details.as_ref().unwrap_or(&Value::Null), key).is_null();
+    match summary {
+        Summary::Text(text) => {
+            let mut complete = true;
+            template::fill_with(text, |key| {
+                complete &= has(key);
+                None
+            });
+            (complete || !strict).then(|| fill(text, result))
+        }
+        Summary::Count { count, one, many } => {
+            if strict && !has(count) {
+                return None;
+            }
+            let n = lookup(count, result).parse().unwrap_or(0);
+            Some(units::plural(n, one, many))
+        }
+        Summary::First(list) => list.iter().find_map(|s| summarize(s, result, true)),
+    }
+}
+
 fn fill(template: &str, result: &ToolResult) -> String {
     template::fill_with(template, |key| Some(lookup(key, result).into()))
 }
@@ -213,6 +267,43 @@ mod tests {
                 "{tool} in data/tool_cards.toml is not a tool"
             );
         }
+    }
+
+    #[test]
+    fn a_forum_call_folds_onto_one_header_line() {
+        let line = header(
+            "forum_search",
+            r#"{"forum":"unknowncheats","query":"aimbot"}"#,
+            State::Done,
+        );
+        assert_eq!(
+            line.to_tagged(),
+            "[done]● [/][bold]forum_search[/] [muted]unknowncheats · aimbot[/]"
+        );
+        // A missing arg is skipped, not shown as a gap.
+        let thread = header("forum_thread", r#"{"forum":"uc"}"#, State::Done);
+        assert_eq!(
+            thread.to_tagged(),
+            "[done]● [/][bold]forum_thread[/] [muted]uc[/]"
+        );
+        // A batched call shows its ids on the one line.
+        let batched = header(
+            "forum_thread",
+            r#"{"forum":"uc","topic":["318822","318823"]}"#,
+            State::Done,
+        );
+        assert_eq!(
+            batched.to_tagged(),
+            "[done]● [/][bold]forum_thread[/] [muted]uc › 318822, 318823[/]"
+        );
+        // forum_search asks for one line only: no body.
+        let card = finished(
+            "forum_search",
+            r#"{"forum":"uc","query":"x"}"#,
+            &result("[42] a topic\n[43] another", None, false),
+            60,
+        );
+        assert_eq!(card.len(), 1);
     }
 
     #[test]
@@ -266,6 +357,12 @@ mod tests {
         assert_eq!(summary("write", json!({"lines": 120})).trim(), "120 lines");
         assert_eq!(summary("glob", json!({"files": 1})).trim(), "1 file");
         assert_eq!(summary("grep", json!({"matches": 0})).trim(), "0 matches");
+        // A list shows the first summary whose details are all there.
+        assert_eq!(summary("grep", json!({"files": 2})).trim(), "2 files");
+        let read = json!({"lines": [1, 5], "total": 9});
+        assert_eq!(summary("read", read).trim(), "lines 1-5 of 9");
+        assert_eq!(summary("read", json!({"files": 3})).trim(), "3 files");
+        assert_eq!(summary("read", json!({"entries": 4})).trim(), "4 entries");
     }
 
     #[test]

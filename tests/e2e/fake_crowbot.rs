@@ -16,6 +16,11 @@ const MODELS: &str = include_str!("../fixtures/api/models.json");
 pub const ENV_KEY: &str = "test-key";
 pub const DEVICE_KEY: &str = "device-key-9999";
 pub const ACCOUNT_NUMBER: &str = "1234567890123456";
+/// The one password the fake forum's Tapatalk plugin accepts, and the session it hands back.
+pub const FORUM_PASSWORD: &str = "hunter2";
+pub const FORUM_COOKIE: &str = "bbsessionhash=fake; path=/; HttpOnly";
+/// Where the fake forum lives on the fake server.
+pub const FORUM_PATH: &str = "/forum";
 
 /// One scripted reply to a chat request.
 pub enum Reply {
@@ -81,6 +86,7 @@ impl Fake {
             .route("/api/signup", post(signup))
             .route("/web/ok", get(web_ok))
             .route("/web/blocked", get(web_blocked))
+            .route("/forum/mobiquo/mobiquo.php", post(mobiquo))
             .layer(middleware::from_fn_with_state(inner.clone(), record))
             .with_state(inner.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -161,6 +167,37 @@ async fn web_ok() -> impl IntoResponse {
         "<html><head><title>Widget docs</title></head><body>\
          <h1>Widget API</h1><p>The widget spins at 3 rpm.</p></body></html>",
     )
+}
+
+/// A forum's Tapatalk plugin, as far as logging in: `FORUM_PASSWORD` gets a session cookie, any
+/// other password the refusal a real plugin sends.
+async fn mobiquo(body: String) -> Response {
+    use base64::Engine;
+    let b64 = |s: &str| base64::engine::general_purpose::STANDARD.encode(s);
+    let member = |name: &str, value: &str| {
+        format!("<member><name>{name}</name><value>{value}</value></member>")
+    };
+    let ok = body.contains(&b64(FORUM_PASSWORD));
+    let members = if ok {
+        member("result", "<boolean>1</boolean>")
+            + &member("username", &format!("<base64>{}</base64>", b64("crow")))
+    } else {
+        member("result", "<boolean>0</boolean>")
+            + &member(
+                "result_text",
+                &format!("<base64>{}</base64>", b64("Wrong password")),
+            )
+    };
+    let xml = format!(
+        "<?xml version=\"1.0\"?><methodResponse><params><param><value><struct>{members}\
+         </struct></value></param></params></methodResponse>"
+    );
+    let mut resp = ([(header::CONTENT_TYPE, "text/xml")], xml).into_response();
+    if ok {
+        resp.headers_mut()
+            .insert(header::SET_COOKIE, FORUM_COOKIE.parse().unwrap());
+    }
+    resp
 }
 
 /// What Cloudflare serves while it challenges a client: 403, its mitigation header, and an

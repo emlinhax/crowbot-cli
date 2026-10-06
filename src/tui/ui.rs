@@ -32,6 +32,7 @@ pub struct Ui {
     pub status: StatusText,
     pub picker: PickerText,
     pub login: LoginText,
+    pub forums: ForumsText,
 }
 
 /// A phrase with a count in it, in the form for one and for any other number.
@@ -69,6 +70,38 @@ pub struct LoginText {
     pub checking: String,
     pub failed: String,
     pub hint: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ForumsText {
+    pub title: String,
+    pub guest: String,
+    pub logged_in: String,
+    pub add: String,
+    pub hint: String,
+    pub menu_hint: String,
+    pub log_in: String,
+    pub log_in_again: String,
+    pub log_out: String,
+    pub remove: String,
+    pub add_title: String,
+    pub add_note: String,
+    pub search: String,
+    pub found_title: String,
+    pub found_hint: String,
+    pub no_match: String,
+    pub login_title: String,
+    pub login_note: String,
+    pub username: String,
+    pub password: String,
+    pub input_hint: String,
+    pub searching: String,
+    pub adding: String,
+    pub logging_in: String,
+    pub saving: String,
+    pub cancel_hint: String,
+    pub failed: String,
 }
 
 #[derive(Debug, Deserialize)]

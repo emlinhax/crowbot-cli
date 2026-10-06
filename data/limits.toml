@@ -108,6 +108,10 @@ reason = "one minified line would otherwise use the whole budget"
 value = 100
 reason = "more matches than this means the search should be narrower"
 
+[tools.grep_context_max]
+value = 10
+reason = "lines grep shows around each match; past this, read the file at that line"
+
 [tools.grep_line_chars]
 value = 500
 reason = "a match line is context, not content; read the file for the rest"
@@ -120,9 +124,31 @@ reason = "a day: releases come a few times a week, and a check costs a request t
 value = 300
 reason = "a release binary is about 16 MB; five minutes allows a slow link without hanging forever"
 
+
+[forums.page_size]
+value = 20
+reason = "topics or posts fetched per page, matching what the Tapatalk app requests"
+
+
 [tools.question_max]
 value = 4
 reason = "a card of tabs a person answers in one go; more is a form, not a question"
+
+[tools.read_batch_max]
+value = 8
+reason = "files one read call returns; each keeps its own line cap, and past this a turn fills with files skimmed, not read"
+
+[tools.read_batch_bytes]
+value = 153600
+reason = "a batched read stops adding files past three single reads' worth (~37k tokens); the rest are named so they can be read on their own"
+
+[tools.list_depth_max]
+value = 5
+reason = "levels one directory listing goes down; deeper is a search, which glob does better"
+
+[tools.fs_batch_max]
+value = 50
+reason = "paths one fs call moves, copies or deletes; the permission card lists each, and past this it is a script's job"
 
 [tools.list_entries]
 value = 500
@@ -243,3 +269,11 @@ reason = "the command popup lists this many before it scrolls; the editor stays 
 [tui.toast_ms]
 value = 1500
 reason = "long enough to read one word, gone before it hides anything for long"
+
+[forums.directory_results]
+value = 10
+reason = "forums a directory search offers to pick from; past this the search words need narrowing, not a longer list"
+
+[forums.batch_max]
+value = 8
+reason = "threads, topic pages or searches fetched in one batched forum tool call, run at once; enough to be useful without hammering the forum"

@@ -5,6 +5,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use super::many::{self, Many};
 use super::permissions;
 use super::truncate;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
@@ -22,11 +23,35 @@ static SPEC: LazyLock<Spec> = LazyLock::new(|| {
 
 #[derive(Deserialize)]
 struct Args {
-    path: String,
+    path: Many<String>,
     #[serde(default)]
     offset: Option<usize>,
     #[serde(default)]
     limit: Option<usize>,
+    #[serde(default)]
+    depth: Option<usize>,
+}
+
+impl Args {
+    fn paths(self) -> (Vec<String>, Page) {
+        let page = Page {
+            offset: self.offset,
+            limit: self.limit,
+            depth: self.depth,
+        };
+        (
+            self.path.capped(limits::get().tools.read_batch_max.value),
+            page,
+        )
+    }
+}
+
+/// How much of each file or directory to show.
+#[derive(Clone, Copy)]
+struct Page {
+    offset: Option<usize>,
+    limit: Option<usize>,
+    depth: Option<usize>,
 }
 
 pub struct Read;
@@ -37,34 +62,66 @@ impl Tool for Read {
     }
 
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: Args = parse(args)?;
-        let target = target::resolve(&cx.app.paths, &args.path).map_err(Refusal::Refused)?;
-        Ok(Check::new(target::asks(permissions::READ.name, &target)))
+        let (paths, _) = parse::<Args>(args)?.paths();
+        let mut asks = Vec::new();
+        for path in &paths {
+            let target = target::resolve(&cx.app.paths, path).map_err(Refusal::Refused)?;
+            asks.extend(target::asks(permissions::READ.name, &target));
+        }
+        Ok(Check::new(asks))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let args: Args = match parse_or_fail(&args) {
-                Ok(args) => args,
+            let (paths, page) = match parse_or_fail::<Args>(&args) {
+                Ok(args) => args.paths(),
                 Err(out) => return out,
             };
-            let target = match target::resolve(&cx.app.paths, &args.path) {
-                Ok(target) => target,
-                Err(why) => return Output::error(why),
-            };
-            match target.kind() {
-                Err(why) => Output::error(why),
-                Ok(Kind::Missing) => Output::error(format!("{} does not exist.", target.shown)),
-                Ok(Kind::Dir) => list(&target.path, &target.shown),
-                Ok(Kind::File) => {
-                    let out = file(&target.path, &target.shown, args.offset, args.limit);
-                    if !out.is_error {
-                        cx.files().saw(&target.path);
-                    }
-                    out
-                }
+            if let [path] = paths.as_slice() {
+                return one(cx, path, page);
             }
+            let budget = limits::get().tools.read_batch_bytes.value;
+            let (mut used, mut read) = (0, 0);
+            let mut parts = Vec::new();
+            for path in &paths {
+                // A soft cap: the file that crosses it stays whole, and the rest are only named.
+                let out = if used < budget {
+                    one(cx, path, page)
+                } else {
+                    Output::error(format!(
+                        "Not read: this batch already holds {budget} bytes. Read it on its own."
+                    ))
+                };
+                used += out.content.len();
+                read += usize::from(!out.is_error);
+                parts.push((format!("{path}:"), out.content));
+            }
+            let content = many::join(parts);
+            if read == 0 {
+                return Output::error(content);
+            }
+            Output::ok(content).with_details(json!({ "files": read }))
         })
+    }
+}
+
+/// One path: a file's numbered lines, or a directory's entries.
+fn one(cx: &ToolCx<'_>, path: &str, page: Page) -> Output {
+    let target = match target::resolve(&cx.app.paths, path) {
+        Ok(target) => target,
+        Err(why) => return Output::error(why),
+    };
+    match target.kind() {
+        Err(why) => Output::error(why),
+        Ok(Kind::Missing) => Output::error(format!("{} does not exist.", target.shown)),
+        Ok(Kind::Dir) => list(&target.path, &target.shown, page.depth.unwrap_or(1)),
+        Ok(Kind::File) => {
+            let out = file(&target.path, &target.shown, page.offset, page.limit);
+            if !out.is_error {
+                cx.files().saw(&target.path);
+            }
+            out
+        }
     }
 }
 
@@ -129,16 +186,28 @@ fn file(
     Output::ok(content).with_details(json!({"lines": [start, last], "total": lines.len()}))
 }
 
-fn list(path: &std::path::Path, shown: &str) -> Output {
-    let max = limits::get().tools.list_entries.value;
-    let entries = match io::fs::list_dir(path) {
-        Ok(entries) => entries,
-        Err(e) => return Output::error(format!("Could not list {shown}: {e}")),
+/// One level is everything in the directory; deeper levels leave out what .gitignore ignores.
+fn list(path: &std::path::Path, shown: &str, depth: usize) -> Output {
+    let limits = &limits::get().tools;
+    let max = limits.list_entries.value;
+    let entries: Vec<(usize, String, bool)> = if depth <= 1 {
+        match io::fs::list_dir(path) {
+            Ok(entries) => entries.into_iter().map(|e| (1, e.name, e.is_dir)).collect(),
+            Err(e) => return Output::error(format!("Could not list {shown}: {e}")),
+        }
+    } else {
+        io::search::tree(path, depth.min(limits.list_depth_max.value))
+            .into_iter()
+            .map(|e| (e.depth, e.name, e.is_dir))
+            .collect()
     };
     let mut out: String = entries
         .iter()
         .take(max)
-        .map(|e| format!("{}{}\n", e.name, if e.is_dir { "/" } else { "" }))
+        .map(|(depth, name, is_dir)| {
+            let indent = "  ".repeat(depth - 1);
+            format!("{indent}{name}{}\n", if *is_dir { "/" } else { "" })
+        })
         .collect();
     if entries.is_empty() {
         out = format!("{shown} is an empty directory.");
@@ -149,7 +218,7 @@ fn list(path: &std::path::Path, shown: &str) -> Output {
             entries.len() - max
         );
     }
-    Output::ok(out.trim_end().to_owned())
+    Output::ok(out.trim_end().to_owned()).with_details(json!({ "entries": entries.len() }))
 }
 
 #[cfg(test)]
@@ -190,6 +259,42 @@ mod tests {
         )
         .unwrap();
         assert!(read(&project, json!({"path": "bin"})).await.is_error);
+    }
+
+    #[tokio::test]
+    async fn reads_several_files_at_once_each_under_its_path() {
+        let project = Project::new();
+        project.write("a.txt", "alpha\n");
+        project.write("b.txt", "beta\n");
+        let out = read(&project, json!({"path": ["a.txt", "missing.txt", "b.txt"]})).await;
+        assert!(!out.is_error);
+        assert!(
+            out.content.starts_with("a.txt:\n     1\talpha"),
+            "{}",
+            out.content
+        );
+        assert!(
+            out.content
+                .contains("missing.txt:\nmissing.txt does not exist.")
+        );
+        assert!(
+            out.content.contains("b.txt:\n     1\tbeta"),
+            "{}",
+            out.content
+        );
+        assert_eq!(out.details, Some(json!({"files": 2})));
+        let path = crate::io::fs::canonical(&project.app.paths.project.join("b.txt"));
+        assert!(project.shared.files.check_fresh(&path, "b.txt").is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_deeper_listing_indents_each_level() {
+        let project = Project::new();
+        project.write("d/x.txt", "x");
+        project.write("d/sub/y.txt", "y");
+        project.write("d/sub/deep/z.txt", "z");
+        let out = read(&project, json!({"path": "d", "depth": 2})).await;
+        assert_eq!(out.content, "sub/\n  deep/\n  y.txt\nx.txt");
     }
 
     #[tokio::test]

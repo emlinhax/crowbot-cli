@@ -3,6 +3,7 @@
 
 mod copy;
 mod effort;
+pub mod forums;
 mod help;
 mod init;
 mod install;
@@ -165,6 +166,11 @@ pub enum Effect {
     PickModel {
         refresh: bool,
     },
+    /// Open the session's forums card, at the login for the forum with this base URL when one
+    /// was named.
+    Forums {
+        login: Option<String>,
+    },
 }
 
 /// Markdown to show, and effects for the session to apply.
@@ -208,6 +214,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &install::Install,
     &uninstall::Uninstall,
     &models::Models,
+    &forums::Forums,
     &mode::Mode,
     &effort::Effort,
     &copy::Copy,
@@ -303,7 +310,7 @@ mod tests {
                 Scope::Session,
                 "mode",
                 "plan auto",
-                "usage: /mode [manual|auto|plan]",
+                "usage: /mode [manual|plan|auto]",
             ),
             (Scope::Cli, "logout", "please", "usage: crowbot logout"),
         ] {

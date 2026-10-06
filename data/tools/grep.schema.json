@@ -4,7 +4,9 @@
     "pattern": { "type": "string", "description": "Regular expression" },
     "path": { "type": "string", "description": "File or directory to search; defaults to the working directory" },
     "glob": { "type": "string", "description": "Only files whose path matches this glob" },
-    "ignore_case": { "type": "boolean", "description": "Case-insensitive matching" }
+    "ignore_case": { "type": "boolean", "description": "Case-insensitive matching" },
+    "context": { "type": "integer", "description": "Lines to show before and after each match" },
+    "output": { "type": "string", "enum": ["content", "files", "count"], "description": "Matching lines (default), only the files that match, or a count per file" }
   },
   "required": ["pattern"]
 }

@@ -16,6 +16,8 @@ pub struct Target {
     /// This is what permission rules match and what the user sees.
     pub shown: String,
     pub outside: bool,
+    /// The path as given is itself a symbolic link (`path` is where it leads).
+    pub link: bool,
 }
 
 impl Target {
@@ -46,6 +48,7 @@ pub fn resolve(paths: &Paths, raw: &str) -> Result<Target, String> {
     } else {
         project.join(raw)
     };
+    let link = io::fs::is_link(&joined);
     let path = io::fs::canonical(&joined);
     let (shown, outside) = show(&io::fs::canonical(project), &path);
     // crowbot's tmp dir holds the full output it pointed the model at; reading there is not
@@ -55,6 +58,7 @@ pub fn resolve(paths: &Paths, raw: &str) -> Result<Target, String> {
         path,
         shown,
         outside,
+        link,
     })
 }
 

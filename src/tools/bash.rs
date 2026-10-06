@@ -14,7 +14,7 @@ use crate::io::shell::{self, Ended, ShellCommand};
 use crate::io::{self, fs::Access};
 use crate::limits;
 use crate::permission::gate::Ask;
-use crate::permission::shell_split;
+use crate::permission::{filter, shell_split};
 use crate::text::controls;
 
 static SPEC: LazyLock<Spec> = LazyLock::new(|| {
@@ -53,9 +53,18 @@ impl Tool for Bash {
             return Err(Refusal::InvalidArgs("`command` is empty".into()));
         }
         let split = shell_split::split(&args.command);
+        // A filter at the end of a pipe (`| tail -30`) reads only what the command before it
+        // writes, so it asks for nothing of its own while something feeds it.
+        let fed: Vec<String> = split
+            .commands
+            .iter()
+            .filter(|c| !filter::reads_only_input(c))
+            .cloned()
+            .collect();
+        let patterns = if fed.is_empty() { split.commands } else { fed };
         let mut asks = vec![Ask {
             permission: permissions::BASH.name.into(),
-            patterns: split.commands,
+            patterns,
         }];
         // What runs cannot be read off a substitution, and a redirect writes files: both get
         // their own permission so read-only allowances never cover them.
@@ -314,6 +323,20 @@ mod tests {
         let asks = asks("git status && cargo test --all");
         assert_eq!(asks[0].patterns, vec!["git status", "cargo test --all"]);
         assert_eq!(asks.len(), 1);
+    }
+
+    #[test]
+    fn a_pipe_filter_asks_nothing_while_something_feeds_it() {
+        let patterns = |command: &str| asks(command).remove(0).patterns;
+        assert_eq!(
+            patterns("cargo test 2>&1 | grep -E 'test result|FAILED' | tail -5"),
+            ["cargo test 2>&1"]
+        );
+        assert_eq!(
+            patterns("cargo test | tail .env"),
+            ["cargo test", "tail .env"]
+        );
+        assert_eq!(patterns("tail -5"), ["tail -5"]);
     }
 
     #[test]

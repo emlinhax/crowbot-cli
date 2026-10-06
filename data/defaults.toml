@@ -48,6 +48,19 @@ permission = "codesearch"
 pattern = "*"
 action = "allow"
 
+# Reading forums is allowed; the agent browses added forums without asking. Posting is allowed to
+# reach the tool, which then confirms the exact content with the user every time, even in AUTO. Deny
+# either per host to lock it down, e.g. permission = "forum_post", pattern = "*", action = "deny".
+[[permission]]
+permission = "forum"
+pattern = "*"
+action = "allow"
+
+[[permission]]
+permission = "forum_post"
+pattern = "*"
+action = "allow"
+
 [[permission]]
 permission = "todo"
 pattern = "*"

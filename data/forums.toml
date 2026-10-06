@@ -1,0 +1,34 @@
+# Forums crowbot can browse. One backend today — `mobiquo`, the Tapatalk plugin's XML-RPC — picked
+# by a forum's `kind`. Discovery and endpoint resolution both go through Tapatalk's directory.
+
+[directory]
+url = "https://apis.tapatalk.com"
+path = "/search_forum_v2"
+# The Tapatalk app's own id and key, read from the published app — public, not a secret.
+# CEILING: if Tapatalk retires these, discovery stops; the upgrade is new values or crowbot's own key.
+app_id = "1"
+app_key = "hdp3jtrujmsUis3r"
+
+# Enabled on first run, so there is something to browse right away. A mobiquo dir can be rotated by
+# the forum; if a call starts 404ing, re-resolve through the directory to refresh it.
+[[seed]]
+id = "79565"
+name = "UnknownCheats"
+hint = "Game hacking and reverse engineering community (UC). Cheats, aimbots, ESP/wallhacks, memory editing, internal/external hacks, anti-cheat (BattlEye, EAC, Vanguard) bypasses, DLL injection; per-game boards (CS2, CoD/Warzone, Apex, Fortnite, Rust, Valorant, GTA and more); C/C++, C#, x86/x64 assembly, IDA/Cheat Engine, and tutorials/source releases."
+base_url = "https://www.unknowncheats.me/forum"
+mobiquo_dir = "euehhp13n8dqw77"
+ext = "php"
+kind = "mobiquo"
+
+# Offered first in the discovery picker (coding/hacking leaning). Each is a search term, not an
+# endpoint; picking one resolves it live, so a forum that has since dropped Tapatalk just won't add.
+[[suggest]]
+query = "unknowncheats"
+[[suggest]]
+query = "mpgh"
+[[suggest]]
+query = "guided hacking"
+[[suggest]]
+query = "tuts4you"
+[[suggest]]
+query = "hackforums"

@@ -43,6 +43,7 @@ pub struct Limits {
     pub agent: AgentLimits,
     pub tools: ToolLimits,
     pub update: UpdateLimits,
+    pub forums: ForumLimits,
     pub edit: EditLimits,
     pub tui: TuiLimits,
 }
@@ -112,7 +113,12 @@ pub struct ToolLimits {
     pub max_bytes: Limit<usize>,
     pub max_line_chars: Limit<usize>,
     pub max_results: Limit<usize>,
+    pub grep_context_max: Limit<usize>,
     pub grep_line_chars: Limit<usize>,
+    pub read_batch_max: Limit<usize>,
+    pub read_batch_bytes: Limit<usize>,
+    pub list_depth_max: Limit<usize>,
+    pub fs_batch_max: Limit<usize>,
     pub list_entries: Limit<usize>,
     pub question_max: Limit<usize>,
     pub binary_sniff_bytes: Limit<usize>,
@@ -131,6 +137,14 @@ pub struct ToolLimits {
 pub struct UpdateLimits {
     pub check_interval_secs: Limit<u64>,
     pub download_timeout_secs: Limit<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ForumLimits {
+    pub page_size: Limit<i64>,
+    pub batch_max: Limit<usize>,
+    pub directory_results: Limit<i64>,
 }
 
 #[derive(Debug, Deserialize)]

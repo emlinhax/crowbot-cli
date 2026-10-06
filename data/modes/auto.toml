@@ -1,7 +1,7 @@
 id = "auto"
 label = "AUTO"
 color = "mode_auto"
-order = 1
+order = 2
 summary = "Runs everything without asking, deny rules included"
 
 # Deliberately total: AUTO bypasses every permission, with no classifier.

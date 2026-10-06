@@ -203,6 +203,44 @@ pub fn make_dir(dir: &Path) -> io::Result<()> {
     std::fs::create_dir_all(dir)
 }
 
+/// Whether `path` itself is a symbolic link, not what it points to.
+pub fn is_link(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink())
+}
+
+/// Moves `from` to `to`, copying then removing when they sit on different filesystems.
+pub fn rename(from: &Path, to: &Path) -> io::Result<()> {
+    match std::fs::rename(from, to) {
+        Err(e) if e.kind() == io::ErrorKind::CrossesDevices => {
+            copy_all(from, to)?;
+            remove_all(from)
+        }
+        moved => moved,
+    }
+}
+
+/// Copies a file, or a directory and everything in it. `to` must not lie inside `from`.
+pub fn copy_all(from: &Path, to: &Path) -> io::Result<()> {
+    if !std::fs::metadata(from)?.is_dir() {
+        return std::fs::copy(from, to).map(|_| ());
+    }
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        copy_all(&entry.path(), &to.join(entry.file_name()))?;
+    }
+    Ok(())
+}
+
+/// Removes a file, or a directory and everything in it.
+pub fn remove_all(path: &Path) -> io::Result<()> {
+    if std::fs::symlink_metadata(path)?.is_dir() {
+        std::fs::remove_dir_all(path)
+    } else {
+        std::fs::remove_file(path)
+    }
+}
+
 /// Removes `dir` and all it holds; absent is fine. Only Windows installs into a folder of
 /// crowbot's own.
 #[cfg(windows)]

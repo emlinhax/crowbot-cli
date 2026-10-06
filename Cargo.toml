@@ -32,6 +32,7 @@ htmd = "0.5.5"
 ignore = "0.4.33"
 jiff = { version = "0.2.37", features = ["serde"] }
 pulldown-cmark = { version = "0.13.4", default-features = false }
+quick-xml = "0.37.5"
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "stream", "http2", "rustls", "system-proxy"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"

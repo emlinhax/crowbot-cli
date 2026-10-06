@@ -1,0 +1,8 @@
+# What the forum tools say back; {placeholders} are filled in.
+no_forums = "No forums have been added yet. The user can add one with /forums."
+unknown = "No forum matches {forum}. Call forum_sections with no arguments to see the forums you can browse."
+no_subject = "A new topic needs a subject."
+not_confirmed = "The user did not confirm the post, so nothing was sent."
+needs_user = "Posting needs the user to confirm, which a headless run cannot do."
+posted = "Posted to {forum}.{extra}"
+cut = "[Cut at {kept} of {total} lines.]"

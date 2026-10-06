@@ -1,7 +1,8 @@
 # How each tool call looks in the transcript. `title` lists argument names; the first one present
 # titles the card. `body` is one of: none, diff (details.diff), head, tail, summary.
 # `summary` fills {placeholders} from the result's details, or counts one of them:
-# `{ count = "<key>", one = "…{n}…", many = "…{n}…" }` picks the form for that number.
+# `{ count = "<key>", one = "…{n}…", many = "…{n}…" }` picks the form for that number. A list of
+# summaries shows the first whose details are all there.
 # Tools without a section use [default].
 
 [default]
@@ -10,7 +11,11 @@ body = "none"
 
 [read]
 body = "summary"
-summary = "lines {lines.0}-{lines.1} of {total}"
+summary = [
+  "lines {lines.0}-{lines.1} of {total}",
+  { count = "files", one = "{n} file", many = "{n} files" },
+  { count = "entries", one = "{n} entry", many = "{n} entries" },
+]
 
 [write]
 body = "summary"
@@ -30,7 +35,16 @@ summary = { count = "files", one = "{n} file", many = "{n} files" }
 
 [grep]
 body = "summary"
-summary = { count = "matches", one = "{n} match", many = "{n} matches" }
+summary = [
+  { count = "matches", one = "{n} match", many = "{n} matches" },
+  { count = "files", one = "{n} file", many = "{n} files" },
+]
+
+[fs]
+title = ["action", "path", "to"]
+title_join = " · "
+body = "summary"
+summary = { count = "paths", one = "{n} path", many = "{n} paths" }
 
 [webfetch]
 body = "head"
@@ -55,3 +69,28 @@ max_lines = 9
 title = []
 body = "head"
 max_lines = 1
+
+# The forum tools fold to one line: the forum, then its section, topic or search term.
+[forum_sections]
+title = ["forum"]
+body = "none"
+
+[forum_topics]
+title = ["forum", "section"]
+title_join = " › "
+body = "none"
+
+[forum_thread]
+title = ["forum", "topic"]
+title_join = " › "
+body = "none"
+
+[forum_search]
+title = ["forum", "query"]
+title_join = " · "
+body = "none"
+
+[forum_post]
+title = ["forum", "section", "topic"]
+title_join = " › "
+body = "none"

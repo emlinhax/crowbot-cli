@@ -9,9 +9,9 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use anyhow::anyhow;
-use futures_util::StreamExt;
 use futures_util::future::BoxFuture;
 use futures_util::stream::FuturesUnordered;
+use futures_util::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 
 use crate::agent::event::{AgentEvent, Outcome};
@@ -37,6 +37,7 @@ use crate::tui::card::{self, Card};
 use crate::tui::command::{self, Work};
 use crate::tui::editor::Editor;
 use crate::tui::feed::{Block, Feed};
+use crate::tui::forums::{self, Forums};
 use crate::tui::keymap::{self, Action};
 use crate::tui::login::{self, Login};
 use crate::tui::palette::{self, Palette};
@@ -64,12 +65,18 @@ enum Step<'a> {
     Continue,
     Send(String),
     Quit,
-    /// Start network work for the login card.
-    Login(login::Job),
+    /// Start network work for the card on screen.
+    Job(BoxFuture<'a, Done>),
     /// Put the conversation away and start a fresh one.
     NewConversation,
     /// Run beside input: a session command, or what one of them asked for.
     Work(BoxFuture<'a, Work>),
+}
+
+/// What a card's network work came to, for the card that started it.
+enum Done {
+    Login(login::Done),
+    Forums(forums::Done),
 }
 
 pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode> {
@@ -163,6 +170,8 @@ struct Tui<'a> {
     login: Option<Login>,
     /// The `/models` card, likewise.
     picker: Option<Picker>,
+    /// The `/forums` card, likewise.
+    forums: Option<Forums>,
     /// The turn in flight, for the working line.
     progress: Option<Progress>,
     last_verb: Option<usize>,
@@ -212,6 +221,7 @@ impl<'a> Tui<'a> {
             cards: VecDeque::new(),
             login: None,
             picker: None,
+            forums: None,
             progress: None,
             last_verb: None,
             rng: fastrand::Rng::new(),
@@ -297,7 +307,7 @@ impl<'a> Tui<'a> {
     ) -> (u64, Option<Transcript>) {
         let mut transcript = Some(transcript);
         let mut turn: Option<Turn<'a>> = None;
-        let mut job: Option<BoxFuture<'a, login::Done>> = None;
+        let mut job: Option<BoxFuture<'a, Done>> = None;
         let mut work: FuturesUnordered<BoxFuture<'a, Work>> = FuturesUnordered::new();
         let mut inputs = Box::pin(term::inputs());
         let mut tick = tokio::time::interval(limits::get().tui.frame_ms.ms());
@@ -328,13 +338,8 @@ impl<'a> Tui<'a> {
                     Step::Continue
                 }
                 done = async { job.as_mut().expect("guarded by the branch condition").await }, if job.is_some() => {
-                    job = self
-                        .login
-                        .as_mut()
-                        .map(|card| card.finished(done))
-                        .and_then(|next| self.login_next(next))
-                        .map(|next| login::run(self.app, next));
-                    Step::Continue
+                    job = None;
+                    self.job_done(done)
                 }
                 Some(done) = work.next(), if !work.is_empty() => self.finish(done),
                 // Frames tick while something moves: a turn, or a toast that has to go away.
@@ -343,7 +348,7 @@ impl<'a> Tui<'a> {
             match step {
                 Step::Continue => {}
                 Step::Quit => break,
-                Step::Login(next) => job = Some(login::run(self.app, next)),
+                Step::Job(run) => job = Some(run),
                 Step::Work(run) => work.push(run),
                 Step::Send(text) => {
                     // Typed text queues while a turn runs; only a command's message gets here.
@@ -379,8 +384,8 @@ impl<'a> Tui<'a> {
                     None => self.feed.notice(&ui::get().text.busy, "warn"),
                 },
             }
-            // Closing the login card drops whatever it was waiting on.
-            if self.login.is_none() {
+            // Closing a card drops whatever it was waiting on.
+            if self.login.is_none() && self.forums.is_none() {
                 job = None;
             }
         }
@@ -451,6 +456,8 @@ impl<'a> Tui<'a> {
             Input::Paste(text) => {
                 if let Some(card) = &mut self.login {
                     card.insert(&text);
+                } else if let Some(card) = &mut self.forums {
+                    card.insert(&text);
                 } else if let Some(card) = self.cards.front_mut() {
                     card.insert(&text);
                 } else {
@@ -459,6 +466,7 @@ impl<'a> Tui<'a> {
                 Step::Continue
             }
             Input::Key(key) if self.login.is_some() => self.login_key(&key),
+            Input::Key(key) if self.forums.is_some() => self.forums_key(&key),
             Input::Key(key) if self.picker.is_some() => {
                 self.picker_key(&key);
                 Step::Continue
@@ -524,7 +532,55 @@ impl<'a> Tui<'a> {
             Some(card) => card.key(action, key),
             None => return Step::Continue,
         };
-        self.login_next(next).map_or(Step::Continue, Step::Login)
+        self.login_next(next)
+            .map_or(Step::Continue, |job| self.login_job(job))
+    }
+
+    fn login_job(&self, job: login::Job) -> Step<'a> {
+        Step::Job(login::run(self.app, job).map(Done::Login).boxed())
+    }
+
+    fn forums_key(&mut self, key: &crate::io::term::KeyEvent) -> Step<'a> {
+        let action = keymap::get().action(key);
+        if action == Some(Action::CycleMode) {
+            self.cycle_mode();
+            return Step::Continue;
+        }
+        match &mut self.forums {
+            Some(card) => {
+                let next = card.key(action, key);
+                self.forums_next(next)
+            }
+            None => Step::Continue,
+        }
+    }
+
+    fn forums_next(&mut self, next: forums::Next) -> Step<'a> {
+        match next {
+            forums::Next::Stay => {}
+            forums::Next::Run(job) => {
+                return Step::Job(forums::run(self.app, job).map(Done::Forums).boxed());
+            }
+            forums::Next::Note(text) => self.feed.notice(&text, "done"),
+            forums::Next::Error(text) => self.feed.notice(&text, "error"),
+            forums::Next::Close => self.forums = None,
+        }
+        Step::Continue
+    }
+
+    /// Hands a card's finished work back to it; what it asks next may be more work.
+    fn job_done(&mut self, done: Done) -> Step<'a> {
+        match done {
+            Done::Login(done) => {
+                let next = self.login.as_mut().map(|card| card.finished(done));
+                next.and_then(|next| self.login_next(next))
+                    .map_or(Step::Continue, |job| self.login_job(job))
+            }
+            Done::Forums(done) => match self.forums.as_mut().map(|card| card.finished(done)) {
+                Some(next) => self.forums_next(next),
+                None => Step::Continue,
+            },
+        }
     }
 
     fn picker_key(&mut self, key: &crate::io::term::KeyEvent) {
@@ -766,7 +822,7 @@ impl<'a> Tui<'a> {
                     number: Some(number),
                 } => {
                     self.login = Some(Login::checking());
-                    return Step::Login(login::Job::Check(number));
+                    return self.login_job(login::Job::Check(number));
                 }
                 Effect::PickModel { refresh: true } => {
                     return Step::Work(command::refresh_catalog(self.app));
@@ -774,6 +830,10 @@ impl<'a> Tui<'a> {
                 Effect::PickModel { refresh: false } => {
                     self.picker = Some(Picker::new(&self.catalog, &self.model.id));
                 }
+                Effect::Forums { login } => match crate::forums::store::load(&self.app.paths) {
+                    Ok(list) => self.forums = Some(Forums::new(list, login.as_deref())),
+                    Err(e) => self.feed.notice(&format!("{e:#}"), "error"),
+                },
                 Effect::NewConversation => return Step::NewConversation,
                 Effect::SetEffort(id) => self.set_effort(id),
                 Effect::Send(text) => return Step::Send(text),
@@ -836,11 +896,18 @@ impl<'a> Tui<'a> {
         self.cards.retain(|card| shared.waiting(card.id()));
         // The command popup floats over the conversation instead of growing the bar.
         let mut floating = Vec::new();
-        match (&self.login, &self.picker, self.cards.front()) {
-            (Some(login), _, _) => live.extend(login.render(width)),
-            (None, Some(picker), _) => live.extend(picker.render(width)),
-            (None, None, Some(card)) => live.extend(card.render(width)),
-            (None, None, None) => {
+        let card = if let Some(login) = &self.login {
+            Some(login.render(width))
+        } else if let Some(forums) = &self.forums {
+            Some(forums.render(width))
+        } else if let Some(picker) = &self.picker {
+            Some(picker.render(width))
+        } else {
+            self.cards.front().map(|card| card.render(width))
+        };
+        match card {
+            Some(lines) => live.extend(lines),
+            None => {
                 live.push(frame::top(mode, width));
                 if !running {
                     let found = self.palette.open(&self.editor.text());

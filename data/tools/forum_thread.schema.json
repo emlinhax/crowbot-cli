@@ -1,0 +1,44 @@
+{
+  "type": "object",
+  "properties": {
+    "forum": {
+      "type": "string",
+      "description": "The forum's name or host"
+    },
+    "topic": {
+      "description": "A topic id, or several ids to read at once",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "integer"
+            ]
+          }
+        }
+      ]
+    },
+    "page": {
+      "description": "1-based page of posts, or \"last\" for the newest; default 1",
+      "oneOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "required": [
+    "forum",
+    "topic"
+  ]
+}

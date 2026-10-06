@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "properties": {
+    "forum": { "type": "string", "description": "A forum's name or host. Omit to list the forums you can browse." }
+  }
+}

@@ -1,0 +1,70 @@
+# Commands that, given only these flags, read nothing but standard input and write nothing but
+# standard output: the end of a pipe, as in `cargo test 2>&1 | tail -30`. While another command
+# feeds one, it asks for nothing of its own; the command feeding it still asks. Any other word (a
+# file, an unlisted flag, a redirect, an unquoted glob or `$`) makes it an ordinary command again.
+#
+# `flags` take no value and may be bundled (`-in`). `valued` take the next word or carry it
+# (`-n 30`, `-n30`, `--lines=30`). `numeric` accepts a bare count (`-30`). `positional` is how many
+# plain words are arguments rather than files; a `replaces_positional` flag takes one's place, so
+# `grep -e foo x` reads the file x and is no filter.
+
+[[filter]]
+name = "head"
+flags = ["-q", "-v", "-z", "--quiet", "--silent", "--verbose", "--zero-terminated"]
+valued = ["-n", "-c", "--lines", "--bytes"]
+numeric = true
+
+[[filter]]
+name = "tail"
+flags = ["-q", "-v", "-z", "--quiet", "--silent", "--verbose", "--zero-terminated"]
+valued = ["-n", "-c", "--lines", "--bytes"]
+numeric = true
+
+[[filter]]
+name = "wc"
+flags = ["-l", "-w", "-c", "-m", "-L", "--lines", "--words", "--bytes", "--chars",
+  "--max-line-length"]
+
+[[filter]]
+name = "sort"
+flags = ["-n", "-r", "-u", "-h", "-V", "-f", "-b", "-d", "-g", "-M", "-s", "-z",
+  "--numeric-sort", "--reverse", "--unique", "--human-numeric-sort", "--version-sort",
+  "--ignore-case", "--ignore-leading-blanks", "--stable", "--zero-terminated"]
+valued = ["-k", "-t", "--key", "--field-separator"]
+
+[[filter]]
+name = "uniq"
+flags = ["-c", "-d", "-u", "-i", "-z", "--count", "--repeated", "--unique", "--ignore-case",
+  "--zero-terminated"]
+valued = ["-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars"]
+
+[[filter]]
+name = "cut"
+flags = ["-s", "-z", "--complement", "--only-delimited", "--zero-terminated"]
+valued = ["-d", "-f", "-c", "-b", "--delimiter", "--fields", "--characters", "--bytes",
+  "--output-delimiter"]
+
+[[filter]]
+name = "tr"
+flags = ["-d", "-s", "-c", "-C", "-t", "--delete", "--squeeze-repeats", "--complement",
+  "--truncate-set1"]
+positional = 2
+
+[[filter]]
+name = "grep"
+flags = ["-i", "-v", "-n", "-c", "-o", "-E", "-F", "-G", "-P", "-w", "-x", "-q", "-s", "-h", "-H",
+  "-a", "--ignore-case", "--invert-match", "--line-number", "--count", "--only-matching",
+  "--extended-regexp", "--fixed-strings", "--basic-regexp", "--perl-regexp", "--word-regexp",
+  "--line-regexp", "--quiet", "--silent", "--no-messages", "--no-filename", "--with-filename",
+  "--text", "--color", "--colour"]
+valued = ["-e", "-m", "-A", "-B", "-C", "--regexp", "--max-count", "--after-context",
+  "--before-context", "--context"]
+positional = 1
+replaces_positional = ["-e", "--regexp"]
+
+[[filter]]
+name = "jq"
+flags = ["-r", "-c", "-S", "-e", "-s", "-j", "-a", "-C", "-M", "--raw-output", "--compact-output",
+  "--sort-keys", "--exit-status", "--slurp", "--join-output", "--ascii-output",
+  "--color-output", "--monochrome-output"]
+positional = 1
