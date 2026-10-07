@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
 use crate::config::limits;
+use crate::io::search::SearchError;
 use crate::io::{self, fs::Kind};
 use crate::permission::catalog;
 
@@ -39,21 +40,21 @@ impl Tool for Glob {
                 Ok(args) => args,
                 Err(out) => return out,
             };
-            let root = match target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or(".")) {
+            let root = match target::search_root(&cx.app.paths, args.path.as_deref()) {
                 Ok(root) => root,
                 Err(why) => return Output::error(why),
             };
-            let base = io::fs::canonical(&cx.app.paths.project);
             match root.kind() {
                 Ok(Kind::Dir) => {}
                 Ok(_) => return Output::error(format!("{} is not a directory.", root.shown)),
                 Err(why) => return Output::error(why),
             }
-            let (dir, pattern) = (root.path.clone(), args.pattern.clone());
-            let found = tokio::task::spawn_blocking(move || io::search::glob(&dir, &pattern)).await;
-            let mut found = match found {
-                Ok(Ok(found)) => found,
-                Ok(Err(e)) => return Output::error(format!("Bad pattern: {e}")),
+            let base = io::fs::canonical(&cx.app.paths.project);
+            let mut found = match io::search::glob(root.path.clone(), args.pattern.clone()).await {
+                Ok(found) => found,
+                Err(SearchError::BadPattern(e)) => {
+                    return Output::error(format!("Bad pattern: {e}"));
+                }
                 Err(e) => return Output::error(e.to_string()),
             };
             if found.is_empty() {

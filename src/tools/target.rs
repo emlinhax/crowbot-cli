@@ -62,6 +62,15 @@ pub fn resolve(paths: &Paths, raw: &str) -> Result<Target, String> {
     })
 }
 
+/// Where a search starts (`.` when no path is given), which must exist.
+pub fn search_root(paths: &Paths, raw: Option<&str>) -> Result<Target, String> {
+    let root = resolve(paths, raw.unwrap_or("."))?;
+    match root.kind()? {
+        io::fs::Kind::Missing => Err(format!("{} does not exist.", root.shown)),
+        _ => Ok(root),
+    }
+}
+
 /// How `path` is shown and matched, given the resolved project root, and whether it lies outside.
 pub fn show(base: &Path, path: &Path) -> (String, bool) {
     match path.strip_prefix(base) {

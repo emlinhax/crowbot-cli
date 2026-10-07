@@ -10,8 +10,8 @@ use crate::permission::catalog;
 use std::path::Path;
 
 use crate::config::limits;
-use crate::io::search::{FileHits, Report};
-use crate::io::{self, fs::Kind};
+use crate::io;
+use crate::io::search::{FileHits, Report, SearchError};
 use crate::text::shorten;
 
 static SPEC: LazyLock<Spec> = super::spec!("grep");
@@ -61,18 +61,11 @@ impl Tool for Grep {
                 Ok(args) => args,
                 Err(out) => return out,
             };
-            let root = match target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or(".")) {
+            let root = match target::search_root(&cx.app.paths, args.path.as_deref()) {
                 Ok(root) => root,
                 Err(why) => return Output::error(why),
             };
             let base = io::fs::canonical(&cx.app.paths.project);
-            match root.kind() {
-                Ok(Kind::Missing) => {
-                    return Output::error(format!("{} does not exist.", root.shown));
-                }
-                Ok(_) => {}
-                Err(why) => return Output::error(why),
-            }
             let limits = &limits::get().tools;
             let max = limits.max_results.value;
             let report = match args.output {
@@ -82,21 +75,19 @@ impl Tool for Grep {
                 Shape::Files => Report::Files,
                 Shape::Count => Report::Counts,
             };
-            let dir = root.path.clone();
-            let searched = tokio::task::spawn_blocking(move || {
-                io::search::grep(&io::search::Grep {
-                    root: &dir,
-                    pattern: &args.pattern,
-                    glob: args.glob.as_deref(),
-                    ignore_case: args.ignore_case,
-                    report,
-                    max,
-                })
-            })
-            .await;
-            let (files, capped) = match searched {
-                Ok(Ok(found)) => found,
-                Ok(Err(e)) => return Output::error(format!("Bad pattern: {e}")),
+            let query = io::search::Grep {
+                root: root.path.clone(),
+                pattern: args.pattern,
+                glob: args.glob,
+                ignore_case: args.ignore_case,
+                report,
+                max,
+            };
+            let (files, capped) = match io::search::grep(query).await {
+                Ok(found) => found,
+                Err(SearchError::BadPattern(e)) => {
+                    return Output::error(format!("Bad pattern: {e}"));
+                }
                 Err(e) => return Output::error(e.to_string()),
             };
             if files.is_empty() {
