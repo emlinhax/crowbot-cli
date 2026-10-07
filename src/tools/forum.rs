@@ -12,7 +12,6 @@ use serde_json::Value;
 use super::many::{Many, join};
 use super::truncate::{self, Keep};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
-use crate::agent::prompt::{Prompt, Reply};
 use crate::forums::{Forum, Section, Thread, TopicList, mobiquo, store};
 use crate::limits;
 use crate::permission::gate::Ask;
@@ -30,8 +29,6 @@ struct Text {
     no_forums: String,
     unknown: String,
     no_subject: String,
-    not_confirmed: String,
-    needs_user: String,
     posted: String,
     cut: String,
 }
@@ -534,10 +531,11 @@ impl Tool for Post {
         if args.topic.is_none() && args.subject.as_deref().unwrap_or("").trim().is_empty() {
             return Err(Refusal::InvalidArgs(TEXT.no_subject.clone()));
         }
-        Ok(Check::new(vec![Ask::new(
-            permissions::FORUM_POST.name,
-            host_for(cx, &args.forum),
-        )]))
+        let forum = resolve(cx, &args.forum).map_err(|out| Refusal::Refused(out.content))?;
+        let ask = Ask::new(permissions::FORUM_POST.name, forum.host());
+        Ok(Check::new(vec![ask])
+            .with_preview(Self::preview(&forum, &args))
+            .confirmed())
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
@@ -550,19 +548,6 @@ impl Tool for Post {
                 Ok(f) => f,
                 Err(out) => return out,
             };
-
-            // Confirm with the user every time, whatever the mode; a headless run cannot, so it
-            // refuses rather than posting unattended.
-            let prompt = Prompt::Permission {
-                tool: "forum_post".to_owned(),
-                asks: vec![Ask::new(permissions::FORUM_POST.name, forum.host())],
-                preview: Some(Self::preview(&forum, &parsed)),
-            };
-            match cx.ask(prompt).await {
-                Some(Reply::Yes) => {}
-                Some(Reply::Unavailable) => return Output::error(TEXT.needs_user.clone()),
-                _ => return Output::error(TEXT.not_confirmed.clone()),
-            }
 
             let result = match &parsed.topic {
                 Some(topic) => {

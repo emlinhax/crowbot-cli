@@ -556,6 +556,64 @@ mod tests {
         }
     }
 
+    /// A forum post, to a stored forum on a port nothing listens on, so an approved post fails at
+    /// once without leaving the machine.
+    async fn posting() -> Harness {
+        let h = Harness::new(vec![
+            reply(
+                "",
+                &[(
+                    "c1",
+                    "forum_post",
+                    json!({"forum": "Closed", "section": "1", "topic": "2", "body": "hi"}),
+                )],
+                "tool_calls",
+            ),
+            text("done"),
+        ])
+        .await;
+        let forum = crate::forums::Forum {
+            id: "7".into(),
+            name: "Closed".into(),
+            base_url: "http://127.0.0.1:9/forum".into(),
+            mobiquo_dir: "mobiquo".into(),
+            ext: "php".into(),
+            kind: "mobiquo".into(),
+            ..Default::default()
+        };
+        crate::forums::store::add(&h.app.paths, forum).unwrap();
+        h
+    }
+
+    #[tokio::test]
+    async fn a_forum_post_asks_once_even_in_auto() {
+        let h = posting().await;
+        let (_, _, events) = h
+            .run(&shared("auto"), |event, shared| {
+                if let AgentEvent::Prompt { id, .. } = event {
+                    shared.answer(*id, Reply::Yes);
+                }
+            })
+            .await;
+        assert_eq!(events.iter().filter(|e| *e == "prompt").count(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_headless_run_never_posts() {
+        let h = posting().await;
+        let (_, transcript, _) = h
+            .run(&shared("auto"), |event, shared| {
+                if let AgentEvent::Prompt { id, .. } = event {
+                    shared.answer(*id, Reply::Unavailable);
+                }
+            })
+            .await;
+        let refused = transcript.messages.iter().any(
+            |m| matches!(m, Message::Tool(r) if r.is_error && r.content.contains("confirm it")),
+        );
+        assert!(refused);
+    }
+
     #[tokio::test]
     async fn calls_in_a_cut_off_reply_are_never_run() {
         let h = Harness::new(vec![

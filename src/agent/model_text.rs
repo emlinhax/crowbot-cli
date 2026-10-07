@@ -22,6 +22,7 @@ pub struct ModelText {
     pub rejected: String,
     pub rejected_with_feedback: String,
     pub non_interactive: String,
+    pub unconfirmed: String,
     pub doom_loop: String,
     pub questions_answered: String,
     pub question_answer: String,

@@ -58,6 +58,9 @@ impl Spec {
 pub struct Check {
     pub asks: Vec<Ask>,
     pub preview: Option<String>,
+    /// The user confirms this call every time, even where rules and mode allow it; a deny still
+    /// wins.
+    pub confirm: bool,
 }
 
 impl Check {
@@ -65,11 +68,17 @@ impl Check {
         Self {
             asks,
             preview: None,
+            confirm: false,
         }
     }
 
     pub fn with_preview(mut self, preview: impl Into<String>) -> Self {
         self.preview = Some(preview.into());
+        self
+    }
+
+    pub fn confirmed(mut self) -> Self {
+        self.confirm = true;
         self
     }
 }

@@ -169,7 +169,11 @@ async fn clear<'a>(
         mode,
         plan_file: &cx.plan_file,
     };
-    match policy.decide(&asks) {
+    let decision = match policy.decide(&asks) {
+        Decision::Allow if check.confirm => Decision::Ask,
+        decision => decision,
+    };
+    match decision {
         Decision::Allow => Ok((tool.clone(), args)),
         Decision::Deny(what) => Err(fill(&text.denied, &[("what", &what)]).into()),
         Decision::Ask => {
@@ -190,7 +194,12 @@ async fn clear<'a>(
                     })
                 }
                 Some(Reply::Unavailable) => {
-                    Err(fill(&text.non_interactive, &[("what", &gate::describe(&asks))]).into())
+                    let why = if check.confirm {
+                        &text.unconfirmed
+                    } else {
+                        &text.non_interactive
+                    };
+                    Err(fill(why, &[("what", &gate::describe(&asks))]).into())
                 }
                 None => Err(text.cancelled.clone().into()),
             }
