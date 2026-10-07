@@ -6,13 +6,14 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::message::{Assistant, Finish, Message, Usage};
 use crate::api::assemble::{Assembler, Delta};
-use crate::api::error::{ApiError, ErrorInfo};
+use crate::api::error::ApiError;
 use crate::api::models::Model;
 use crate::api::sse;
 use crate::api::wire::{self, Replay, StreamOptions, WireMessage, WireUsage};
 use crate::api::{Api, Call, retry};
+use crate::conversation::error::ErrorInfo;
+use crate::conversation::message::{Assistant, Finish, Message, Usage};
 use crate::io;
 use crate::limits;
 
@@ -207,7 +208,7 @@ fn with_request_id(mut error: ErrorInfo, request_id: &Option<String>) -> ErrorIn
 
 fn message(
     turn: &Turn<'_>,
-    parts: Vec<crate::agent::message::Part>,
+    parts: Vec<crate::conversation::message::Part>,
     finish: Finish,
     usage: Option<Usage>,
     error: Option<ErrorInfo>,

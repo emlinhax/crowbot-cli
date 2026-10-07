@@ -3,8 +3,8 @@
 
 use std::collections::HashSet;
 
-use crate::agent::message::{Assistant, Finish, Message, Part, ToolResult};
 use crate::agent::model_text;
+use crate::conversation::message::{Assistant, Finish, Message, Part, ToolResult};
 
 pub fn build(messages: &[Message]) -> Vec<Message> {
     let mut out = Vec::with_capacity(messages.len());
@@ -91,18 +91,10 @@ fn completed_text(a: &Assistant) -> Option<Assistant> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::message::ToolCall;
+    use crate::conversation::message::ToolCall;
 
     fn assistant(finish: Finish, parts: Vec<Part>) -> Message {
-        Message::Assistant(Assistant {
-            parts,
-            model: "m".into(),
-            effort: None,
-            usage: None,
-            finish,
-            error: None,
-            request_id: None,
-        })
+        Message::Assistant(Assistant::stub(finish, parts))
     }
 
     fn call(id: &str) -> Part {

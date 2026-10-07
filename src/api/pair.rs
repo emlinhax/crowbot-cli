@@ -5,9 +5,10 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::api::error::{ApiError, ErrorInfo};
+use crate::api::error::ApiError;
 use crate::api::{Api, Call};
 use crate::api::{endpoints, retry};
+use crate::conversation::error::ErrorInfo;
 use crate::{io, limits};
 
 /// No `Debug`: it holds the device code.
@@ -91,5 +92,5 @@ pub fn page() -> String {
 }
 
 fn unreadable(e: &serde_json::Error) -> ApiError {
-    crate::api::error::ErrorInfo::local("bad_response", e.to_string()).into()
+    crate::conversation::error::ErrorInfo::local("bad_response", e.to_string()).into()
 }

@@ -5,8 +5,9 @@
 use std::time::{Duration, Instant};
 
 use crate::agent::event::{AgentEvent, DeltaKind, Outcome};
-use crate::agent::message::{Assistant, Finish, ToolResult};
-use crate::api::error::ErrorInfo;
+use crate::api::error::Entry as ErrorEntry;
+use crate::conversation::error::ErrorInfo;
+use crate::conversation::message::{Assistant, Finish, ToolResult};
 use crate::limits;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
@@ -245,7 +246,7 @@ impl Feed {
                 delay_ms, error, ..
             } => {
                 let until = now + Duration::from_millis(*delay_ms);
-                self.retry = Some((until, error.entry().title.clone()));
+                self.retry = Some((until, ErrorEntry::of(error).title.clone()));
             }
             AgentEvent::Unsaved { path, error } => {
                 let text = fill(&ui::get().text.unsaved, &[("path", path), ("error", error)]);
@@ -492,7 +493,7 @@ fn reply_lines(md: &str, first: bool, width: usize) -> Vec<Line> {
 }
 
 fn error_lines(error: &ErrorInfo, width: usize) -> Vec<Line> {
-    let entry = error.entry();
+    let entry = ErrorEntry::of(error);
     let mut lines = vec![Line::styled(
         format!("● {}", entry.title),
         Style::fg("error").bold(),
@@ -517,8 +518,8 @@ fn error_lines(error: &ErrorInfo, width: usize) -> Vec<Line> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::message::{Assistant, ToolResult};
-    use crate::api::error::ErrorInfo;
+    use crate::conversation::error::ErrorInfo;
+    use crate::conversation::message::{Assistant, ToolResult};
 
     fn delta(kind: DeltaKind, text: &str) -> AgentEvent {
         AgentEvent::Delta {
@@ -532,13 +533,8 @@ mod tests {
     fn end(error: Option<ErrorInfo>, finish: Finish) -> AgentEvent {
         AgentEvent::MessageEnd {
             message: Assistant {
-                parts: Vec::new(),
-                model: "m".into(),
-                effort: None,
-                usage: None,
-                finish,
                 error,
-                request_id: None,
+                ..Assistant::stub(finish, Vec::new())
             },
         }
     }

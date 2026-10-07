@@ -9,11 +9,11 @@ use tokio_util::sync::CancellationToken;
 
 use crate::agent::doom_loop;
 use crate::agent::event::AgentEvent;
-use crate::agent::message::{Message, ToolCall, ToolResult};
 use crate::agent::model_text;
 use crate::agent::prompt::{self, Prompt, Reply};
 use crate::agent::run::RunCtx;
 use crate::agent::state::Shared;
+use crate::conversation::message::{Message, ToolCall, ToolResult};
 use crate::limits;
 use crate::mode::DoomLoop;
 use crate::permission::gate::{self, Ask, Decision, Policy};

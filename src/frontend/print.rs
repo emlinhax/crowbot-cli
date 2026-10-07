@@ -8,13 +8,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::anyhow;
 
 use crate::agent::event::{AgentEvent, DeltaKind, Outcome};
-use crate::agent::message::{Assistant, Finish, Part, ToolResult};
 use crate::agent::prompt::{Prompt, Reply};
 use crate::agent::run::{self, RunCtx};
 use crate::agent::state::Shared;
 use crate::agent::system_prompt;
+use crate::api::error::Entry;
 use crate::api::models;
 use crate::app::App;
+use crate::conversation::message::{Assistant, Finish, Part, ToolResult};
 use crate::io::term;
 use crate::limits;
 use crate::mode;
@@ -146,7 +147,7 @@ impl Printer<'_> {
                 delay_ms, error, ..
             } => self.note(&format!(
                 "{}; retrying in {:.1}s",
-                error.entry().title,
+                Entry::of(error).title,
                 *delay_ms as f64 / 1000.0
             )),
             AgentEvent::Unsaved { path, error } => {
@@ -177,7 +178,7 @@ impl Printer<'_> {
             }
             Outcome::Failed => {
                 if let Some(error) = last.and_then(|m| m.error) {
-                    let entry = error.entry();
+                    let entry = Entry::of(&error);
                     term::err(&format!("crowbot: {}: {error}\n", entry.title));
                     if let Some(hint) = &entry.hint {
                         term::err(&format!("  {hint}\n"));

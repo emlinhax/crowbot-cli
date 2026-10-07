@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::message::Part;
 use crate::agent::prompt::Reply;
+use crate::conversation::message::Part;
 use crate::mode::Mode;
 use crate::permission::rule::Action;
 use crate::tools::files::Files;

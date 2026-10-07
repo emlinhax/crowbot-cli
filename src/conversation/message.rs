@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::api::error::ErrorInfo;
+use crate::conversation::error::ErrorInfo;
 
 // Messages are few and rarely moved; boxing the big variant would only add noise.
 #[allow(clippy::large_enum_variant)]
@@ -103,7 +103,35 @@ impl Message {
     }
 }
 
+impl Part {
+    /// The text parts of `parts`, a line apart; reasoning, calls and reminders are left out.
+    pub fn text_of(parts: &[Part]) -> String {
+        parts
+            .iter()
+            .filter_map(|p| match p {
+                Part::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
 impl Assistant {
+    /// A finished reply from model `m` with nothing else set, for tests to build on.
+    #[cfg(test)]
+    pub fn stub(finish: Finish, parts: Vec<Part>) -> Self {
+        Self {
+            parts,
+            model: "m".into(),
+            effort: None,
+            usage: None,
+            finish,
+            error: None,
+            request_id: None,
+        }
+    }
+
     pub fn tool_calls(&self) -> impl Iterator<Item = &ToolCall> {
         self.parts.iter().filter_map(|p| match p {
             Part::ToolCall(call) => Some(call),

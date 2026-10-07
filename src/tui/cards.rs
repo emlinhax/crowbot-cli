@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::agent::message::ToolResult;
+use crate::conversation::message::ToolResult;
 use crate::data;
 use crate::limits;
 use crate::text::diff;

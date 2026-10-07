@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::agent::message::Message;
+use crate::conversation::message::Message;
 use crate::io;
 use crate::paths::Paths;
 use crate::release;

@@ -1,6 +1,6 @@
 //! Spots a model repeating the same call, which burns money without progress.
 
-use crate::agent::message::{Message, ToolCall};
+use crate::conversation::message::{Message, ToolCall};
 
 /// How many times in a row the model has now made `reply[i]`, counting this one. The window is
 /// the current user turn: a call the user asks for again in a new message starts over at 1.
@@ -44,7 +44,7 @@ fn same(a: &ToolCall, b: &ToolCall) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::message::{Assistant, Finish, Part};
+    use crate::conversation::message::{Assistant, Finish, Part};
 
     fn call(name: &str, args: &str) -> ToolCall {
         ToolCall {
@@ -55,15 +55,8 @@ mod tests {
     }
 
     fn made(calls: Vec<ToolCall>) -> Message {
-        Message::Assistant(Assistant {
-            parts: calls.into_iter().map(Part::ToolCall).collect(),
-            model: "m".into(),
-            effort: None,
-            usage: None,
-            finish: Finish::ToolCalls,
-            error: None,
-            request_id: None,
-        })
+        let parts = calls.into_iter().map(Part::ToolCall).collect();
+        Message::Assistant(Assistant::stub(Finish::ToolCalls, parts))
     }
 
     #[test]

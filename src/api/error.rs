@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
-use std::fmt;
 use std::sync::LazyLock;
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
+use crate::conversation::error::ErrorInfo;
 use crate::data;
 use crate::io::http::{HttpError, Response};
 use crate::limits;
@@ -23,48 +23,12 @@ pub struct Entry {
     pub retry: Option<bool>,
 }
 
-/// An error as stored in sessions and shown to the user. `kind` is crowbot's `error.type`, or
-/// one of our own for failures that never reached crowbot (see data/errors.toml).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ErrorInfo {
-    #[serde(rename = "type", default)]
-    pub kind: String,
-    #[serde(default)]
-    pub message: String,
-    #[serde(default)]
-    pub status: Option<u16>,
-    #[serde(default)]
-    pub request_id: Option<String>,
-}
-
-impl ErrorInfo {
-    pub fn local(kind: &str, message: impl Into<String>) -> Self {
-        Self {
-            kind: kind.to_owned(),
-            message: message.into(),
-            status: None,
-            request_id: None,
-        }
-    }
-
-    pub fn entry(&self) -> &'static Entry {
+impl Entry {
+    /// How the client treats `info`'s kind; an unknown kind reads as `unknown`.
+    pub fn of(info: &ErrorInfo) -> &'static Self {
         CATALOG
-            .get(&self.kind)
+            .get(&info.kind)
             .unwrap_or_else(|| &CATALOG["unknown"])
-    }
-}
-
-impl fmt::Display for ErrorInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ({}", self.message, self.kind)?;
-        if let Some(status) = self.status {
-            write!(f, ", HTTP {status}")?;
-        }
-        // The request id is what crowbot support needs to find the call.
-        if let Some(id) = &self.request_id {
-            write!(f, ", request {id}")?;
-        }
-        write!(f, ")")
     }
 }
 
@@ -144,7 +108,7 @@ mod tests {
     fn catalog_parses_and_has_a_fallback() {
         assert!(CATALOG.contains_key("unknown"));
         assert_eq!(
-            ErrorInfo::local("no_such_kind", "x").entry().title,
+            Entry::of(&ErrorInfo::local("no_such_kind", "x")).title,
             CATALOG["unknown"].title
         );
     }

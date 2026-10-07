@@ -4,7 +4,7 @@
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-use crate::agent::message::Message;
+use crate::conversation::message::Message;
 
 /// Bump only for a change old files can't load under; additions don't bump it.
 pub const FORMAT_VERSION: u32 = 1;
@@ -45,7 +45,7 @@ pub fn new_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::message::{Finish, Part};
+    use crate::conversation::message::{Finish, Part};
 
     /// Written by v1 builds and never edited: a line that stops parsing is a breaking change.
     const V1: &str = include_str!("../../tests/fixtures/session/v1.jsonl");

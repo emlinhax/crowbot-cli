@@ -4,13 +4,13 @@
 use crate::agent::batch::{self, Batch};
 use crate::agent::context;
 use crate::agent::event::{AgentEvent, Outcome};
-use crate::agent::message::{Finish, Message, Part, ToolCall};
 use crate::agent::model_text;
 use crate::agent::state::{Reminder, Shared};
 use crate::agent::system_prompt;
 use crate::api::chat::{self, Event, Turn};
 use crate::api::models::Model;
 use crate::app::App;
+use crate::conversation::message::{Finish, Message, Part, ToolCall};
 use crate::limits;
 use crate::session::transcript::Transcript;
 use crate::text::template::fill;
@@ -137,14 +137,7 @@ fn record(cx: &RunCtx<'_>, transcript: &mut Transcript, message: Message) {
 
 /// Hands a message typed mid-run to the model, and tells the frontend it landed.
 fn deliver(cx: &RunCtx<'_>, shared: &Shared, transcript: &mut Transcript, parts: Vec<Part>) {
-    let text = parts
-        .iter()
-        .filter_map(|p| match p {
-            Part::Text { text } => Some(text.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+    let text = Part::text_of(&parts);
     (cx.emit)(AgentEvent::Delivered { text });
     let parts = with_reminder(cx, shared, parts);
     record(cx, transcript, Message::User { parts });

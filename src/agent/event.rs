@@ -4,10 +4,10 @@
 
 use serde::Serialize;
 
-use crate::agent::message::{Assistant, ToolResult};
 use crate::agent::prompt::Prompt;
 use crate::api::assemble::Delta;
-use crate::api::error::ErrorInfo;
+use crate::conversation::error::ErrorInfo;
+use crate::conversation::message::{Assistant, ToolResult};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]

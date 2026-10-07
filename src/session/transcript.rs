@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::agent::message::Message;
+use crate::conversation::message::Message;
 use crate::session::store::Store;
 
 /// The conversation in memory, mirrored to its session file when it has one.
@@ -60,7 +60,7 @@ impl Transcript {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::message::Part;
+    use crate::conversation::message::Part;
     use crate::io;
     use crate::paths::Paths;
 

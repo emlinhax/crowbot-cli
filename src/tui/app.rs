@@ -15,13 +15,13 @@ use futures_util::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 
 use crate::agent::event::{AgentEvent, Outcome};
-use crate::agent::message::Part;
 use crate::agent::run::{self, RunCtx};
 use crate::agent::state::Shared;
 use crate::agent::system_prompt;
 use crate::api::models::{self, Catalog, Model};
 use crate::app::App;
 use crate::commands::{self, Effect, Outcome as CommandOutcome, Scope, Session};
+use crate::conversation::message::Part;
 use crate::io::term::{self, Button, Input, KeyCode};
 use crate::io::{clipboard, clock};
 use crate::limits;
@@ -750,7 +750,7 @@ impl<'a> Tui<'a> {
             .drain_steer()
             .into_iter()
             .chain(self.shared.drain_follow())
-            .map(|parts| text_of(&parts))
+            .map(|parts| Part::text_of(&parts))
             .collect();
         self.queue.clear();
         if !pulled.is_empty() {
@@ -978,15 +978,4 @@ impl<'a> Tui<'a> {
             .map(|p| p.render(now, color, self.braille, width))
             .unwrap_or_default()
     }
-}
-
-fn text_of(parts: &[Part]) -> String {
-    parts
-        .iter()
-        .filter_map(|p| match p {
-            Part::Text { text } => Some(text.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }

@@ -10,6 +10,7 @@ use serde_json::Value;
 use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::api::Call;
+use crate::api::error::Entry;
 use crate::limits;
 use crate::permission::gate::Ask;
 use crate::text::shorten;
@@ -78,7 +79,9 @@ impl Tool for CodeSearch {
                 .await;
             let resp = match resp {
                 Ok(resp) => resp,
-                Err(e) => return Output::error(format!("{}: {}", e.info.entry().title, e.info)),
+                Err(e) => {
+                    return Output::error(format!("{}: {}", Entry::of(&e.info).title, e.info));
+                }
             };
             let reply: Reply = match serde_json::from_slice(&resp.body) {
                 Ok(reply) => reply,

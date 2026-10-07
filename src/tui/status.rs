@@ -124,7 +124,7 @@ mod tests {
 
     use super::*;
     use crate::agent::event::DeltaKind;
-    use crate::agent::message::{Assistant, Finish, Usage};
+    use crate::conversation::message::{Assistant, Finish, Usage};
 
     fn progress(verb: usize) -> (Progress, Instant) {
         let now = crate::io::clock::instant();
@@ -208,9 +208,6 @@ mod tests {
         assert_eq!(p.tokens(), 100);
         p.event(&AgentEvent::MessageEnd {
             message: Assistant {
-                parts: Vec::new(),
-                model: "m".into(),
-                effort: None,
                 usage: Some(Usage {
                     input: 10,
                     cached: 0,
@@ -218,9 +215,7 @@ mod tests {
                     reasoning: 0,
                     cost_micros: 0,
                 }),
-                finish: Finish::Done,
-                error: None,
-                request_id: None,
+                ..Assistant::stub(Finish::Done, Vec::new())
             },
         });
         assert_eq!(p.tokens(), 250);

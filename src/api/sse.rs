@@ -7,7 +7,8 @@ use std::time::Duration;
 use futures_util::stream::{self, BoxStream};
 use futures_util::{Stream, StreamExt};
 
-use crate::api::error::{ApiError, ErrorInfo};
+use crate::api::error::ApiError;
+use crate::conversation::error::ErrorInfo;
 use crate::io;
 use crate::io::http::HttpError;
 
