@@ -6,6 +6,8 @@ use crate::config::limits;
 use crate::text::highlight;
 use crate::text::styled::{Line, Style, hang, width};
 use crate::text::table::{self, Align};
+use crate::text::template::fill;
+use crate::text::theme::{self, Glyphs};
 
 /// The markdown crowbot draws; the stream cut parses with the same, so both see one structure.
 pub fn options() -> Options {
@@ -106,12 +108,15 @@ impl Renderer {
             Event::Rule => {
                 self.flush();
                 self.block_start();
-                let rule = "─".repeat(self.width.min(limits::get().text.rule_max.value));
+                let rule = glyphs()
+                    .rule
+                    .repeat(self.width.min(limits::get().text.rule_max.value));
                 self.emit(vec![Line::styled(rule, Style::fg("rule"))]);
                 self.gap = true;
             }
             Event::TaskListMarker(done) => {
-                let mark = if done { "[x] " } else { "[ ] " };
+                let g = glyphs();
+                let mark = if done { &g.task_done } else { &g.task_open };
                 self.inline.push(mark, Style::fg("muted"));
             }
             Event::Html(html) | Event::InlineHtml(html) => {
@@ -167,7 +172,7 @@ impl Renderer {
                         *n += 1;
                         m
                     }
-                    _ => "• ".to_owned(),
+                    _ => glyphs().bullet.clone(),
                 };
                 self.containers.push(Container::Item {
                     marker,
@@ -191,8 +196,10 @@ impl Renderer {
                 self.styles.push(style);
             }
             Tag::Image { dest_url, .. } => {
-                self.inline
-                    .push(format!("[image: {dest_url}]"), Style::fg("muted"));
+                self.inline.push(
+                    fill(&glyphs().image, &[("url", &dest_url)]),
+                    Style::fg("muted"),
+                );
                 self.styles.push(Style::fg("muted"));
             }
             Tag::Table(aligns) => {
@@ -254,7 +261,8 @@ impl Renderer {
                 if let Some(url) = self.link.take().filter(|_| self.table.is_none()) {
                     let shown = self.inline.text();
                     if !shown.ends_with(&url) {
-                        self.inline.push(format!(" ({url})"), Style::fg("muted"));
+                        let suffix = fill(&glyphs().link, &[("url", &url)]);
+                        self.inline.push(suffix, Style::fg("muted"));
                     }
                 }
             }
@@ -300,8 +308,8 @@ impl Renderer {
         for c in &mut self.containers {
             match c {
                 Container::Quote => {
-                    first.push("│ ", Style::fg("quote"));
-                    rest.push("│ ", Style::fg("quote"));
+                    first.push(&glyphs().quote, Style::fg("quote"));
+                    rest.push(&glyphs().quote, Style::fg("quote"));
                 }
                 Container::List { .. } => {}
                 Container::Item { marker, used } => {
@@ -321,17 +329,18 @@ impl Renderer {
 
     fn code_lines(&mut self, lang: &str, code: &str) {
         let fence = Style::fg("muted");
-        let mut lines = vec![Line::styled(format!("```{lang}"), fence.clone())];
+        let g = glyphs();
+        let mut lines = vec![Line::styled(format!("{}{lang}", g.fence), fence.clone())];
         let (first, _) = self.prefixes(false);
         let avail = self.width.saturating_sub(first.width() + 2).max(1);
         for line in highlight::highlight(code.trim_end_matches('\n'), lang) {
             for part in line.wrap(avail, &Line::default()) {
-                let mut indented = Line::plain("  ");
+                let mut indented = Line::plain(&g.code_indent);
                 indented.extend(part);
                 lines.push(indented);
             }
         }
-        lines.push(Line::styled("```", fence));
+        lines.push(Line::styled(&g.fence, fence));
         self.emit(lines);
     }
 
@@ -340,6 +349,10 @@ impl Renderer {
         let room = self.width.saturating_sub(first.width());
         self.emit(table::grid(&table.rows, &table.aligns, room));
     }
+}
+
+fn glyphs() -> &'static Glyphs {
+    &theme::get().glyphs
 }
 
 #[cfg(test)]

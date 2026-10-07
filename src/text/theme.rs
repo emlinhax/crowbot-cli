@@ -18,6 +18,28 @@ pub struct Theme {
     /// `None` is the terminal's default colour.
     roles: BTreeMap<String, Option<Rgb>>,
     pub syntax: Vec<SyntaxRule>,
+    pub glyphs: Glyphs,
+}
+
+/// What markdown and tables draw with; `{url}` is filled in.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Glyphs {
+    pub bullet: String,
+    pub quote: String,
+    /// One cell of a horizontal rule or a table's border.
+    pub rule: String,
+    pub task_done: String,
+    pub task_open: String,
+    pub fence: String,
+    pub code_indent: String,
+    pub image: String,
+    pub link: String,
+    /// A table's border: the left, middle and right corner of each rule, and the side.
+    pub table_top: [String; 3],
+    pub table_head: [String; 3],
+    pub table_bottom: [String; 3],
+    pub table_side: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -33,6 +55,7 @@ struct File {
     palette: BTreeMap<String, String>,
     roles: BTreeMap<String, String>,
     syntax: Vec<SyntaxRule>,
+    glyphs: Glyphs,
 }
 
 pub fn get() -> &'static Theme {
@@ -59,6 +82,7 @@ impl Theme {
         Self {
             roles,
             syntax: file.syntax,
+            glyphs: file.glyphs,
         }
     }
 

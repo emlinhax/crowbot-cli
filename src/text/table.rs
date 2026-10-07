@@ -4,6 +4,7 @@
 
 use crate::config::limits;
 use crate::text::styled::{Line, Style};
+use crate::text::theme;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -117,13 +118,14 @@ pub fn grid(rows: &[Vec<Line>], aligns: &[Align], width: usize) -> Vec<Line> {
         .collect();
     let widths = widths(&rows, width, overhead(columns));
     let border = Style::fg("muted");
-    let rule = |edges: [&str; 3]| {
+    let g = &theme::get().glyphs;
+    let rule = |edges: &[String; 3]| {
         let dashes = widths
             .iter()
-            .map(|w| Line::styled("─".repeat(w + 2), border.clone()));
-        join(dashes, edges, &border)
+            .map(|w| Line::styled(g.rule.repeat(w + 2), border.clone()));
+        join(dashes, edges.each_ref().map(String::as_str), &border)
     };
-    let mut lines = vec![rule(["┌", "┬", "┐"])];
+    let mut lines = vec![rule(&g.table_top)];
     for (r, row) in rows.iter().enumerate() {
         let cells = row.iter().zip(&widths).enumerate().map(|(i, (cell, w))| {
             let mut padded = Line::plain(" ");
@@ -131,12 +133,13 @@ pub fn grid(rows: &[Vec<Line>], aligns: &[Align], width: usize) -> Vec<Line> {
             padded.push(" ", Style::default());
             padded
         });
-        lines.push(join(cells, ["│", "│", "│"], &border));
+        let side = g.table_side.as_str();
+        lines.push(join(cells, [side, side, side], &border));
         if r == 0 && rows.len() > 1 {
-            lines.push(rule(["├", "┼", "┤"]));
+            lines.push(rule(&g.table_head));
         }
     }
-    lines.push(rule(["└", "┴", "┘"]));
+    lines.push(rule(&g.table_bottom));
     lines.into_iter().map(|l| l.truncate(width)).collect()
 }
 

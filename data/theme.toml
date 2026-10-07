@@ -56,6 +56,22 @@ syn_type = "yellow"
 syn_constant = "orange"
 syn_comment = "muted"
 
+# What markdown and tables draw with. `{url}` is filled in.
+[glyphs]
+bullet = "• "
+quote = "│ "
+rule = "─"
+task_done = "[x] "
+task_open = "[ ] "
+fence = "```"
+code_indent = "  "
+image = "[image: {url}]"
+link = " ({url})"
+table_top = ["┌", "┬", "┐"]
+table_head = ["├", "┼", "┤"]
+table_bottom = ["└", "┴", "┘"]
+table_side = "│"
+
 # Syntax scopes to roles; the most specific matching selector wins, as in editor themes.
 [[syntax]]
 scope = "comment"
