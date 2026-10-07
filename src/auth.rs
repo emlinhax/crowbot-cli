@@ -10,6 +10,7 @@ use crate::api::Api;
 use crate::api::account::{self, Me};
 use crate::config::paths::Paths;
 use crate::io::{self, fs::Access};
+use crate::text::shorten;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -128,15 +129,7 @@ pub const HINT_CHARS: usize = 4;
 
 /// The last few characters, enough to tell keys apart without revealing them.
 pub fn hint(secret: &str) -> String {
-    let tail: String = secret
-        .chars()
-        .rev()
-        .take(HINT_CHARS)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
-    format!("…{tail}")
+    shorten::tail(secret, HINT_CHARS)
 }
 
 /// Account numbers are shown grouped with spaces; people paste them that way.

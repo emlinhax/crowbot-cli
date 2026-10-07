@@ -1,5 +1,7 @@
 //! Keeps tool output inside the line and byte budget, whole lines only.
 
+use crate::text::shorten;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Keep {
     /// The beginning: files read top-down.
@@ -43,9 +45,8 @@ pub fn cut(text: &str, keep: Keep, max_lines: usize, max_bytes: usize) -> Cut {
             Keep::Head => lines[0],
             Keep::Tail => lines[total_lines - 1],
         };
-        let end = first.floor_char_boundary(max_bytes);
         return Cut {
-            text: format!("{}…", &first[..end]),
+            text: shorten::bytes(first, max_bytes),
             total_lines,
             kept_lines: 0,
         };

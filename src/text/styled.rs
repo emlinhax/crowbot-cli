@@ -4,7 +4,7 @@
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use crate::text::controls;
+use crate::text::{controls, shorten};
 
 /// Tabs become this many spaces so every cell is accounted for.
 pub const TAB: &str = "    ";
@@ -192,7 +192,7 @@ impl Line {
             }
         }
         if width > 0 {
-            out.push("…", Style::fg("muted"));
+            out.push(shorten::MARK, Style::fg("muted"));
         }
         out
     }
