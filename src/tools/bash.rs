@@ -106,7 +106,7 @@ impl Tool for Bash {
                     return Output::error(format!("Could not start {}: {e}", self.shell.name));
                 }
             };
-            let text = clean(&String::from_utf8_lossy(&sink.held));
+            let text = controls::as_printed(&String::from_utf8_lossy(&sink.held));
             let cut = truncate::cut(
                 &text,
                 Keep::Tail,
@@ -244,15 +244,6 @@ impl Spill {
     }
 }
 
-/// Drops terminal escapes and keeps only what a `\r`-redrawn progress line last showed.
-fn clean(text: &str) -> String {
-    controls::strip_escapes(text)
-        .lines()
-        .map(|line| line.rsplit('\r').find(|s| !s.is_empty()).unwrap_or(""))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 fn save_full(cx: &ToolCx<'_>, text: &str) -> Option<String> {
     let (path, mut file) = create_spill(&cx.app.paths.tmp_dir())?;
     file.append(text.as_bytes()).ok()?;
@@ -336,11 +327,6 @@ mod tests {
             .map(|a| a.permission)
             .collect();
         assert_eq!(perms, vec!["bash", "bash_complex", "bash_write"]);
-    }
-
-    #[test]
-    fn cleans_escapes_and_carriage_returns() {
-        assert_eq!(clean("\u{1b}[31mred\u{1b}[0m\n10%\r50%\r100%"), "red\n100%");
     }
 
     // Ageing a file is something only this test does, so it reaches the filesystem itself.
