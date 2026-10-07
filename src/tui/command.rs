@@ -3,9 +3,9 @@
 
 use futures_util::future::BoxFuture;
 
-use crate::api::models::{self, Catalog};
 use crate::app::App;
 use crate::commands::{self, Ctx, Missing, Outcome, Scope, Session};
+use crate::models::{self, Catalog};
 use crate::text::template;
 use crate::tui::ui;
 

@@ -1,0 +1,48 @@
+# The model list as `crowbot models` prints it and the session's picker shows it.
+# A narrow picker leaves these columns out first, in this order, before cutting any.
+drop = ["capabilities", "max_output", "cached", "name"]
+
+# The columns, in order. Prices are USD per 1M tokens; `right` aligns numbers.
+[[column]]
+id = "id"
+title = "model"
+
+[[column]]
+id = "name"
+title = "name"
+
+[[column]]
+id = "context"
+title = "context"
+align = "right"
+
+[[column]]
+id = "input"
+title = "in"
+align = "right"
+
+[[column]]
+id = "cached"
+title = "cached in"
+align = "right"
+
+[[column]]
+id = "output"
+title = "out"
+align = "right"
+
+[[column]]
+id = "max_output"
+title = "max out"
+align = "right"
+
+[[column]]
+id = "capabilities"
+title = ""
+
+[text]
+current = "●"
+live = "Live list from crowbot."
+cache = "Cached list from {when} (`--refresh` to update)."
+snapshot = "Offline: showing the list bundled with this build."
+unreachable = "Could not reach crowbot: {note}"

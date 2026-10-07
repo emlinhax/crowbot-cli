@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn defaults_parse() {
         let settings: Settings = toml::from_str(DEFAULTS).unwrap();
-        let bundled = crate::api::models::snapshot();
+        let bundled = crate::models::snapshot();
         assert!(
             bundled.iter().any(|m| m.id == settings.model),
             "{}",

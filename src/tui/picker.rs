@@ -1,9 +1,9 @@
 //! `/models` inside a session: the catalog as an aligned list in a card in place of the editor.
 //! ↑↓ move, → or Enter picks the model for the rest of the session, Esc or ← closes.
 
-use crate::api::models::Catalog;
-use crate::commands::models;
 use crate::limits;
+use crate::models::Catalog;
+use crate::models::table as models;
 use crate::text::styled::{Line, Style};
 use crate::text::table::{self, Align};
 use crate::tui::boxed::boxed;
@@ -131,11 +131,11 @@ pub fn marked(rows: impl IntoIterator<Item = Line>, selected: usize) -> Vec<Line
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::models::{self as api, Source};
+    use crate::models::{self as catalogs, Source};
 
     fn catalog() -> Catalog {
         Catalog {
-            models: api::snapshot(),
+            models: catalogs::snapshot(),
             source: Source::Snapshot,
             fetched_at: None,
             note: None,

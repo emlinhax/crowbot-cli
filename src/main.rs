@@ -13,6 +13,7 @@ mod install;
 mod io;
 mod limits;
 mod mode;
+mod models;
 mod paths;
 mod permission;
 mod release;

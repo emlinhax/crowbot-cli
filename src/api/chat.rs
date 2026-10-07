@@ -183,19 +183,17 @@ fn request(turn: &Turn<'_>) -> wire::Request {
     }
 }
 
-/// Tokens times USD-per-million is exactly micro-dollars.
 fn cost(model: &Model, usage: &WireUsage) -> Usage {
     let cached = usage.cached().min(usage.prompt_tokens);
-    let p = &model.pricing;
-    let micros = (usage.prompt_tokens - cached) as f64 * p.input_per_1m_usd
-        + cached as f64 * p.cached_input_per_1m_usd
-        + usage.completion_tokens as f64 * p.output_per_1m_usd;
+    let uncached = usage.prompt_tokens - cached;
     Usage {
         input: usage.prompt_tokens,
         cached,
         output: usage.completion_tokens,
         reasoning: usage.reasoning(),
-        cost_micros: micros.round() as u64,
+        cost_micros: model
+            .pricing
+            .cost_micros(uncached, cached, usage.completion_tokens),
     }
 }
 

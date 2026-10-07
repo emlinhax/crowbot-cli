@@ -1,0 +1,130 @@
+//! The model list as a table, as `crowbot models` prints it and the session's picker shows it
+//! (data/model_table.toml).
+
+use std::sync::LazyLock;
+
+use serde::Deserialize;
+
+use crate::api::models::Model;
+use crate::data;
+use crate::models::{Catalog, Source};
+use crate::text::table::Align;
+use crate::text::template::fill;
+use crate::text::units;
+
+static DATA: LazyLock<Data> = data::load!("model_table.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Data {
+    drop: Vec<String>,
+    column: Vec<Column>,
+    text: Text,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Column {
+    id: String,
+    title: String,
+    #[serde(default)]
+    align: Align,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Text {
+    current: String,
+    live: String,
+    cache: String,
+    snapshot: String,
+    unreachable: String,
+}
+
+pub fn titles() -> Vec<String> {
+    DATA.column.iter().map(|c| c.title.clone()).collect()
+}
+
+pub fn aligns() -> Vec<Align> {
+    DATA.column.iter().map(|c| c.align).collect()
+}
+
+/// Column positions to leave out when narrow, first to go first.
+pub fn drop_order() -> Vec<usize> {
+    DATA.drop
+        .iter()
+        .filter_map(|id| DATA.column.iter().position(|c| c.id == *id))
+        .collect()
+}
+
+/// The mark beside the model in use.
+pub fn current_mark() -> &'static str {
+    &DATA.text.current
+}
+
+/// One model's cells, in column order.
+pub fn cells(m: &Model) -> Vec<String> {
+    DATA.column.iter().map(|c| cell(m, &c.id)).collect()
+}
+
+fn cell(m: &Model, column: &str) -> String {
+    match column {
+        "id" => m.id.clone(),
+        "name" => m.display_name.clone(),
+        "context" => units::tokens(m.context_window),
+        "input" => units::usd(m.pricing.input_per_1m_usd),
+        "cached" => units::usd(m.pricing.cached_input_per_1m_usd),
+        "output" => units::usd(m.pricing.output_per_1m_usd),
+        "max_output" => units::tokens(m.max_output_tokens),
+        "capabilities" => [
+            ("reasoning", m.capabilities.reasoning),
+            ("tools", m.capabilities.tool_calling),
+            ("cache", m.capabilities.caching),
+        ]
+        .iter()
+        .filter(|(_, on)| *on)
+        .map(|(name, _)| *name)
+        .collect::<Vec<_>>()
+        .join(" "),
+        other => {
+            debug_assert!(false, "unknown column `{other}` in data/model_table.toml");
+            String::new()
+        }
+    }
+}
+
+/// Where the list came from, and why not from crowbot when it could not be reached.
+pub fn source_note(catalog: &Catalog) -> String {
+    let text = &DATA.text;
+    let when = catalog
+        .fetched_at
+        .map(|t| t.strftime("%Y-%m-%d %H:%M UTC").to_string())
+        .unwrap_or_default();
+    let mut note = match catalog.source {
+        Source::Live => text.live.clone(),
+        Source::Cache => fill(&text.cache, &[("when", &when)]),
+        Source::Snapshot => text.snapshot.clone(),
+    };
+    if let Some(why) = &catalog.note {
+        note.push(' ');
+        note.push_str(&fill(&text.unreachable, &[("note", why)]));
+    }
+    note
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_column_has_a_cell_and_drop_names_only_columns() {
+        for m in &crate::models::snapshot() {
+            assert_eq!(cells(m).len(), DATA.column.len());
+        }
+        assert_eq!(
+            drop_order().len(),
+            DATA.drop.len(),
+            "drop names unknown columns"
+        );
+    }
+}
