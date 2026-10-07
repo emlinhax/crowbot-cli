@@ -84,13 +84,13 @@ reason = "the most work a person waits for on one machine; crowbot itself caps s
 value = 100
 reason = "a runaway loop on crow-2 costs real money; a run that needs more should be continued deliberately"
 
-[agent.instructions_bytes]
-value = 32768
-reason = "a project's AGENTS.md is a few KiB; more would crowd every request it rides on"
-
 [agent.doom_loop_repeats]
 value = 3
 reason = "the same call three times in a row is a loop, not persistence (opencode's threshold)"
+
+[agent.instructions_bytes]
+value = 32768
+reason = "a project's AGENTS.md is a few KiB; more would crowd every request it rides on"
 
 [tools.max_lines]
 value = 2000
@@ -116,24 +116,6 @@ reason = "lines grep shows around each match; past this, read the file at that l
 value = 500
 reason = "a match line is context, not content; read the file for the rest"
 
-[update.check_interval_secs]
-value = 86400
-reason = "a day: releases come a few times a week, and a check costs a request to GitHub, which allows 60 an hour per address"
-
-[update.download_timeout_secs]
-value = 300
-reason = "a release binary is about 16 MB; five minutes allows a slow link without hanging forever"
-
-
-[forums.page_size]
-value = 20
-reason = "topics or posts fetched per page, matching what the Tapatalk app requests"
-
-
-[tools.question_max]
-value = 4
-reason = "a card of tabs a person answers in one go; more is a form, not a question"
-
 [tools.read_batch_max]
 value = 8
 reason = "files one read call returns; each keeps its own line cap, and past this a turn fills with files skimmed, not read"
@@ -153,6 +135,10 @@ reason = "paths one fs call moves, copies or deletes; the permission card lists 
 [tools.list_entries]
 value = 500
 reason = "a directory listing past this is better explored with glob"
+
+[tools.question_max]
+value = 4
+reason = "a card of tabs a person answers in one go; more is a form, not a question"
 
 [tools.binary_sniff_bytes]
 value = 8192
@@ -174,13 +160,13 @@ reason = "after the shell exits, output still in flight gets this long before th
 value = 262144
 reason = "output held in memory before the rest goes to a spill file; a few max_bytes, since escapes and redrawn progress lines shrink it"
 
-[tools.bash_spill_keep_days]
-value = 7
-reason = "a spill is read in the turn that made it; older ones only fill the disk"
-
 [tools.bash_spill_max_bytes]
 value = 67108864
 reason = "a spill the model can page through; a command printing forever stops filling the disk here"
+
+[tools.bash_spill_keep_days]
+value = 7
+reason = "a spill is read in the turn that made it; older ones only fill the disk"
 
 [tools.webfetch_max_bytes]
 value = 5242880
@@ -189,6 +175,26 @@ reason = "larger pages are rarely text a model can use"
 [tools.webfetch_timeout_secs]
 value = 30
 reason = "a page slower than this is not worth holding the turn for"
+
+[update.check_interval_secs]
+value = 86400
+reason = "a day: releases come a few times a week, and a check costs a request to GitHub, which allows 60 an hour per address"
+
+[update.download_timeout_secs]
+value = 300
+reason = "a release binary is about 16 MB; five minutes allows a slow link without hanging forever"
+
+[forums.page_size]
+value = 20
+reason = "topics or posts fetched per page, matching what the Tapatalk app requests"
+
+[forums.batch_max]
+value = 8
+reason = "threads, topic pages or searches fetched in one batched forum tool call, run at once; enough to be useful without hammering the forum"
+
+[forums.directory_results]
+value = 10
+reason = "forums a directory search offers to pick from; past this the search words need narrowing, not a longer list"
 
 [edit.anchor_similarity_pct]
 value = 65
@@ -250,18 +256,6 @@ reason = "prompts kept for Up/Down in one session"
 value = 16
 reason = "a permission preview shows this much of a diff before cutting it short"
 
-[tui.status_frame_ms]
-value = 90
-reason = "eight frames carry the flock through one rise and fall in about three quarters of a second, calm but alive"
-
-[tui.shimmer_ms]
-value = 70
-reason = "the glint crosses a ten-letter verb in about a second"
-
-[tui.scroll_lines]
-value = 3
-reason = "rows one wheel notch scrolls the transcript; terminals scroll their own buffers by three"
-
 [tui.palette_rows]
 value = 8
 reason = "the command popup lists this many before it scrolls; the editor stays in view"
@@ -274,10 +268,14 @@ reason = "long enough to read one word, gone before it hides anything for long"
 value = 2
 reason = "blank columns on each side of the session keep text off the window's edge"
 
-[forums.directory_results]
-value = 10
-reason = "forums a directory search offers to pick from; past this the search words need narrowing, not a longer list"
+[tui.scroll_lines]
+value = 3
+reason = "rows one wheel notch scrolls the transcript; terminals scroll their own buffers by three"
 
-[forums.batch_max]
-value = 8
-reason = "threads, topic pages or searches fetched in one batched forum tool call, run at once; enough to be useful without hammering the forum"
+[tui.status_frame_ms]
+value = 90
+reason = "eight frames carry the flock through one rise and fall in about three quarters of a second, calm but alive"
+
+[tui.shimmer_ms]
+value = 70
+reason = "the glint crosses a ten-letter verb in about a second"
