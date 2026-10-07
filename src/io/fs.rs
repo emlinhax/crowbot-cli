@@ -20,6 +20,23 @@ pub fn read_string(path: &Path) -> io::Result<Option<String>> {
     }
 }
 
+/// A JSON file as `T`; `Ok(None)` when it does not exist. Errors name the file.
+pub fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> io::Result<Option<T>> {
+    let named = |e: io::Error| io::Error::new(e.kind(), format!("{}: {e}", path.display()));
+    let Some(text) = read_string(path).map_err(named)? else {
+        return Ok(None);
+    };
+    serde_json::from_str(&text)
+        .map(Some)
+        .map_err(|e| named(e.into()))
+}
+
+pub fn write_json<T: serde::Serialize>(path: &Path, value: &T, access: Access) -> io::Result<()> {
+    let json = serde_json::to_vec_pretty(value)?;
+    write_atomic(path, &json, access)
+        .map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", path.display())))
+}
+
 /// Writes a sibling temp file and renames it over the target, so a crash never leaves half a file.
 pub fn write_atomic(path: &Path, bytes: &[u8], access: Access) -> io::Result<()> {
     ensure_parent(path)?;
@@ -397,6 +414,18 @@ mod tests {
     fn missing_file_reads_as_none() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(read_string(&dir.path().join("nope.txt")).unwrap(), None);
+    }
+
+    #[test]
+    fn json_files_round_trip_and_a_corrupt_one_names_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.json");
+        assert_eq!(read_json::<Vec<u32>>(&path).unwrap(), None);
+        write_json(&path, &vec![1, 2], Access::Shared).unwrap();
+        assert_eq!(read_json::<Vec<u32>>(&path).unwrap(), Some(vec![1, 2]));
+        write_atomic(&path, b"{not json", Access::Shared).unwrap();
+        let err = read_json::<Vec<u32>>(&path).unwrap_err().to_string();
+        assert!(err.contains("state.json"), "{err}");
     }
 
     #[test]

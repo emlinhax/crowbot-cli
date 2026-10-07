@@ -105,9 +105,7 @@ pub async fn load(app: &App, refresh: bool) -> Catalog {
                 data: models,
             };
             // A cache that fails to write only costs a fetch next time.
-            if let Ok(json) = serde_json::to_vec_pretty(&cache) {
-                let _ = io::fs::write_atomic(&path, &json, io::fs::Access::Shared);
-            }
+            let _ = io::fs::write_json(&path, &cache, io::fs::Access::Shared);
             return Catalog {
                 models: cache.data,
                 source: Source::Live,
@@ -151,9 +149,9 @@ fn usable(models: &[Model]) -> bool {
 }
 
 fn read_cache(path: &std::path::Path) -> Option<Cached> {
-    let text = io::fs::read_string(path).ok().flatten()?;
-    serde_json::from_str::<Cached>(&text)
+    io::fs::read_json::<Cached>(path)
         .ok()
+        .flatten()
         .filter(|cache| usable(&cache.data))
 }
 

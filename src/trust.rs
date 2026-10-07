@@ -4,7 +4,6 @@
 use std::path::Path;
 use std::sync::LazyLock;
 
-use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
 use crate::io;
@@ -32,12 +31,9 @@ struct Store {
     projects: Vec<String>,
 }
 
+/// A corrupt list is an error, not an empty one: this file is a security gate.
 fn load(paths: &Paths) -> anyhow::Result<Store> {
-    let file = paths.trusted();
-    match io::fs::read_string(&file)? {
-        Some(text) => serde_json::from_str(&text).with_context(|| file.display().to_string()),
-        None => Ok(Store::default()),
-    }
+    Ok(io::fs::read_json(&paths.trusted())?.unwrap_or_default())
 }
 
 fn project(paths: &Paths) -> String {
@@ -54,10 +50,8 @@ pub fn trust(paths: &Paths) -> anyhow::Result<()> {
     if !store.projects.contains(&project) {
         store.projects.push(project);
     }
-    let file = paths.trusted();
-    let json = serde_json::to_string_pretty(&store)?;
-    io::fs::write_atomic(&file, json.as_bytes(), io::fs::Access::Private)
-        .with_context(|| file.display().to_string())
+    io::fs::write_json(&paths.trusted(), &store, io::fs::Access::Private)?;
+    Ok(())
 }
 
 /// Shown before asking: what the project would change, and why that is dangerous.

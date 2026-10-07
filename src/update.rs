@@ -82,18 +82,15 @@ pub struct State {
 }
 
 pub fn load(paths: &Paths) -> State {
-    io::fs::read_string(&paths.update_state())
+    io::fs::read_json(&paths.update_state())
         .ok()
         .flatten()
-        .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default()
 }
 
 fn save(paths: &Paths, state: &State) {
     // Losing the state costs one early check or one missed notice, nothing more.
-    if let Ok(json) = serde_json::to_vec_pretty(state) {
-        let _ = io::fs::write_atomic(&paths.update_state(), &json, Access::Shared);
-    }
+    let _ = io::fs::write_json(&paths.update_state(), state, Access::Shared);
 }
 
 /// The update an earlier run installed, once: reading it clears it.
