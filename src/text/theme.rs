@@ -95,40 +95,6 @@ fn hex_to_rgb(hex: &str) -> Option<Rgb> {
     Some(Rgb(byte(0)?, byte(2)?, byte(4)?))
 }
 
-/// The nearest xterm-256 colour, for terminals without truecolour.
-pub fn to_256(Rgb(r, g, b): Rgb) -> u8 {
-    let level = |v: u8| -> u8 {
-        match v {
-            0..=47 => 0,
-            48..=114 => 1,
-            _ => (v - 35) / 40,
-        }
-    };
-    let (lr, lg, lb) = (level(r), level(g), level(b));
-    let cube = 16 + 36 * lr + 6 * lg + lb;
-    let step = |l: u8| if l == 0 { 0 } else { 55 + 40 * l as u16 };
-    let cube_err = [(r, lr), (g, lg), (b, lb)]
-        .iter()
-        .map(|(v, l)| (i32::from(*v) - i32::from(step(*l))).pow(2))
-        .sum::<i32>();
-    let avg = (u16::from(r) + u16::from(g) + u16::from(b)) / 3;
-    let gray_index = if avg > 238 {
-        23
-    } else {
-        avg.saturating_sub(3) / 10
-    } as u8;
-    let gray = 8 + 10 * i32::from(gray_index);
-    let gray_err = [r, g, b]
-        .iter()
-        .map(|v| (i32::from(*v) - gray).pow(2))
-        .sum::<i32>();
-    if gray_err < cube_err {
-        232 + gray_index
-    } else {
-        cube
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,13 +112,5 @@ mod tests {
                 rule.role
             );
         }
-    }
-
-    #[test]
-    fn nearest_256_colours() {
-        assert_eq!(to_256(Rgb(0, 0, 0)), 16);
-        assert_eq!(to_256(Rgb(255, 255, 255)), 231);
-        assert_eq!(to_256(Rgb(128, 128, 128)), 244);
-        assert_eq!(to_256(Rgb(0, 220, 130)), 42);
     }
 }

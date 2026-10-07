@@ -4,8 +4,9 @@
 
 use std::fmt::Write as _;
 
-use crate::text::styled::Line;
-use crate::text::theme::{Depth, Theme};
+use crate::text::controls;
+use crate::text::styled::{Line, Style};
+use crate::text::theme::{Depth, Rgb, Theme};
 
 const SYNC_START: &str = "\x1b[?2026h";
 const SYNC_END: &str = "\x1b[?2026l";
@@ -74,7 +75,88 @@ impl Screen {
 
     /// One line as ANSI, never wider than the terminal.
     fn ansi(&self, line: &Line) -> String {
-        line.truncate(self.width).to_ansi(self.theme, self.depth)
+        to_ansi(&line.truncate(self.width), self.theme, self.depth)
+    }
+}
+
+/// SGR per span, closed with a reset so nothing leaks to the next line.
+fn to_ansi(line: &Line, theme: &Theme, depth: Depth) -> String {
+    let mut out = String::new();
+    for span in &line.spans {
+        let sgr = sgr(&span.style, theme, depth);
+        if let Some(url) = &span.style.link {
+            let _ = write!(out, "\x1b]8;;{}\x1b\\", controls::osc_url(url));
+        }
+        if sgr.is_empty() {
+            out.push_str(&span.text);
+        } else {
+            let _ = write!(out, "\x1b[{sgr}m{}\x1b[0m", span.text);
+        }
+        if span.style.link.is_some() {
+            out.push_str("\x1b]8;;\x1b\\");
+        }
+    }
+    out
+}
+
+fn sgr(style: &Style, theme: &Theme, depth: Depth) -> String {
+    let mut codes: Vec<String> = Vec::new();
+    for (on, code) in [
+        (style.bold, "1"),
+        (style.dim, "2"),
+        (style.italic, "3"),
+        (style.underline, "4"),
+        (style.reverse, "7"),
+        (style.strike, "9"),
+    ] {
+        if on {
+            codes.push(code.into());
+        }
+    }
+    for (role, base) in [(&style.fg, 38), (&style.bg, 48)] {
+        let Some(color) = role.as_deref().and_then(|r| theme.color(r)) else {
+            continue;
+        };
+        match depth {
+            Depth::TrueColor => codes.push(format!("{base};2;{};{};{}", color.0, color.1, color.2)),
+            Depth::Ansi256 => codes.push(format!("{base};5;{}", to_256(color))),
+            Depth::None => {}
+        }
+    }
+    codes.join(";")
+}
+
+/// The nearest xterm-256 colour, for terminals without truecolour.
+pub fn to_256(Rgb(r, g, b): Rgb) -> u8 {
+    let level = |v: u8| -> u8 {
+        match v {
+            0..=47 => 0,
+            48..=114 => 1,
+            _ => (v - 35) / 40,
+        }
+    };
+    let (lr, lg, lb) = (level(r), level(g), level(b));
+    let cube = 16 + 36 * lr + 6 * lg + lb;
+    let step = |l: u8| if l == 0 { 0 } else { 55 + 40 * l as u16 };
+    let cube_err = [(r, lr), (g, lg), (b, lb)]
+        .iter()
+        .map(|(v, l)| (i32::from(*v) - i32::from(step(*l))).pow(2))
+        .sum::<i32>();
+    let avg = (u16::from(r) + u16::from(g) + u16::from(b)) / 3;
+    let gray_index = if avg > 238 {
+        23
+    } else {
+        avg.saturating_sub(3) / 10
+    } as u8;
+    let gray = 8 + 10 * i32::from(gray_index);
+    let gray_err = [r, g, b]
+        .iter()
+        .map(|v| (i32::from(*v) - gray).pow(2))
+        .sum::<i32>();
+    if gray_err < cube_err {
+        232 + gray_index
+    } else {
+        cube
     }
 }
 
@@ -126,6 +208,38 @@ mod tests {
         rows.resize(ROWS as usize - 1, String::new());
         rows.push("bar".into());
         rows
+    }
+
+    #[test]
+    fn a_link_cannot_put_escapes_on_the_terminal() {
+        let link = Style {
+            link: Some("https://x.dev/\u{1b}\\\u{1b}]0;pwned\u{7}".into()),
+            ..Style::default()
+        };
+        let ansi = to_ansi(&Line::styled("x", link), theme::get(), Depth::None);
+        assert_eq!(ansi.matches('\u{1b}').count(), 4, "{ansi:?}");
+    }
+
+    #[test]
+    fn ansi_resets_after_every_styled_span() {
+        let line = Line::styled("ok", Style::fg("accent").bold());
+        let ansi = to_ansi(&line, theme::get(), Depth::TrueColor);
+        assert_eq!(ansi, "\x1b[1;38;2;0;220;130mok\x1b[0m");
+        assert_eq!(
+            to_ansi(&line, theme::get(), Depth::None),
+            "\x1b[1mok\x1b[0m"
+        );
+        assert_eq!(
+            to_ansi(&line, theme::get(), Depth::Ansi256),
+            "\x1b[1;38;5;42mok\x1b[0m"
+        );
+    }
+    #[test]
+    fn nearest_256_colours() {
+        assert_eq!(to_256(Rgb(0, 0, 0)), 16);
+        assert_eq!(to_256(Rgb(255, 255, 255)), 231);
+        assert_eq!(to_256(Rgb(128, 128, 128)), 244);
+        assert_eq!(to_256(Rgb(0, 220, 130)), 42);
     }
 
     #[test]
