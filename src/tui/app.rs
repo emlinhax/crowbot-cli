@@ -49,7 +49,7 @@ use crate::tui::status::{self, Progress};
 use crate::tui::toast::Toast;
 use crate::tui::view::View;
 use crate::tui::{frame, layout, ui, welcome};
-use crate::{settings, update};
+use crate::{release, settings, update};
 
 type Turn<'a> = Pin<Box<dyn Future<Output = (Transcript, Outcome)> + 'a>>;
 
@@ -259,7 +259,7 @@ impl<'a> Tui<'a> {
     fn welcome(&self) -> welcome::Info {
         let mode = self.shared.mode();
         welcome::Info {
-            version: env!("CARGO_PKG_VERSION"),
+            version: release::shown(),
             cwd: self.app.paths.project.display().to_string(),
             model: self.model.id.clone(),
             effort: self.model.effort(self.effort.as_deref()).map(str::to_owned),

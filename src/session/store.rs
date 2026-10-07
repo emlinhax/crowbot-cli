@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use crate::agent::message::Message;
 use crate::io;
 use crate::paths::Paths;
+use crate::release;
 use crate::session::entry::{self, Entry, FORMAT_VERSION};
 
 /// An append-only JSONL session file; the only writer of its file. Nothing is written until
@@ -26,7 +27,7 @@ impl Store {
                 id,
                 created,
                 cwd: paths.project.display().to_string(),
-                crowbot: env!("CARGO_PKG_VERSION").to_owned(),
+                crowbot: release::package().to_owned(),
             },
             written: false,
             last: None,

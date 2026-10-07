@@ -97,7 +97,7 @@ pub fn install(place: &Place, exe: &Path) -> anyhow::Result<String> {
     let shown = place.dir.display().to_string();
     let exe_shown = place.exe.display().to_string();
     let uninstall = format!("\"{exe_shown}\" uninstall");
-    let version = release::tag().unwrap_or(env!("CARGO_PKG_VERSION"));
+    let version = release::shown();
     let entry = &DATA.entry;
     user_path::register_app(
         &entry.key,

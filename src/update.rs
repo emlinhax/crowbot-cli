@@ -160,13 +160,8 @@ async fn run(http: &Http, latest_url: &str, current: &str, exe: &Path) -> anyhow
         return Ok(Outcome::UpToDate(current.to_owned()));
     }
     let ours = release::asset().ok_or_else(|| {
-        anyhow!(fill(
-            &TEXT.no_platform,
-            &[
-                ("os", std::env::consts::OS),
-                ("arch", std::env::consts::ARCH)
-            ]
-        ))
+        let (os, arch) = release::platform();
+        anyhow!(fill(&TEXT.no_platform, &[("os", os), ("arch", arch)]))
     })?;
     let find = |name: &str| {
         latest

@@ -30,18 +30,34 @@ pub fn tag() -> Option<&'static str> {
     option_env!("CROWBOT_RELEASE").filter(|t| !t.is_empty())
 }
 
+/// The package version from Cargo.toml (`0.2.0`); what session files record.
+pub fn package() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+/// The version people see: the release (`0.2.0-3`) when there is one, else the package version.
+pub fn shown() -> &'static str {
+    tag().map_or(package(), |tag| tag.trim_start_matches('v'))
+}
+
 /// What `--version` prints: the package version, and the release when there is one.
 pub fn version() -> &'static str {
     static VERSION: LazyLock<String> = LazyLock::new(|| match tag() {
-        Some(tag) => format!("{} ({tag})", env!("CARGO_PKG_VERSION")),
-        None => env!("CARGO_PKG_VERSION").to_owned(),
+        Some(tag) => format!("{} ({tag})", package()),
+        None => package().to_owned(),
     });
     &VERSION
 }
 
+/// The platform this binary was built for: (os, arch), as Rust names them.
+pub fn platform() -> (&'static str, &'static str) {
+    (std::env::consts::OS, std::env::consts::ARCH)
+}
+
 /// The file this platform runs, if releases build one for it.
 pub fn asset() -> Option<&'static Asset> {
-    asset_for(std::env::consts::OS, std::env::consts::ARCH)
+    let (os, arch) = platform();
+    asset_for(os, arch)
 }
 
 fn asset_for(os: &str, arch: &str) -> Option<&'static Asset> {
@@ -89,7 +105,8 @@ mod tests {
     #[test]
     fn a_development_build_reports_the_plain_version() {
         if tag().is_none() {
-            assert_eq!(version(), env!("CARGO_PKG_VERSION"));
+            assert_eq!(version(), package());
+            assert_eq!(shown(), package());
         }
     }
 }
