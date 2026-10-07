@@ -66,22 +66,28 @@ async fn send(
     Ok((value, resp.set_cookies))
 }
 
-/// The forum's error convention: a `result` member set false, carrying why in `result_text`.
-fn ok(value: Value) -> Result<Value> {
+/// Why a call failed when the forum does not say.
+const REFUSED: &str = "the forum refused the request";
+
+/// The forum's error convention: a `result` member set false, carrying why in `result_text`;
+/// `why` stands in when the forum gives none.
+fn ok(value: Value, why: &str) -> Result<Value> {
     if value.get("result").and_then(Value::as_bool) == Some(false) {
-        bail!(
-            "{}",
-            value
-                .get_str("result_text")
-                .unwrap_or("the forum refused the request")
-        );
+        bail!("{}", value.get_str("result_text").unwrap_or(why));
     }
     Ok(value)
 }
 
-async fn call(fetch: &Fetch, forum: &Forum, method: &str, params: &[Arg]) -> Result<Value> {
+/// `method` sent and held to the forum's error convention.
+async fn call(
+    fetch: &Fetch,
+    forum: &Forum,
+    method: &str,
+    params: &[Arg],
+    why: &str,
+) -> Result<Value> {
     let (value, _) = send(fetch, forum, method, params).await?;
-    ok(value)
+    ok(value, why)
 }
 
 fn span(page: i64) -> (i64, i64) {
@@ -91,7 +97,7 @@ fn span(page: i64) -> (i64, i64) {
 }
 
 pub async fn sections(fetch: &Fetch, forum: &Forum) -> Result<Vec<Section>> {
-    let value = call(fetch, forum, "get_forum", &[]).await?;
+    let value = call(fetch, forum, "get_forum", &[], REFUSED).await?;
     let mut out = Vec::new();
     flatten(value.as_array().unwrap_or(&[]), 0, &mut out);
     Ok(out)
@@ -125,6 +131,7 @@ pub async fn topics(fetch: &Fetch, forum: &Forum, forum_id: &str, page: i64) -> 
             Arg::Int(start),
             Arg::Int(end),
         ],
+        REFUSED,
     )
     .await?;
     Ok(topic_list(&value))
@@ -141,6 +148,7 @@ pub async fn search(fetch: &Fetch, forum: &Forum, query: &str, page: i64) -> Res
             ("page", Arg::Int(page.max(1))),
             ("perpage", Arg::Int(per)),
         ])],
+        REFUSED,
     )
     .await?;
     Ok(topic_list(&value))
@@ -180,6 +188,7 @@ pub async fn thread_total(fetch: &Fetch, forum: &Forum, topic_id: &str) -> Resul
             Arg::Int(0),
             Arg::Bool(false),
         ],
+        REFUSED,
     )
     .await?;
     Ok(value
@@ -200,6 +209,7 @@ pub async fn thread(fetch: &Fetch, forum: &Forum, topic_id: &str, page: i64) -> 
             Arg::Int(end),
             Arg::Bool(false),
         ],
+        REFUSED,
     )
     .await?;
     let posts = value
@@ -223,9 +233,7 @@ pub async fn thread(fetch: &Fetch, forum: &Forum, topic_id: &str, page: i64) -> 
 
 pub async fn login(fetch: &Fetch, forum: &Forum, user: &str, password: &str) -> Result<Login> {
     let (value, set) = send(fetch, forum, "login", &[Arg::b64(user), Arg::b64(password)]).await?;
-    if value.get("result").and_then(Value::as_bool) == Some(false) {
-        bail!("{}", value.get_str("result_text").unwrap_or("login failed"));
-    }
+    let value = ok(value, "login failed")?;
     let cookies = if set.is_empty() {
         forum.cookies.clone()
     } else {
@@ -244,7 +252,7 @@ pub async fn reply(
     topic_id: &str,
     body: &str,
 ) -> Result<Posted> {
-    let (value, _) = send(
+    let value = call(
         fetch,
         forum,
         "reply_post",
@@ -254,9 +262,10 @@ pub async fn reply(
             Arg::b64(""),
             Arg::b64(body),
         ],
+        REJECTED,
     )
     .await?;
-    posted(value)
+    Ok(posted(&value))
 }
 
 pub async fn new_topic(
@@ -266,7 +275,7 @@ pub async fn new_topic(
     subject: &str,
     body: &str,
 ) -> Result<Posted> {
-    let (value, _) = send(
+    let value = call(
         fetch,
         forum,
         "new_topic",
@@ -275,27 +284,23 @@ pub async fn new_topic(
             Arg::b64(subject),
             Arg::b64(body),
         ],
+        REJECTED,
     )
     .await?;
-    posted(value)
+    Ok(posted(&value))
 }
 
-fn posted(value: Value) -> Result<Posted> {
-    if value.get("result").and_then(Value::as_bool) == Some(false) {
-        bail!(
-            "{}",
-            value
-                .get_str("result_text")
-                .unwrap_or("the forum rejected the post")
-        );
-    }
-    Ok(Posted {
+/// Why a post failed when the forum does not say.
+const REJECTED: &str = "the forum rejected the post";
+
+fn posted(value: &Value) -> Posted {
+    Posted {
         id: value.get_str("post_id").map(str::to_owned),
         url: value
             .get_str("post_url")
             .or_else(|| value.get_str("topic_url"))
             .map(str::to_owned),
-    })
+    }
 }
 
 #[cfg(test)]
