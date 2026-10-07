@@ -178,9 +178,7 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
 /// Shows what the project's config would loosen and asks whether to trust the folder.
 fn confirm_trust(untrusted: &Untrusted) -> anyhow::Result<bool> {
     term::out(&trust::warning(&untrusted.file, &untrusted.keys));
-    term::out(trust::question());
-    let answer = term::read_line()?.unwrap_or_default();
-    let yes = matches!(answer.trim().to_lowercase().as_str(), "y" | "yes");
+    let yes = term::confirm(trust::question(), false)?.unwrap_or(false);
     if !yes {
         term::out(&format!("{}\n", trust::declined()));
     }

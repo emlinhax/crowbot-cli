@@ -14,7 +14,7 @@ publisher = "crowbot.sh"
 
 # What installing says; {placeholders} are filled in.
 [text]
-offer = "crowbot is not installed for you yet. Install it to {dir} and put it on your PATH, so `crowbot` works in any terminal? [Y/n] "
+offer = "crowbot is not installed for you yet. Install it to {dir} and put it on your PATH, so `crowbot` works in any terminal?"
 installed = "Installed to {dir}."
 added = " Open a new terminal and type crowbot."
 already = " crowbot works in any terminal."

@@ -182,13 +182,14 @@ pub fn offer(paths: &Paths) -> anyhow::Result<()> {
     }
     let exe = io::proc::current_exe()?;
     let shown = place.dir.display().to_string();
-    io::term::out(&fill(&DATA.text.offer, &[("dir", &shown)]));
-    let answer = io::term::read_line()?.unwrap_or_default();
-    if matches!(answer.trim().to_lowercase().as_str(), "" | "y" | "yes") {
-        io::term::out(&format!("{}\n", install(&place, &exe)?));
-    } else {
-        let declined = serde_json::to_vec(&State { declined: true })?;
-        io::fs::write_atomic(&state_file, &declined, Access::Shared)?;
+    match io::term::confirm(&fill(&DATA.text.offer, &[("dir", &shown)]), true)? {
+        Some(true) => io::term::out(&format!("{}\n", install(&place, &exe)?)),
+        Some(false) => {
+            let declined = serde_json::to_vec(&State { declined: true })?;
+            io::fs::write_atomic(&state_file, &declined, Access::Shared)?;
+        }
+        // Ctrl+D is no answer: nothing installed, and the offer comes again next time.
+        None => {}
     }
     Ok(())
 }

@@ -116,6 +116,24 @@ pub fn read_line() -> io::Result<Option<String>> {
     Ok(Some(line.trim_end_matches(['\n', '\r']).to_owned()))
 }
 
+/// Asks a yes/no question; an empty answer takes `default`. `None` at end of input (Ctrl+D), so
+/// a closed stdin never counts as an answer.
+pub fn confirm(prompt: &str, default: bool) -> io::Result<Option<bool>> {
+    out(&format!(
+        "{prompt} {} ",
+        if default { "[Y/n]" } else { "[y/N]" }
+    ));
+    Ok(read_line()?.map(|line| answer(&line, default)))
+}
+
+fn answer(line: &str, default: bool) -> bool {
+    match line.trim().to_lowercase().as_str() {
+        "" => default,
+        "y" | "yes" => true,
+        _ => false,
+    }
+}
+
 /// Reads a secret from the terminal without echoing it: Enter ends it, Esc or Ctrl+C cancels.
 /// `None` when cancelled. The caller checks `stdin_is_terminal` first.
 pub fn read_secret(prompt: &str) -> io::Result<Option<String>> {
@@ -355,6 +373,20 @@ mod tests {
             row,
             modifiers: KeyModifiers::NONE,
         })
+    }
+
+    #[test]
+    fn a_yes_is_y_or_yes_and_an_empty_answer_takes_the_default() {
+        for default in [true, false] {
+            assert_eq!(answer("", default), default);
+            assert_eq!(answer("  ", default), default);
+        }
+        for yes in ["y", "Y", "yes", " Yes "] {
+            assert!(answer(yes, false), "{yes}");
+        }
+        for no in ["n", "no", "yep", "q"] {
+            assert!(!answer(no, true), "{no}");
+        }
     }
 
     #[test]
