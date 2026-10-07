@@ -48,7 +48,8 @@ pub fn load(paths: &Paths) -> Result<Vec<Forum>> {
 fn enrich_hints(forums: &mut [Forum]) {
     for forum in forums.iter_mut().filter(|f| f.hint.is_empty()) {
         if let Some(seed) = forums::data().seed.iter().find(|s| {
-            (!s.id.is_empty() && s.id == forum.id) || host(&s.base_url) == host(&forum.base_url)
+            (!s.id.is_empty() && s.id == forum.id)
+                || forums::host(&s.base_url) == forums::host(&forum.base_url)
         }) {
             forum.hint = seed.hint.clone();
         }
@@ -71,22 +72,16 @@ fn save(paths: &Paths, forums: &[Forum]) -> Result<()> {
     Ok(())
 }
 
-fn host(url: &str) -> String {
-    url::Url::parse(url)
-        .ok()
-        .and_then(|u| u.host_str().map(str::to_owned))
-        .unwrap_or_default()
-}
-
 /// Whether `key` names this forum: its id, its name, or the host of its URL (a bare host or a full
 /// URL both work).
 pub fn matches(forum: &Forum, key: &str) -> bool {
     let k = key.trim().trim_end_matches('/');
-    let h = host(&forum.base_url);
+    let same_host =
+        |other: &str| forums::host(&forum.base_url).is_some_and(|h| h.eq_ignore_ascii_case(other));
     (!forum.id.is_empty() && forum.id == k)
         || forum.name.eq_ignore_ascii_case(k)
-        || (!h.is_empty() && h.eq_ignore_ascii_case(k))
-        || (!h.is_empty() && h.eq_ignore_ascii_case(&host(k)))
+        || same_host(k)
+        || forums::host(k).is_some_and(|h| same_host(&h))
 }
 
 fn same(a: &Forum, b: &Forum) -> bool {

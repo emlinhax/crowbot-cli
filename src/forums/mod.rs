@@ -20,7 +20,7 @@ pub mod account;
 pub mod directory;
 pub mod mobiquo;
 pub mod store;
-pub mod xmlrpc;
+mod xmlrpc;
 
 static DATA: LazyLock<Data> = data::load!("forums.toml");
 
@@ -31,20 +31,11 @@ pub fn data() -> &'static Data {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Data {
-    pub directory: Directory,
+    pub directory: directory::Directory,
     #[serde(default)]
     pub seed: Vec<Forum>,
     #[serde(default)]
     pub suggest: Vec<Suggestion>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Directory {
-    pub url: String,
-    pub path: String,
-    pub app_id: String,
-    pub app_key: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -90,8 +81,6 @@ pub struct Forum {
     pub ext: String,
     #[serde(default = "default_kind")]
     pub kind: String,
-    #[serde(default)]
-    pub user_agent: String,
     /// Empty means browsing as a guest.
     #[serde(default)]
     pub cookies: Vec<String>,
@@ -103,11 +92,15 @@ pub struct Forum {
 impl Forum {
     /// The host it lives on, for display; its name when the URL has none.
     pub fn host(&self) -> String {
-        url::Url::parse(&self.base_url)
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_owned))
-            .unwrap_or_else(|| self.name.to_lowercase())
+        host(&self.base_url).unwrap_or_else(|| self.name.to_lowercase())
     }
+}
+
+/// The host of `url`, if it is a URL with one.
+pub fn host(url: &str) -> Option<String> {
+    url::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
 }
 
 fn default_kind() -> String {

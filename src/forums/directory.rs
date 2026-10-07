@@ -3,23 +3,34 @@
 //! and extension; the rest of crowbot builds the XML-RPC endpoint from those.
 
 use anyhow::{Context, Result};
+use serde::Deserialize;
 use serde_json::Value as Json;
 
-use crate::forums::{self, Directory, Forum, mobiquo};
+use crate::forums::{self, Forum, mobiquo};
 use crate::io::fetch::{self, Fetch};
+
+/// Where Tapatalk's directory answers, and the app credentials it asks for (data/forums.toml).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Directory {
+    pub url: String,
+    pub path: String,
+    pub app_id: String,
+    pub app_key: String,
+}
 
 /// Search the directory; `limit` caps the results.
 pub async fn search(fetch: &Fetch, query: &str, limit: i64) -> Result<Vec<Forum>> {
     search_with(fetch, &forums::data().directory, query, limit).await
 }
 
-/// Resolve one forum URL to a ready entry — its first directory match.
-pub async fn resolve(fetch: &Fetch, forum_url: &str) -> Result<Forum> {
-    search(fetch, forum_url, 1)
+/// The first directory match for `query`, a forum's URL or its name, as a ready entry.
+pub async fn resolve(fetch: &Fetch, query: &str) -> Result<Forum> {
+    search(fetch, query, 1)
         .await?
         .into_iter()
         .next()
-        .with_context(|| format!("no Tapatalk forum was found for {forum_url}"))
+        .with_context(|| format!("no Tapatalk forum was found for {query}"))
 }
 
 async fn search_with(
@@ -93,11 +104,6 @@ fn from_json(entry: &Json) -> Option<Forum> {
             .unwrap_or("")
             .to_owned(),
         kind: mobiquo::KIND.to_owned(),
-        user_agent: entry
-            .get("useragent")
-            .and_then(Json::as_str)
-            .unwrap_or("")
-            .to_owned(),
         cookies: Vec::new(),
         username: None,
     })
