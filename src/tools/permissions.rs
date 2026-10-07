@@ -68,7 +68,7 @@ const ALL: &[Permission] = &[
 mod tests {
     use super::*;
     use crate::mode;
-    use crate::permission::gate::{Ask, Decision, Policy};
+    use crate::permission::gate::{Ask, Decision};
     use crate::permission::rule::{self, Action};
 
     #[test]
@@ -93,11 +93,9 @@ mod tests {
     #[test]
     fn plan_denies_whatever_changes_files_or_runs_commands() {
         let rules = crate::settings::default_rules();
-        let policy = Policy {
-            rules: &rules,
-            mode: mode::get("plan").unwrap(),
-            plan_file: "/home/u/.crowbot/plans/s1.md",
-        };
+        let policy = mode::get("plan")
+            .unwrap()
+            .policy(&rules, "/home/u/.crowbot/plans/s1.md");
         for p in ALL
             .iter()
             .filter(|p| matches!(p.effect, Effect::ChangesFiles | Effect::RunsCommands))

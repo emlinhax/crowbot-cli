@@ -4,8 +4,10 @@ color = "mode_manual"
 order = 0
 summary = "Asks before edits, commands and fetches"
 
+# What the agent does when the model repeats the same call: ask the user, or tell the model.
+doom_loop = "ask"
+
 # What a rule's verdict turns into in this mode.
 [verdicts]
 ask = "ask"
 deny = "deny"
-doom_loop = "ask"

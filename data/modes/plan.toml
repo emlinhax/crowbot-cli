@@ -7,10 +7,12 @@ reminder = "plan_mode"
 
 # Nothing PLAN lets through edits the project, so a repeated call is for the model to notice, not
 # a question for the user.
+# What the agent does when the model repeats the same call: ask the user, or tell the model.
+doom_loop = "tell_model"
+
 [verdicts]
 ask = "ask"
 deny = "deny"
-doom_loop = "tell_model"
 
 # Locks apply after every other rule, so no config or approval can lift them; the last match wins.
 [[lock]]

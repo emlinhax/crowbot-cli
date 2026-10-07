@@ -16,7 +16,7 @@ use crate::agent::state::Shared;
 use crate::conversation::message::{Message, ToolCall, ToolResult};
 use crate::limits;
 use crate::mode::DoomLoop;
-use crate::permission::gate::{self, Ask, Decision, Policy};
+use crate::permission::gate::{self, Ask, Decision};
 use crate::text::template::fill;
 use crate::tools::{Output, Refusal, Tool, ToolCx, permissions};
 
@@ -146,7 +146,7 @@ async fn clear<'a>(
 
     let mut asks = Vec::new();
     if repeats >= limits::get().agent.doom_loop_repeats.value {
-        match mode.verdicts.doom_loop {
+        match mode.doom_loop {
             DoomLoop::TellModel => {
                 return Err(fill(&text.doom_loop, &[("count", &repeats.to_string())]).into());
             }
@@ -164,11 +164,7 @@ async fn clear<'a>(
         })?;
     asks.extend(check.asks);
 
-    let policy = Policy {
-        rules: &cx.app.settings.permission,
-        mode,
-        plan_file: &cx.plan_file,
-    };
+    let policy = mode.policy(&cx.app.settings.permission, &cx.plan_file);
     let decision = match policy.decide(&asks) {
         Decision::Allow if check.confirm => Decision::Ask,
         decision => decision,
