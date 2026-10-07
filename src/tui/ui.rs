@@ -77,8 +77,6 @@ pub struct LoginText {
 #[serde(deny_unknown_fields)]
 pub struct ForumsText {
     pub title: String,
-    pub guest: String,
-    pub logged_in: String,
     pub add: String,
     pub hint: String,
     pub menu_hint: String,

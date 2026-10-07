@@ -8,8 +8,8 @@ use futures_util::future::BoxFuture;
 use crate::agent::prompt::Reply;
 use crate::app::App;
 use crate::commands::Scope;
-use crate::commands::forums::{forget, keep, sign_in, sign_out};
-use crate::forums::{self, Forum, directory, store};
+use crate::commands::forums::{self as said, added, logged_in, logged_out, removed};
+use crate::forums::{Forum, account, directory, store};
 use crate::io::term::KeyEvent;
 use crate::limits;
 use crate::text::styled::{Line, Style};
@@ -122,20 +122,28 @@ pub fn run(app: &App, job: Job) -> BoxFuture<'_, Done> {
                     Err(e) => Done::Failed(format!("{e:#}")),
                 };
             }
-            Job::Add(forum) => {
-                let focus = forum.base_url.clone();
-                (keep(app, Scope::Session, forum), Some(focus))
-            }
+            Job::Add(forum) => (
+                store::add(&app.paths, forum.clone()).map(|()| added(Scope::Session, &forum)),
+                Some(forum.base_url),
+            ),
             Job::Login {
                 forum,
                 user,
                 password,
             } => (
-                sign_in(app, &forum, &user, &password).await,
+                account::sign_in(&app.fetch, &app.paths, &forum, &user, &password)
+                    .await
+                    .map(|user| logged_in(&forum, &user)),
                 Some(forum.base_url),
             ),
-            Job::Logout(forum) => (sign_out(app, &forum), Some(forum.base_url)),
-            Job::Remove(forum) => (forget(app, &forum), None),
+            Job::Logout(forum) => (
+                store::logout(&app.paths, &forum.base_url).map(|_| logged_out(&forum)),
+                Some(forum.base_url),
+            ),
+            Job::Remove(forum) => (
+                store::remove(&app.paths, &forum.base_url).map(|_| removed(&forum)),
+                None,
+            ),
         };
         match said.and_then(|message| Ok((message, store::load(&app.paths)?))) {
             Ok((message, forums)) => Done::Changed {
@@ -421,11 +429,9 @@ fn menu(forum: &Forum) -> Stage {
 /// The searches `data/forums.toml` suggests, less the forums already added.
 fn add(forums: &[Forum]) -> Stage {
     let text = &ui::get().forums;
-    let queries: Vec<String> = forums::data()
-        .suggest
-        .iter()
-        .map(|s| s.query.clone())
-        .filter(|q| !forums.iter().any(|f| store::matches(f, q)))
+    let queries: Vec<String> = account::suggestions(forums)
+        .into_iter()
+        .map(str::to_owned)
         .collect();
     let mut options: Vec<Opt> = queries
         .iter()
@@ -456,11 +462,12 @@ fn rows(forums: &[Forum], width: usize) -> Vec<Line> {
 }
 
 fn status(forum: &Forum) -> Line {
-    let text = &ui::get().forums;
-    match &forum.username {
-        Some(user) => Line::styled(fill(&text.logged_in, &[("user", user)]), Style::fg("done")),
-        None => Line::styled(&text.guest, Style::fg("muted")),
-    }
+    let role = if forum.username.is_some() {
+        "done"
+    } else {
+        "muted"
+    };
+    Line::styled(said::status(forum), Style::fg(role))
 }
 
 /// What the forum is about, under the list, cut to one line.
@@ -628,7 +635,7 @@ mod tests {
     fn a_search_that_finds_nothing_says_so_and_escape_walks_back_out() {
         let mut card = Forums::new(Vec::new(), None);
         key(&mut card, Action::Submit);
-        let search = (forums::data().suggest.len() + 1).to_string();
+        let search = (account::suggestions(&[]).len() + 1).to_string();
         digit(&mut card, search.chars().next().unwrap());
         card.insert("nowhere");
         assert!(

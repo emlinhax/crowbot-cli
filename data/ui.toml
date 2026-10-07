@@ -94,8 +94,6 @@ hint = "esc cancel"
 # `/forums` in a session: the forums the agent can browse, to log in to, log out of, remove or add.
 [forums]
 title = "Forums"
-guest = "guest"
-logged_in = "logged in as {user}"
 add = "+ Add a forum"
 hint = "↑↓ move · → or enter open · esc close"
 menu_hint = "↑↓ move · enter choose · 1-9 pick · esc back"

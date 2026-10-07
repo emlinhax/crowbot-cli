@@ -11,6 +11,7 @@ use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
 
+pub mod account;
 pub mod directory;
 pub mod mobiquo;
 pub mod store;
