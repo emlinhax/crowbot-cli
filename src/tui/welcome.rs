@@ -1,6 +1,7 @@
 //! The first thing on screen: crowbot's raven beside who and where you are.
 
 use crate::data;
+use crate::limits;
 use crate::mode;
 use crate::text::styled::{Line, Style, width};
 use crate::text::template::fill;
@@ -9,11 +10,6 @@ use crate::tui::ui;
 const RAVEN: &str = data::raw!("raven.txt");
 /// The same bird for consoles without a braille font.
 const RAVEN_ASCII: &str = data::raw!("raven_ascii.txt");
-
-/// Columns between the raven and the text beside it.
-const GUTTER: usize = 3;
-/// Narrowest text column worth putting beside the raven rather than under it.
-const MIN_TEXT: usize = 28;
 
 /// Kept by the transcript, which redraws the welcome at every width.
 #[derive(Clone)]
@@ -38,17 +34,21 @@ pub fn render(info: &Info, width: usize) -> Vec<Line> {
         |row: &str| Line::styled(row, Style::fg("accent")).padded(raven_width, &Style::default());
     let text = text(info);
     let mut out = Vec::new();
+    let (gutter, min_text) = {
+        let tui = &limits::get().tui;
+        (tui.welcome_gutter.value, tui.welcome_min_text.value)
+    };
 
     if width < raven_width {
         out.extend(text);
-    } else if width >= raven_width + GUTTER + MIN_TEXT {
+    } else if width >= raven_width + gutter + min_text {
         // Text sits beside the raven, vertically centred on it.
         let top = raven.len().saturating_sub(text.len()) / 2;
-        let avail = width - raven_width - GUTTER;
+        let avail = width - raven_width - gutter;
         for (i, row) in raven.iter().enumerate() {
             let mut line = bird(row);
             if let Some(t) = i.checked_sub(top).and_then(|j| text.get(j)) {
-                line.push(" ".repeat(GUTTER), Style::default());
+                line.push(" ".repeat(gutter), Style::default());
                 line.extend(t.truncate(avail));
             }
             out.push(line);

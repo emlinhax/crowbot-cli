@@ -30,6 +30,9 @@ struct Spec {
     summary: Option<Summary>,
     #[serde(default)]
     max_lines: Option<usize>,
+    /// A batch title arg shows this many items; past it, one fewer and `+N`.
+    #[serde(default)]
+    title_items: Option<usize>,
 }
 
 /// A line from the result's details, or a count of one of them in the form that fits it.
@@ -76,6 +79,7 @@ fn spec(tool: &str) -> Spec {
         body: own.body.or(default.body),
         summary: own.summary.or(default.summary),
         max_lines: own.max_lines.or(default.max_lines),
+        title_items: own.title_items.or(default.title_items),
     }
 }
 
@@ -89,11 +93,12 @@ pub fn header(tool: &str, arguments: &str, state: State<'_>) -> Line {
     line.push(tool, Style::default().bold());
     let args: Value = serde_json::from_str(arguments).unwrap_or(Value::Null);
     let spec = spec(tool);
+    let items = spec.title_items.unwrap_or_default();
     let present: Vec<String> = spec
         .title
         .unwrap_or_default()
         .into_iter()
-        .filter_map(|key| arg_text(&at(&args, &key)))
+        .filter_map(|key| arg_text(&at(&args, &key), items))
         .collect();
     // With `title_join` several present args fold onto one line (a forum and its section or search
     // term); otherwise the first present one titles the card, as every other tool does.
@@ -138,7 +143,7 @@ pub fn finished(tool: &str, arguments: &str, result: &ToolResult, width: usize) 
 
 fn body(tool: &str, result: &ToolResult, width: usize) -> Vec<Line> {
     let spec = spec(tool);
-    let max = spec.max_lines.unwrap_or(1);
+    let max = spec.max_lines.unwrap_or_default();
     let dim = |l: &str| Line::styled(l, Style::default().dim()).truncate(width);
     let lines: Vec<&str> = result.content.lines().collect();
     match spec.body.unwrap_or(Body::None) {
@@ -168,7 +173,7 @@ fn body(tool: &str, result: &ToolResult, width: usize) -> Vec<Line> {
 
 /// A title arg as one short line: a string's first line, or a batch array as its items (a few, then
 /// `+N`); `None` when there is nothing to show.
-fn arg_text(value: &Value) -> Option<String> {
+fn arg_text(value: &Value, max_items: usize) -> Option<String> {
     match value {
         Value::String(s) => {
             let line = s.lines().next().unwrap_or_default();
@@ -176,10 +181,11 @@ fn arg_text(value: &Value) -> Option<String> {
         }
         Value::Array(items) => {
             let parts: Vec<&str> = items.iter().filter_map(Value::as_str).collect();
+            let shown = max_items.saturating_sub(1);
             match parts.len() {
                 0 => None,
-                1..=3 => Some(parts.join(", ")),
-                n => Some(format!("{}, +{}", parts[..2].join(", "), n - 2)),
+                n if n <= max_items => Some(parts.join(", ")),
+                n => Some(format!("{}, +{}", parts[..shown].join(", "), n - shown)),
             }
         }
         _ => None,
@@ -238,6 +244,13 @@ fn lookup(key: &str, result: &ToolResult) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_default_card_sets_every_number_a_card_falls_back_to() {
+        let default = CARDS.get("default").unwrap();
+        assert!(default.max_lines.is_some_and(|n| n > 0));
+        assert!(default.title_items.is_some_and(|n| n > 1));
+    }
     use serde_json::json;
 
     fn result(content: &str, details: Option<Value>, is_error: bool) -> ToolResult {

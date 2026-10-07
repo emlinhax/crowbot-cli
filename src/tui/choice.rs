@@ -229,7 +229,7 @@ impl Card for Choice {
         let hint = match &self.input {
             Some(input) => {
                 let prompt = Line::styled("   ✎ ", Style::fg("accent"));
-                lines.extend(input.render(width, 3, &prompt, ""));
+                lines.extend(input.render(width, limits::get().tui.field_rows.value, &prompt, ""));
                 &text.input_hint
             }
             None => self.hint.as_ref().unwrap_or(&text.hint),

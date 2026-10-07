@@ -15,8 +15,6 @@ use crate::tui::ui;
 /// CEILING: the tokens of a reply still streaming are estimated at this many characters each;
 /// the exact count replaces it when the request ends. A tokenizer would make it exact.
 const CHARS_PER_TOKEN: usize = 4;
-/// Steps the glint spends off the word before its next pass, so it reads as a glint, not a scroll.
-const GLINT_REST: usize = 6;
 
 /// One turn's progress, from the moment it is sent.
 pub struct Progress {
@@ -106,7 +104,7 @@ pub fn retrying(secs: u64, why: &str, width: usize) -> Line {
 fn glint(word: &str, elapsed_ms: u128, step_ms: u64, color: &str) -> Line {
     let letters: Vec<&str> = word.graphemes(true).collect();
     // The centre starts one letter before the word and leaves one after, then rests.
-    let pass = letters.len() + 2 + GLINT_REST;
+    let pass = letters.len() + 2 + limits::get().tui.glint_rest.value;
     let at = (elapsed_ms / u128::from(step_ms.max(1))) as usize % pass;
     let mut line = Line::default();
     for (i, letter) in letters.iter().enumerate() {

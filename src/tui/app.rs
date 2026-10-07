@@ -927,7 +927,8 @@ impl<'a> Tui<'a> {
                 }
                 let ui = ui::get();
                 let prompt = Line::styled(&ui.prompt, Style::fg(&mode.color).bold());
-                let rows = (height * limits::get().tui.editor_max_rows_pct.value / 100).max(3);
+                let rows = (height * limits::get().tui.editor_max_rows_pct.value / 100)
+                    .max(limits::get().tui.editor_min_rows.value);
                 live.extend(self.editor.render(width, rows, &prompt, &ui.placeholder));
             }
         }

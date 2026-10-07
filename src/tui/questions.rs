@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 
 use crate::agent::prompt::{Answer, Question, Reply};
 use crate::io::term::{KeyCode, KeyEvent};
+use crate::limits;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
 use crate::tui::boxed::boxed;
@@ -356,7 +357,7 @@ impl Card for Questions {
             lines.extend(self.question_lines(width));
             if let Some(input) = &self.input {
                 let prompt = Line::styled("   ✎ ", Style::fg("accent"));
-                lines.extend(input.render(width, 3, &prompt, ""));
+                lines.extend(input.render(width, limits::get().tui.field_rows.value, &prompt, ""));
             }
         }
         lines.push(Line::styled(format!(" {hint}"), Style::fg("muted")).truncate(width));

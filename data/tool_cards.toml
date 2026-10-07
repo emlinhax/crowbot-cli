@@ -2,12 +2,15 @@
 # titles the card. `body` is one of: none, diff (details.diff), head, tail, summary.
 # `summary` fills {placeholders} from the result's details, or counts one of them:
 # `{ count = "<key>", one = "…{n}…", many = "…{n}…" }` picks the form for that number. A list of
-# summaries shows the first whose details are all there.
-# Tools without a section use [default].
+# summaries shows the first whose details are all there. `max_lines` caps a head, tail or diff
+# body; a list title arg shows `title_items` items, past that one fewer and "+N".
+# Tools without a section use [default], and every section falls back to it key by key.
 
 [default]
 title = ["path", "command", "pattern", "url", "query"]
 body = "none"
+max_lines = 1
+title_items = 3
 
 [read]
 body = "summary"

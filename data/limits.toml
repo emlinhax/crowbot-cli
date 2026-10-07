@@ -300,6 +300,26 @@ reason = "eight frames carry the flock through one rise and fall in about three 
 value = 70
 reason = "the glint crosses a ten-letter verb in about a second"
 
+[tui.glint_rest]
+value = 6
+reason = "steps the glint spends off the word before its next pass, so it reads as a glint, not a scroll"
+
+[tui.editor_min_rows]
+value = 3
+reason = "the editor keeps room for a few lines however short the terminal"
+
+[tui.field_rows]
+value = 3
+reason = "a card's text field (a question's own words, a login) shows a few lines, like a small editor"
+
+[tui.welcome_gutter]
+value = 3
+reason = "columns between the raven and the text beside it"
+
+[tui.welcome_min_text]
+value = 28
+reason = "narrowest text column worth putting beside the raven rather than under it"
+
 [print.note_chars]
 value = 100
 reason = "a stderr note is one line; a longer argument or error crowds the reply"
