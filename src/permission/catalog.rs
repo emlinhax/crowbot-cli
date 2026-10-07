@@ -16,53 +16,45 @@ pub struct Permission {
     pub effect: Effect,
 }
 
-const fn permission(name: &'static str, effect: Effect) -> Permission {
-    Permission { name, effect }
+/// Each permission is named once here: the macro makes its const and puts it in `ALL`, the list
+/// the tests hold to the secret rules and PLAN's locks.
+macro_rules! permissions {
+    ($($(#[$doc:meta])* $name:ident = $id:literal, $effect:ident;)+) => {
+        $(
+            $(#[$doc])*
+            pub const $name: Permission = Permission { name: $id, effect: Effect::$effect };
+        )+
+
+        #[cfg(test)]
+        const ALL: &[Permission] = &[$($name),+];
+    };
 }
 
-pub const READ: Permission = permission("read", Effect::ReadsFiles);
-/// glob and grep: they read what they search.
-pub const SEARCH: Permission = permission("search", Effect::ReadsFiles);
-/// write and edit.
-pub const EDIT: Permission = permission("edit", Effect::ChangesFiles);
-pub const BASH: Permission = permission("bash", Effect::RunsCommands);
-/// A command line whose commands cannot be read off its text.
-pub const BASH_COMPLEX: Permission = permission("bash_complex", Effect::RunsCommands);
-/// A command line that redirects output into a file.
-pub const BASH_WRITE: Permission = permission("bash_write", Effect::ChangesFiles);
-/// Asked beside read, search or edit when the path leaves the project.
-pub const EXTERNAL_DIRECTORY: Permission = permission("external_directory", Effect::Other);
-pub const WEBFETCH: Permission = permission("webfetch", Effect::Other);
-/// Reading a forum (sections, topics, threads, search); default-allowed, per host.
-pub const FORUM: Permission = permission("forum", Effect::Other);
-/// Posting to a forum; the posting tool also confirms the content with the user every time.
-pub const FORUM_POST: Permission = permission("forum_post", Effect::Other);
-pub const CODESEARCH: Permission = permission("codesearch", Effect::Other);
-pub const TODO: Permission = permission("todo", Effect::Other);
-pub const QUESTION: Permission = permission("question", Effect::Other);
-pub const PLAN_EXIT: Permission = permission("plan_exit", Effect::Other);
-/// The same call repeated; asked by the agent, not a tool.
-pub const DOOM_LOOP: Permission = permission("doom_loop", Effect::Other);
-
-/// Every permission above; a new one goes here too, so the tests see it.
-#[cfg(test)]
-const ALL: &[Permission] = &[
-    READ,
-    SEARCH,
-    EDIT,
-    BASH,
-    BASH_COMPLEX,
-    BASH_WRITE,
-    EXTERNAL_DIRECTORY,
-    WEBFETCH,
-    FORUM,
-    FORUM_POST,
-    CODESEARCH,
-    TODO,
-    QUESTION,
-    PLAN_EXIT,
-    DOOM_LOOP,
-];
+permissions! {
+    READ = "read", ReadsFiles;
+    /// glob and grep: they read what they search.
+    SEARCH = "search", ReadsFiles;
+    /// write and edit.
+    EDIT = "edit", ChangesFiles;
+    BASH = "bash", RunsCommands;
+    /// A command line whose commands cannot be read off its text.
+    BASH_COMPLEX = "bash_complex", RunsCommands;
+    /// A command line that redirects output into a file.
+    BASH_WRITE = "bash_write", ChangesFiles;
+    /// Asked beside read, search or edit when the path leaves the project.
+    EXTERNAL_DIRECTORY = "external_directory", Other;
+    WEBFETCH = "webfetch", Other;
+    /// Reading a forum (sections, topics, threads, search); default-allowed, per host.
+    FORUM = "forum", Other;
+    /// Posting to a forum; the user confirms every post, whatever the rules allow.
+    FORUM_POST = "forum_post", Other;
+    CODESEARCH = "codesearch", Other;
+    TODO = "todo", Other;
+    QUESTION = "question", Other;
+    PLAN_EXIT = "plan_exit", Other;
+    /// The same call repeated; asked by the agent, not a tool.
+    DOOM_LOOP = "doom_loop", Other;
+}
 
 #[cfg(test)]
 mod tests {
