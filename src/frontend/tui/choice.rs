@@ -147,7 +147,7 @@ impl Choice {
     }
 
     fn open_input(&mut self, pick: Pick, masked: bool) -> Step {
-        let input = Editor::new(0);
+        let input = Editor::new();
         self.input = Some(if masked {
             input.masked(auth::HINT_CHARS)
         } else {

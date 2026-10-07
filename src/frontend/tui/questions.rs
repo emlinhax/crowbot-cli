@@ -92,7 +92,7 @@ impl Questions {
         let q = self.at;
         self.drafts[q].cursor = row;
         if row == self.other(q) {
-            let mut editor = Editor::new(0);
+            let mut editor = Editor::new();
             if let Some(text) = &self.drafts[q].text {
                 editor.set_text(text);
             }

@@ -203,7 +203,7 @@ impl<'a> Tui<'a> {
     ) -> Self {
         let limits = &limits::get().tui;
         let (width, height) = term::size();
-        let mut editor = Editor::new(limits.history_max.value);
+        let mut editor = Editor::with_history(limits.history_max.value);
         if let Some(text) = initial {
             editor.set_text(&text);
         }

@@ -210,7 +210,7 @@ impl Forums {
                         self.stage = Stage::Password {
                             user,
                             // Dots only: unlike an account number's, a password's tail stays hidden.
-                            input: Editor::new(0).masked(0),
+                            input: Editor::new().masked(0),
                         };
                     }
                 }
@@ -396,7 +396,7 @@ impl Forums {
 }
 
 fn username(typed: &str) -> Stage {
-    let mut input = Editor::new(0);
+    let mut input = Editor::new();
     input.set_text(typed);
     Stage::Username(input)
 }
