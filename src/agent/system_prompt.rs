@@ -35,8 +35,6 @@ struct Forums {
 }
 
 /// Reminders a mode can name in data/modes/*.toml; one line per prompt file.
-const REMINDERS: &[(&str, &str)] = &[("plan_mode", data::raw!("prompts/plan_mode.md"))];
-
 pub fn build(paths: &Paths, model: &Model) -> String {
     let cwd = paths.project.display().to_string();
     let date = io::clock::today();
@@ -108,13 +106,6 @@ fn project(paths: &Paths) -> Option<String> {
             .trim()
             .to_owned(),
     )
-}
-
-pub fn reminder(name: &str) -> Option<&'static str> {
-    REMINDERS
-        .iter()
-        .find(|(n, _)| *n == name)
-        .map(|(_, text)| text.trim_end())
 }
 
 #[cfg(test)]

@@ -5,7 +5,6 @@ use crate::agent::RunCtx;
 use crate::agent::batch::{self, Batch};
 use crate::agent::context;
 use crate::agent::model_text;
-use crate::agent::system_prompt;
 use crate::api::chat::{self, Turn};
 use crate::config::limits;
 use crate::conversation::message::{Finish, Message, Part, ToolCall};
@@ -126,8 +125,7 @@ fn with_reminder(cx: &RunCtx<'_>, shared: &Shared, mut parts: Vec<Part>) -> Vec<
         Some(Reminder::Entered(mode)) => mode
             .reminder
             .as_deref()
-            .and_then(system_prompt::reminder)
-            .map(|text| fill(text, &[("plan_file", &cx.plan_file)])),
+            .map(|text| fill(text.trim_end(), &[("plan_file", &cx.plan_file)])),
         Some(Reminder::Left { now }) => {
             Some(fill(&model_text::get().mode_left, &[("mode", &now.label)]))
         }

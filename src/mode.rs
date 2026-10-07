@@ -35,7 +35,7 @@ pub struct Mode {
     /// Position in the Shift+Tab cycle.
     pub order: u32,
     pub summary: String,
-    /// A prompt in data/prompts/ injected when the mode takes effect.
+    /// Told to the model when the mode takes effect; `{plan_file}` is filled in.
     #[serde(default)]
     pub reminder: Option<String>,
     /// Whether the plan_exit tool works here: the mode writes a plan and hands it over.
@@ -170,17 +170,10 @@ mod tests {
     }
 
     #[test]
-    fn modes_parse_with_unique_ids_and_known_reminders() {
+    fn modes_parse_with_unique_ids() {
         assert!(all().len() >= 3);
         for mode in all() {
             assert_eq!(all().iter().filter(|m| m.id == mode.id).count(), 1);
-            if let Some(reminder) = &mode.reminder {
-                assert!(
-                    crate::agent::system_prompt::reminder(reminder).is_some(),
-                    "{} names unknown reminder {reminder}",
-                    mode.id
-                );
-            }
         }
     }
 
