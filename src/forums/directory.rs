@@ -2,7 +2,7 @@
 //! endpoint crowbot talks to. A forum entry gives its base URL, the (possibly renamed) mobiquo dir
 //! and extension; the rest of crowbot builds the XML-RPC endpoint from those.
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use serde_json::Value as Json;
 
 use crate::forums::{self, Directory, Forum, mobiquo};
@@ -36,18 +36,13 @@ async fn search_with(
         .append_pair("app_id", &dir.app_id)
         .append_pair("app_key", &dir.app_key)
         .finish();
-    let resp = fetch
-        .post(fetch::Post {
-            url: &url,
-            body: body.into_bytes(),
-            content_type: "application/x-www-form-urlencoded",
-            cookie: None,
-        })
-        .await
-        .context("reaching the forum directory")?;
-    if resp.status >= 400 {
-        bail!("the forum directory replied HTTP {}", resp.status);
-    }
+    let request = fetch::Post {
+        url: &url,
+        body: body.into_bytes(),
+        content_type: "application/x-www-form-urlencoded",
+        cookie: None,
+    };
+    let resp = forums::post(fetch, "the forum directory", request).await?;
     let json: Json =
         serde_json::from_slice(&resp.body).context("reading the forum directory's answer")?;
     Ok(entries(&json).iter().filter_map(from_json).collect())

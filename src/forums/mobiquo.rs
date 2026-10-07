@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail};
 
 use crate::config::limits;
 use crate::forums::xmlrpc::{self, Arg, Value};
-use crate::forums::{Forum, Login, Page, Post, Posted, Section, Thread, Topic, TopicList};
+use crate::forums::{self, Forum, Login, Page, Post, Posted, Section, Thread, Topic, TopicList};
 use crate::io::fetch::{self, Fetch};
 
 /// This backend's name in a forum's `kind`.
@@ -49,23 +49,13 @@ async fn send(
     let url = endpoint(forum);
     let body = xmlrpc::call(method, params).into_bytes();
     let cookie = cookie_header(&forum.cookies);
-    let resp = fetch
-        .post(fetch::Post {
-            url: &url,
-            body,
-            content_type: "text/xml",
-            cookie: cookie.as_deref(),
-        })
-        .await
-        .with_context(|| format!("reaching {}", forum.name))?;
-    if resp.status >= 400 {
-        let hint = if resp.firewall {
-            " (the forum's firewall refused it)"
-        } else {
-            ""
-        };
-        bail!("{} replied HTTP {}{hint}", forum.name, resp.status);
-    }
+    let request = fetch::Post {
+        url: &url,
+        body,
+        content_type: "text/xml",
+        cookie: cookie.as_deref(),
+    };
+    let resp = forums::post(fetch, &forum.name, request).await?;
     let value = xmlrpc::parse(&resp.body)
         .with_context(|| format!("reading {method} from {}", forum.name))?;
     Ok((value, resp.set_cookies))

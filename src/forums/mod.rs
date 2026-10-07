@@ -9,9 +9,12 @@
 
 use std::sync::LazyLock;
 
+use anyhow::{Context, Result, bail};
+
 use serde::{Deserialize, Serialize};
 
 use crate::data;
+use crate::io::fetch::{self, Fetch, Fetched};
 
 pub mod account;
 pub mod directory;
@@ -48,6 +51,24 @@ pub struct Directory {
 #[serde(deny_unknown_fields)]
 pub struct Suggestion {
     pub query: String,
+}
+
+/// A POST to a forum or the directory, `who` naming it in errors; a refusal says so, and
+/// whether a firewall gave it.
+pub(crate) async fn post(fetch: &Fetch, who: &str, request: fetch::Post<'_>) -> Result<Fetched> {
+    let resp = fetch
+        .post(request)
+        .await
+        .with_context(|| format!("reaching {who}"))?;
+    if resp.status >= 400 {
+        let hint = if resp.firewall {
+            " (a firewall refused it)"
+        } else {
+            ""
+        };
+        bail!("{who} replied HTTP {}{hint}", resp.status);
+    }
+    Ok(resp)
 }
 
 /// A forum crowbot knows how to reach. A list of these is the store; every field past the endpoint
