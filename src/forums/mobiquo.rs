@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail};
 
 use crate::config::limits;
 use crate::forums::xmlrpc::{self, Arg, Value};
-use crate::forums::{Forum, Login, Post, Posted, Section, Thread, Topic, TopicList};
+use crate::forums::{Forum, Login, Page, Post, Posted, Section, Thread, Topic, TopicList};
 use crate::io::fetch::{self, Fetch};
 
 fn endpoint(forum: &Forum) -> String {
@@ -176,42 +176,21 @@ fn topic_list(value: &Value) -> TopicList {
     }
 }
 
-/// How many posts a thread has, with a one-post fetch, so a caller can jump to the last page.
-pub async fn thread_total(fetch: &Fetch, forum: &Forum, topic_id: &str) -> Result<i64> {
-    let value = call(
-        fetch,
-        forum,
-        "get_thread",
-        &[
-            Arg::Str(topic_id.to_owned()),
-            Arg::Int(0),
-            Arg::Int(0),
-            Arg::Bool(false),
-        ],
-        REFUSED,
-    )
-    .await?;
-    Ok(value
-        .get("total_post_num")
-        .and_then(Value::as_i64)
-        .unwrap_or(0))
-}
-
-pub async fn thread(fetch: &Fetch, forum: &Forum, topic_id: &str, page: i64) -> Result<Thread> {
-    let (start, end) = span(page);
-    let value = call(
-        fetch,
-        forum,
-        "get_thread",
-        &[
-            Arg::Str(topic_id.to_owned()),
-            Arg::Int(start),
-            Arg::Int(end),
-            Arg::Bool(false),
-        ],
-        REFUSED,
-    )
-    .await?;
+/// A page of a thread; for the last page, a one-post probe learns the length first.
+pub async fn thread(fetch: &Fetch, forum: &Forum, topic_id: &str, page: Page) -> Result<Thread> {
+    let page = match page {
+        Page::Num(n) => n.max(1),
+        Page::Last => {
+            let probe = get_thread(fetch, forum, topic_id, (0, 0)).await?;
+            last_page(
+                probe
+                    .get("total_post_num")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0),
+            )
+        }
+    };
+    let value = get_thread(fetch, forum, topic_id, span(page)).await?;
     let posts = value
         .get("posts")
         .and_then(Value::as_array)
@@ -224,11 +203,35 @@ pub async fn thread(fetch: &Fetch, forum: &Forum, topic_id: &str, page: i64) -> 
             content: p.get_str("post_content").unwrap_or_default().to_owned(),
         })
         .collect();
+    let total = value.get("total_post_num").and_then(Value::as_i64);
     Ok(Thread {
         title: value.get_str("topic_title").unwrap_or_default().to_owned(),
-        total: value.get("total_post_num").and_then(Value::as_i64),
+        total,
+        page,
+        pages: total.map(last_page),
         posts,
     })
+}
+
+async fn get_thread(
+    fetch: &Fetch,
+    forum: &Forum,
+    topic_id: &str,
+    (start, end): (i64, i64),
+) -> Result<Value> {
+    let range = [
+        Arg::Str(topic_id.to_owned()),
+        Arg::Int(start),
+        Arg::Int(end),
+        Arg::Bool(false),
+    ];
+    call(fetch, forum, "get_thread", &range, REFUSED).await
+}
+
+/// The last page number for `total` posts at the forum's page size (at least 1).
+fn last_page(total: i64) -> i64 {
+    let per = i64::from(limits::get().forums.page_size.value.get());
+    if total <= 0 { 1 } else { (total - 1) / per + 1 }
 }
 
 pub async fn login(fetch: &Fetch, forum: &Forum, user: &str, password: &str) -> Result<Login> {
@@ -467,7 +470,7 @@ mod tests {
     #[tokio::test]
     async fn a_thread_decodes_base64_and_entities_and_sends_the_right_call() {
         let (forum, seen) = fake().await;
-        let t = thread(&client(), &forum, "77", 1).await.unwrap();
+        let t = thread(&client(), &forum, "77", Page::Num(1)).await.unwrap();
         assert_eq!(t.title, "Ümlaut topic");
         assert_eq!(t.posts[0].author, "crow");
         assert_eq!(t.posts[0].content, "hello & <welcome>");
@@ -506,6 +509,14 @@ mod tests {
             body.contains(&format!("<base64>{}</base64>", b64("secret"))),
             "{body}"
         );
+    }
+
+    #[test]
+    fn the_last_page_counts_whole_pages_of_posts() {
+        let per = i64::from(limits::get().forums.page_size.value.get());
+        assert_eq!(last_page(per * 5 + 1), 6);
+        assert_eq!(last_page(per), 1);
+        assert_eq!(last_page(0), 1);
     }
 
     #[test]

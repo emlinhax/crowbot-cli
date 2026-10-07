@@ -128,10 +128,20 @@ pub struct Post {
     pub content: String,
 }
 
+/// A page number, or the last page, where a thread's newest posts are.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Page {
+    Num(i64),
+    Last,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Thread {
     pub title: String,
     pub total: Option<i64>,
+    /// The page these posts are, and how many there are when the forum gives the total.
+    pub page: i64,
+    pub pages: Option<i64>,
     pub posts: Vec<Post>,
 }
 

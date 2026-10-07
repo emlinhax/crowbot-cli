@@ -13,7 +13,7 @@ use super::many::{Many, join};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::config::limits;
 use crate::data;
-use crate::forums::{Forum, Section, Thread, TopicList, mobiquo, store};
+use crate::forums::{Forum, Page, Section, Thread, TopicList, mobiquo, store};
 use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
@@ -60,14 +60,7 @@ fn resolve(cx: &ToolCx<'_>, key: &str) -> Result<Forum, Output> {
 }
 
 fn page_of(args: &Value) -> i64 {
-    args.get("page").and_then(Value::as_i64).unwrap_or(1).max(1)
-}
-
-/// A page number, or a request for the last page — where a thread's newest posts are.
-#[derive(Clone, Copy)]
-enum Page {
-    Num(i64),
-    Last,
+    args.get("page").and_then(Value::as_i64).unwrap_or(1)
 }
 
 /// Reads `page`: a positive number, or "last"/"latest" (also a number ≤ 0) for the final page.
@@ -91,12 +84,6 @@ fn page_pref(args: &Value) -> Page {
         },
         _ => Page::Num(1),
     }
-}
-
-/// The last page number for `total` posts at the forum's page size (at least 1).
-fn last_page(total: i64) -> i64 {
-    let per = i64::from(limits::get().forums.page_size.value.get());
-    if total <= 0 { 1 } else { (total - 1) / per + 1 }
 }
 
 /// Cut long output to the tool limits, noting when it was trimmed.
@@ -217,10 +204,10 @@ fn render_topics(list: &TopicList) -> String {
     out
 }
 
-fn render_thread(thread: &Thread, page: i64) -> String {
+fn render_thread(thread: &Thread) -> String {
     let mut out = thread.title.clone();
-    if let Some(total) = thread.total {
-        let pages = last_page(total);
+    let page = thread.page;
+    if let (Some(total), Some(pages)) = (thread.total, thread.pages) {
         out.push_str(&format!(" — page {page} of {pages}, {total} posts"));
         // Posts are oldest first; nudge toward the end rather than paging there one by one.
         if page < pages {
@@ -381,13 +368,8 @@ impl Tool for ThreadTool {
                 capped(parsed.topic),
                 |topic| format!("Topic {topic}:"),
                 |topic| async move {
-                    // "last" needs the length first; a one-post probe gets it cheaply.
-                    let page = match want {
-                        Page::Num(n) => n,
-                        Page::Last => last_page(mobiquo::thread_total(fetch, forum, &topic).await?),
-                    };
-                    let thread = mobiquo::thread(fetch, forum, &topic, page).await?;
-                    Ok(render_thread(&thread, page))
+                    let thread = mobiquo::thread(fetch, forum, &topic, want).await?;
+                    Ok(render_thread(&thread))
                 },
             )
             .await;
@@ -580,6 +562,8 @@ mod tests {
         let thread = Thread {
             title: "Hi".into(),
             total: Some(2),
+            page: 1,
+            pages: Some(1),
             posts: vec![ForumPost {
                 id: "5".into(),
                 author: "crow".into(),
@@ -587,7 +571,7 @@ mod tests {
                 content: "body".into(),
             }],
         };
-        let text = render_thread(&thread, 1);
+        let text = render_thread(&thread);
         assert!(text.contains("Hi — page 1 of 1, 2 posts"));
         assert!(text.contains("── #5 crow 2026"));
         assert!(text.contains("body"));
@@ -595,18 +579,18 @@ mod tests {
 
     #[test]
     fn a_thread_footer_shows_pages_and_nudges_toward_the_newest() {
-        let per = i64::from(limits::get().forums.page_size.value.get());
-        let many = Thread {
+        let page = |page| Thread {
             title: "Long".into(),
-            total: Some(per * 5 + 1), // six pages
+            total: Some(101),
+            page,
+            pages: Some(6),
             posts: vec![],
         };
-        assert_eq!(last_page(per * 5 + 1), 6);
-        let page1 = render_thread(&many, 1);
+        let page1 = render_thread(&page(1));
         assert!(page1.contains("page 1 of 6"), "{page1}");
         assert!(page1.contains(r#"read page "last""#), "{page1}");
         // On the last page the nudge is gone.
-        let page6 = render_thread(&many, 6);
+        let page6 = render_thread(&page(6));
         assert!(!page6.contains("newest posts"), "{page6}");
     }
 
@@ -618,7 +602,6 @@ mod tests {
         assert!(num(serde_json::json!(3)) && num(serde_json::json!("2")));
         assert!(last(serde_json::json!("last")) && last(serde_json::json!("latest")));
         assert!(last(serde_json::json!(-1)) && last(serde_json::json!(0)));
-        assert_eq!(last_page(0), 1);
     }
 
     #[test]
