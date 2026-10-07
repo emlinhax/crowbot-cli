@@ -96,6 +96,10 @@ reason = "the same call three times in a row is a loop, not persistence (opencod
 value = 32768
 reason = "a project's AGENTS.md is a few KiB; more would crowd every request it rides on"
 
+[session.slug_chars]
+value = 96
+reason = "a project's session folder is named from its path; this keeps the name well under filesystem limits"
+
 [tools.max_lines]
 value = 2000
 reason = "about what a model can use from one read; more is noise that costs input tokens"

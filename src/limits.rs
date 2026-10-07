@@ -40,6 +40,7 @@ pub struct Limits {
     pub pair: PairLimits,
     pub signup: SignupLimits,
     pub agent: AgentLimits,
+    pub session: SessionLimits,
     pub tools: ToolLimits,
     pub update: UpdateLimits,
     pub forums: ForumLimits,
@@ -129,6 +130,12 @@ pub struct ToolLimits {
     pub bash_spill_max_bytes: Limit<usize>,
     pub bash_spill_keep_days: Limit<u64>,
     pub webfetch_max_bytes: Limit<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SessionLimits {
+    pub slug_chars: Limit<usize>,
 }
 
 #[derive(Debug, Deserialize)]

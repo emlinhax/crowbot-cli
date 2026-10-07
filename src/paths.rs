@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 
-use crate::io;
+use crate::{io, limits};
 
 /// Every location crowbot reads or writes, derived from two roots.
 #[derive(Debug, Clone)]
@@ -75,6 +75,8 @@ impl Paths {
     }
 }
 
+// CEILING: keeping the head lets long paths that share it land in one folder. Keeping the tail, or
+// adding a short hash, fixes that, and moves the folders of paths over the limit.
 fn slug(path: &Path) -> String {
     let text: String = path
         .display()
@@ -82,7 +84,8 @@ fn slug(path: &Path) -> String {
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
-    text.trim_matches('-').chars().take(96).collect()
+    let max = limits::get().session.slug_chars.value;
+    text.trim_matches('-').chars().take(max).collect()
 }
 
 #[cfg(test)]
