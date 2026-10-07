@@ -1,6 +1,35 @@
 //! What the terminal can show: colour depth and braille.
 
+use std::sync::LazyLock;
+
+use serde::Deserialize;
+
+use crate::data;
 use crate::io::env;
+
+static TERMINALS: LazyLock<Terminals> = data::load!("terminals.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Terminals {
+    truecolor: Truecolor,
+    braille: Braille,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Truecolor {
+    colorterm: Vec<String>,
+    env: Vec<String>,
+    term_program: Vec<String>,
+    term_contains: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Braille {
+    env: Vec<String>,
+}
 
 /// How many colours the terminal can show.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -16,12 +45,11 @@ pub fn color_depth() -> Depth {
     if env::var("NO_COLOR").is_some() {
         return Depth::None;
     }
-    let truecolor = env::var("COLORTERM").is_some_and(|v| v == "truecolor" || v == "24bit")
-        || env::var("WT_SESSION").is_some()
-        || env::var("TERM_PROGRAM").is_some_and(|p| {
-            ["iTerm.app", "WezTerm", "vscode", "ghostty", "Hyper"].contains(&p.as_str())
-        })
-        || env::var("TERM").is_some_and(|t| t.contains("kitty") || t.contains("direct"));
+    let known = &TERMINALS.truecolor;
+    let truecolor = env::var("COLORTERM").is_some_and(|v| known.colorterm.contains(&v))
+        || known.env.iter().any(|name| env::var(name).is_some())
+        || env::var("TERM_PROGRAM").is_some_and(|p| known.term_program.contains(&p))
+        || env::var("TERM").is_some_and(|t| known.term_contains.iter().any(|s| t.contains(s)));
     if truecolor {
         Depth::TrueColor
     } else {
@@ -32,8 +60,11 @@ pub fn color_depth() -> Depth {
 /// Whether braille glyphs render: legacy Windows conhost has no font for them.
 pub fn braille() -> bool {
     !cfg!(windows)
-        || env::var("WT_SESSION").is_some()
-        || env::var("TERM_PROGRAM").is_some()
+        || TERMINALS
+            .braille
+            .env
+            .iter()
+            .any(|name| env::var(name).is_some())
         || hosted_console()
 }
 
@@ -59,4 +90,15 @@ fn hosted_console() -> bool {
 #[cfg(not(windows))]
 fn hosted_console() -> bool {
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_terminal_table_parses() {
+        assert!(!TERMINALS.truecolor.colorterm.is_empty());
+        assert!(!TERMINALS.braille.env.is_empty());
+    }
 }
