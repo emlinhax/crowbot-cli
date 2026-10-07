@@ -1,10 +1,9 @@
-use crate::data;
-
 use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 
 use super::{Command, Ctx, Effect, Outcome, Spec};
+use crate::data;
 
 static SPEC: LazyLock<Spec> = super::spec!("init");
 

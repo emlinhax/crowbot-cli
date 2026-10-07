@@ -1,11 +1,11 @@
 //! Which release this binary is, and which file of a release each platform runs
 //! (data/release.toml).
 
-use crate::data;
-
 use std::sync::LazyLock;
 
 use serde::Deserialize;
+
+use crate::data;
 
 static CATALOG: LazyLock<Catalog> = data::load!("release.toml");
 

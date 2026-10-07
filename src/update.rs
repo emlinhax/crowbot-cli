@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 use anyhow::{Context, anyhow, bail};
-use jiff::{SignedDuration, Timestamp};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -97,8 +97,7 @@ pub fn take_news(paths: &Paths) -> Option<Change> {
 /// Whether an interactive session should look now: updates on, a release build, and a day since
 /// the last look.
 pub fn due(state: &State, now: Timestamp, enabled: bool) -> bool {
-    let interval = SignedDuration::try_from(limits::get().update.check_interval_secs.secs())
-        .unwrap_or(SignedDuration::MAX);
+    let interval = limits::get().update.check_interval_secs.signed_secs();
     enabled
         && release::tag().is_some()
         && state
@@ -228,6 +227,7 @@ mod tests {
 
     use axum::Router;
     use axum::routing::get;
+    use jiff::SignedDuration;
     use serde_json::json;
 
     use super::*;

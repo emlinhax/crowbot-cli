@@ -281,8 +281,7 @@ fn create_spill(dir: &std::path::Path) -> Option<(std::path::PathBuf, io::fs::Ap
 }
 
 fn prune_spills(dir: &std::path::Path) {
-    let days = limits::get().tools.bash_spill_keep_days.value;
-    let keep = jiff::SignedDuration::from_hours(i64::try_from(days * 24).unwrap_or(i64::MAX));
+    let keep = limits::get().tools.bash_spill_keep_days.signed_days();
     let now = io::clock::now();
     for entry in io::fs::list_dir(dir).unwrap_or_default() {
         if !(entry.name.starts_with("bash-") && entry.name.ends_with(".log")) {

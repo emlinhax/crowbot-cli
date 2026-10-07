@@ -1,10 +1,10 @@
 //! Typed access to data/model_text.toml, so a missing string fails the tests, not a session.
 
-use crate::data;
-
 use std::sync::LazyLock;
 
 use serde::Deserialize;
+
+use crate::data;
 
 static TEXT: LazyLock<ModelText> = data::load!("model_text.toml");
 

@@ -1,9 +1,10 @@
-use crate::data;
-
 use std::sync::LazyLock;
 use std::time::Duration;
 
+use jiff::SignedDuration;
 use serde::Deserialize;
+
+use crate::data;
 
 static LIMITS: LazyLock<Limits> = data::load!("limits.toml");
 
@@ -27,6 +28,18 @@ impl Limit<u64> {
 
     pub fn secs(&self) -> Duration {
         Duration::from_secs(self.value)
+    }
+
+    /// As a span for timestamp arithmetic; too large a value saturates instead of wrapping.
+    pub fn signed_secs(&self) -> SignedDuration {
+        SignedDuration::try_from(self.secs()).unwrap_or(SignedDuration::MAX)
+    }
+
+    pub fn signed_days(&self) -> SignedDuration {
+        i64::try_from(self.value)
+            .ok()
+            .and_then(|days| days.checked_mul(86_400))
+            .map_or(SignedDuration::MAX, SignedDuration::from_secs)
     }
 }
 
@@ -213,6 +226,18 @@ mod tests {
     #[test]
     fn limits_parse() {
         let _ = get();
+    }
+
+    #[test]
+    fn signed_spans_saturate_instead_of_wrapping() {
+        let limit = |value| Limit {
+            value,
+            _reason: String::new(),
+        };
+        assert_eq!(limit(2).signed_days(), SignedDuration::from_hours(48));
+        assert_eq!(limit(90).signed_secs(), SignedDuration::from_secs(90));
+        assert_eq!(limit(u64::MAX).signed_days(), SignedDuration::MAX);
+        assert_eq!(limit(u64::MAX).signed_secs(), SignedDuration::MAX);
     }
 
     #[test]

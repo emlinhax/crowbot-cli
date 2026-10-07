@@ -1,4 +1,4 @@
-use jiff::{SignedDuration, Timestamp};
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use crate::api::Call;
@@ -89,8 +89,7 @@ pub async fn load(app: &App, refresh: bool) -> Catalog {
     let path = app.paths.models_cache();
     let cached = read_cache(&path);
     let now = io::clock::now();
-    let ttl = SignedDuration::try_from(limits::get().models.cache_ttl_secs.secs())
-        .unwrap_or(SignedDuration::MAX);
+    let ttl = limits::get().models.cache_ttl_secs.signed_secs();
 
     if !refresh
         && let Some(cache) = &cached

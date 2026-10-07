@@ -7,11 +7,11 @@
 //! JSON API, a plain-HTML reader), route the calls through a `match forum.kind` here and that stays
 //! the one place that knows backend names.
 
-use crate::data;
-
 use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
+
+use crate::data;
 
 pub mod account;
 pub mod directory;

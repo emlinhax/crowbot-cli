@@ -1,11 +1,11 @@
 //! Pipe filters: a command that, as written, reads only its standard input and writes only its
 //! output (`tail -30`, `grep -c ok`). Which commands and flags qualify is data/filters.toml.
 
-use crate::data;
-
 use std::sync::LazyLock;
 
 use serde::Deserialize;
+
+use crate::data;
 
 static FILTERS: LazyLock<Vec<Filter>> = data::load!("filters.toml", "filter");
 

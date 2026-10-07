@@ -1,11 +1,11 @@
 //! Roles to colours, from data/theme.toml. Rendering only ever names roles.
 
-use crate::data;
-
 use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 use serde::Deserialize;
+
+use crate::data;
 
 const SRC: &str = data::raw!("theme.toml");
 

@@ -1,9 +1,9 @@
-use crate::data;
-
 use std::sync::LazyLock;
 
 use anyhow::bail;
 use serde::Deserialize;
+
+use crate::data;
 
 static LEVELS: LazyLock<Catalog> = data::load!("effort.toml");
 
