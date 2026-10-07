@@ -30,8 +30,6 @@ struct Choice {
     mode: Option<String>,
 }
 
-const PLAN_MODE: &str = "plan";
-
 pub struct PlanExit;
 
 impl Tool for PlanExit {
@@ -40,7 +38,7 @@ impl Tool for PlanExit {
     }
 
     fn check(&self, _args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        if cx.shared.mode().id != PLAN_MODE {
+        if !cx.shared.mode().plan_exit {
             return Err(Refusal::Refused(model_text::get().plan_only.clone()));
         }
         Ok(Check::new(vec![Ask::new(catalog::PLAN_EXIT.name, "*")]))

@@ -4,10 +4,10 @@ color = "mode_auto"
 order = 2
 summary = "Runs everything without asking, deny rules included"
 
-# Deliberately total: AUTO bypasses every permission, with no classifier.
 # What the agent does when the model repeats the same call: ask the user, or tell the model.
 doom_loop = "tell_model"
 
+# Deliberately total: AUTO bypasses every permission, with no classifier.
 [verdicts]
 ask = "allow"
 deny = "allow"

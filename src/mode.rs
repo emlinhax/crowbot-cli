@@ -38,6 +38,9 @@ pub struct Mode {
     /// A prompt in data/prompts/ injected when the mode takes effect.
     #[serde(default)]
     pub reminder: Option<String>,
+    /// Whether the plan_exit tool works here: the mode writes a plan and hands it over.
+    #[serde(default)]
+    pub plan_exit: bool,
     pub verdicts: Verdicts,
     /// What the agent does when the model repeats the same call.
     pub doom_loop: DoomLoop,
