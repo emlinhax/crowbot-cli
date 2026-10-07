@@ -138,7 +138,7 @@ fn answer(line: &str, default: bool) -> bool {
 /// `None` when cancelled. The caller checks `stdin_is_terminal` first.
 pub fn read_secret(prompt: &str) -> io::Result<Option<String>> {
     out(prompt);
-    crossterm::terminal::enable_raw_mode()?;
+    let raw = Raw::enter()?;
     let mut secret = String::new();
     let result = loop {
         match crossterm::event::read() {
@@ -154,11 +154,14 @@ pub fn read_secret(prompt: &str) -> io::Result<Option<String>> {
                 }
                 _ => {}
             },
+            Ok(Event::Paste(text)) => {
+                secret.extend(text.chars().filter(|c| !matches!(c, '\n' | '\r')))
+            }
             Ok(_) => {}
             Err(e) => break Err(e),
         }
     };
-    let _ = crossterm::terminal::disable_raw_mode();
+    drop(raw);
     out("\n");
     result
 }
