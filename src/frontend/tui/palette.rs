@@ -6,7 +6,8 @@ use crate::config::limits;
 use crate::frontend::tui::boxed::boxed;
 use crate::frontend::tui::keymap::Action;
 use crate::frontend::tui::ui;
-use crate::text::styled::{Line, Style, width};
+use crate::text::styled::{Line, Style};
+use crate::text::table::{self, Align, GAP};
 
 #[derive(Default)]
 pub struct Palette {
@@ -90,39 +91,45 @@ impl Palette {
     pub fn render(&self, found: &[&Spec], width: usize) -> Vec<Line> {
         let rows = limits::get().tui.palette_rows.value.get();
         let start = (self.selected + 1).saturating_sub(rows);
-        let name_width = found.iter().map(|s| self.width_of(s)).max().unwrap_or(0);
-        let body: Vec<Line> = found
+        let shown: Vec<(usize, &&Spec)> = found.iter().enumerate().skip(start).take(rows).collect();
+        let style = |i: usize| {
+            if i == self.selected {
+                Style::fg("accent").bold()
+            } else {
+                Style::default()
+            }
+        };
+        let cells: Vec<Vec<Line>> = shown
             .iter()
-            .enumerate()
-            .skip(start)
-            .take(rows)
-            .map(|(i, spec)| {
-                let chosen = i == self.selected;
-                let (mark, name_style) = if chosen {
-                    ("› ", Style::fg("accent").bold())
-                } else {
-                    ("  ", Style::default())
-                };
-                let mut line = Line::styled(mark, name_style.clone());
-                line.push(Scope::Session.invoke(&spec.name), name_style);
-                let pad = name_width - self.width_of(spec) + 2;
-                line.push(" ".repeat(pad), Style::default());
-                line.push(&spec.summary, Style::fg("muted"));
+            .map(|&(i, spec)| {
+                vec![
+                    Line::styled(Scope::Session.invoke(&spec.name), style(i)),
+                    Line::styled(&spec.summary, Style::fg("muted")),
+                ]
+            })
+            .collect();
+        // The box's borders take four cells, the selection mark two.
+        let inner = width.saturating_sub(4 + 2);
+        let table = table::plain(&cells, &[Align::Left; 2], &[], inner, GAP);
+        let body: Vec<Line> = shown
+            .iter()
+            .zip(table)
+            .map(|(&(i, _), row)| {
+                let mark = if i == self.selected { "› " } else { "  " };
+                let mut line = Line::styled(mark, style(i));
+                line.extend(row);
                 line
             })
             .collect();
         let title = Line::styled(&ui::get().palette.title, Style::fg("muted").bold());
         boxed(title, &body, width)
     }
-
-    fn width_of(&self, spec: &Spec) -> usize {
-        width(&Scope::Session.invoke(&spec.name))
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::text::styled::width;
 
     fn names(found: &[&Spec]) -> Vec<String> {
         found.iter().map(|s| s.name.clone()).collect()

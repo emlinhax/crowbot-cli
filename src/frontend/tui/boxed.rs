@@ -29,11 +29,9 @@ pub fn boxed(title: Line, body: &[Line], width: usize) -> Vec<Line> {
     top.push(format!("{}╮", "─".repeat(fill)), border.clone());
     lines.push(top);
     for row in body {
-        let row = row.truncate(inner);
         let mut line = Line::styled("│ ", border.clone());
-        let pad = inner.saturating_sub(row.width());
-        line.extend(row);
-        line.push(format!("{} │", " ".repeat(pad)), border.clone());
+        line.extend(row.truncate(inner).padded(inner, &Style::default()));
+        line.push(" │", border.clone());
         lines.push(line);
     }
     lines.push(Line::styled(
