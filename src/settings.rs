@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, anyhow};
 use serde::Deserialize;
@@ -30,14 +30,7 @@ pub struct Settings {
     pub shell: Option<String>,
     /// What an untrusted project's config asked for and did not get.
     #[serde(skip)]
-    pub untrusted: Option<Untrusted>,
-}
-
-#[derive(Debug)]
-pub struct Untrusted {
-    pub file: PathBuf,
-    /// Each setting left out, as written: `mode = "auto"`.
-    pub keys: Vec<String>,
+    pub untrusted: Option<trust::Untrusted>,
 }
 
 /// Values from command-line flags: the last and strongest layer.
@@ -61,18 +54,8 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
     if !io::fs::same_file(&project, &user)
         && let Some(layer) = read_layer(&project)?
     {
-        let layer = if trust::is_trusted(paths)? {
-            layer
-        } else {
-            let (safe, keys) = split_untrusted(layer);
-            if !keys.is_empty() {
-                untrusted = Some(Untrusted {
-                    file: project.clone(),
-                    keys,
-                });
-            }
-            safe
-        };
+        let (layer, left_out) = trust::admit(paths, &project, layer)?;
+        untrusted = left_out;
         merge(&mut merged, layer);
         check(&merged, &project)?;
     }
@@ -113,48 +96,6 @@ fn read_layer(file: &Path) -> anyhow::Result<Option<toml::Table>> {
     toml::from_str(&text)
         .with_context(|| file.display().to_string())
         .map(Some)
-}
-
-/// What a project may set without being trusted: what it runs on, and deny rules. Under
-/// last-match-wins an appended deny can only tighten; an `ask` could turn a user's deny back
-/// into a question, and anything else (`mode`, `shell`) can run commands unasked.
-const UNTRUSTED_KEYS: [&str; 2] = ["model", "effort"];
-
-fn split_untrusted(layer: toml::Table) -> (toml::Table, Vec<String>) {
-    let mut safe = toml::Table::new();
-    let mut left_out = Vec::new();
-    for (key, value) in layer {
-        match value {
-            value if UNTRUSTED_KEYS.contains(&key.as_str()) => {
-                safe.insert(key, value);
-            }
-            toml::Value::Array(rules) if key == "permission" => {
-                let (denies, others): (Vec<_>, Vec<_>) = rules
-                    .into_iter()
-                    .partition(|r| r.get("action").and_then(toml::Value::as_str) == Some("deny"));
-                left_out.extend(
-                    others
-                        .iter()
-                        .map(|r| format!("[[permission]] {}", rule_line(r))),
-                );
-                if !denies.is_empty() {
-                    safe.insert(key, toml::Value::Array(denies));
-                }
-            }
-            value => left_out.push(format!("{key} = {value}")),
-        }
-    }
-    (safe, left_out)
-}
-
-fn rule_line(rule: &toml::Value) -> String {
-    let field = |name: &str| rule.get(name).and_then(toml::Value::as_str).unwrap_or("?");
-    format!(
-        "{} {} {}",
-        field("permission"),
-        field("pattern"),
-        field("action")
-    )
 }
 
 /// Later layers win; arrays of tables (`[[permission]]`) append, because their order is their

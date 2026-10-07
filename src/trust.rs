@@ -1,7 +1,7 @@
 //! Project folders whose own .crowbot/config.toml may loosen crowbot's settings. The list lives in
 //! crowbot's home, where a repository cannot write itself into it.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
@@ -11,11 +11,12 @@ use crate::io;
 use crate::paths::Paths;
 use crate::text::template;
 
-static TEXT: LazyLock<Text> = data::load!("trust.toml");
+static DATA: LazyLock<Data> = data::load!("trust.toml");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Text {
+struct Data {
+    untrusted_keys: Vec<String>,
     warning: String,
     danger: String,
     question: String,
@@ -38,7 +39,72 @@ fn project(paths: &Paths) -> String {
     paths.project.display().to_string()
 }
 
-pub fn is_trusted(paths: &Paths) -> anyhow::Result<bool> {
+/// What an untrusted project's config asked for and did not get.
+#[derive(Debug)]
+pub struct Untrusted {
+    pub file: PathBuf,
+    /// Each setting left out, as written: `mode = "auto"`.
+    pub keys: Vec<String>,
+}
+
+/// The part of `file`, a project config layer, this folder may apply: all of it once trusted,
+/// else only what cannot loosen anything, with what was left out.
+pub fn admit(
+    paths: &Paths,
+    file: &Path,
+    layer: toml::Table,
+) -> anyhow::Result<(toml::Table, Option<Untrusted>)> {
+    if is_trusted(paths)? {
+        return Ok((layer, None));
+    }
+    let (safe, keys) = split_untrusted(layer);
+    let untrusted = (!keys.is_empty()).then(|| Untrusted {
+        file: file.to_path_buf(),
+        keys,
+    });
+    Ok((safe, untrusted))
+}
+
+/// Deny rules may come from an untrusted folder too: under last-match-wins an appended deny can
+/// only tighten, while an `ask` could turn a user's deny back into a question.
+fn split_untrusted(layer: toml::Table) -> (toml::Table, Vec<String>) {
+    let mut safe = toml::Table::new();
+    let mut left_out = Vec::new();
+    for (key, value) in layer {
+        match value {
+            value if DATA.untrusted_keys.contains(&key) => {
+                safe.insert(key, value);
+            }
+            toml::Value::Array(rules) if key == "permission" => {
+                let (denies, others): (Vec<_>, Vec<_>) = rules
+                    .into_iter()
+                    .partition(|r| r.get("action").and_then(toml::Value::as_str) == Some("deny"));
+                left_out.extend(
+                    others
+                        .iter()
+                        .map(|r| format!("[[permission]] {}", rule_line(r))),
+                );
+                if !denies.is_empty() {
+                    safe.insert(key, toml::Value::Array(denies));
+                }
+            }
+            value => left_out.push(format!("{key} = {value}")),
+        }
+    }
+    (safe, left_out)
+}
+
+fn rule_line(rule: &toml::Value) -> String {
+    let field = |name: &str| rule.get(name).and_then(toml::Value::as_str).unwrap_or("?");
+    format!(
+        "{} {} {}",
+        field("permission"),
+        field("pattern"),
+        field("action")
+    )
+}
+
+fn is_trusted(paths: &Paths) -> anyhow::Result<bool> {
     Ok(load(paths)?.projects.contains(&project(paths)))
 }
 
@@ -55,29 +121,29 @@ pub fn trust(paths: &Paths) -> anyhow::Result<()> {
 /// Shown before asking: what the project would change, and why that is dangerous.
 pub fn warning(file: &Path, keys: &[String]) -> String {
     let file = file.display().to_string();
-    let mut text = template::fill(&TEXT.warning, &[("file", &file)]);
+    let mut text = template::fill(&DATA.warning, &[("file", &file)]);
     text.push('\n');
     for key in keys {
         text.push_str(&format!("  {key}\n"));
     }
-    text.push_str(&TEXT.danger);
+    text.push_str(&DATA.danger);
     text.push('\n');
     text
 }
 
 pub fn question() -> &'static str {
-    &TEXT.question
+    &DATA.question
 }
 
 pub fn declined() -> &'static str {
-    &TEXT.declined
+    &DATA.declined
 }
 
 /// For a run that cannot ask.
 pub fn ignored(file: &Path, keys: &[String]) -> String {
     let file = file.display().to_string();
     template::fill(
-        &TEXT.ignored,
+        &DATA.ignored,
         &[("keys", &keys.join(", ")), ("file", &file)],
     )
 }
@@ -88,7 +154,7 @@ mod tests {
 
     #[test]
     fn text_parses() {
-        LazyLock::force(&TEXT);
+        LazyLock::force(&DATA);
     }
 
     #[test]
