@@ -6,6 +6,7 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use quick_xml::Reader;
+use quick_xml::escape::partial_escape;
 use quick_xml::events::Event;
 
 /// A parameter we send. Usernames, passwords and search words go as `<base64>` (the plugin's
@@ -94,7 +95,7 @@ pub enum XmlError {
 pub fn call(method: &str, params: &[Arg]) -> String {
     let mut s =
         String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<methodCall><methodName>");
-    escape_into(&mut s, method);
+    s.push_str(&partial_escape(method));
     s.push_str("</methodName><params>");
     for p in params {
         s.push_str("<param><value>");
@@ -109,7 +110,7 @@ fn write_arg(s: &mut String, arg: &Arg) {
     match arg {
         Arg::Str(v) => {
             s.push_str("<string>");
-            escape_into(s, v);
+            s.push_str(&partial_escape(v));
             s.push_str("</string>");
         }
         Arg::Bytes(v) => {
@@ -127,23 +128,12 @@ fn write_arg(s: &mut String, arg: &Arg) {
             s.push_str("<struct>");
             for (name, value) in members {
                 s.push_str("<member><name>");
-                escape_into(s, name);
+                s.push_str(&partial_escape(*name));
                 s.push_str("</name><value>");
                 write_arg(s, value);
                 s.push_str("</value></member>");
             }
             s.push_str("</struct>");
-        }
-    }
-}
-
-fn escape_into(s: &mut String, text: &str) {
-    for c in text.chars() {
-        match c {
-            '&' => s.push_str("&amp;"),
-            '<' => s.push_str("&lt;"),
-            '>' => s.push_str("&gt;"),
-            _ => s.push(c),
         }
     }
 }
