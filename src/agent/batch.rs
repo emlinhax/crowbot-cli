@@ -38,6 +38,9 @@ impl From<String> for Refused {
     }
 }
 
+/// A call cleared to run, or why it does not.
+type Slot = Result<(Arc<dyn Tool>, Value), Refused>;
+
 pub async fn run<'a>(
     cx: &'a RunCtx<'a>,
     history: &[Message],
@@ -59,10 +62,40 @@ pub async fn run<'a>(
         }
         cleared.push(slot);
     }
+    Batch {
+        results: settle(cx, shared, cancel, calls, cleared).await,
+        stop,
+    }
+}
 
-    // Polled in order, so tools start, and results come back, in the order they were called.
-    // A refused call gets its start and end too, so a frontend shows every call's fate.
-    let results = join_all(cleared.into_iter().zip(calls).map(|(slot, call)| async move {
+/// None of the calls run, each refused with `why`; they still get their start and end.
+pub async fn refuse_all<'a>(
+    cx: &'a RunCtx<'a>,
+    calls: &'a [ToolCall],
+    shared: &'a Shared,
+    cancel: &'a CancellationToken,
+    why: &str,
+) -> Batch {
+    let slots = calls
+        .iter()
+        .map(|_| Err(Refused::from(why.to_owned())))
+        .collect();
+    Batch {
+        results: settle(cx, shared, cancel, calls, slots).await,
+        stop: false,
+    }
+}
+
+/// Polled in order, so tools start, and results come back, in the order they were called.
+/// A refused call gets its start and end too, so a frontend shows every call's fate.
+async fn settle<'a>(
+    cx: &'a RunCtx<'a>,
+    shared: &'a Shared,
+    cancel: &'a CancellationToken,
+    calls: &'a [ToolCall],
+    slots: Vec<Slot>,
+) -> Vec<ToolResult> {
+    join_all(slots.into_iter().zip(calls).map(|(slot, call)| async move {
         (cx.emit)(AgentEvent::ToolStart {
             call_id: call.id.clone(),
             name: call.name.clone(),
@@ -84,8 +117,7 @@ pub async fn run<'a>(
         });
         done
     }))
-    .await;
-    Batch { results, stop }
+    .await
 }
 
 /// Everything a call must pass before it runs, in order: not cancelled, a known tool, valid
@@ -97,7 +129,7 @@ async fn clear<'a>(
     cancel: &'a CancellationToken,
     repeats: usize,
     call: &'a ToolCall,
-) -> Result<(Arc<dyn Tool>, Value), Refused> {
+) -> Slot {
     let mode = shared.mode();
     let text = model_text::get();
     if cancel.is_cancelled() {
@@ -179,17 +211,6 @@ fn tool_cx<'a>(
         call_id,
         plan_file: &cx.plan_file,
         cancel: cancel.clone(),
-    }
-}
-
-/// Every call failed with the same message, e.g. when the reply was cut off mid-arguments.
-pub fn fail_all(calls: &[ToolCall], why: &str) -> Batch {
-    Batch {
-        results: calls
-            .iter()
-            .map(|c| result(c, Output::error(why)))
-            .collect(),
-        stop: false,
     }
 }
 

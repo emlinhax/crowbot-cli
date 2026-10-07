@@ -83,7 +83,8 @@ pub async fn run(
             if !calls.is_empty() {
                 let batch = if finish == Finish::Length {
                     // A reply cut off mid-call may carry truncated arguments; never run those.
-                    batch::fail_all(&calls, &model_text::get().truncated_tool_call)
+                    let why = &model_text::get().truncated_tool_call;
+                    batch::refuse_all(cx, &calls, shared, &cancel, why).await
                 } else {
                     let history = &transcript.messages[..transcript.messages.len() - 1];
                     batch::run(cx, history, &calls, shared, &cancel).await
@@ -566,8 +567,11 @@ mod tests {
             text("ok"),
         ])
         .await;
-        let (outcome, _, _) = h.run(&shared("auto"), |_, _| {}).await;
+        let (outcome, _, events) = h.run(&shared("auto"), |_, _| {}).await;
         assert_eq!(outcome, Outcome::Done);
+        for kind in ["tool_start", "tool_end"] {
+            assert_eq!(events.iter().filter(|e| *e == kind).count(), 1, "{kind}");
+        }
         assert_eq!(
             crate::io::fs::kind(&h.app.paths.project.join("new.txt")).unwrap(),
             crate::io::fs::Kind::Missing
