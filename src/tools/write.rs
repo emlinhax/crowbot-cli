@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
 use crate::io::{self, fs::Access, fs::Kind};
 use crate::permission::catalog;
+use crate::text::diff;
 
 static SPEC: LazyLock<Spec> = super::spec!("write");
 
@@ -35,12 +36,7 @@ impl Tool for Write {
         cx.files()
             .check_fresh(&target.path, &target.shown)
             .map_err(Refusal::Refused)?;
-        let preview: String = args
-            .content
-            .lines()
-            // All of it: the card shows what fits and counts the rest.
-            .map(|l| format!("+{l}\n"))
-            .collect();
+        let preview = diff::added(&args.content);
         Ok(Check::new(target::asks(catalog::EDIT.name, &target)).with_preview(preview))
     }
 

@@ -9,6 +9,7 @@ use super::target::{self, Target};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::io::{self, fs::Access, fs::Kind};
 use crate::permission::catalog;
+use crate::text::diff;
 
 static SPEC: LazyLock<Spec> = super::spec!("edit");
 
@@ -81,7 +82,7 @@ impl Tool for Edit {
         let applied = apply(&before, &edits)
             .map_err(|why| Refusal::Refused(format!("{why} ({})", target.shown)))?;
         Ok(
-            Check::new(target::asks(catalog::EDIT.name, &target)).with_preview(diff(
+            Check::new(target::asks(catalog::EDIT.name, &target)).with_preview(diff::unified(
                 &before,
                 &applied.text,
                 &target.shown,
@@ -121,7 +122,7 @@ impl Tool for Edit {
                 return Output::error(format!("Could not write {}: {e}", target.shown));
             }
             cx.files().saw(&target.path);
-            let diff = diff(&before, &applied.text, &target.shown);
+            let diff = diff::unified(&before, &applied.text, &target.shown);
             let loose = if applied.loose.is_empty() {
                 String::new()
             } else {
@@ -136,14 +137,6 @@ impl Tool for Edit {
             .with_details(json!({"diff": diff}))
         })
     }
-}
-
-fn diff(before: &str, after: &str, shown: &str) -> String {
-    similar::TextDiff::from_lines(before, after)
-        .unified_diff()
-        .context_radius(3)
-        .header(shown, shown)
-        .to_string()
 }
 
 pub struct Applied {

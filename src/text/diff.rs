@@ -1,6 +1,20 @@
-//! A unified diff as coloured lines.
+//! Diffs: made from two texts, or a new file as all-added lines, and drawn as coloured lines.
 
 use crate::text::styled::{Line, Style};
+
+/// The unified diff from `before` to `after`, labelled `label` on both sides.
+pub fn unified(before: &str, after: &str, label: &str) -> String {
+    similar::TextDiff::from_lines(before, after)
+        .unified_diff()
+        .context_radius(3)
+        .header(label, label)
+        .to_string()
+}
+
+/// New content as a diff body: every line added. All of it, so a card can count what it hides.
+pub fn added(content: &str) -> String {
+    content.lines().map(|l| format!("+{l}\n")).collect()
+}
 
 /// Every body line of `diff`, coloured and cut to `width`; how many to show is the caller's.
 pub fn render(diff: &str, width: usize) -> Vec<Line> {
