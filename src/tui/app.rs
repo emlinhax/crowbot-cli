@@ -49,7 +49,7 @@ use crate::tui::status::{self, Progress};
 use crate::tui::toast::Toast;
 use crate::tui::view::View;
 use crate::tui::{frame, layout, ui, welcome};
-use crate::{release, settings, update};
+use crate::{release, update};
 
 type Turn<'a> = Pin<Box<dyn Future<Output = (Transcript, Outcome)> + 'a>>;
 
@@ -113,8 +113,11 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
     if let Some(change) = update::take_news(&app.paths) {
         tui.feed.notice(&change.say(), "done");
     }
-    let enabled = app.settings.auto_update && settings::env("CROWBOT_NO_UPDATE").is_none();
-    if update::due(&update::load(&app.paths), clock::now(), enabled) {
+    if update::due(
+        &update::load(&app.paths),
+        clock::now(),
+        app.settings.auto_update,
+    ) {
         let paths = app.paths.clone();
         tokio::spawn(async move {
             let _ = update::now(&paths).await;

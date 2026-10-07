@@ -86,6 +86,9 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
     if let Some(mode) = &flags.mode {
         settings.mode.clone_from(mode);
     }
+    if env("CROWBOT_NO_UPDATE").is_some() {
+        settings.auto_update = false;
+    }
     if let Some(level) = &settings.effort {
         effort::validate(level)?;
     }
