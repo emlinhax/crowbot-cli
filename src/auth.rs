@@ -10,7 +10,6 @@ use crate::api::account::{self, Me};
 use crate::app::App;
 use crate::io::{self, fs::Access};
 use crate::paths::Paths;
-use crate::settings;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -58,7 +57,7 @@ pub fn load(paths: &Paths) -> anyhow::Result<Option<Key>> {
 
 /// `CROWBOT_API_KEY`, which wins over a stored key while it is set.
 pub fn from_env() -> Option<Key> {
-    settings::env("CROWBOT_API_KEY").map(|secret| Key {
+    io::env::var("CROWBOT_API_KEY").map(|secret| Key {
         secret: normalize(&secret),
         origin: Origin::Env,
     })

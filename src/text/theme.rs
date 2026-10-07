@@ -12,15 +12,6 @@ static THEME: LazyLock<Theme> = LazyLock::new(|| Theme::parse(SRC));
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
-/// How many colours the terminal can show.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Depth {
-    TrueColor,
-    Ansi256,
-    /// `NO_COLOR`: attributes only.
-    None,
-}
-
 pub struct Theme {
     /// `None` is the terminal's default colour.
     roles: BTreeMap<String, Option<Rgb>>,

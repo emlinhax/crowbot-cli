@@ -86,7 +86,7 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
     if let Some(mode) = &flags.mode {
         settings.mode.clone_from(mode);
     }
-    if env("CROWBOT_NO_UPDATE").is_some() {
+    if io::env::var("CROWBOT_NO_UPDATE").is_some() {
         settings.auto_update = false;
     }
     if let Some(level) = &settings.effort {
@@ -178,12 +178,6 @@ fn merge(base: &mut toml::Table, layer: toml::Table) {
 #[cfg(test)]
 pub fn default_rules() -> Vec<Rule> {
     toml::from_str::<Settings>(DEFAULTS).unwrap().permission
-}
-
-/// The one place the process environment is read; empty variables count as unset.
-#[allow(clippy::disallowed_methods)]
-pub fn env(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|v| !v.is_empty())
 }
 
 #[cfg(test)]

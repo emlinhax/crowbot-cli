@@ -9,7 +9,6 @@ use crate::api::pair;
 use crate::app::App;
 use crate::auth::{self, KeyKind, Origin};
 use crate::io::{self, term};
-use crate::settings;
 use crate::text::template::fill;
 use crate::text::units;
 
@@ -97,7 +96,7 @@ async fn pair_here(app: &App) -> anyhow::Result<String> {
 /// Opens the pairing page unless `CROWBOT_NO_BROWSER` is set (tests, headless machines); the
 /// URL is always shown too.
 pub fn open_browser(url: &str) {
-    if settings::env("CROWBOT_NO_BROWSER").is_none() {
+    if io::env::var("CROWBOT_NO_BROWSER").is_none() {
         let _ = io::proc::open_url(url);
     }
 }

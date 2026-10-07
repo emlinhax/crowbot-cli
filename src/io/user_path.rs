@@ -278,12 +278,12 @@ mod sys {
 mod sys {
     use std::io;
 
-    use crate::settings;
+    use crate::io::env;
 
     pub const WRITES_PATH: bool = false;
 
     pub fn path() -> io::Result<String> {
-        Ok(settings::env("PATH").unwrap_or_default())
+        Ok(env::var("PATH").unwrap_or_default())
     }
 
     pub fn set_path(_value: &str) -> io::Result<()> {

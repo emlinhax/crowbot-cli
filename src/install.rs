@@ -62,8 +62,8 @@ pub struct Place {
 impl Place {
     /// This user's install folder on this platform.
     pub fn here() -> anyhow::Result<Self> {
-        let home = dirs::home_dir().context("no home directory")?;
-        let local = dirs::data_local_dir().unwrap_or_else(|| home.clone());
+        let home = io::env::home_dir().context("no home directory")?;
+        let local = io::env::data_local_dir().unwrap_or_else(|| home.clone());
         let folder = if cfg!(windows) {
             &DATA.folder.windows
         } else {

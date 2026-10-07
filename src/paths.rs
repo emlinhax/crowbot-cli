@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 
-use crate::settings;
+use crate::io;
 
 /// Every location crowbot reads or writes, derived from two roots.
 #[derive(Debug, Clone)]
@@ -15,13 +15,13 @@ pub struct Paths {
 
 impl Paths {
     pub fn resolve() -> anyhow::Result<Self> {
-        let home = match settings::env("CROWBOT_HOME") {
+        let home = match io::env::var("CROWBOT_HOME") {
             Some(home) => PathBuf::from(home),
-            None => dirs::home_dir()
+            None => io::env::home_dir()
                 .context("no home directory; set CROWBOT_HOME")?
                 .join(".crowbot"),
         };
-        let project = std::env::current_dir().context("reading the current directory")?;
+        let project = io::env::current_dir().context("reading the current directory")?;
         Ok(Self::at(home, project))
     }
 

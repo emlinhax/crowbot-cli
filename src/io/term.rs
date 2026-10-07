@@ -15,8 +15,7 @@ use crossterm::terminal::{
 };
 use futures_util::{Stream, StreamExt};
 
-use crate::settings;
-use crate::text::theme::Depth;
+use super::env;
 
 /// Writes to stdout, ignoring a closed pipe (`crowbot models | head`) where `print!` would panic.
 pub fn out(text: &str) {
@@ -57,17 +56,26 @@ pub fn size() -> (usize, usize) {
     crossterm::terminal::size().map_or((80, 24), |(w, h)| (w as usize, h as usize))
 }
 
+/// How many colours the terminal can show.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Depth {
+    TrueColor,
+    Ansi256,
+    /// `NO_COLOR`: attributes only.
+    None,
+}
+
 /// What the terminal can colour, from the conventions terminals advertise themselves by.
 pub fn color_depth() -> Depth {
-    if settings::env("NO_COLOR").is_some() {
+    if env::var("NO_COLOR").is_some() {
         return Depth::None;
     }
-    let truecolor = settings::env("COLORTERM").is_some_and(|v| v == "truecolor" || v == "24bit")
-        || settings::env("WT_SESSION").is_some()
-        || settings::env("TERM_PROGRAM").is_some_and(|p| {
+    let truecolor = env::var("COLORTERM").is_some_and(|v| v == "truecolor" || v == "24bit")
+        || env::var("WT_SESSION").is_some()
+        || env::var("TERM_PROGRAM").is_some_and(|p| {
             ["iTerm.app", "WezTerm", "vscode", "ghostty", "Hyper"].contains(&p.as_str())
         })
-        || settings::env("TERM").is_some_and(|t| t.contains("kitty") || t.contains("direct"));
+        || env::var("TERM").is_some_and(|t| t.contains("kitty") || t.contains("direct"));
     if truecolor {
         Depth::TrueColor
     } else {
@@ -78,8 +86,8 @@ pub fn color_depth() -> Depth {
 /// Whether braille glyphs render: legacy Windows conhost has no font for them.
 pub fn braille() -> bool {
     !cfg!(windows)
-        || settings::env("WT_SESSION").is_some()
-        || settings::env("TERM_PROGRAM").is_some()
+        || env::var("WT_SESSION").is_some()
+        || env::var("TERM_PROGRAM").is_some()
         || hosted_console()
 }
 

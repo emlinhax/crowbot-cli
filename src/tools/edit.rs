@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn golden_cases() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/edit");
-        let update = crate::settings::env("UPDATE_GOLDEN").is_some();
+        let update = crate::io::env::var("UPDATE_GOLDEN").is_some();
         let mut cases: Vec<_> = std::fs::read_dir(&root)
             .unwrap()
             .map(|e| e.unwrap().path())

@@ -7,7 +7,6 @@ use std::sync::LazyLock;
 use serde::Deserialize;
 
 use crate::io;
-use crate::settings;
 use crate::text::template;
 
 const SRC: &str = include_str!("../../data/shells.toml");
@@ -98,7 +97,7 @@ pub fn resolve(configured: Option<&str>) -> Shell {
 
     for entry in &entries {
         for candidate in &entry.candidates {
-            let path = template::fill_with(candidate, |name| settings::env(name).map(Cow::Owned));
+            let path = template::fill_with(candidate, |name| io::env::var(name).map(Cow::Owned));
             if path.contains('{') {
                 continue;
             }

@@ -3,8 +3,8 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
+use crate::io;
 use crate::io::http::Method;
-use crate::settings;
 
 const SRC: &str = include_str!("../../data/endpoints.toml");
 
@@ -46,7 +46,7 @@ pub fn get(id: &str) -> &'static Endpoint {
 
 pub fn origin(name: &str) -> String {
     let origin = &CATALOG.origins[name];
-    settings::env(&origin.env)
+    io::env::var(&origin.env)
         .unwrap_or_else(|| origin.url.clone())
         .trim_end_matches('/')
         .to_owned()

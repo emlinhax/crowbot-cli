@@ -4,9 +4,10 @@
 
 use std::fmt::Write as _;
 
+use crate::io::term::Depth;
 use crate::text::controls;
 use crate::text::styled::{Line, Style};
-use crate::text::theme::{Depth, Rgb, Theme};
+use crate::text::theme::{Rgb, Theme};
 
 const SYNC_START: &str = "\x1b[?2026h";
 const SYNC_END: &str = "\x1b[?2026l";

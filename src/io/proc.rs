@@ -77,9 +77,9 @@ pub fn which(name: &str) -> Option<PathBuf> {
     if direct.components().count() > 1 {
         return runnable(direct).then(|| direct.to_path_buf());
     }
-    let path = crate::settings::env("PATH")?;
+    let path = super::env::var("PATH")?;
     let exts: Vec<String> = if cfg!(windows) && direct.extension().is_none() {
-        crate::settings::env("PATHEXT")
+        super::env::var("PATHEXT")
             .unwrap_or_else(|| ".EXE;.CMD;.BAT".into())
             .split(';')
             .map(str::to_owned)
@@ -128,7 +128,7 @@ fn os_hostname() -> Option<String> {
 
 #[cfg(not(unix))]
 fn os_hostname() -> Option<String> {
-    crate::settings::env("COMPUTERNAME")
+    super::env::var("COMPUTERNAME")
 }
 
 #[cfg(test)]

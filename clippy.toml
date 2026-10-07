@@ -24,8 +24,8 @@ disallowed-methods = [
   { path = "jiff::Zoned::now", reason = "use io::clock" },
   { path = "crossterm::terminal::enable_raw_mode", reason = "use io::term" },
   { path = "crossterm::event::EventStream::new", reason = "use io::term" },
-  { path = "std::env::var", reason = "use settings::env" },
-  { path = "std::env::var_os", reason = "use settings::env" },
+  { path = "std::env::var", reason = "use io::env" },
+  { path = "std::env::var_os", reason = "use io::env" },
 ]
 disallowed-macros = [
   { path = "std::print", reason = "use io::term::out" },
