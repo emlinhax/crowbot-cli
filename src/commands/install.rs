@@ -23,7 +23,7 @@ impl Command for Install {
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             cx.no_args(&SPEC, args)?;
-            let exe = io::proc::current_exe()?;
+            let exe = io::exe::current()?;
             Ok(install::install(&Place::here()?, &exe)?.into())
         })
     }

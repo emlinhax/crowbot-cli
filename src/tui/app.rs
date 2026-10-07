@@ -107,8 +107,8 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
     let mut tui = Tui::new(app, catalog, model, &shared, initial, session_file);
     // An update an earlier run installed is news once; the next look is due once a day, beside
     // the session, and only records what it did.
-    if let Ok(exe) = crate::io::proc::current_exe() {
-        crate::io::fs::sweep_replaced(&exe);
+    if let Ok(exe) = crate::io::exe::current() {
+        crate::io::exe::sweep(&exe);
     }
     if let Some(change) = update::take_news(&app.paths) {
         tui.feed.notice(&change.say(), "done");

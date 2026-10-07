@@ -64,10 +64,10 @@ impl Place {
     pub fn here() -> anyhow::Result<Self> {
         let home = dirs::home_dir().context("no home directory")?;
         let local = dirs::data_local_dir().unwrap_or_else(|| home.clone());
-        let (folder, name) = if cfg!(windows) {
-            (&DATA.folder.windows, "crowbot.exe")
+        let folder = if cfg!(windows) {
+            &DATA.folder.windows
         } else {
-            (&DATA.folder.unix, "crowbot")
+            &DATA.folder.unix
         };
         let dir = fill(
             folder,
@@ -78,7 +78,7 @@ impl Place {
         );
         let dir = PathBuf::from(dir);
         Ok(Self {
-            exe: dir.join(name),
+            exe: dir.join(release::program()),
             dir,
         })
     }
@@ -89,9 +89,7 @@ impl Place {
 pub fn install(place: &Place, exe: &Path) -> anyhow::Result<String> {
     if !io::fs::same_file(exe, &place.exe) {
         io::fs::make_dir(&place.dir)?;
-        let staged = place.dir.join(".crowbot.new");
-        io::fs::write_executable(&staged, &io::fs::read_bytes(exe)?)?;
-        io::fs::replace_executable(&staged, &place.exe)?;
+        io::exe::stage_and_replace(&io::fs::read_bytes(exe)?, &place.exe)?;
     }
     let change = user_path::add(&place.dir)?;
     let shown = place.dir.display().to_string();
@@ -177,7 +175,7 @@ pub fn offer(paths: &Paths) -> anyhow::Result<()> {
     if place.exe.exists() || declined(&state_file) {
         return Ok(());
     }
-    let exe = io::proc::current_exe()?;
+    let exe = io::exe::current()?;
     let shown = place.dir.display().to_string();
     match io::term::confirm(&fill(&DATA.text.offer, &[("dir", &shown)]), true)? {
         Some(true) => io::term::out(&format!("{}\n", install(&place, &exe)?)),
@@ -234,7 +232,7 @@ mod tests {
             .path()
             .join("Downloads/crowbot-x86_64-unknown-linux-musl");
         io::fs::make_dir(exe.parent().unwrap()).unwrap();
-        io::fs::write_executable(&exe, b"the program").unwrap();
+        io::exe::write(&exe, b"the program").unwrap();
         let place = Place {
             dir: root.path().join("bin"),
             exe: root.path().join("bin/crowbot"),

@@ -49,6 +49,11 @@ pub fn version() -> &'static str {
     &VERSION
 }
 
+/// The program's file name on this platform: `crowbot`, or `crowbot.exe` on Windows.
+pub fn program() -> String {
+    format!("{}{}", env!("CARGO_PKG_NAME"), std::env::consts::EXE_SUFFIX)
+}
+
 /// The platform this binary was built for: (os, arch), as Rust names them.
 pub fn platform() -> (&'static str, &'static str) {
     (std::env::consts::OS, std::env::consts::ARCH)

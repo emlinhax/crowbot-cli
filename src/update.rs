@@ -116,8 +116,8 @@ pub fn due(state: &State, now: Timestamp, enabled: bool) -> bool {
 /// Checks and updates this binary now, recording the look and its result.
 pub async fn now(paths: &Paths) -> anyhow::Result<Outcome> {
     let current = release::tag().ok_or_else(|| anyhow!(TEXT.development.clone()))?;
-    let exe = io::proc::current_exe()?;
-    io::fs::sweep_replaced(&exe);
+    let exe = io::exe::current()?;
+    io::exe::sweep(&exe);
     let http = Http::new(limits::get().http.connect_timeout_ms.ms())?;
     let latest = endpoints::url(endpoints::get("latest_release"), &[]);
     let mut state = load(paths);
@@ -177,7 +177,7 @@ async fn run(http: &Http, latest_url: &str, current: &str, exe: &Path) -> anyhow
     };
     let (file, sums) = (find(&ours.file)?, find(release::sums())?);
     let dir = exe.parent().context("the program has no folder")?;
-    if !io::fs::writable(dir) {
+    if !io::exe::writable(dir) {
         bail!(fill(
             &TEXT.not_writable,
             &[("dir", &dir.display().to_string())]
@@ -189,15 +189,7 @@ async fn run(http: &Http, latest_url: &str, current: &str, exe: &Path) -> anyhow
     if !matches(&bytes, &String::from_utf8_lossy(&sums), &ours.file) {
         bail!(fill(&TEXT.mismatch, &[("file", &ours.file)]));
     }
-    let name = exe
-        .file_name()
-        .map_or_else(|| "crowbot".into(), |n| n.to_string_lossy());
-    let staged = dir.join(format!(".{name}.new"));
-    io::fs::write_executable(&staged, &bytes)?;
-    if let Err(e) = io::fs::replace_executable(&staged, exe) {
-        let _ = io::fs::remove(&staged);
-        return Err(e.into());
-    }
+    io::exe::stage_and_replace(&bytes, exe)?;
     Ok(Outcome::Updated(Change {
         from: current.to_owned(),
         to: latest.tag_name,
@@ -305,7 +297,7 @@ mod tests {
         };
         let dir = tempfile::tempdir().unwrap();
         let exe = dir.path().join("crowbot");
-        io::fs::write_executable(&exe, b"old build").unwrap();
+        io::exe::write(&exe, b"old build").unwrap();
         let http = Http::new(std::time::Duration::from_secs(5)).unwrap();
 
         let url = github(

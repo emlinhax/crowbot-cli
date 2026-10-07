@@ -70,11 +70,6 @@ pub fn after_exit(command: &str) -> io::Result<()> {
         .map(drop)
 }
 
-/// The program this process runs from.
-pub fn current_exe() -> io::Result<PathBuf> {
-    std::env::current_exe()
-}
-
 /// The first `name` on PATH (trying PATHEXT extensions on Windows), or `name` itself when it is
 /// already a path to a program.
 pub fn which(name: &str) -> Option<PathBuf> {

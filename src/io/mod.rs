@@ -3,6 +3,7 @@
 
 pub mod clipboard;
 pub mod clock;
+pub mod exe;
 pub mod fetch;
 pub mod fs;
 pub mod http;
