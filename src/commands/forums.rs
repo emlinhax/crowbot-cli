@@ -68,14 +68,14 @@ impl Command for Forums {
                 ["login", key] => login(cx, key).await?,
                 ["logout", key] => match store::get(&cx.app.paths, key)? {
                     Some(forum) => {
-                        store::logout(&cx.app.paths, &forum.base_url)?;
+                        store::logout(&cx.app.paths, &forum)?;
                         logged_out(&forum)
                     }
                     None => not_found(cx, key),
                 },
                 ["remove", key] => match store::get(&cx.app.paths, key)? {
                     Some(forum) => {
-                        store::remove(&cx.app.paths, &forum.base_url)?;
+                        store::remove(&cx.app.paths, &forum)?;
                         removed(&forum)
                     }
                     None => not_found(cx, key),

@@ -34,7 +34,7 @@ pub async fn sign_in(
 ) -> Result<String> {
     let login = mobiquo::login(fetch, forum, user, password).await?;
     let name = login.username.clone();
-    store::set_login(paths, &forum.base_url, login)?;
+    store::set_login(paths, forum, login)?;
     Ok(name)
 }
 

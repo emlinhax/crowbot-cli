@@ -105,60 +105,58 @@ pub fn add(paths: &Paths, forum: Forum) -> Result<()> {
             forum.kind
         );
     }
-    let mut list = load(paths)?;
-    if let Some(slot) = list.iter_mut().find(|f| same(f, &forum)) {
-        let (cookies, username, hint) = (
-            slot.cookies.clone(),
-            slot.username.clone(),
-            slot.hint.clone(),
-        );
-        *slot = forum;
-        slot.cookies = cookies;
-        slot.username = username;
-        // Keep a curated hint when the new source (e.g. the directory) gave none.
-        if slot.hint.is_empty() {
-            slot.hint = hint;
+    edit(paths, |list| {
+        if let Some(slot) = list.iter_mut().find(|f| same(f, &forum)) {
+            let (cookies, username, hint) = (
+                slot.cookies.clone(),
+                slot.username.clone(),
+                slot.hint.clone(),
+            );
+            *slot = forum;
+            slot.cookies = cookies;
+            slot.username = username;
+            // Keep a curated hint when the new source (e.g. the directory) gave none.
+            if slot.hint.is_empty() {
+                slot.hint = hint;
+            }
+        } else {
+            list.push(forum);
         }
-    } else {
-        list.push(forum);
-    }
+    })
+}
+
+// The edits below take the stored forum, never a typed key: a key can match every forum on a
+// host, and only this one may change.
+
+/// Store a login's cookies against `forum`.
+pub fn set_login(paths: &Paths, forum: &Forum, login: Login) -> Result<()> {
+    edit(paths, |list| {
+        if let Some(slot) = list.iter_mut().find(|f| same(f, forum)) {
+            slot.cookies = login.cookies;
+            slot.username = Some(login.username);
+        }
+    })
+}
+
+/// Drop `forum`'s session; it stays added as a guest.
+pub fn logout(paths: &Paths, forum: &Forum) -> Result<()> {
+    edit(paths, |list| {
+        if let Some(slot) = list.iter_mut().find(|f| same(f, forum)) {
+            slot.cookies.clear();
+            slot.username = None;
+        }
+    })
+}
+
+/// Forget `forum` entirely.
+pub fn remove(paths: &Paths, forum: &Forum) -> Result<()> {
+    edit(paths, |list| list.retain(|f| !same(f, forum)))
+}
+
+fn edit(paths: &Paths, change: impl FnOnce(&mut Vec<Forum>)) -> Result<()> {
+    let mut list = load(paths)?;
+    change(&mut list);
     save(paths, &list)
-}
-
-/// Store a login's cookies against the matching forum; `false` when none matched.
-pub fn set_login(paths: &Paths, key: &str, login: Login) -> Result<bool> {
-    let mut list = load(paths)?;
-    let Some(forum) = list.iter_mut().find(|f| matches(f, key)) else {
-        return Ok(false);
-    };
-    forum.cookies = login.cookies;
-    forum.username = Some(login.username);
-    save(paths, &list)?;
-    Ok(true)
-}
-
-/// Drop a forum's session, staying added as a guest; `false` when none matched.
-pub fn logout(paths: &Paths, key: &str) -> Result<bool> {
-    let mut list = load(paths)?;
-    let Some(forum) = list.iter_mut().find(|f| matches(f, key)) else {
-        return Ok(false);
-    };
-    forum.cookies.clear();
-    forum.username = None;
-    save(paths, &list)?;
-    Ok(true)
-}
-
-/// Forget a forum entirely; `false` when none matched.
-pub fn remove(paths: &Paths, key: &str) -> Result<bool> {
-    let mut list = load(paths)?;
-    let before = list.len();
-    list.retain(|f| !matches(f, key));
-    if list.len() == before {
-        return Ok(false);
-    }
-    save(paths, &list)?;
-    Ok(true)
 }
 
 #[cfg(test)]
@@ -200,34 +198,32 @@ mod tests {
         assert!(forum.hint.contains("hacking"), "{}", forum.hint);
     }
 
+    fn forum(id: &str, name: &str, base_url: &str) -> Forum {
+        Forum {
+            id: id.into(),
+            name: name.into(),
+            base_url: base_url.into(),
+            mobiquo_dir: "m".into(),
+            ext: "php".into(),
+            kind: "mobiquo".into(),
+            ..Forum::default()
+        }
+    }
+
+    fn crow() -> Login {
+        Login {
+            username: "crow".into(),
+            cookies: vec!["bbsessionhash=abc; path=/".into()],
+        }
+    }
+
     #[test]
     fn add_login_logout_remove_round_trip() {
         let (_home, paths) = paths();
-        add(
-            &paths,
-            Forum {
-                id: "9".into(),
-                name: "Test".into(),
-                base_url: "https://t.example/forum".into(),
-                mobiquo_dir: "m".into(),
-                ext: "php".into(),
-                kind: "mobiquo".into(),
-                ..Forum::default()
-            },
-        )
-        .unwrap();
+        add(&paths, forum("9", "Test", "https://t.example/forum")).unwrap();
 
-        assert!(
-            set_login(
-                &paths,
-                "t.example",
-                Login {
-                    username: "crow".into(),
-                    cookies: vec!["bbsessionhash=abc; path=/".into()],
-                },
-            )
-            .unwrap()
-        );
+        let stored = get(&paths, "t.example").unwrap().unwrap();
+        set_login(&paths, &stored, crow()).unwrap();
 
         let forum = get(&paths, "https://t.example/forum").unwrap().unwrap();
         assert!(forum.username.is_some());
@@ -238,11 +234,27 @@ mod tests {
         let on_disk = io::fs::read_string(&paths.forums()).unwrap().unwrap();
         assert!(!on_disk.contains("bbsessionhash") || cfg!(not(windows)));
 
-        assert!(logout(&paths, "Test").unwrap());
+        logout(&paths, &stored).unwrap();
         assert!(get(&paths, "Test").unwrap().unwrap().username.is_none());
 
-        assert!(remove(&paths, "t.example").unwrap());
+        remove(&paths, &stored).unwrap();
         assert!(get(&paths, "Test").unwrap().is_none());
+    }
+
+    #[test]
+    fn two_forums_on_one_host_are_changed_one_at_a_time() {
+        let (_home, paths) = paths();
+        add(&paths, forum("1", "Main", "https://h.example/forum")).unwrap();
+        add(&paths, forum("2", "Market", "https://h.example/market")).unwrap();
+        let market = get(&paths, "Market").unwrap().unwrap();
+
+        set_login(&paths, &market, crow()).unwrap();
+        assert!(get(&paths, "Main").unwrap().unwrap().username.is_none());
+        assert!(get(&paths, "Market").unwrap().unwrap().username.is_some());
+
+        remove(&paths, &market).unwrap();
+        assert!(get(&paths, "Main").unwrap().is_some());
+        assert!(get(&paths, "Market").unwrap().is_none());
     }
 
     #[test]

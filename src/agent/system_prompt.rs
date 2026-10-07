@@ -194,7 +194,7 @@ mod tests {
             "{prompt}"
         );
         assert!(prompt.find("<forums>") < prompt.find("<env>"));
-        crate::forums::store::remove(&paths, &seed.name).unwrap();
+        crate::forums::store::remove(&paths, seed).unwrap();
         assert!(!build(&paths, &model()).contains("<forums>"));
     }
 }

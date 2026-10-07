@@ -137,11 +137,11 @@ pub fn run(app: &App, job: Job) -> BoxFuture<'_, Done> {
                 Some(forum.base_url),
             ),
             Job::Logout(forum) => (
-                store::logout(&app.paths, &forum.base_url).map(|_| logged_out(&forum)),
+                store::logout(&app.paths, &forum).map(|()| logged_out(&forum)),
                 Some(forum.base_url),
             ),
             Job::Remove(forum) => (
-                store::remove(&app.paths, &forum.base_url).map(|_| removed(&forum)),
+                store::remove(&app.paths, &forum).map(|()| removed(&forum)),
                 None,
             ),
         };
