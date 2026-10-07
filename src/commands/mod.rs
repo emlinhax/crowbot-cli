@@ -15,107 +15,17 @@ pub mod models;
 mod new;
 mod quit;
 mod signup;
+mod spec;
 mod status;
 mod uninstall;
 mod update;
 
 use futures_util::future::BoxFuture;
-use serde::Deserialize;
+
+pub(crate) use spec::spec;
+pub use spec::{Scope, Spec, places};
 
 use crate::app::App;
-use crate::auth;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Scope {
-    Cli,
-    Session,
-}
-
-impl Scope {
-    /// How a command is typed here: `crowbot login`, `/login`.
-    pub fn prefix(self) -> &'static str {
-        match self {
-            Self::Cli => "crowbot ",
-            Self::Session => "/",
-        }
-    }
-
-    pub fn invoke(self, rest: &str) -> String {
-        format!("{}{rest}", self.prefix())
-    }
-}
-
-/// A `LazyLock` of command `name`'s spec, from data/commands/<name>.toml.
-macro_rules! spec {
-    ($name:literal) => {
-        std::sync::LazyLock::new(|| {
-            $crate::data::parse(
-                $crate::data::raw!("commands/", $name, ".toml"),
-                concat!("commands/", $name, ".toml"),
-            )
-        })
-    };
-}
-pub(crate) use spec;
-
-/// A command's user-facing metadata, from `data/commands/<name>.toml`. A command may keep
-/// its own extra data in the same file, so unknown fields are allowed here.
-#[derive(Debug, Deserialize)]
-pub struct Spec {
-    pub name: String,
-    /// Other names it answers to (`/clear` for `/new`).
-    #[serde(default)]
-    pub aliases: Vec<String>,
-    pub summary: String,
-    pub usage: String,
-    #[serde(default)]
-    pub hidden: bool,
-    #[serde(default = "everywhere")]
-    pub scope: Vec<Scope>,
-    /// Flags whose values are secrets: echoed and remembered only as a hint.
-    #[serde(default)]
-    pub secret: Vec<String>,
-}
-
-fn everywhere() -> Vec<Scope> {
-    vec![Scope::Cli, Scope::Session]
-}
-
-impl Spec {
-    /// Its name and its aliases.
-    pub fn names(&self) -> impl Iterator<Item = &str> {
-        std::iter::once(self.name.as_str()).chain(self.aliases.iter().map(String::as_str))
-    }
-
-    /// `args` as they may be shown and remembered: a secret flag's value becomes a hint.
-    pub fn redact(&self, args: &[String]) -> String {
-        let mut out = Vec::new();
-        let mut hidden: Option<String> = None;
-        for arg in args {
-            if arg.starts_with("--") {
-                out.extend(hidden.take().map(|h| auth::hint(&h)));
-                match arg.split_once('=') {
-                    Some((flag, value)) if self.secret.iter().any(|s| s == flag) => {
-                        out.push(format!("{flag}={}", auth::hint(value)));
-                    }
-                    _ => {
-                        out.push(arg.clone());
-                        if self.secret.contains(arg) {
-                            hidden = Some(String::new());
-                        }
-                    }
-                }
-            } else if let Some(h) = hidden.as_mut() {
-                h.push_str(arg);
-            } else {
-                out.push(arg.clone());
-            }
-        }
-        out.extend(hidden.filter(|h| !h.is_empty()).map(|h| auth::hint(&h)));
-        out.join(" ")
-    }
-}
 
 pub struct Ctx<'a> {
     pub app: &'a App,
@@ -267,15 +177,6 @@ pub fn redact_line(line: &str) -> String {
         },
         _ => line.trim().to_owned(),
     }
-}
-
-/// Where a command works, as it is typed there: `` `crowbot signup` ``.
-pub fn places(spec: &Spec) -> String {
-    spec.scope
-        .iter()
-        .map(|s| format!("`{}`", s.invoke(&spec.name)))
-        .collect::<Vec<_>>()
-        .join(" or ")
 }
 
 pub fn available(scope: Scope) -> impl Iterator<Item = &'static dyn Command> {
