@@ -8,4 +8,5 @@ pub mod styled;
 pub mod table;
 pub mod template;
 pub mod theme;
+pub mod truncate;
 pub mod units;

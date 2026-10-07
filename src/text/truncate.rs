@@ -43,7 +43,7 @@ pub fn cut(text: &str, keep: Keep, max_lines: usize, max_bytes: usize) -> Cut {
             Keep::Head => lines[0],
             Keep::Tail => lines[total_lines - 1],
         };
-        let end = floor_char_boundary(first, max_bytes);
+        let end = first.floor_char_boundary(max_bytes);
         return Cut {
             text: format!("{}…", &first[..end]),
             total_lines,
@@ -58,13 +58,6 @@ pub fn cut(text: &str, keep: Keep, max_lines: usize, max_bytes: usize) -> Cut {
         total_lines,
         kept_lines: kept.len(),
     }
-}
-
-fn floor_char_boundary(s: &str, max: usize) -> usize {
-    (0..=max.min(s.len()))
-        .rev()
-        .find(|i| s.is_char_boundary(*i))
-        .unwrap_or(0)
 }
 
 #[cfg(test)]

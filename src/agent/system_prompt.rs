@@ -98,11 +98,7 @@ fn project(paths: &Paths) -> Option<String> {
     let max = limits::get().agent.instructions_bytes.value;
     let mut text = text.trim_end().to_owned();
     if text.len() > max {
-        let end = (0..=max)
-            .rev()
-            .find(|&i| text.is_char_boundary(i))
-            .unwrap_or(0);
-        text.truncate(end);
+        text.truncate(text.floor_char_boundary(max));
         let cut = template::fill(&PROJECT.cut, &[("file", file), ("max", &max.to_string())]);
         text = format!("{text}\n{cut}");
     }

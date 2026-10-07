@@ -10,7 +10,6 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::many::{Many, join};
-use super::truncate::{self, Keep};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::data;
 use crate::forums::{Forum, Section, Thread, TopicList, mobiquo, store};
@@ -18,6 +17,7 @@ use crate::limits;
 use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
+use crate::text::truncate::{self, Keep};
 
 static TEXT: LazyLock<Text> = data::load!("tools/forum.toml");
 

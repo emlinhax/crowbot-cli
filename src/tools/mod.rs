@@ -15,7 +15,6 @@ mod read;
 mod shell;
 mod target;
 mod todowrite;
-mod truncate;
 mod webfetch;
 mod write;
 

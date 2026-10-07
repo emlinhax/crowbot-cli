@@ -6,12 +6,12 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::many::{self, Many};
-use super::truncate;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
 use crate::io::{self, fs::Kind};
 use crate::limits;
 use crate::permission::catalog;
 use crate::text::shorten;
+use crate::text::truncate;
 
 static SPEC: LazyLock<Spec> = super::spec!("read");
 

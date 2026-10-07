@@ -7,7 +7,6 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::shell::Shell;
-use super::truncate::{self, Keep};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::io::shell::{self, Ended, ShellCommand};
 use crate::io::{self, fs::Access};
@@ -16,6 +15,7 @@ use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::permission::{filter, shell_split};
 use crate::text::controls;
+use crate::text::truncate::{self, Keep};
 
 static SPEC: LazyLock<Spec> = super::spec!("bash");
 
