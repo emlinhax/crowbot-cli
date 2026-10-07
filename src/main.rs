@@ -12,6 +12,7 @@ mod frontend;
 mod install;
 mod io;
 mod limits;
+mod live;
 mod mode;
 mod models;
 mod paths;

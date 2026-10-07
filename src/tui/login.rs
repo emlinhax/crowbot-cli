@@ -4,12 +4,12 @@
 
 use futures_util::future::BoxFuture;
 
-use crate::agent::prompt::Reply;
 use crate::api::pair::{self, Started};
 use crate::app::App;
 use crate::auth::{self, KeyKind};
 use crate::commands::login::{logged_in, open_browser};
 use crate::io::term::KeyEvent;
+use crate::live::prompt::Reply;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
 use crate::tui::boxed::boxed;

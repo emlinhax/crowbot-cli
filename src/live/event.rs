@@ -4,10 +4,11 @@
 
 use serde::Serialize;
 
-use crate::agent::prompt::Prompt;
 use crate::api::assemble::Delta;
+use crate::api::chat::Event;
 use crate::conversation::error::ErrorInfo;
 use crate::conversation::message::{Assistant, ToolResult};
+use crate::live::prompt::Prompt;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -78,6 +79,23 @@ pub enum DeltaKind {
     Text,
     Reasoning,
     ToolCall,
+}
+
+impl From<Event<'_>> for AgentEvent {
+    fn from(event: Event<'_>) -> Self {
+        match event {
+            Event::Delta(delta) => delta.into(),
+            Event::Retry {
+                attempt,
+                delay,
+                error,
+            } => Self::Retry {
+                attempt,
+                delay_ms: delay.as_millis() as u64,
+                error: error.clone(),
+            },
+        }
+    }
 }
 
 impl From<Delta<'_>> for AgentEvent {

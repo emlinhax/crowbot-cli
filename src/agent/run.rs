@@ -1,31 +1,18 @@
 //! The agent loop (after pi's agent-loop): ask the model, run what it calls, feed the results
 //! back, until it stops calling tools. Messages queued meanwhile are delivered at safe points.
 
+use crate::agent::RunCtx;
 use crate::agent::batch::{self, Batch};
 use crate::agent::context;
-use crate::agent::event::{AgentEvent, Outcome};
 use crate::agent::model_text;
-use crate::agent::state::{Reminder, Shared};
 use crate::agent::system_prompt;
-use crate::api::chat::{self, Event, Turn};
-use crate::api::models::Model;
-use crate::app::App;
+use crate::api::chat::{self, Turn};
 use crate::conversation::message::{Finish, Message, Part, ToolCall};
 use crate::limits;
+use crate::live::event::{AgentEvent, Outcome};
+use crate::live::state::{Reminder, Shared};
 use crate::session::transcript::Transcript;
 use crate::text::template::fill;
-use crate::tools::Registry;
-
-pub struct RunCtx<'a> {
-    pub app: &'a App,
-    pub model: &'a Model,
-    pub effort: Option<&'a str>,
-    pub system: &'a str,
-    pub tools: &'a Registry,
-    /// Where PLAN mode writes its plan; the only file it may change.
-    pub plan_file: String,
-    pub emit: &'a (dyn Fn(AgentEvent) + Send + Sync),
-}
 
 pub async fn run(
     cx: &RunCtx<'_>,
@@ -56,18 +43,7 @@ pub async fn run(
                 tools: &tools,
             };
             let reply = chat::stream(&cx.app.api, &turn, &cancel, &mut |event| {
-                (cx.emit)(match event {
-                    Event::Delta(delta) => AgentEvent::from(delta),
-                    Event::Retry {
-                        attempt,
-                        delay,
-                        error,
-                    } => AgentEvent::Retry {
-                        attempt,
-                        delay_ms: delay.as_millis() as u64,
-                        error: error.clone(),
-                    },
-                });
+                (cx.emit)(AgentEvent::from(event));
             })
             .await;
             record(cx, transcript, Message::Assistant(reply.clone()));
@@ -175,11 +151,13 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::*;
-    use crate::agent::prompt::{Answer, Reply};
     use crate::api::Api;
-    use crate::api::models::{Capabilities, Pricing};
+    use crate::api::models::{Capabilities, Model, Pricing};
+    use crate::app::App;
     use crate::io::http::Http;
+    use crate::live::prompt::{Answer, Reply};
     use crate::mode;
+    use crate::tools::Registry;
 
     type Script = Arc<Mutex<(VecDeque<String>, Vec<Value>)>>;
 

@@ -8,11 +8,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::prompt::Reply;
 use crate::conversation::message::Part;
+use crate::live::files::Files;
+use crate::live::prompt::Reply;
 use crate::mode::Mode;
 use crate::permission::rule::Action;
-use crate::tools::files::Files;
 
 /// A mode change the model has to hear about.
 pub enum Reminder {

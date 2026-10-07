@@ -1,10 +1,10 @@
 //! The numbered card that replaces the editor when crowbot needs an answer: permission, or what
 //! to do with a finished plan; `/login` builds its menu from it too.
 
-use crate::agent::prompt::Reply;
 use crate::auth;
 use crate::io::term::{KeyCode, KeyEvent};
 use crate::limits;
+use crate::live::prompt::Reply;
 use crate::permission::gate;
 use crate::text::diff;
 use crate::text::markdown;

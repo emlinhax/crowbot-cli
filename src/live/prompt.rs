@@ -4,8 +4,8 @@
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::event::AgentEvent;
-use crate::agent::state::Shared;
+use crate::live::event::AgentEvent;
+use crate::live::state::Shared;
 use crate::permission::gate::Ask;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

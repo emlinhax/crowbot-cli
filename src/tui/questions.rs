@@ -4,9 +4,9 @@
 
 use std::collections::BTreeSet;
 
-use crate::agent::prompt::{Answer, Question, Reply};
 use crate::io::term::{KeyCode, KeyEvent};
 use crate::limits;
+use crate::live::prompt::{Answer, Question, Reply};
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
 use crate::tui::boxed::boxed;

@@ -7,8 +7,8 @@ use serde_json::Value;
 use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::agent::model_text;
-use crate::agent::prompt::{self, Answer, Prompt, Reply};
 use crate::limits;
+use crate::live::prompt::{self, Answer, Prompt, Reply};
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
 

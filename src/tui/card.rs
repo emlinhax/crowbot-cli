@@ -2,8 +2,8 @@
 //! (permission, a finished plan) or the model's questions. One shape, so the session treats
 //! every card alike.
 
-use crate::agent::prompt::{Prompt, Reply};
 use crate::io::term::KeyEvent;
+use crate::live::prompt::{Prompt, Reply};
 use crate::text::styled::Line;
 use crate::tui::choice::Choice;
 use crate::tui::keymap::Action;

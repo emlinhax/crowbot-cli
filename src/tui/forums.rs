@@ -5,13 +5,13 @@
 
 use futures_util::future::BoxFuture;
 
-use crate::agent::prompt::Reply;
 use crate::app::App;
 use crate::commands::Scope;
 use crate::commands::forums::{self as said, added, logged_in, logged_out, removed};
 use crate::forums::{Forum, account, directory, store};
 use crate::io::term::KeyEvent;
 use crate::limits;
+use crate::live::prompt::Reply;
 use crate::text::styled::{Line, Style};
 use crate::text::table::{self, Align, GAP};
 use crate::text::template::fill;

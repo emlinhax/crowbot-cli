@@ -5,8 +5,8 @@ use std::time::Instant;
 
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::agent::event::AgentEvent;
 use crate::limits;
+use crate::live::event::AgentEvent;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
 use crate::text::units;
@@ -123,8 +123,8 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::agent::event::DeltaKind;
     use crate::conversation::message::{Assistant, Finish, Usage};
+    use crate::live::event::DeltaKind;
 
     fn progress(verb: usize) -> (Progress, Instant) {
         let now = crate::io::clock::instant();

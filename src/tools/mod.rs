@@ -4,7 +4,6 @@ mod bash;
 mod codesearch;
 mod edit;
 mod edit_match;
-pub mod files;
 mod forum;
 mod fs;
 mod glob;
@@ -27,15 +26,15 @@ use futures_util::future::BoxFuture;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
-use crate::agent::event::AgentEvent;
-use crate::agent::prompt::{self, Prompt, Reply};
-use crate::agent::state::Shared;
 use crate::app::App;
 use crate::limits;
+use crate::live::event::AgentEvent;
+use crate::live::files::Files;
+use crate::live::prompt::{self, Prompt, Reply};
+use crate::live::state::Shared;
 use crate::paths::Paths;
 use crate::permission::gate::Ask;
 use crate::text::template;
-use files::Files;
 
 /// A `LazyLock` of tool `name`'s spec: data/tools/<name>.md and <name>.schema.json.
 macro_rules! spec {
