@@ -25,12 +25,12 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::app::App;
-use crate::limits;
+use crate::config::limits;
+use crate::config::paths::Paths;
 use crate::live::event::AgentEvent;
 use crate::live::files::Files;
 use crate::live::prompt::{self, Prompt, Reply};
 use crate::live::state::Shared;
-use crate::paths::Paths;
 use crate::permission::gate::Ask;
 use crate::text::template;
 

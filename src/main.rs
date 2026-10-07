@@ -4,6 +4,7 @@ mod app;
 mod auth;
 mod cli;
 mod commands;
+mod config;
 mod conversation;
 mod data;
 mod effort;
@@ -11,18 +12,14 @@ mod forums;
 mod frontend;
 mod install;
 mod io;
-mod limits;
 mod live;
 mod mode;
 mod models;
-mod paths;
 mod permission;
 mod release;
 mod session;
-mod settings;
 mod text;
 mod tools;
-mod trust;
 mod update;
 
 #[tokio::main]

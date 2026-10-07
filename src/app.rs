@@ -1,9 +1,10 @@
 use crate::api::Api;
+use crate::auth;
+use crate::config::limits;
+use crate::config::paths::Paths;
+use crate::config::settings::{self, Overrides, Settings};
 use crate::io::fetch::Fetch;
 use crate::io::http::Http;
-use crate::paths::Paths;
-use crate::settings::{self, Overrides, Settings};
-use crate::{auth, limits};
 
 /// What every command and the agent run against, built once at startup.
 pub struct App {

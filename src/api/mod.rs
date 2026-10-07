@@ -100,7 +100,7 @@ impl Api {
     ) -> Result<Streaming, ApiError> {
         let resp = self.http.open(self.request(id, &call, timeout)?).await?;
         if resp.head.status >= 400 {
-            let limits = &crate::limits::get().http;
+            let limits = &crate::config::limits::get().http;
             let resp = resp
                 .collect(limits.error_body_bytes.value, limits.error_body_ms.ms())
                 .await;

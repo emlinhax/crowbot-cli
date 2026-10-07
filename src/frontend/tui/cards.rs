@@ -6,10 +6,10 @@ use std::sync::LazyLock;
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::config::limits;
 use crate::conversation::message::ToolResult;
 use crate::data;
 use crate::frontend::tui::boxed::capped;
-use crate::limits;
 use crate::text::diff;
 use crate::text::styled::{Line, Style};
 use crate::text::{template, units};

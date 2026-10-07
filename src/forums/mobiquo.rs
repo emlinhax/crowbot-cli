@@ -4,10 +4,10 @@
 
 use anyhow::{Context, Result, bail};
 
+use crate::config::limits;
 use crate::forums::xmlrpc::{self, Arg, Value};
 use crate::forums::{Forum, Login, Post, Posted, Section, Thread, Topic, TopicList};
 use crate::io::fetch::{self, Fetch};
-use crate::limits;
 
 fn endpoint(forum: &Forum) -> String {
     let base = forum.base_url.trim_end_matches('/');

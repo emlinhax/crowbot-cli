@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use crate::limits;
+use crate::config::limits;
 use crate::text::styled::{Line, Style};
 
 pub struct Toast {

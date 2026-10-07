@@ -1,10 +1,10 @@
 //! `/models` inside a session: the catalog as an aligned list in a card in place of the editor.
 //! ↑↓ move, → or Enter picks the model for the rest of the session, Esc or ← closes.
 
+use crate::config::limits;
 use crate::frontend::tui::boxed::boxed;
 use crate::frontend::tui::keymap::Action;
 use crate::frontend::tui::ui;
-use crate::limits;
 use crate::models::Catalog;
 use crate::models::table as models;
 use crate::text::styled::{Line, Style};

@@ -11,11 +11,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::api::endpoints;
+use crate::config::limits;
+use crate::config::paths::Paths;
 use crate::data;
 use crate::io::http::{Http, Method, Request};
 use crate::io::{self, fs::Access};
-use crate::limits;
-use crate::paths::Paths;
 use crate::release;
 use crate::text::template::fill;
 

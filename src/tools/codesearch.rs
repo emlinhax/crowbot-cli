@@ -10,7 +10,7 @@ use serde_json::Value;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::api::Call;
 use crate::api::error::Entry;
-use crate::limits;
+use crate::config::limits;
 use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::text::shorten;

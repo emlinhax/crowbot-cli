@@ -187,7 +187,7 @@ mod tests {
     }
 
     fn defaults() -> Vec<Rule> {
-        crate::settings::default_rules()
+        crate::config::settings::default_rules()
     }
 
     #[test]

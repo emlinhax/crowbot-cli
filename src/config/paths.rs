@@ -2,7 +2,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 
-use crate::{io, limits};
+use crate::config::limits;
+use crate::io;
 
 /// Every location crowbot reads or writes, derived from two roots.
 #[derive(Debug, Clone)]

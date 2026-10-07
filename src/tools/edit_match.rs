@@ -2,7 +2,7 @@
 //! reading what the model sent (after opencode's replacer cascade and pi's unicode folding).
 //! Content and needle are LF-only here; the edit tool handles line endings and BOMs.
 
-use crate::limits;
+use crate::config::limits;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Span {

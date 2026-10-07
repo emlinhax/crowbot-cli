@@ -8,9 +8,9 @@ use serde_json::{Value, json};
 
 use super::shell::Shell;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use crate::config::limits;
 use crate::io::proc::{self, Ended, ShellCommand};
 use crate::io::{self, fs::Access};
-use crate::limits;
 use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::permission::{filter, shell_split};

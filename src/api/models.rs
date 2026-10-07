@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::api::{Api, Call};
-use crate::limits;
+use crate::config::limits;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Model {

@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::agent::model_text;
-use crate::limits;
+use crate::config::limits;
 use crate::live::prompt::{self, Answer, Prompt, Reply};
 use crate::permission::catalog;
 use crate::permission::gate::Ask;

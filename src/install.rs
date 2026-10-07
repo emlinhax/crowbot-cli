@@ -8,9 +8,9 @@ use std::sync::LazyLock;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
+use crate::config::paths::Paths;
 use crate::data;
 use crate::io::{self, fs::Access, user_path};
-use crate::paths::Paths;
 use crate::release;
 use crate::text::template::fill;
 

@@ -3,10 +3,11 @@ use std::path::Path;
 use anyhow::{Context, anyhow};
 use serde::Deserialize;
 
+use crate::config::paths::Paths;
+use crate::config::trust;
 use crate::data;
-use crate::paths::Paths;
 use crate::permission::rule::Rule;
-use crate::{effort, io, mode, trust};
+use crate::{effort, io, mode};
 
 const DEFAULTS: &str = data::raw!("defaults.toml");
 

@@ -11,9 +11,9 @@ use serde_json::Value;
 
 use super::many::{Many, join};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use crate::config::limits;
 use crate::data;
 use crate::forums::{Forum, Section, Thread, TopicList, mobiquo, store};
-use crate::limits;
 use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;

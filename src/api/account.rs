@@ -4,8 +4,8 @@ use serde::Deserialize;
 
 use crate::api::error::ApiError;
 use crate::api::{Api, Call};
+use crate::config::limits;
 use crate::conversation::error::ErrorInfo;
-use crate::limits;
 
 #[derive(Debug, Deserialize)]
 pub struct Me {

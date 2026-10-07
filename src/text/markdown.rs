@@ -2,7 +2,7 @@
 
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
-use crate::limits;
+use crate::config::limits;
 use crate::text::highlight;
 use crate::text::styled::{Line, Style, width};
 use crate::text::table::{self, Align};

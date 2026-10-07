@@ -5,11 +5,11 @@
 use std::time::{Duration, Instant};
 
 use crate::api::error::Entry as ErrorEntry;
+use crate::config::limits;
 use crate::conversation::error::ErrorInfo;
 use crate::conversation::message::{Assistant, Finish, ToolResult};
 use crate::frontend::tui::cards::{self, State};
 use crate::frontend::tui::{ui, welcome};
-use crate::limits;
 use crate::live::event::{AgentEvent, DeltaKind, Outcome};
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;

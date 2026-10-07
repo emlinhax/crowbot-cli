@@ -3,9 +3,9 @@
 
 use anyhow::Result;
 
+use crate::config::paths::Paths;
 use crate::forums::{self, Forum, directory, mobiquo, store};
 use crate::io::fetch::Fetch;
-use crate::paths::Paths;
 
 /// Finds `query` (a URL or a name) in Tapatalk's directory and stores it.
 pub async fn add(fetch: &Fetch, paths: &Paths, query: &str) -> Result<Forum> {

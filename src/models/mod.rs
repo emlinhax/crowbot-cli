@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::Api;
 use crate::api::models::{self, Listing, Model};
+use crate::config::limits;
+use crate::config::paths::Paths;
 use crate::data;
 use crate::io;
-use crate::limits;
-use crate::paths::Paths;
 
 /// The list shipped in the binary, used when crowbot is unreachable and nothing is cached.
 /// Refreshed by saving a verbatim `GET /v1/models` reply over data/models.json.

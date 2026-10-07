@@ -9,9 +9,9 @@ use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, ta
 use crate::permission::catalog;
 use std::path::Path;
 
+use crate::config::limits;
 use crate::io::search::{FileHits, Report};
 use crate::io::{self, fs::Kind};
-use crate::limits;
 use crate::text::shorten;
 
 static SPEC: LazyLock<Spec> = super::spec!("grep");

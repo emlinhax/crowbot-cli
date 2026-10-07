@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
+use crate::config::paths::Paths;
 use crate::conversation::message::Message;
 use crate::io;
-use crate::paths::Paths;
 use crate::release;
 use crate::session::entry::{self, Entry, FORMAT_VERSION};
 

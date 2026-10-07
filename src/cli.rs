@@ -6,12 +6,13 @@ use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use crate::app::App;
 use crate::commands::{self, Ctx, Missing, Scope};
+use crate::config::settings::Overrides;
+use crate::config::trust;
+use crate::config::trust::Untrusted;
 use crate::frontend::print::{self, Format};
 use crate::frontend::tui;
 use crate::io::term;
-use crate::settings::Overrides;
-use crate::trust::Untrusted;
-use crate::{effort, install, mode, release, trust};
+use crate::{effort, install, mode, release};
 
 /// The help for `--effort`, `--mode` and the commands is filled in from their catalogs by
 /// `command()`, so a new level, mode or command shows up with no edit here.

@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::Api;
 use crate::api::account::{self, Me};
+use crate::config::paths::Paths;
 use crate::io::{self, fs::Access};
-use crate::paths::Paths;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

@@ -6,9 +6,9 @@ use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
 
+use crate::config::paths::Paths;
 use crate::data;
 use crate::io;
-use crate::paths::Paths;
 use crate::text::template;
 
 static DATA: LazyLock<Data> = data::load!("trust.toml");

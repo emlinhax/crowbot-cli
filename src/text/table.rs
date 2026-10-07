@@ -2,7 +2,7 @@
 //! gives up a cell at a time (its cells cut with `…`) until the table fits, so rows always stay
 //! aligned. Markdown grids, `crowbot models` and the model picker all lay out here.
 
-use crate::limits;
+use crate::config::limits;
 use crate::text::styled::{Line, Style};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]

@@ -4,8 +4,8 @@
 
 use std::path::{Component, Path, PathBuf};
 
+use crate::config::paths::Paths;
 use crate::io;
-use crate::paths::Paths;
 use crate::permission::catalog;
 use crate::permission::gate::Ask;
 

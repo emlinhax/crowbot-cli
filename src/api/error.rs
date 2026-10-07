@@ -4,10 +4,10 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
+use crate::config::limits;
 use crate::conversation::error::ErrorInfo;
 use crate::data;
 use crate::io::http::{HttpError, Response};
-use crate::limits;
 
 static CATALOG: LazyLock<BTreeMap<String, Entry>> = data::load!("errors.toml");
 

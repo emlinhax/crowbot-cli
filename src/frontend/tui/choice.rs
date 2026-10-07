@@ -2,13 +2,13 @@
 //! to do with a finished plan; `/login` builds its menu from it too.
 
 use crate::auth;
+use crate::config::limits;
 use crate::frontend::tui::boxed::{boxed, capped};
 use crate::frontend::tui::card::{Card, Step};
 use crate::frontend::tui::editor::Editor;
 use crate::frontend::tui::keymap::Action;
 use crate::frontend::tui::ui::{self, PermissionReply};
 use crate::io::term::{KeyCode, KeyEvent};
-use crate::limits;
 use crate::live::prompt::Reply;
 use crate::permission::gate;
 use crate::text::diff;

@@ -8,8 +8,9 @@ use serde::Deserialize;
 use crate::api::error::ApiError;
 use crate::api::{Api, Call};
 use crate::api::{endpoints, retry};
+use crate::config::limits;
 use crate::conversation::error::ErrorInfo;
-use crate::{io, limits};
+use crate::io;
 
 /// No `Debug`: it holds the device code.
 #[derive(Deserialize)]

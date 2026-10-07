@@ -81,7 +81,7 @@ mod tests {
 
     #[test]
     fn whatever_reads_files_asks_before_reading_a_secret() {
-        let rules = crate::settings::default_rules();
+        let rules = crate::config::settings::default_rules();
         for p in ALL.iter().filter(|p| p.effect == Effect::ReadsFiles) {
             for secret in [".env", "config/.env.local"] {
                 let action = rule::evaluate(&rules, p.name, secret);
@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn plan_denies_whatever_changes_files_or_runs_commands() {
-        let rules = crate::settings::default_rules();
+        let rules = crate::config::settings::default_rules();
         let policy = mode::get("plan")
             .unwrap()
             .policy(&rules, "/home/u/.crowbot/plans/s1.md");

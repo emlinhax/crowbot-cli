@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use crate::api::error::Entry;
+use crate::config::limits;
 use crate::conversation::error::ErrorInfo;
-use crate::limits;
 
 /// How long to wait before retrying after `attempt` failed with `error`, or `None` to give up.
 pub fn delay(error: &ErrorInfo, retry_after: Option<Duration>, attempt: u32) -> Option<Duration> {

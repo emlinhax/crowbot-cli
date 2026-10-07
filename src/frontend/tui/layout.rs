@@ -5,10 +5,10 @@
 
 use std::time::Instant;
 
+use crate::config::limits;
 use crate::frontend::tui::feed::Feed;
 use crate::frontend::tui::ui;
 use crate::frontend::tui::view::View;
-use crate::limits;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
 

@@ -60,9 +60,9 @@ impl Transcript {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::paths::Paths;
     use crate::conversation::message::Part;
     use crate::io;
-    use crate::paths::Paths;
 
     fn user(text: &str) -> Message {
         Message::User {

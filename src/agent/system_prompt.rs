@@ -5,10 +5,11 @@ use std::sync::LazyLock;
 use serde::Deserialize;
 
 use crate::api::models::Model;
+use crate::config::limits;
+use crate::config::paths::Paths;
 use crate::data;
-use crate::paths::Paths;
+use crate::io;
 use crate::text::template;
-use crate::{io, limits};
 
 const BASE: &str = data::raw!("prompts/system.md");
 const ENV: &str = data::raw!("prompts/env.md");

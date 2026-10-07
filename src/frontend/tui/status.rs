@@ -5,8 +5,8 @@ use std::time::Instant;
 
 use unicode_segmentation::UnicodeSegmentation;
 
+use crate::config::limits;
 use crate::frontend::tui::ui;
-use crate::limits;
 use crate::live::event::AgentEvent;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;

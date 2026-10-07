@@ -12,10 +12,10 @@ use crate::api::models::Model;
 use crate::api::sse;
 use crate::api::wire::{self, Replay, StreamOptions, WireMessage, WireUsage};
 use crate::api::{Api, Call, retry};
+use crate::config::limits;
 use crate::conversation::error::ErrorInfo;
 use crate::conversation::message::{Assistant, Finish, Message, Usage};
 use crate::io;
-use crate::limits;
 
 pub struct Turn<'a> {
     pub model: &'a Model,

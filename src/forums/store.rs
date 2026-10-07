@@ -7,9 +7,9 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::{Deserialize, Serialize};
 
+use crate::config::paths::Paths;
 use crate::forums::{self, Forum, Login};
 use crate::io::{self, fs::Access};
-use crate::paths::Paths;
 
 #[derive(Serialize, Deserialize)]
 struct Sealed {

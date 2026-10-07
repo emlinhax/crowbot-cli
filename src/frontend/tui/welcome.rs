@@ -1,8 +1,8 @@
 //! The first thing on screen: crowbot's raven beside who and where you are.
 
+use crate::config::limits;
 use crate::data;
 use crate::frontend::tui::ui;
-use crate::limits;
 use crate::mode;
 use crate::text::styled::{Line, Style, width};
 use crate::text::template::fill;

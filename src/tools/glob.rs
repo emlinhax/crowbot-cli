@@ -6,8 +6,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
+use crate::config::limits;
 use crate::io::{self, fs::Kind};
-use crate::limits;
 use crate::permission::catalog;
 
 static SPEC: LazyLock<Spec> = super::spec!("glob");
