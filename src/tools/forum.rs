@@ -12,16 +12,14 @@ use serde_json::Value;
 use super::many::{Many, join};
 use super::truncate::{self, Keep};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use crate::data;
 use crate::forums::{Forum, Section, Thread, TopicList, mobiquo, store};
 use crate::limits;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
 use crate::tools::permissions;
 
-const TEXT_SRC: &str = include_str!("../../data/tools/forum.toml");
-
-static TEXT: LazyLock<Text> =
-    LazyLock::new(|| toml::from_str(TEXT_SRC).expect("data/tools/forum.toml is checked by tests"));
+static TEXT: LazyLock<Text> = data::load!("tools/forum.toml");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -31,10 +29,6 @@ struct Text {
     no_subject: String,
     posted: String,
     cut: String,
-}
-
-fn spec(name: &'static str, md: &'static str, schema: &str) -> Spec {
-    Spec::load(name, md, schema)
 }
 
 /// The host that a permission rule matches, found from the stored forum when possible.
@@ -246,13 +240,7 @@ fn render_thread(thread: &Thread, page: i64) -> String {
 
 pub struct Sections;
 
-static SECTIONS: LazyLock<Spec> = LazyLock::new(|| {
-    spec(
-        "forum_sections",
-        include_str!("../../data/tools/forum_sections.md"),
-        include_str!("../../data/tools/forum_sections.schema.json"),
-    )
-});
+static SECTIONS: LazyLock<Spec> = super::spec!("forum_sections");
 
 #[derive(Deserialize)]
 struct SectionsArgs {
@@ -305,13 +293,7 @@ impl Tool for Sections {
 
 pub struct Topics;
 
-static TOPICS: LazyLock<Spec> = LazyLock::new(|| {
-    spec(
-        "forum_topics",
-        include_str!("../../data/tools/forum_topics.md"),
-        include_str!("../../data/tools/forum_topics.schema.json"),
-    )
-});
+static TOPICS: LazyLock<Spec> = super::spec!("forum_topics");
 
 #[derive(Deserialize)]
 struct TopicsArgs {
@@ -362,13 +344,7 @@ impl Tool for Topics {
 
 pub struct ThreadTool;
 
-static THREAD: LazyLock<Spec> = LazyLock::new(|| {
-    spec(
-        "forum_thread",
-        include_str!("../../data/tools/forum_thread.md"),
-        include_str!("../../data/tools/forum_thread.schema.json"),
-    )
-});
+static THREAD: LazyLock<Spec> = super::spec!("forum_thread");
 
 #[derive(Deserialize)]
 struct ThreadArgs {
@@ -424,13 +400,7 @@ impl Tool for ThreadTool {
 
 pub struct Search;
 
-static SEARCH: LazyLock<Spec> = LazyLock::new(|| {
-    spec(
-        "forum_search",
-        include_str!("../../data/tools/forum_search.md"),
-        include_str!("../../data/tools/forum_search.schema.json"),
-    )
-});
+static SEARCH: LazyLock<Spec> = super::spec!("forum_search");
 
 #[derive(Deserialize)]
 struct SearchArgs {
@@ -481,13 +451,7 @@ impl Tool for Search {
 
 pub struct Post;
 
-static POST: LazyLock<Spec> = LazyLock::new(|| {
-    spec(
-        "forum_post",
-        include_str!("../../data/tools/forum_post.md"),
-        include_str!("../../data/tools/forum_post.schema.json"),
-    )
-});
+static POST: LazyLock<Spec> = super::spec!("forum_post");
 
 #[derive(Deserialize)]
 struct PostArgs {

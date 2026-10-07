@@ -10,13 +10,7 @@ use super::target::{self, Target};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::io::{self, fs::Access, fs::Kind};
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "edit",
-        include_str!("../../data/tools/edit.md"),
-        include_str!("../../data/tools/edit.schema.json"),
-    )
-});
+static SPEC: LazyLock<Spec> = super::spec!("edit");
 
 #[derive(Deserialize)]
 struct Args {

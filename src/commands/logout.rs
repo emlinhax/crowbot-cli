@@ -5,8 +5,7 @@ use futures_util::future::BoxFuture;
 use super::{Command, Ctx, Outcome, Spec};
 use crate::auth;
 
-static SPEC: LazyLock<Spec> =
-    LazyLock::new(|| Spec::parse(include_str!("../../data/commands/logout.toml")));
+static SPEC: LazyLock<Spec> = super::spec!("logout");
 
 pub struct Logout;
 

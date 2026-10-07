@@ -3,13 +3,11 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
+use crate::data;
 use crate::io;
 use crate::io::http::Method;
 
-const SRC: &str = include_str!("../../data/endpoints.toml");
-
-static CATALOG: LazyLock<Catalog> =
-    LazyLock::new(|| toml::from_str(SRC).expect("data/endpoints.toml is checked by tests"));
+static CATALOG: LazyLock<Catalog> = data::load!("endpoints.toml");
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

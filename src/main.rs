@@ -4,6 +4,7 @@ mod app;
 mod auth;
 mod cli;
 mod commands;
+mod data;
 mod effort;
 mod forums;
 mod frontend;

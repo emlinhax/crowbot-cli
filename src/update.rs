@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::api::endpoints;
+use crate::data;
 use crate::io::http::{Http, Method, Request};
 use crate::io::{self, fs::Access};
 use crate::limits;
@@ -18,15 +19,7 @@ use crate::paths::Paths;
 use crate::release;
 use crate::text::template::fill;
 
-static TEXT: LazyLock<Text> = LazyLock::new(|| {
-    #[derive(Deserialize)]
-    struct File {
-        text: Text,
-    }
-    toml::from_str::<File>(include_str!("../data/update.toml"))
-        .expect("data/update.toml is checked by tests")
-        .text
-});
+static TEXT: LazyLock<Text> = data::load!("update.toml", "text");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

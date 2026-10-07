@@ -8,8 +8,7 @@ use crate::api::signup;
 use crate::auth::{self, KeyKind};
 use crate::io::term;
 
-static SPEC: LazyLock<Spec> =
-    LazyLock::new(|| Spec::parse(include_str!("../../data/commands/signup.toml")));
+static SPEC: LazyLock<Spec> = super::spec!("signup");
 
 pub struct Signup;
 

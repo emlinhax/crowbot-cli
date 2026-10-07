@@ -7,6 +7,8 @@
 //! JSON API, a plain-HTML reader), route the calls through a `match forum.kind` here and that stays
 //! the one place that knows backend names.
 
+use crate::data;
+
 use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
@@ -17,10 +19,7 @@ pub mod mobiquo;
 pub mod store;
 pub mod xmlrpc;
 
-static DATA: LazyLock<Data> = LazyLock::new(|| {
-    toml::from_str(include_str!("../../data/forums.toml"))
-        .expect("data/forums.toml is checked by tests")
-});
+static DATA: LazyLock<Data> = data::load!("forums.toml");
 
 pub fn data() -> &'static Data {
     &DATA

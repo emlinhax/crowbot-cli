@@ -8,24 +8,15 @@ use url::Url;
 use super::permissions;
 use super::truncate::{self, Keep};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use crate::data;
 use crate::io::fetch::FetchError;
 use crate::limits;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
 
-const TEXT_SRC: &str = include_str!("../../data/tools/webfetch.toml");
+static SPEC: LazyLock<Spec> = super::spec!("webfetch");
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "webfetch",
-        include_str!("../../data/tools/webfetch.md"),
-        include_str!("../../data/tools/webfetch.schema.json"),
-    )
-});
-
-static TEXT: LazyLock<Text> = LazyLock::new(|| {
-    toml::from_str(TEXT_SRC).expect("data/tools/webfetch.toml is checked by tests")
-});
+static TEXT: LazyLock<Text> = data::load!("tools/webfetch.toml");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

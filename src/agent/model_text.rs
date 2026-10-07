@@ -1,13 +1,12 @@
 //! Typed access to data/model_text.toml, so a missing string fails the tests, not a session.
 
+use crate::data;
+
 use std::sync::LazyLock;
 
 use serde::Deserialize;
 
-const SRC: &str = include_str!("../../data/model_text.toml");
-
-static TEXT: LazyLock<ModelText> =
-    LazyLock::new(|| toml::from_str(SRC).expect("data/model_text.toml is checked by tests"));
+static TEXT: LazyLock<ModelText> = data::load!("model_text.toml");
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

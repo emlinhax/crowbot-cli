@@ -13,13 +13,7 @@ use crate::io::{self, fs::Kind};
 use crate::limits;
 use crate::text::shorten;
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "read",
-        include_str!("../../data/tools/read.md"),
-        include_str!("../../data/tools/read.schema.json"),
-    )
-});
+static SPEC: LazyLock<Spec> = super::spec!("read");
 
 #[derive(Deserialize)]
 struct Args {

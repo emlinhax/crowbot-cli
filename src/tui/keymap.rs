@@ -5,9 +5,10 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
+use crate::data;
 use crate::io::term::{KeyCode, KeyEvent, KeyModifiers};
 
-const SRC: &str = include_str!("../../data/keybinds.toml");
+const SRC: &str = data::raw!("keybinds.toml");
 
 static KEYMAP: LazyLock<Keymap> =
     LazyLock::new(|| Keymap::parse(SRC).expect("data/keybinds.toml is checked by tests"));

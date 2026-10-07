@@ -37,6 +37,20 @@ use crate::permission::gate::Ask;
 use crate::text::template;
 use files::Files;
 
+/// A `LazyLock` of tool `name`'s spec: data/tools/<name>.md and <name>.schema.json.
+macro_rules! spec {
+    ($name:literal) => {
+        std::sync::LazyLock::new(|| {
+            $crate::tools::Spec::load(
+                $name,
+                $crate::data::raw!("tools/", $name, ".md"),
+                $crate::data::raw!("tools/", $name, ".schema.json"),
+            )
+        })
+    };
+}
+pub(crate) use spec;
+
 /// A tool's name, description (data/tools/<name>.md) and argument schema (<name>.schema.json).
 pub struct Spec {
     pub name: &'static str,

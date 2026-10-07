@@ -6,8 +6,7 @@ use super::{Command, Ctx, Outcome, Spec};
 use crate::install::{self, Place};
 use crate::io;
 
-static SPEC: LazyLock<Spec> =
-    LazyLock::new(|| Spec::parse(include_str!("../../data/commands/install.toml")));
+static SPEC: LazyLock<Spec> = super::spec!("install");
 
 pub struct Install;
 

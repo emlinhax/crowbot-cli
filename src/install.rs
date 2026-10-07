@@ -8,15 +8,13 @@ use std::sync::LazyLock;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
+use crate::data;
 use crate::io::{self, fs::Access, user_path};
 use crate::paths::Paths;
 use crate::release;
 use crate::text::template::fill;
 
-static DATA: LazyLock<Data> = LazyLock::new(|| {
-    toml::from_str(include_str!("../data/install.toml"))
-        .expect("data/install.toml is checked by tests")
-});
+static DATA: LazyLock<Data> = data::load!("install.toml");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

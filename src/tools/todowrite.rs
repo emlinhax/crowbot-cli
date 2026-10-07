@@ -8,13 +8,7 @@ use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::permission::gate::Ask;
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "todowrite",
-        include_str!("../../data/tools/todowrite.md"),
-        include_str!("../../data/tools/todowrite.schema.json"),
-    )
-});
+static SPEC: LazyLock<Spec> = super::spec!("todowrite");
 
 #[derive(Deserialize)]
 struct Args {

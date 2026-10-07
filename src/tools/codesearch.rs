@@ -14,13 +14,7 @@ use crate::limits;
 use crate::permission::gate::Ask;
 use crate::text::shorten;
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "codesearch",
-        include_str!("../../data/tools/codesearch.md"),
-        include_str!("../../data/tools/codesearch.schema.json"),
-    )
-});
+static SPEC: LazyLock<Spec> = super::spec!("codesearch");
 
 #[derive(Deserialize)]
 struct Args {

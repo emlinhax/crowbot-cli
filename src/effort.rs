@@ -1,12 +1,11 @@
+use crate::data;
+
 use std::sync::LazyLock;
 
 use anyhow::bail;
 use serde::Deserialize;
 
-const SRC: &str = include_str!("../data/effort.toml");
-
-static LEVELS: LazyLock<Catalog> =
-    LazyLock::new(|| toml::from_str(SRC).expect("data/effort.toml is checked by tests"));
+static LEVELS: LazyLock<Catalog> = data::load!("effort.toml");
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

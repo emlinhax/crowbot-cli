@@ -6,14 +6,12 @@ use futures_util::{Stream, StreamExt};
 use serde::Deserialize;
 
 use super::{Command, Ctx, Outcome, Spec};
+use crate::data;
 use crate::io;
 use crate::io::term::{self, Input, KeyEvent};
 
-const SRC: &str = include_str!("../../data/commands/keytest.toml");
-
-static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec::parse(SRC));
-static STEPS: LazyLock<Steps> =
-    LazyLock::new(|| toml::from_str(SRC).expect("keytest steps are checked by tests"));
+static SPEC: LazyLock<Spec> = super::spec!("keytest");
+static STEPS: LazyLock<Steps> = data::load!("commands/keytest.toml");
 
 /// Silence that ends a paste burst; generous, since this only measures.
 const BURST_END: Duration = Duration::from_millis(400);

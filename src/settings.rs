@@ -3,11 +3,12 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, anyhow};
 use serde::Deserialize;
 
+use crate::data;
 use crate::paths::Paths;
 use crate::permission::rule::Rule;
 use crate::{effort, io, mode, trust};
 
-const DEFAULTS: &str = include_str!("../data/defaults.toml");
+const DEFAULTS: &str = data::raw!("defaults.toml");
 
 /// Unknown keys are refused: a misspelled `[[permissions]]` would otherwise drop a deny rule
 /// without a word.

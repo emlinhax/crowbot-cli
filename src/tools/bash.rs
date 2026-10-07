@@ -17,13 +17,7 @@ use crate::permission::gate::Ask;
 use crate::permission::{filter, shell_split};
 use crate::text::controls;
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "bash",
-        include_str!("../../data/tools/bash.md"),
-        include_str!("../../data/tools/bash.schema.json"),
-    )
-});
+static SPEC: LazyLock<Spec> = super::spec!("bash");
 
 #[derive(Deserialize)]
 struct Args {

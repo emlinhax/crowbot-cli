@@ -5,17 +5,15 @@ use std::sync::LazyLock;
 use serde::Deserialize;
 
 use crate::api::models::Model;
+use crate::data;
 use crate::paths::Paths;
 use crate::text::template;
 use crate::{io, limits};
 
-const BASE: &str = include_str!("../../data/prompts/system.md");
-const ENV: &str = include_str!("../../data/prompts/env.md");
+const BASE: &str = data::raw!("prompts/system.md");
+const ENV: &str = data::raw!("prompts/env.md");
 
-static PROJECT: LazyLock<Project> = LazyLock::new(|| {
-    toml::from_str(include_str!("../../data/prompts/project.toml"))
-        .expect("data/prompts/project.toml is checked by tests")
-});
+static PROJECT: LazyLock<Project> = data::load!("prompts/project.toml");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -25,10 +23,7 @@ struct Project {
     cut: String,
 }
 
-static FORUMS: LazyLock<Forums> = LazyLock::new(|| {
-    toml::from_str(include_str!("../../data/prompts/forums.toml"))
-        .expect("data/prompts/forums.toml is checked by tests")
-});
+static FORUMS: LazyLock<Forums> = data::load!("prompts/forums.toml");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -39,8 +34,7 @@ struct Forums {
 }
 
 /// Reminders a mode can name in data/modes/*.toml; one line per prompt file.
-const REMINDERS: &[(&str, &str)] =
-    &[("plan_mode", include_str!("../../data/prompts/plan_mode.md"))];
+const REMINDERS: &[(&str, &str)] = &[("plan_mode", data::raw!("prompts/plan_mode.md"))];
 
 pub fn build(paths: &Paths, model: &Model) -> String {
     let cwd = paths.project.display().to_string();

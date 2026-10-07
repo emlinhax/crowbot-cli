@@ -14,13 +14,7 @@ use crate::io::{self, fs::Kind};
 use crate::limits;
 use crate::text::shorten;
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "grep",
-        include_str!("../../data/tools/grep.md"),
-        include_str!("../../data/tools/grep.schema.json"),
-    )
-});
+static SPEC: LazyLock<Spec> = super::spec!("grep");
 
 #[derive(Deserialize)]
 struct Args {

@@ -4,21 +4,12 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
 use super::{Command, Ctx, Effect, Outcome, Spec};
+use crate::data;
 use crate::effort;
 use crate::text::template::fill;
 
-const SRC: &str = include_str!("../../data/commands/effort.toml");
-
-static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec::parse(SRC));
-static TEXT: LazyLock<Text> = LazyLock::new(|| {
-    #[derive(Deserialize)]
-    struct File {
-        text: Text,
-    }
-    toml::from_str::<File>(SRC)
-        .expect("data/commands/effort.toml is checked by tests")
-        .text
-});
+static SPEC: LazyLock<Spec> = super::spec!("effort");
+static TEXT: LazyLock<Text> = data::load!("commands/effort.toml", "text");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

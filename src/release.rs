@@ -1,14 +1,13 @@
 //! Which release this binary is, and which file of a release each platform runs
 //! (data/release.toml).
 
+use crate::data;
+
 use std::sync::LazyLock;
 
 use serde::Deserialize;
 
-static CATALOG: LazyLock<Catalog> = LazyLock::new(|| {
-    toml::from_str(include_str!("../data/release.toml"))
-        .expect("data/release.toml is checked by tests")
-});
+static CATALOG: LazyLock<Catalog> = data::load!("release.toml");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -6,21 +6,12 @@ use serde::Deserialize;
 use super::{Command, Ctx, Outcome, Session, Spec, login};
 use crate::api::account::{self, Me};
 use crate::api::error::ApiError;
+use crate::data;
 use crate::text::template::fill;
 use crate::text::units;
 
-const SRC: &str = include_str!("../../data/commands/status.toml");
-
-static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec::parse(SRC));
-static TEXT: LazyLock<Text> = LazyLock::new(|| {
-    #[derive(Deserialize)]
-    struct File {
-        text: Text,
-    }
-    toml::from_str::<File>(SRC)
-        .expect("data/commands/status.toml is checked by tests")
-        .text
-});
+static SPEC: LazyLock<Spec> = super::spec!("status");
+static TEXT: LazyLock<Text> = data::load!("commands/status.toml", "text");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

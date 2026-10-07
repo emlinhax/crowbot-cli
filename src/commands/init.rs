@@ -1,13 +1,14 @@
+use crate::data;
+
 use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 
 use super::{Command, Ctx, Effect, Outcome, Spec};
 
-static SPEC: LazyLock<Spec> =
-    LazyLock::new(|| Spec::parse(include_str!("../../data/commands/init.toml")));
+static SPEC: LazyLock<Spec> = super::spec!("init");
 
-const PROMPT: &str = include_str!("../../data/prompts/init.md");
+const PROMPT: &str = data::raw!("prompts/init.md");
 
 pub struct Init;
 

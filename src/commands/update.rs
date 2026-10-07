@@ -5,8 +5,7 @@ use futures_util::future::BoxFuture;
 use super::{Command, Ctx, Outcome, Spec};
 use crate::update;
 
-static SPEC: LazyLock<Spec> =
-    LazyLock::new(|| Spec::parse(include_str!("../../data/commands/update.toml")));
+static SPEC: LazyLock<Spec> = super::spec!("update");
 
 pub struct Update;
 

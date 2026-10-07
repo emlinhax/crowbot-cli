@@ -6,14 +6,12 @@ use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
 
+use crate::data;
 use crate::io;
 use crate::paths::Paths;
 use crate::text::template;
 
-const SRC: &str = include_str!("../data/trust.toml");
-
-static TEXT: LazyLock<Text> =
-    LazyLock::new(|| toml::from_str(SRC).expect("data/trust.toml is checked by tests"));
+static TEXT: LazyLock<Text> = data::load!("trust.toml");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

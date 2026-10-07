@@ -12,13 +12,7 @@ use crate::limits;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "question",
-        include_str!("../../data/tools/question.md"),
-        include_str!("../../data/tools/question.schema.json"),
-    )
-});
+static SPEC: LazyLock<Spec> = super::spec!("question");
 
 /// The card picks by digit, 1 to 9, and adds its own "Other" row after the options, so eight
 /// leave every row a digit.

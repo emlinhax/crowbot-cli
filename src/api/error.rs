@@ -5,13 +5,11 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::data;
 use crate::io::http::{HttpError, Response};
 use crate::limits;
 
-const CATALOG_SRC: &str = include_str!("../../data/errors.toml");
-
-static CATALOG: LazyLock<BTreeMap<String, Entry>> =
-    LazyLock::new(|| toml::from_str(CATALOG_SRC).expect("data/errors.toml is checked by tests"));
+static CATALOG: LazyLock<BTreeMap<String, Entry>> = data::load!("errors.toml");
 
 /// How the client treats one `error.type`; see data/errors.toml.
 #[derive(Debug, Deserialize)]

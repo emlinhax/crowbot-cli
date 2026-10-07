@@ -10,13 +10,7 @@ use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, ta
 use crate::io::{self, fs::Kind};
 use crate::limits;
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "glob",
-        include_str!("../../data/tools/glob.md"),
-        include_str!("../../data/tools/glob.schema.json"),
-    )
-});
+static SPEC: LazyLock<Spec> = super::spec!("glob");
 
 #[derive(Deserialize)]
 struct Args {

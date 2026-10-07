@@ -6,15 +6,13 @@ use serde::Deserialize;
 
 use super::{Command, Ctx, Effect, Outcome, Scope, Spec};
 use crate::api::models::{self, Catalog, Model, Source};
+use crate::data;
 use crate::text::table::Align;
 use crate::text::template::fill;
 use crate::text::units;
 
-const SRC: &str = include_str!("../../data/commands/models.toml");
-
-static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec::parse(SRC));
-static DATA: LazyLock<Data> =
-    LazyLock::new(|| toml::from_str(SRC).expect("data/commands/models.toml is checked by tests"));
+static SPEC: LazyLock<Spec> = super::spec!("models");
+static DATA: LazyLock<Data> = data::load!("commands/models.toml");
 
 #[derive(Deserialize)]
 struct Data {

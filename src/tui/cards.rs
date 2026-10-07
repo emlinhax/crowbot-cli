@@ -7,16 +7,14 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::agent::message::ToolResult;
+use crate::data;
 use crate::limits;
 use crate::text::diff;
 use crate::text::styled::{Line, Style};
 use crate::text::{template, units};
 use crate::tui::boxed::capped;
 
-const SRC: &str = include_str!("../../data/tool_cards.toml");
-
-static CARDS: LazyLock<BTreeMap<String, Spec>> =
-    LazyLock::new(|| toml::from_str(SRC).expect("data/tool_cards.toml is checked by tests"));
+static CARDS: LazyLock<BTreeMap<String, Spec>> = data::load!("tool_cards.toml");
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]

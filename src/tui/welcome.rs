@@ -1,13 +1,14 @@
 //! The first thing on screen: crowbot's raven beside who and where you are.
 
+use crate::data;
 use crate::mode;
 use crate::text::styled::{Line, Style, width};
 use crate::text::template::fill;
 use crate::tui::ui;
 
-const RAVEN: &str = include_str!("../../data/raven.txt");
+const RAVEN: &str = data::raw!("raven.txt");
 /// The same bird for consoles without a braille font.
-const RAVEN_ASCII: &str = include_str!("../../data/raven_ascii.txt");
+const RAVEN_ASCII: &str = data::raw!("raven_ascii.txt");
 
 /// Columns between the raven and the text beside it.
 const GUTTER: usize = 3;

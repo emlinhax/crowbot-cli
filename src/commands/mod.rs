@@ -46,6 +46,19 @@ impl Scope {
     }
 }
 
+/// A `LazyLock` of command `name`'s spec, from data/commands/<name>.toml.
+macro_rules! spec {
+    ($name:literal) => {
+        std::sync::LazyLock::new(|| {
+            $crate::data::parse(
+                $crate::data::raw!("commands/", $name, ".toml"),
+                concat!("commands/", $name, ".toml"),
+            )
+        })
+    };
+}
+pub(crate) use spec;
+
 /// A command's user-facing metadata, from `data/commands/<name>.toml`. A command may keep
 /// its own extra data in the same file, so unknown fields are allowed here.
 #[derive(Debug, Deserialize)]
@@ -70,10 +83,6 @@ fn everywhere() -> Vec<Scope> {
 }
 
 impl Spec {
-    pub fn parse(src: &str) -> Self {
-        toml::from_str(src).expect("command specs are checked by tests")
-    }
-
     /// Its name and its aliases.
     pub fn names(&self) -> impl Iterator<Item = &str> {
         std::iter::once(self.name.as_str()).chain(self.aliases.iter().map(String::as_str))

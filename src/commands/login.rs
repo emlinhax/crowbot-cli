@@ -8,22 +8,13 @@ use crate::api::account::Me;
 use crate::api::pair;
 use crate::app::App;
 use crate::auth::{self, KeyKind, Origin};
+use crate::data;
 use crate::io::{self, term};
 use crate::text::template::fill;
 use crate::text::units;
 
-const SRC: &str = include_str!("../../data/commands/login.toml");
-
-static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec::parse(SRC));
-static TEXT: LazyLock<Text> = LazyLock::new(|| {
-    #[derive(Deserialize)]
-    struct File {
-        text: Text,
-    }
-    toml::from_str::<File>(SRC)
-        .expect("data/commands/login.toml is checked by tests")
-        .text
-});
+static SPEC: LazyLock<Spec> = super::spec!("login");
+static TEXT: LazyLock<Text> = data::load!("commands/login.toml", "text");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

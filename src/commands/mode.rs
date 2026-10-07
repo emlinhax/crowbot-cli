@@ -6,8 +6,7 @@ use futures_util::future::BoxFuture;
 use super::{Command, Ctx, Effect, Outcome, Spec};
 use crate::mode;
 
-static SPEC: LazyLock<Spec> =
-    LazyLock::new(|| Spec::parse(include_str!("../../data/commands/mode.toml")));
+static SPEC: LazyLock<Spec> = super::spec!("mode");
 
 pub struct Mode;
 

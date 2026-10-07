@@ -4,8 +4,7 @@ use futures_util::future::BoxFuture;
 
 use super::{Command, Ctx, Effect, Outcome, Spec};
 
-static SPEC: LazyLock<Spec> =
-    LazyLock::new(|| Spec::parse(include_str!("../../data/commands/new.toml")));
+static SPEC: LazyLock<Spec> = super::spec!("new");
 
 pub struct New;
 

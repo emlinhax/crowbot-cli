@@ -1,21 +1,13 @@
 //! Pipe filters: a command that, as written, reads only its standard input and writes only its
 //! output (`tail -30`, `grep -c ok`). Which commands and flags qualify is data/filters.toml.
 
+use crate::data;
+
 use std::sync::LazyLock;
 
 use serde::Deserialize;
 
-const SRC: &str = include_str!("../../data/filters.toml");
-
-static FILTERS: LazyLock<Vec<Filter>> = LazyLock::new(|| {
-    #[derive(Deserialize)]
-    struct File {
-        filter: Vec<Filter>,
-    }
-    toml::from_str::<File>(SRC)
-        .expect("data/filters.toml is checked by tests")
-        .filter
-});
+static FILTERS: LazyLock<Vec<Filter>> = data::load!("filters.toml", "filter");
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

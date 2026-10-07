@@ -11,30 +11,15 @@ use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::agent::model_text;
 use crate::agent::prompt::{Prompt, Reply};
+use crate::data;
 use crate::io;
 use crate::mode;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
 
-const CHOICES_SRC: &str = include_str!("../../data/tools/plan_exit.toml");
+static SPEC: LazyLock<Spec> = super::spec!("plan_exit");
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "plan_exit",
-        include_str!("../../data/tools/plan_exit.md"),
-        include_str!("../../data/tools/plan_exit.schema.json"),
-    )
-});
-
-static CHOICES: LazyLock<Vec<Choice>> = LazyLock::new(|| {
-    #[derive(Deserialize)]
-    struct File {
-        choice: Vec<Choice>,
-    }
-    toml::from_str::<File>(CHOICES_SRC)
-        .expect("data/tools/plan_exit.toml is checked by tests")
-        .choice
-});
+static CHOICES: LazyLock<Vec<Choice>> = data::load!("tools/plan_exit.toml", "choice");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

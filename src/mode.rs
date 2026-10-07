@@ -5,18 +5,19 @@ use std::sync::LazyLock;
 
 use serde::{Deserialize, Deserializer};
 
+use crate::data;
 use crate::permission::rule::{Action, Rule};
 
 const SOURCES: &[&str] = &[
-    include_str!("../data/modes/manual.toml"),
-    include_str!("../data/modes/plan.toml"),
-    include_str!("../data/modes/auto.toml"),
+    data::raw!("modes/manual.toml"),
+    data::raw!("modes/plan.toml"),
+    data::raw!("modes/auto.toml"),
 ];
 
 static MODES: LazyLock<Vec<Mode>> = LazyLock::new(|| {
     let mut modes: Vec<Mode> = SOURCES
         .iter()
-        .map(|src| toml::from_str(src).expect("data/modes/*.toml are checked by tests"))
+        .map(|src| data::parse(src, "modes/*.toml"))
         .collect();
     modes.sort_by_key(|m| m.order);
     modes

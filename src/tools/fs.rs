@@ -14,13 +14,7 @@ use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::io::{self, fs::Kind};
 use crate::limits;
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "fs",
-        include_str!("../../data/tools/fs.md"),
-        include_str!("../../data/tools/fs.schema.json"),
-    )
-});
+static SPEC: LazyLock<Spec> = super::spec!("fs");
 
 #[derive(Deserialize)]
 struct Args {

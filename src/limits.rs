@@ -1,12 +1,11 @@
+use crate::data;
+
 use std::sync::LazyLock;
 use std::time::Duration;
 
 use serde::Deserialize;
 
-const SRC: &str = include_str!("../data/limits.toml");
-
-static LIMITS: LazyLock<Limits> =
-    LazyLock::new(|| toml::from_str(SRC).expect("data/limits.toml is checked by tests"));
+static LIMITS: LazyLock<Limits> = data::load!("limits.toml");
 
 pub fn get() -> &'static Limits {
     &LIMITS
@@ -202,6 +201,9 @@ mod tests {
                 walk(&format!("{path}.{key}"), child);
             }
         }
-        walk("limits", &toml::from_str::<toml::Value>(SRC).unwrap());
+        walk(
+            "limits",
+            &toml::from_str::<toml::Value>(data::raw!("limits.toml")).unwrap(),
+        );
     }
 }

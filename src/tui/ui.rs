@@ -4,12 +4,10 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
+use crate::data;
 use crate::text::units;
 
-const SRC: &str = include_str!("../../data/ui.toml");
-
-static UI: LazyLock<Ui> =
-    LazyLock::new(|| toml::from_str(SRC).expect("data/ui.toml is checked by tests"));
+static UI: LazyLock<Ui> = data::load!("ui.toml");
 
 pub fn get() -> &'static Ui {
     &UI

@@ -6,13 +6,11 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
+use crate::data;
 use crate::io;
 use crate::text::template;
 
-const SRC: &str = include_str!("../../data/shells.toml");
-
-static CATALOG: LazyLock<Catalog> =
-    LazyLock::new(|| toml::from_str(SRC).expect("data/shells.toml is checked by tests"));
+static CATALOG: LazyLock<Catalog> = data::load!("shells.toml");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

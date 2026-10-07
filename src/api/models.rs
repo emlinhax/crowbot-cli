@@ -3,12 +3,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::Call;
 use crate::app::App;
+use crate::data;
 use crate::io;
 use crate::limits;
 
 /// The list shipped in the binary, used when crowbot is unreachable and nothing is cached.
 /// Refreshed by saving a verbatim `GET /v1/models` reply over data/models.json.
-const SNAPSHOT: &str = include_str!("../../data/models.json");
+const SNAPSHOT: &str = data::raw!("models.json");
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Model {
