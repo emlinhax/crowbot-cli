@@ -45,6 +45,7 @@ pub struct Limits {
     pub update: UpdateLimits,
     pub forums: ForumLimits,
     pub edit: EditLimits,
+    pub text: TextLimits,
     pub tui: TuiLimits,
 }
 
@@ -161,6 +162,14 @@ pub struct EditLimits {
     pub similarity_max_chars: Limit<usize>,
     pub hint_max_cells: Limit<usize>,
     pub hint_similarity_pct: Limit<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TextLimits {
+    pub rule_max: Limit<usize>,
+    pub min_width: Limit<usize>,
+    pub min_column: Limit<usize>,
 }
 
 #[derive(Debug, Deserialize)]

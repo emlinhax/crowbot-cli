@@ -2,12 +2,10 @@
 
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
+use crate::limits;
 use crate::text::highlight;
 use crate::text::styled::{Line, Style, width};
 use crate::text::table::{self, Align};
-
-/// Longest a horizontal rule gets, so it reads as a divider rather than a wall.
-const RULE_MAX: usize = 80;
 
 /// The markdown crowbot draws; the stream cut parses with the same, so both see one structure.
 pub fn options() -> Options {
@@ -16,8 +14,7 @@ pub fn options() -> Options {
 
 pub fn render(md: &str, width: usize) -> Vec<Line> {
     let mut r = Renderer {
-        // Narrower than this, prefixes and borders leave no room for a word.
-        width: width.max(8),
+        width: width.max(limits::get().text.min_width.value),
         ..Renderer::default()
     };
     for event in Parser::new_ext(md, options()) {
@@ -109,7 +106,7 @@ impl Renderer {
             Event::Rule => {
                 self.flush();
                 self.block_start();
-                let rule = "─".repeat(self.width.min(RULE_MAX));
+                let rule = "─".repeat(self.width.min(limits::get().text.rule_max.value));
                 self.emit(vec![Line::styled(rule, Style::fg("rule"))]);
                 self.gap = true;
             }

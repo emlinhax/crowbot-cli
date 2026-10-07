@@ -220,6 +220,18 @@ reason = "edit-distance cells the closest-line hint may spend over the whole fil
 value = 50
 reason = "a closest line less alike than this points the model at the wrong place"
 
+[text.rule_max]
+value = 80
+reason = "a horizontal rule this long reads as a divider; longer, a wall"
+
+[text.min_width]
+value = 8
+reason = "markdown narrower than this leaves prefixes and borders no room for a word"
+
+[text.min_column]
+value = 3
+reason = "a table column shrunk past this loses what it held; a letter and the … still say it"
+
 [tui.frame_ms]
 value = 16
 reason = "about 60 frames a second; streaming never needs more"

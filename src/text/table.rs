@@ -2,10 +2,8 @@
 //! gives up a cell at a time (its cells cut with `…`) until the table fits, so rows always stay
 //! aligned. Markdown grids, `crowbot models` and the model picker all lay out here.
 
+use crate::limits;
 use crate::text::styled::{Line, Style};
-
-/// Narrowest a column is shrunk to; a letter and the `…` still say what was there.
-const MIN_COLUMN: usize = 3;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -30,7 +28,7 @@ pub fn widths(rows: &[Vec<Line>], width: usize, overhead: usize) -> Vec<usize> {
         let Some((i, &w)) = widths.iter().enumerate().max_by_key(|&(_, w)| *w) else {
             break;
         };
-        if w <= MIN_COLUMN {
+        if w <= limits::get().text.min_column.value {
             break;
         }
         widths[i] -= 1;
@@ -98,7 +96,7 @@ pub fn grid(rows: &[Vec<Line>], aligns: &[Align], width: usize) -> Vec<Line> {
     let narrowest = |columns: usize| -> usize {
         natural[..columns]
             .iter()
-            .map(|&w| w.min(MIN_COLUMN))
+            .map(|&w| w.min(limits::get().text.min_column.value))
             .sum::<usize>()
             + overhead(columns)
     };
