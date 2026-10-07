@@ -14,10 +14,6 @@ use crate::text::template::fill;
 
 static SPEC: LazyLock<Spec> = super::spec!("question");
 
-/// The card picks by digit, 1 to 9, and adds its own "Other" row after the options, so eight
-/// leave every row a digit.
-const MAX_OPTIONS: usize = 8;
-
 #[derive(Deserialize)]
 struct Args {
     questions: Vec<prompt::Question>,
@@ -38,13 +34,14 @@ impl Tool for Question {
                 "ask between 1 and {max} questions"
             )));
         }
+        let options_max = limits::get().tools.question_options_max.value;
         for q in &args.questions {
             if q.question.trim().is_empty() {
                 return Err(Refusal::InvalidArgs("a question has no text".into()));
             }
-            if q.options.is_empty() || q.options.len() > MAX_OPTIONS {
+            if q.options.is_empty() || q.options.len() > options_max {
                 return Err(Refusal::InvalidArgs(format!(
-                    "give each question between 1 and {MAX_OPTIONS} options"
+                    "give each question between 1 and {options_max} options"
                 )));
             }
         }
@@ -108,7 +105,10 @@ mod tests {
             limits::get().tools.question_max.value
         );
         let options = &questions["items"]["properties"]["options"];
-        assert_eq!(options["maxItems"], MAX_OPTIONS);
+        assert_eq!(
+            options["maxItems"],
+            limits::get().tools.question_options_max.value
+        );
         assert_eq!(options["minItems"], 1);
     }
 

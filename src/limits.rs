@@ -124,6 +124,7 @@ pub struct ToolLimits {
     pub fs_batch_max: Limit<usize>,
     pub list_entries: Limit<usize>,
     pub question_max: Limit<usize>,
+    pub question_options_max: Limit<usize>,
     pub binary_sniff_bytes: Limit<usize>,
     pub bash_timeout_secs: Limit<u64>,
     pub bash_max_timeout_secs: Limit<u64>,

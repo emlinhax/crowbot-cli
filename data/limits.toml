@@ -148,6 +148,10 @@ reason = "a directory listing past this is better explored with glob"
 value = 4
 reason = "a card of tabs a person answers in one go; more is a form, not a question"
 
+[tools.question_options_max]
+value = 8
+reason = "the card picks by digit, 1 to 9, and adds its own Other row after the options; eight leave every row a digit"
+
 [tools.binary_sniff_bytes]
 value = 8192
 reason = "a NUL byte this early means the file is not text (git uses the same window)"
