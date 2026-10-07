@@ -131,6 +131,7 @@ pub fn find(id: &str) -> anyhow::Result<&'static Mode> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::settings::default_rules;
     use crate::permission::gate::{Ask, Decision};
 
     #[test]
@@ -186,13 +187,9 @@ mod tests {
             .policy(rules, "/home/u/.crowbot/plans/s1.md")
     }
 
-    fn defaults() -> Vec<Rule> {
-        crate::config::settings::default_rules()
-    }
-
     #[test]
     fn mode_by_tool_matrix() {
-        let rules = defaults();
+        let rules = default_rules();
         let cases = [
             // (mode, ask, expected)
             ("manual", Ask::new("read", "src/a.rs"), Decision::Allow),
@@ -237,7 +234,7 @@ mod tests {
 
     #[test]
     fn plan_runs_inspection_and_checks_but_nothing_that_edits() {
-        let rules = defaults();
+        let rules = default_rules();
         let cases = [
             ("git status", true),
             ("git diff", true),
@@ -288,7 +285,7 @@ mod tests {
 
     #[test]
     fn user_denies_hold_in_manual_but_not_in_auto() {
-        let mut rules = defaults();
+        let mut rules = default_rules();
         rules.push(Rule {
             permission: "bash".into(),
             pattern: "rm *".into(),
@@ -304,7 +301,7 @@ mod tests {
 
     #[test]
     fn config_allowances_pass_in_manual_but_cannot_lift_plan_locks() {
-        let mut rules = defaults();
+        let mut rules = default_rules();
         rules.push(Rule {
             permission: "bash".into(),
             pattern: "cargo *".into(),
@@ -323,7 +320,7 @@ mod tests {
 
     #[test]
     fn a_plan_lock_that_allows_cannot_lift_a_user_deny() {
-        let mut rules = defaults();
+        let mut rules = default_rules();
         rules.push(Rule {
             permission: "bash".into(),
             pattern: "git log *".into(),
@@ -342,7 +339,7 @@ mod tests {
 
     #[test]
     fn one_denied_target_denies_the_call() {
-        let rules = defaults();
+        let rules = default_rules();
         let asks = [
             Ask::new("bash", "git status"),
             Ask::new("bash_write", "echo x > f"),

@@ -39,7 +39,7 @@ pub fn last_match<'a>(
 }
 
 /// `*` matches any run of characters (slashes included), `?` exactly one.
-pub fn wildcard(pattern: &str, text: &str) -> bool {
+fn wildcard(pattern: &str, text: &str) -> bool {
     let (p, t): (Vec<char>, Vec<char>) = (pattern.chars().collect(), text.chars().collect());
     let (mut pi, mut ti) = (0, 0);
     let mut star: Option<(usize, usize)> = None;
