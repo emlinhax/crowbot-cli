@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::Context;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::config::paths::Paths;
 use crate::config::trust;
@@ -34,11 +34,15 @@ pub struct Settings {
     pub untrusted: Option<trust::Untrusted>,
 }
 
-/// Values from command-line flags: the last and strongest layer.
-#[derive(Debug, Default)]
+/// Values from command-line flags: the last and strongest layer. One that is not given leaves
+/// the layers before it alone.
+#[derive(Debug, Default, Serialize)]
 pub struct Overrides {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mode: Option<String>,
 }
 
@@ -60,17 +64,9 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
         merge(&mut merged, layer);
         check(&merged, &project)?;
     }
+    merge(&mut merged, toml::Table::try_from(flags)?);
     let mut settings: Settings = toml::Value::Table(merged).try_into()?;
     settings.untrusted = untrusted;
-    if let Some(model) = &flags.model {
-        settings.model.clone_from(model);
-    }
-    if flags.effort.is_some() {
-        settings.effort.clone_from(&flags.effort);
-    }
-    if let Some(mode) = &flags.mode {
-        settings.mode.clone_from(mode);
-    }
     if io::env::var("CROWBOT_NO_UPDATE").is_some() {
         settings.auto_update = false;
     }
