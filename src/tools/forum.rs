@@ -95,7 +95,7 @@ fn page_pref(args: &Value) -> Page {
 
 /// The last page number for `total` posts at the forum's page size (at least 1).
 fn last_page(total: i64) -> i64 {
-    let per = limits::get().forums.page_size.value.max(1);
+    let per = i64::from(limits::get().forums.page_size.value.get());
     if total <= 0 { 1 } else { (total - 1) / per + 1 }
 }
 
@@ -595,7 +595,7 @@ mod tests {
 
     #[test]
     fn a_thread_footer_shows_pages_and_nudges_toward_the_newest() {
-        let per = limits::get().forums.page_size.value;
+        let per = i64::from(limits::get().forums.page_size.value.get());
         let many = Thread {
             title: "Long".into(),
             total: Some(per * 5 + 1), // six pages

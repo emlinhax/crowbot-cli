@@ -1,3 +1,4 @@
+use std::num::NonZero;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -164,7 +165,7 @@ pub struct UpdateLimits {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ForumLimits {
-    pub page_size: Limit<i64>,
+    pub page_size: Limit<NonZero<u32>>,
     pub batch_max: Limit<usize>,
     pub directory_results: Limit<i64>,
 }
@@ -200,11 +201,11 @@ pub struct TuiLimits {
     pub quit_window_ms: Limit<u64>,
     pub history_max: Limit<usize>,
     pub prompt_body_lines: Limit<usize>,
-    pub palette_rows: Limit<usize>,
+    pub palette_rows: Limit<NonZero<usize>>,
     pub toast_ms: Limit<u64>,
     pub side_padding: Limit<usize>,
     pub scroll_lines: Limit<usize>,
-    pub status_frame_ms: Limit<u64>,
+    pub status_frame_ms: Limit<NonZero<u64>>,
     pub shimmer_ms: Limit<u64>,
     pub glint_rest: Limit<usize>,
     pub editor_min_rows: Limit<usize>,
@@ -226,6 +227,17 @@ mod tests {
     #[test]
     fn limits_parse() {
         let _ = get();
+    }
+
+    #[test]
+    fn a_zero_divisor_is_refused_when_the_file_loads() {
+        let src = data::raw!("limits.toml");
+        let zero = src.replace(
+            "[forums.page_size]\nvalue = 20",
+            "[forums.page_size]\nvalue = 0",
+        );
+        assert_ne!(zero, src);
+        assert!(toml::from_str::<Limits>(&zero).is_err());
     }
 
     #[test]

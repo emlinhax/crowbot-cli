@@ -107,7 +107,7 @@ impl Picker {
 
 /// `rows` behind the selection marker, scrolled to keep the selected one in view.
 pub fn marked(rows: impl IntoIterator<Item = Line>, selected: usize) -> Vec<Line> {
-    let visible = limits::get().tui.palette_rows.value.max(1);
+    let visible = limits::get().tui.palette_rows.value.get();
     let start = (selected + 1).saturating_sub(visible);
     rows.into_iter()
         .enumerate()

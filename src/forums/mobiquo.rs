@@ -85,7 +85,7 @@ async fn call(fetch: &Fetch, forum: &Forum, method: &str, params: &[Arg]) -> Res
 }
 
 fn span(page: i64) -> (i64, i64) {
-    let per = limits::get().forums.page_size.value;
+    let per = i64::from(limits::get().forums.page_size.value.get());
     let start = (page.max(1) - 1) * per;
     (start, start + per - 1)
 }
@@ -131,7 +131,7 @@ pub async fn topics(fetch: &Fetch, forum: &Forum, forum_id: &str, page: i64) -> 
 }
 
 pub async fn search(fetch: &Fetch, forum: &Forum, query: &str, page: i64) -> Result<TopicList> {
-    let per = limits::get().forums.page_size.value;
+    let per = i64::from(limits::get().forums.page_size.value.get());
     let value = call(
         fetch,
         forum,

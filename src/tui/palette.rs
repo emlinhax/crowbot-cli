@@ -88,7 +88,7 @@ impl Palette {
     }
 
     pub fn render(&self, found: &[&Spec], width: usize) -> Vec<Line> {
-        let rows = limits::get().tui.palette_rows.value.max(1);
+        let rows = limits::get().tui.palette_rows.value.get();
         let start = (self.selected + 1).saturating_sub(rows);
         let name_width = found.iter().map(|s| self.width_of(s)).max().unwrap_or(0);
         let body: Vec<Line> = found
@@ -186,7 +186,7 @@ mod tests {
         assert!(text[2].starts_with("│ › /models  "), "{text:?}");
         assert!(text.iter().all(|l| width(l) == 60));
 
-        let rows = limits::get().tui.palette_rows.value;
+        let rows = limits::get().tui.palette_rows.value.get();
         let found = p.open("/");
         for _ in 0..found.len() - 1 {
             p.key(Action::Down, "/");

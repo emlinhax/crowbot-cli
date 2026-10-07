@@ -67,7 +67,7 @@ impl Progress {
         let limits = &limits::get().tui;
         let elapsed = now.duration_since(self.started).as_millis();
         let frames = if braille { &words.frames } else { &words.plain };
-        let step = (elapsed / u128::from(limits.status_frame_ms.value.max(1))) as usize;
+        let step = (elapsed / u128::from(limits.status_frame_ms.value.get())) as usize;
         let frame = frames
             .get(step % frames.len().max(1))
             .map_or("", String::as_str);
@@ -142,7 +142,7 @@ mod tests {
             line.text(),
             format!("{} Cooking…  0s · ↓ 0 tok · esc to interrupt", frames[0])
         );
-        let step = limits::get().tui.status_frame_ms.value;
+        let step = limits::get().tui.status_frame_ms.value.get();
         let later = p.render(t0 + Duration::from_millis(step), "mode_auto", true, 80);
         assert!(
             later.text().starts_with(&format!("{} ", frames[1])),
