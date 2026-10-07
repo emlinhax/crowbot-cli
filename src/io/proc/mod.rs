@@ -3,6 +3,10 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+mod tree;
+
+pub use tree::{Ended, ShellCommand, run};
+
 /// Opens `url` in the default browser. Best effort: callers always print the URL as well.
 pub fn open_url(url: &str) -> io::Result<()> {
     #[cfg(windows)]

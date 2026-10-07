@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 use super::shell::Shell;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
-use crate::io::shell::{self, Ended, ShellCommand};
+use crate::io::proc::{self, Ended, ShellCommand};
 use crate::io::{self, fs::Access};
 use crate::limits;
 use crate::permission::catalog;
@@ -86,7 +86,7 @@ impl Tool for Bash {
                 .unwrap_or(limits.bash_timeout_secs.value)
                 .clamp(1, limits.bash_max_timeout_secs.value);
             let mut sink = Sink::new(cx.app.paths.tmp_dir());
-            let ended = shell::run(
+            let ended = proc::run(
                 &ShellCommand {
                     program,
                     args: &self.shell.args,
