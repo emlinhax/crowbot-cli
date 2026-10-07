@@ -59,5 +59,5 @@ pub fn start<'a>(app: &'a App, line: &str, session: Session) -> Result<Started<'
 
 /// A fresh model list, fetched without holding up input.
 pub fn refresh_catalog(app: &App) -> BoxFuture<'_, Work> {
-    Box::pin(async move { Work::Catalog(models::load(app, true).await) })
+    Box::pin(async move { Work::Catalog(models::load(&app.api, &app.paths, true).await) })
 }

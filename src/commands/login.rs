@@ -61,7 +61,8 @@ impl Command for Login {
             let text = match number {
                 None => pair_here(cx.app).await?,
                 Some(number) => {
-                    let me = auth::adopt(cx.app, &number, KeyKind::Account).await?;
+                    let me =
+                        auth::adopt(&cx.app.api, &cx.app.paths, &number, KeyKind::Account).await?;
                     logged_in(KeyKind::Account, &number, &me)
                 }
             };
@@ -80,7 +81,7 @@ async fn pair_here(app: &App) -> anyhow::Result<String> {
     ));
     open_browser(&url);
     let key = pair::wait(&app.api, &started).await?;
-    let me = auth::adopt(app, &key, KeyKind::Device).await?;
+    let me = auth::adopt(&app.api, &app.paths, &key, KeyKind::Device).await?;
     Ok(logged_in(KeyKind::Device, &key, &me))
 }
 

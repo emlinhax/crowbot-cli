@@ -31,7 +31,7 @@ pub enum Format {
 }
 
 pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<ExitCode> {
-    let catalog = models::load(app, false).await;
+    let catalog = models::load(&app.api, &app.paths, false).await;
     // crowbot silently swaps an unknown model id for its default, so refuse it here instead.
     let model = catalog.get(&app.settings.model).ok_or_else(|| {
         anyhow!(

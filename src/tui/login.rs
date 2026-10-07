@@ -73,7 +73,7 @@ pub fn run(app: &App, job: Job) -> BoxFuture<'_, Done> {
             }
             Job::Check(number) => (number, KeyKind::Account),
         };
-        match auth::adopt(app, &key, kind).await {
+        match auth::adopt(&app.api, &app.paths, &key, kind).await {
             Ok(me) => Done::LoggedIn(logged_in(kind, &key, &me)),
             Err(e) => Done::Failed(format!("{e:#}")),
         }

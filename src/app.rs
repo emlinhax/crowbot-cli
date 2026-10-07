@@ -9,6 +9,8 @@ use crate::{auth, limits};
 pub struct App {
     pub paths: Paths,
     pub settings: Settings,
+    /// The transport crowbot's API and the release listing share.
+    pub http: Http,
     /// crowbot's endpoints.
     pub api: Api,
     /// Everything else on the web (the webfetch tool).
@@ -24,7 +26,8 @@ impl App {
         // `login --status` (which explains it) included; it just leaves this run without a key.
         let key = auth::load(&paths).ok().flatten().map(|k| k.secret);
         Ok(Self {
-            api: Api::new(http, key),
+            api: Api::new(http.clone(), key),
+            http,
             fetch: Fetch::new(limits::get().http.fetch_timeout_secs.secs())?,
             paths,
             settings,
@@ -38,7 +41,8 @@ impl App {
         let settings = settings::load(&paths, &Overrides::default()).expect("defaults load");
         let http = Http::new(limits::get().http.connect_timeout_ms.ms()).expect("http client");
         Self {
-            api: Api::new(http, None),
+            api: Api::new(http.clone(), None),
+            http,
             fetch: Fetch::new(limits::get().http.fetch_timeout_secs.secs()).expect("fetch client"),
             paths,
             settings,

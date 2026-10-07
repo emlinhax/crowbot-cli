@@ -106,15 +106,14 @@ pub fn due(state: &State, now: Timestamp, enabled: bool) -> bool {
 }
 
 /// Checks and updates this binary now, recording the look and its result.
-pub async fn now(paths: &Paths) -> anyhow::Result<Outcome> {
+pub async fn now(http: &Http, paths: &Paths) -> anyhow::Result<Outcome> {
     let current = release::tag().ok_or_else(|| anyhow!(TEXT.development.clone()))?;
     let exe = io::exe::current()?;
     io::exe::sweep(&exe);
-    let http = Http::new(limits::get().http.connect_timeout_ms.ms())?;
     let latest = endpoints::url(endpoints::get("latest_release"), &[]);
     let mut state = load(paths);
     state.checked_at = Some(io::clock::now());
-    let result = run(&http, &latest, current, &exe).await;
+    let result = run(http, &latest, current, &exe).await;
     match &result {
         Ok(Outcome::Updated(change)) => {
             state.updated = Some(change.clone());

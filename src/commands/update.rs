@@ -21,7 +21,7 @@ impl Command for Update {
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             cx.no_args(&SPEC, args)?;
-            let outcome = update::now(&cx.app.paths).await?;
+            let outcome = update::now(&cx.app.http, &cx.app.paths).await?;
             // This run reported it; the next start need not say it again.
             update::take_news(&cx.app.paths);
             Ok(outcome.say().into())

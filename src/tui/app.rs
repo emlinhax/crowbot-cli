@@ -80,7 +80,7 @@ enum Done {
 }
 
 pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode> {
-    let catalog = models::load(app, false).await;
+    let catalog = models::load(&app.api, &app.paths, false).await;
     // crowbot silently swaps an unknown model id for its default, so refuse it here instead.
     let model = catalog.get(&app.settings.model).cloned().ok_or_else(|| {
         anyhow!(
@@ -118,9 +118,9 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
         clock::now(),
         app.settings.auto_update,
     ) {
-        let paths = app.paths.clone();
+        let (http, paths) = (app.http.clone(), app.paths.clone());
         tokio::spawn(async move {
-            let _ = update::now(&paths).await;
+            let _ = update::now(&http, &paths).await;
         });
     }
     let (spent, transcript) = tui.run(turns, transcript, rx).await;

@@ -68,7 +68,7 @@ impl Command for Models {
                     effects: vec![Effect::PickModel { refresh }],
                 });
             }
-            let catalog = models::load(cx.app, refresh).await;
+            let catalog = models::load(&cx.app.api, &cx.app.paths, refresh).await;
             Ok(render(&catalog, &cx.app.settings.model).into())
         })
     }

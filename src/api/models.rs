@@ -1,11 +1,11 @@
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-use crate::api::Call;
-use crate::app::App;
+use crate::api::{Api, Call};
 use crate::data;
 use crate::io;
 use crate::limits;
+use crate::paths::Paths;
 
 /// The list shipped in the binary, used when crowbot is unreachable and nothing is cached.
 /// Refreshed by saving a verbatim `GET /v1/models` reply over data/models.json.
@@ -85,8 +85,8 @@ struct Cached {
 }
 
 /// Fresh cache, else live, else stale cache, else the bundled snapshot: never fails.
-pub async fn load(app: &App, refresh: bool) -> Catalog {
-    let path = app.paths.models_cache();
+pub async fn load(api: &Api, paths: &Paths, refresh: bool) -> Catalog {
+    let path = paths.models_cache();
     let cached = read_cache(&path);
     let now = io::clock::now();
     let ttl = limits::get().models.cache_ttl_secs.signed_secs();
@@ -98,7 +98,7 @@ pub async fn load(app: &App, refresh: bool) -> Catalog {
         return from_cache(cache, None);
     }
 
-    let note = match fetch(app).await {
+    let note = match fetch(api).await {
         Ok(models) => {
             let cache = Cached {
                 fetched_at: now,
@@ -127,10 +127,9 @@ pub async fn load(app: &App, refresh: bool) -> Catalog {
     }
 }
 
-async fn fetch(app: &App) -> Result<Vec<Model>, String> {
+async fn fetch(api: &Api) -> Result<Vec<Model>, String> {
     let timeout = limits::get().models.fetch_timeout_ms.ms();
-    let resp = app
-        .api
+    let resp = api
         .call("models", Call::default(), timeout)
         .await
         .map_err(|e| e.to_string())?;
