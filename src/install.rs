@@ -174,10 +174,7 @@ pub fn offer(paths: &Paths) -> anyhow::Result<()> {
     }
     let place = Place::here()?;
     let state_file = paths.home.join("install.json");
-    let state: State = io::fs::read_string(&state_file)?
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default();
-    if place.exe.exists() || state.declined {
+    if place.exe.exists() || declined(&state_file) {
         return Ok(());
     }
     let exe = io::proc::current_exe()?;
@@ -185,13 +182,20 @@ pub fn offer(paths: &Paths) -> anyhow::Result<()> {
     match io::term::confirm(&fill(&DATA.text.offer, &[("dir", &shown)]), true)? {
         Some(true) => io::term::out(&format!("{}\n", install(&place, &exe)?)),
         Some(false) => {
-            let declined = serde_json::to_vec(&State { declined: true })?;
-            io::fs::write_atomic(&state_file, &declined, Access::Shared)?;
+            let _ = io::fs::write_json(&state_file, &State { declined: true }, Access::Shared);
         }
         // Ctrl+D is no answer: nothing installed, and the offer comes again next time.
         None => {}
     }
     Ok(())
+}
+
+/// A lost or unreadable state file only costs asking again, so it never stops a start.
+fn declined(state_file: &Path) -> bool {
+    io::fs::read_json::<State>(state_file)
+        .ok()
+        .flatten()
+        .is_some_and(|state| state.declined)
 }
 
 #[cfg(test)]
@@ -209,6 +213,17 @@ mod tests {
             assert!(shown.ends_with("/.local/bin"), "{shown}");
             assert!(place.exe.ends_with("crowbot"));
         }
+    }
+
+    #[test]
+    fn only_a_recorded_no_stops_the_offer() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("install.json");
+        assert!(!declined(&file));
+        io::fs::write_atomic(&file, b"{not json", Access::Shared).unwrap();
+        assert!(!declined(&file));
+        io::fs::write_json(&file, &State { declined: true }, Access::Shared).unwrap();
+        assert!(declined(&file));
     }
 
     #[cfg(unix)]
