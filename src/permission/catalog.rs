@@ -85,9 +85,9 @@ mod tests {
     #[test]
     fn plan_denies_whatever_changes_files_or_runs_commands() {
         let rules = crate::config::settings::default_rules();
-        let policy = mode::get("plan")
-            .unwrap()
-            .policy(&rules, "/home/u/.crowbot/plans/s1.md");
+        let plan = mode::get("plan").unwrap();
+        let locks = plan.locks("/home/u/.crowbot/plans/s1.md");
+        let policy = plan.policy(&rules, &locks);
         for p in ALL
             .iter()
             .filter(|p| matches!(p.effect, Effect::ChangesFiles | Effect::RunsCommands))

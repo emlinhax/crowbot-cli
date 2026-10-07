@@ -9,6 +9,7 @@ use crate::data;
 use crate::permission::gate::{Policy, Verdicts};
 use crate::permission::rule::{Action, Rule};
 use crate::text::choices;
+use crate::text::template;
 
 const SOURCES: &[&str] = &[
     data::raw!("modes/manual.toml"),
@@ -102,13 +103,23 @@ pub enum DoomLoop {
 }
 
 impl Mode {
-    /// The gate's view of this mode over `rules`, for the session whose plan is `plan_file`.
-    pub fn policy<'a>(&'a self, rules: &'a [Rule], plan_file: &'a str) -> Policy<'a> {
+    /// The locks with `{plan_file}` filled in for the session whose plan it is.
+    pub fn locks(&self, plan_file: &str) -> Vec<Rule> {
+        self.lock
+            .iter()
+            .map(|r| Rule {
+                pattern: template::fill(&r.pattern, &[("plan_file", plan_file)]),
+                ..r.clone()
+            })
+            .collect()
+    }
+
+    /// The gate's view of this mode over `rules`, with `locks` from [`Mode::locks`].
+    pub fn policy<'a>(&'a self, rules: &'a [Rule], locks: &'a [Rule]) -> Policy<'a> {
         Policy {
             rules,
-            lock: &self.lock,
+            lock: locks,
             verdicts: &self.verdicts,
-            plan_file,
         }
     }
 }
@@ -177,10 +188,10 @@ mod tests {
         }
     }
 
-    fn policy<'a>(mode: &'a str, rules: &'a [Rule]) -> Policy<'a> {
-        get(mode)
-            .unwrap()
-            .policy(rules, "/home/u/.crowbot/plans/s1.md")
+    fn decide(mode: &str, rules: &[Rule], asks: &[Ask]) -> Decision {
+        let mode = get(mode).unwrap();
+        let locks = mode.locks("/home/u/.crowbot/plans/s1.md");
+        mode.policy(rules, &locks).decide(asks)
     }
 
     #[test]
@@ -223,7 +234,7 @@ mod tests {
             ("plan", Ask::new("webfetch", "docs.rs"), Decision::Allow),
         ];
         for (mode, ask, expected) in cases {
-            let got = policy(mode, &rules).decide(std::slice::from_ref(&ask));
+            let got = decide(mode, &rules, std::slice::from_ref(&ask));
             assert_eq!(got, expected, "{mode} {ask:?}");
         }
     }
@@ -274,7 +285,7 @@ mod tests {
             ("lsof -i", false),
         ];
         for (command, allowed) in cases {
-            let got = policy("plan", &rules).decide(&[Ask::new("bash", command)]);
+            let got = decide("plan", &rules, &[Ask::new("bash", command)]);
             assert_eq!(got == Decision::Allow, allowed, "{command}: {got:?}");
         }
     }
@@ -288,11 +299,8 @@ mod tests {
             action: Action::Deny,
         });
         let ask = [Ask::new("bash", "rm -rf x")];
-        assert!(matches!(
-            policy("manual", &rules).decide(&ask),
-            Decision::Deny(_)
-        ));
-        assert_eq!(policy("auto", &rules).decide(&ask), Decision::Allow);
+        assert!(matches!(decide("manual", &rules, &ask), Decision::Deny(_)));
+        assert_eq!(decide("auto", &rules, &ask), Decision::Allow);
     }
 
     #[test]
@@ -305,13 +313,10 @@ mod tests {
         });
         let ask = Ask::new("bash", "cargo run");
         assert_eq!(
-            policy("manual", &rules).decide(std::slice::from_ref(&ask)),
+            decide("manual", &rules, std::slice::from_ref(&ask)),
             Decision::Allow
         );
-        assert!(matches!(
-            policy("plan", &rules).decide(&[ask]),
-            Decision::Deny(_)
-        ));
+        assert!(matches!(decide("plan", &rules, &[ask]), Decision::Deny(_)));
     }
 
     #[test]
@@ -323,12 +328,9 @@ mod tests {
             action: Action::Deny,
         });
         let ask = [Ask::new("bash", "git log -p")];
-        assert!(matches!(
-            policy("plan", &rules).decide(&ask),
-            Decision::Deny(_)
-        ));
+        assert!(matches!(decide("plan", &rules, &ask), Decision::Deny(_)));
         assert_eq!(
-            policy("plan", &rules).decide(&[Ask::new("bash", "git status")]),
+            decide("plan", &rules, &[Ask::new("bash", "git status")]),
             Decision::Allow
         );
     }
@@ -340,9 +342,6 @@ mod tests {
             Ask::new("bash", "git status"),
             Ask::new("bash_write", "echo x > f"),
         ];
-        assert!(matches!(
-            policy("plan", &rules).decide(&asks),
-            Decision::Deny(_)
-        ));
+        assert!(matches!(decide("plan", &rules, &asks), Decision::Deny(_)));
     }
 }

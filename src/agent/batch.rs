@@ -1,6 +1,7 @@
 //! One reply's tool calls: cleared one by one in the order the model made them (prompts stay
 //! in order), then run together, with results kept in call order.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures_util::future::join_all;
@@ -18,6 +19,7 @@ use crate::live::state::Shared;
 use crate::mode::DoomLoop;
 use crate::permission::catalog;
 use crate::permission::gate::{self, Ask, Decision};
+use crate::permission::rule::Rule;
 use crate::text::template::fill;
 use crate::tools::{Output, Refusal, Tool, ToolCx};
 
@@ -42,6 +44,9 @@ impl From<String> for Refused {
 /// A call cleared to run, or why it does not.
 type Slot = Result<(Arc<dyn Tool>, Value), Refused>;
 
+/// Each mode's locks, filled once a batch for the mode in force at each call.
+type Locks = HashMap<&'static str, Vec<Rule>>;
+
 pub async fn run<'a>(
     cx: &'a RunCtx<'a>,
     history: &[Message],
@@ -50,13 +55,14 @@ pub async fn run<'a>(
     cancel: &'a CancellationToken,
 ) -> Batch {
     let mut cleared = Vec::with_capacity(calls.len());
+    let mut locks = Locks::new();
     let mut stop = false;
     for (i, call) in calls.iter().enumerate() {
         let slot = if stop {
             Err(Refused::from(model_text::get().rejected.clone()))
         } else {
             let repeats = doom_loop::repeats(history, calls, i);
-            clear(cx, shared, cancel, repeats, call).await
+            clear(cx, shared, cancel, &mut locks, repeats, call).await
         };
         if let Err(refused) = &slot {
             stop |= refused.stop;
@@ -128,6 +134,7 @@ async fn clear<'a>(
     cx: &'a RunCtx<'a>,
     shared: &'a Shared,
     cancel: &'a CancellationToken,
+    locks: &mut Locks,
     repeats: usize,
     call: &'a ToolCall,
 ) -> Slot {
@@ -165,7 +172,10 @@ async fn clear<'a>(
         })?;
     asks.extend(check.asks);
 
-    let policy = mode.policy(&cx.app.settings.permission, &cx.plan_file);
+    let lock = locks
+        .entry(mode.id.as_str())
+        .or_insert_with(|| mode.locks(&cx.plan_file));
+    let policy = mode.policy(&cx.app.settings.permission, lock);
     let decision = match policy.decide(&asks) {
         Decision::Allow if check.confirm => Decision::Ask,
         decision => decision,

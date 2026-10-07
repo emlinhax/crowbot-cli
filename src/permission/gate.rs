@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 
 use crate::permission::rule::{self, Action, Rule};
-use crate::text::template;
 
 /// One thing a tool call needs cleared: a permission and the targets it applies to.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -41,22 +40,13 @@ pub struct Verdicts {
 pub struct Policy<'a> {
     /// Defaults, then user config, then project config. Permanent allowances live here.
     pub rules: &'a [Rule],
-    /// The mode's locks, applied after every rule; `{plan_file}` is filled in.
+    /// The mode's locks, applied after every rule.
     pub lock: &'a [Rule],
     pub verdicts: &'a Verdicts,
-    pub plan_file: &'a str,
 }
 
 impl Policy<'_> {
     pub fn decide(&self, asks: &[Ask]) -> Decision {
-        let locks: Vec<Rule> = self
-            .lock
-            .iter()
-            .map(|r| Rule {
-                pattern: template::fill(&r.pattern, &[("plan_file", self.plan_file)]),
-                ..r.clone()
-            })
-            .collect();
         let mut denied = None;
         let mut asking = false;
         for ask in asks {
@@ -64,7 +54,7 @@ impl Policy<'_> {
                 // A lock can tighten the rules but never lift one of their denies.
                 let action = match (
                     rule::evaluate(self.rules, &ask.permission, pattern),
-                    rule::last_match(&locks, &ask.permission, pattern),
+                    rule::last_match(self.lock, &ask.permission, pattern),
                 ) {
                     (Action::Deny, _) => Action::Deny,
                     (_, Some(lock)) => lock,
@@ -130,7 +120,6 @@ mod tests {
             rules: &rules,
             lock: &lock,
             verdicts: &STRICT,
-            plan_file: "",
         };
         assert_eq!(
             policy.decide(&[Ask::new("bash", "ls")]),
@@ -160,7 +149,6 @@ mod tests {
                 rules: &rules,
                 lock: &[],
                 verdicts,
-                plan_file: "",
             };
             assert_eq!(policy.decide(&[Ask::new("bash", "ls")]), ls);
             assert_eq!(policy.decide(&[Ask::new("bash", "rm x")]), rm);
@@ -168,17 +156,16 @@ mod tests {
     }
 
     #[test]
-    fn a_lock_names_the_plan_file_as_written_and_one_denied_target_denies_the_call() {
+    fn one_denied_target_denies_the_call() {
         let rules = [rule("*", "*", Action::Allow)];
         let lock = [
             rule("edit", "*", Action::Deny),
-            rule("edit", "{plan_file}", Action::Allow),
+            rule("edit", "/p/s1.md", Action::Allow),
         ];
         let policy = Policy {
             rules: &rules,
             lock: &lock,
             verdicts: &STRICT,
-            plan_file: "/p/s1.md",
         };
         assert_eq!(
             policy.decide(&[Ask::new("edit", "/p/s1.md")]),
