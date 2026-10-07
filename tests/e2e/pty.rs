@@ -19,7 +19,7 @@ const EXIT_WAIT: Duration = Duration::from_secs(10);
 const POLL: Duration = Duration::from_millis(50);
 /// Between typed keys: far above `tui.paste_gap_ms` (data/limits.toml), so typing never looks
 /// like a paste. CEILING: keys are timestamped when crowbot reads them, so a stall longer than
-/// two gaps can still bunch three into a paste (tui/paste.rs).
+/// two gaps can still bunch three into a paste (frontend/tui/paste.rs).
 const KEY_GAP: Duration = Duration::from_millis(30);
 
 struct Session {

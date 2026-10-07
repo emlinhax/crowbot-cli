@@ -8,11 +8,11 @@ use serde_json::Value;
 
 use crate::conversation::message::ToolResult;
 use crate::data;
+use crate::frontend::tui::boxed::capped;
 use crate::limits;
 use crate::text::diff;
 use crate::text::styled::{Line, Style};
 use crate::text::{template, units};
-use crate::tui::boxed::capped;
 
 static CARDS: LazyLock<BTreeMap<String, Spec>> = data::load!("tool_cards.toml");
 

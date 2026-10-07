@@ -1,11 +1,11 @@
 //! The first thing on screen: crowbot's raven beside who and where you are.
 
 use crate::data;
+use crate::frontend::tui::ui;
 use crate::limits;
 use crate::mode;
 use crate::text::styled::{Line, Style, width};
 use crate::text::template::fill;
-use crate::tui::ui;
 
 const RAVEN: &str = data::raw!("raven.txt");
 /// The same bird for consoles without a braille font.

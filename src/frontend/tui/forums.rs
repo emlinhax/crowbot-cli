@@ -9,19 +9,19 @@ use crate::app::App;
 use crate::commands::Scope;
 use crate::commands::forums::{self as said, added, logged_in, logged_out, removed};
 use crate::forums::{Forum, account, directory, store};
+use crate::frontend::tui::boxed::boxed;
+use crate::frontend::tui::card::{Card, Step};
+use crate::frontend::tui::choice::{Choice, Opt};
+use crate::frontend::tui::editor::Editor;
+use crate::frontend::tui::keymap::Action;
+use crate::frontend::tui::picker::{self, MARKER};
+use crate::frontend::tui::ui;
 use crate::io::term::KeyEvent;
 use crate::limits;
 use crate::live::prompt::Reply;
 use crate::text::styled::{Line, Style};
 use crate::text::table::{self, Align, GAP};
 use crate::text::template::fill;
-use crate::tui::boxed::boxed;
-use crate::tui::card::{Card, Step};
-use crate::tui::choice::{Choice, Opt};
-use crate::tui::editor::Editor;
-use crate::tui::keymap::Action;
-use crate::tui::picker::{self, MARKER};
-use crate::tui::ui;
 
 pub struct Forums {
     forums: Vec<Forum>,

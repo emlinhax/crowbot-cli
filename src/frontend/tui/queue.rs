@@ -1,7 +1,7 @@
 //! Messages typed while crowbot works, shown until they are delivered.
 
+use crate::frontend::tui::ui;
 use crate::text::styled::{Line, Style};
-use crate::tui::ui;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {

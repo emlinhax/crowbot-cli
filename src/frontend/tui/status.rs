@@ -5,12 +5,12 @@ use std::time::Instant;
 
 use unicode_segmentation::UnicodeSegmentation;
 
+use crate::frontend::tui::ui;
 use crate::limits;
 use crate::live::event::AgentEvent;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
 use crate::text::units;
-use crate::tui::ui;
 
 /// CEILING: the tokens of a reply still streaming are estimated at this many characters each;
 /// the exact count replaces it when the request ends. A tokenizer would make it exact.

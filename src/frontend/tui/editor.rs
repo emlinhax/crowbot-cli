@@ -2,9 +2,9 @@
 
 use unicode_segmentation::UnicodeSegmentation;
 
+use crate::frontend::tui::keymap::Action;
 use crate::io::term::{KeyCode, KeyEvent, KeyModifiers};
 use crate::text::styled::{Line, Style, width};
-use crate::tui::keymap::Action;
 
 #[derive(Default)]
 pub struct Editor {

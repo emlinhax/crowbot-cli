@@ -1,14 +1,14 @@
 //! `/models` inside a session: the catalog as an aligned list in a card in place of the editor.
 //! ↑↓ move, → or Enter picks the model for the rest of the session, Esc or ← closes.
 
+use crate::frontend::tui::boxed::boxed;
+use crate::frontend::tui::keymap::Action;
+use crate::frontend::tui::ui;
 use crate::limits;
 use crate::models::Catalog;
 use crate::models::table as models;
 use crate::text::styled::{Line, Style};
 use crate::text::table::{self, GAP};
-use crate::tui::boxed::boxed;
-use crate::tui::keymap::Action;
-use crate::tui::ui;
 
 /// The selection marker before each row: `› ` or two spaces.
 pub const MARKER: usize = 2;

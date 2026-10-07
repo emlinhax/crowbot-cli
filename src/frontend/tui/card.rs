@@ -2,12 +2,12 @@
 //! (permission, a finished plan) or the model's questions. One shape, so the session treats
 //! every card alike.
 
+use crate::frontend::tui::choice::Choice;
+use crate::frontend::tui::keymap::Action;
+use crate::frontend::tui::questions::Questions;
 use crate::io::term::KeyEvent;
 use crate::live::prompt::{Prompt, Reply};
 use crate::text::styled::Line;
-use crate::tui::choice::Choice;
-use crate::tui::keymap::Action;
-use crate::tui::questions::Questions;
 
 /// What a key did to a card.
 pub enum Step {

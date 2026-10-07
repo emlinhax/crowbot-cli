@@ -5,12 +5,12 @@
 
 use std::time::Instant;
 
+use crate::frontend::tui::feed::Feed;
+use crate::frontend::tui::ui;
+use crate::frontend::tui::view::View;
 use crate::limits;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
-use crate::tui::feed::Feed;
-use crate::tui::ui;
-use crate::tui::view::View;
 
 pub struct Frame {
     pub rows: Vec<Line>,
@@ -83,7 +83,7 @@ pub fn compose(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::feed::Block;
+    use crate::frontend::tui::feed::Block;
 
     fn feed(lines: usize) -> Feed {
         let mut feed = Feed::new();

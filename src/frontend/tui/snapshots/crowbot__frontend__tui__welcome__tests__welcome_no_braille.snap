@@ -1,5 +1,5 @@
 ---
-source: src/tui/welcome.rs
+source: src/frontend/tui/welcome.rs
 expression: "snapshot(&render(&info(false), 100))"
 ---
 [accent]                 . .[/]   

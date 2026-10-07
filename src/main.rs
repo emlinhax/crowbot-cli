@@ -23,7 +23,6 @@ mod settings;
 mod text;
 mod tools;
 mod trust;
-mod tui;
 mod update;
 
 #[tokio::main]

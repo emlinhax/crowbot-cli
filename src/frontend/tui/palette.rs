@@ -2,11 +2,11 @@
 //! so arguments can follow, Enter runs the pick, Esc hides it until the text changes.
 
 use crate::commands::{self, Scope, Spec};
+use crate::frontend::tui::boxed::boxed;
+use crate::frontend::tui::keymap::Action;
+use crate::frontend::tui::ui;
 use crate::limits;
 use crate::text::styled::{Line, Style, width};
-use crate::tui::boxed::boxed;
-use crate::tui::keymap::Action;
-use crate::tui::ui;
 
 #[derive(Default)]
 pub struct Palette {

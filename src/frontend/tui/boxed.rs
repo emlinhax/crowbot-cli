@@ -1,7 +1,7 @@
 //! The one rounded box every floating card is drawn in: prompt cards and the command popup.
 
+use crate::frontend::tui::ui;
 use crate::text::styled::{Line, Style};
-use crate::tui::ui;
 
 /// At most `max` of `lines`; a last line says how many were left out.
 pub fn capped(mut lines: Vec<Line>, max: usize) -> Vec<Line> {

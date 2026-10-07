@@ -5,9 +5,9 @@ use futures_util::future::BoxFuture;
 
 use crate::app::App;
 use crate::commands::{self, Ctx, Missing, Outcome, Scope, Session};
+use crate::frontend::tui::ui;
 use crate::models::{self, Catalog};
 use crate::text::template;
-use crate::tui::ui;
 
 /// What finished in the background.
 pub enum Work {

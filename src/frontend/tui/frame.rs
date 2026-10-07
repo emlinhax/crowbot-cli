@@ -3,10 +3,10 @@
 //! data/ui.toml). When the terminal is narrow the dashes shrink before any item is cut.
 
 use crate::effort;
+use crate::frontend::tui::ui;
 use crate::mode::Mode;
 use crate::text::styled::{Line, Style};
 use crate::text::units;
-use crate::tui::ui;
 
 const RULE: &str = "─";
 /// Dashes kept at each end of the bottom rule so it still reads as a rule.

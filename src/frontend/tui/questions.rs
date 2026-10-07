@@ -4,16 +4,16 @@
 
 use std::collections::BTreeSet;
 
+use crate::frontend::tui::boxed::boxed;
+use crate::frontend::tui::card::{Card, Step};
+use crate::frontend::tui::editor::Editor;
+use crate::frontend::tui::keymap::Action;
+use crate::frontend::tui::ui;
 use crate::io::term::{KeyCode, KeyEvent};
 use crate::limits;
 use crate::live::prompt::{Answer, Question, Reply};
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
-use crate::tui::boxed::boxed;
-use crate::tui::card::{Card, Step};
-use crate::tui::editor::Editor;
-use crate::tui::keymap::Action;
-use crate::tui::ui;
 
 pub struct Questions {
     id: u64,
