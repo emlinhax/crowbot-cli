@@ -64,9 +64,10 @@ pub struct Forum {
     pub base_url: String,
     #[serde(default)]
     pub mobiquo_dir: String,
-    #[serde(default = "php")]
+    /// The plugin script's extension; empty leaves the backend's own.
+    #[serde(default)]
     pub ext: String,
-    #[serde(default = "mobiquo_kind")]
+    #[serde(default = "default_kind")]
     pub kind: String,
     #[serde(default)]
     pub user_agent: String,
@@ -88,12 +89,8 @@ impl Forum {
     }
 }
 
-fn php() -> String {
-    "php".to_owned()
-}
-
-fn mobiquo_kind() -> String {
-    "mobiquo".to_owned()
+fn default_kind() -> String {
+    mobiquo::KIND.to_owned()
 }
 
 /// A section of a forum (a board), flattened from the tree with its depth.

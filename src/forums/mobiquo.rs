@@ -9,18 +9,23 @@ use crate::forums::xmlrpc::{self, Arg, Value};
 use crate::forums::{Forum, Login, Page, Post, Posted, Section, Thread, Topic, TopicList};
 use crate::io::fetch::{self, Fetch};
 
+/// This backend's name in a forum's `kind`.
+pub const KIND: &str = "mobiquo";
+/// Where the plugin lives and its script's extension when a forum does not say otherwise.
+const DIR: &str = "mobiquo";
+const EXT: &str = "php";
+
 fn endpoint(forum: &Forum) -> String {
     let base = forum.base_url.trim_end_matches('/');
-    let ext = if forum.ext.is_empty() {
-        "php"
-    } else {
-        &forum.ext
+    let or = |value: &'static str, given: &str| -> String {
+        if given.is_empty() {
+            value.to_owned()
+        } else {
+            given.to_owned()
+        }
     };
-    if forum.mobiquo_dir.is_empty() {
-        format!("{base}/mobiquo/mobiquo.{ext}")
-    } else {
-        format!("{base}/{}/mobiquo.{ext}", forum.mobiquo_dir)
-    }
+    let (dir, ext) = (or(DIR, &forum.mobiquo_dir), or(EXT, &forum.ext));
+    format!("{base}/{dir}/mobiquo.{ext}")
 }
 
 /// The `Cookie` header to replay a session: the `name=value` of each stored `Set-Cookie`.

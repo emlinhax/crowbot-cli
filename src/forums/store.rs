@@ -8,7 +8,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::{Deserialize, Serialize};
 
 use crate::config::paths::Paths;
-use crate::forums::{self, Forum, Login};
+use crate::forums::{self, Forum, Login, mobiquo};
 use crate::io::{self, fs::Access};
 
 #[derive(Serialize, Deserialize)]
@@ -99,7 +99,7 @@ pub fn get(paths: &Paths, key: &str) -> Result<Option<Forum>> {
 
 /// Add a forum (or refresh an existing one's endpoint), keeping any login it already had.
 pub fn add(paths: &Paths, forum: Forum) -> Result<()> {
-    if forum.kind != "mobiquo" {
+    if forum.kind != mobiquo::KIND {
         bail!(
             "crowbot can only talk to Tapatalk (mobiquo) forums for now, not {:?}",
             forum.kind

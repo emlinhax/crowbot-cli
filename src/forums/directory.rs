@@ -5,7 +5,7 @@
 use anyhow::{Context, Result, bail};
 use serde_json::Value as Json;
 
-use crate::forums::{self, Directory, Forum};
+use crate::forums::{self, Directory, Forum, mobiquo};
 use crate::io::fetch::{self, Fetch};
 
 /// Search the directory; `limit` caps the results.
@@ -95,10 +95,9 @@ fn from_json(entry: &Json) -> Option<Forum> {
         ext: entry
             .get("ext")
             .and_then(Json::as_str)
-            .filter(|s| !s.is_empty())
-            .unwrap_or("php")
+            .unwrap_or("")
             .to_owned(),
-        kind: "mobiquo".to_owned(),
+        kind: mobiquo::KIND.to_owned(),
         user_agent: entry
             .get("useragent")
             .and_then(Json::as_str)
