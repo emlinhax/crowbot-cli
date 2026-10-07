@@ -8,6 +8,7 @@ use serde::Deserialize;
 use crate::api::models::Model;
 use crate::data;
 use crate::models::{Catalog, Source};
+use crate::text::styled::{Line, Style};
 use crate::text::table::Align;
 use crate::text::template::fill;
 use crate::text::units;
@@ -41,29 +42,45 @@ struct Text {
     unreachable: String,
 }
 
-pub fn titles() -> Vec<String> {
-    DATA.column.iter().map(|c| c.title.clone()).collect()
+/// A header, then one row per model; column 0 marks the model in use.
+pub fn rows(catalog: &Catalog, current: &str) -> Vec<Vec<Line>> {
+    let mut header = vec![Line::default()];
+    header.extend(
+        DATA.column
+            .iter()
+            .map(|c| Line::styled(&c.title, Style::fg("muted").bold())),
+    );
+    let mut rows = vec![header];
+    for m in &catalog.models {
+        let mut row = vec![if m.id == current {
+            Line::styled(&DATA.text.current, Style::fg("accent"))
+        } else {
+            Line::default()
+        }];
+        row.extend(cells(m).into_iter().map(Line::plain));
+        rows.push(row);
+    }
+    rows
 }
 
+/// Each column's alignment, the mark column first.
 pub fn aligns() -> Vec<Align> {
-    DATA.column.iter().map(|c| c.align).collect()
+    let mut aligns = vec![Align::Left];
+    aligns.extend(DATA.column.iter().map(|c| c.align));
+    aligns
 }
 
-/// Column positions to leave out when narrow, first to go first.
+/// Columns to leave out when narrow, first to go first, counting the mark column.
 pub fn drop_order() -> Vec<usize> {
     DATA.drop
         .iter()
         .filter_map(|id| DATA.column.iter().position(|c| c.id == *id))
+        .map(|i| i + 1)
         .collect()
 }
 
-/// The mark beside the model in use.
-pub fn current_mark() -> &'static str {
-    &DATA.text.current
-}
-
 /// One model's cells, in column order.
-pub fn cells(m: &Model) -> Vec<String> {
+fn cells(m: &Model) -> Vec<String> {
     DATA.column.iter().map(|c| cell(m, &c.id)).collect()
 }
 

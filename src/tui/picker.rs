@@ -5,13 +5,11 @@ use crate::limits;
 use crate::models::Catalog;
 use crate::models::table as models;
 use crate::text::styled::{Line, Style};
-use crate::text::table::{self, Align};
+use crate::text::table::{self, GAP};
 use crate::tui::boxed::boxed;
 use crate::tui::keymap::Action;
 use crate::tui::ui;
 
-/// Cells between columns.
-pub const GAP: usize = 2;
 /// The selection marker before each row: `› ` or two spaces.
 pub const MARKER: usize = 2;
 
@@ -32,23 +30,7 @@ pub enum Step {
 
 impl Picker {
     pub fn new(catalog: &Catalog, current: &str) -> Self {
-        let mark = models::current_mark();
-        let mut header = vec![Line::default()];
-        header.extend(
-            models::titles()
-                .into_iter()
-                .map(|t| Line::styled(t, Style::fg("muted").bold())),
-        );
-        let mut rows = vec![header];
-        for m in &catalog.models {
-            let mut row = vec![if m.id == current {
-                Line::styled(mark, Style::fg("accent"))
-            } else {
-                Line::default()
-            }];
-            row.extend(models::cells(m).into_iter().map(Line::plain));
-            rows.push(row);
-        }
+        let rows = models::rows(catalog, current);
         Self {
             ids: catalog.models.iter().map(|m| m.id.clone()).collect(),
             rows,
@@ -80,13 +62,16 @@ impl Picker {
 
     pub fn render(&self, width: usize) -> Vec<Line> {
         let words = &ui::get().picker;
-        let mut aligns = vec![Align::Left];
-        aligns.extend(models::aligns());
-        // Column 0 here is the current-model mark, ahead of the catalog's columns.
-        let drop: Vec<usize> = models::drop_order().into_iter().map(|i| i + 1).collect();
         // The box's borders take four cells.
         let inner = width.saturating_sub(4 + MARKER);
-        let mut lines = table::plain(&self.rows, &aligns, &drop, inner, GAP).into_iter();
+        let mut lines = table::plain(
+            &self.rows,
+            &models::aligns(),
+            &models::drop_order(),
+            inner,
+            GAP,
+        )
+        .into_iter();
         let mut body = Vec::new();
         if let Some(header) = lines.next() {
             let mut line = Line::plain(" ".repeat(MARKER));

@@ -6,9 +6,10 @@ use serde::Deserialize;
 
 use super::{Command, Ctx, Effect, Outcome, Scope, Spec};
 use crate::data;
-use crate::models::table::{aligns, cells, source_note, titles};
+use crate::io::term;
+use crate::models::table::{aligns, drop_order, rows, source_note};
 use crate::models::{self, Catalog};
-use crate::text::table::Align;
+use crate::text::table::{self, GAP};
 use crate::text::template::fill;
 
 static SPEC: LazyLock<Spec> = super::spec!("models");
@@ -48,34 +49,33 @@ impl Command for Models {
                 });
             }
             let catalog = models::load(&cx.app.api, &cx.app.paths, refresh).await;
-            Ok(render(&catalog, &cx.app.settings.model).into())
+            // Piped, the table keeps every column; a terminal gets what fits it.
+            let width = if term::stdout_is_terminal() {
+                term::size().0
+            } else {
+                usize::MAX
+            };
+            Ok(render(&catalog, &cx.app.settings.model, width).into())
         })
     }
 }
 
-fn render(catalog: &Catalog, default_model: &str) -> String {
-    let text = &*TEXT;
-    let row = |cells: Vec<String>| format!("| {} |\n", cells.join(" | "));
-    let mut out = row(titles());
-    let rule = aligns()
-        .iter()
-        .map(|a| match a {
-            Align::Left => "---",
-            Align::Right => "--:",
-        })
-        .collect::<Vec<_>>()
-        .join("|");
-    let _ = writeln!(out, "|{rule}|");
-    for m in &catalog.models {
-        let mut cells = cells(m);
-        if m.id == default_model {
-            cells[0] = format!("{} {}", cells[0], models::table::current_mark());
-        }
-        out.push_str(&row(cells));
+/// The table laid out in `width` cells, then where the list came from.
+fn render(catalog: &Catalog, default_model: &str, width: usize) -> String {
+    let rows = table::plain(
+        &rows(catalog, default_model),
+        &aligns(),
+        &drop_order(),
+        width,
+        GAP,
+    );
+    let mut out = String::new();
+    for row in rows {
+        let _ = writeln!(out, "{}", row.text().trim_end());
     }
-    let _ = writeln!(out, "\n{} {}", text.footnote, source_note(catalog));
+    let _ = writeln!(out, "\n{} {}", TEXT.footnote, source_note(catalog));
     if !catalog.models.iter().any(|m| m.id == default_model) {
-        let _ = writeln!(out, "{}", fill(&text.missing, &[("model", default_model)]));
+        let _ = writeln!(out, "{}", fill(&TEXT.missing, &[("model", default_model)]));
     }
     out
 }
@@ -86,20 +86,22 @@ mod tests {
     use crate::models::Source;
 
     #[test]
-    fn the_table_lines_up() {
+    fn the_table_lines_up_with_the_default_marked() {
         let catalog = Catalog {
             models: models::snapshot(),
             source: Source::Snapshot,
             fetched_at: None,
             note: None,
         };
-        let md = render(&catalog, "crow-2");
-        let lines = crate::text::markdown::render(&md, 200);
-        let widths: Vec<usize> = lines
-            .iter()
-            .filter(|l| l.text().starts_with('│'))
-            .map(|l| l.width())
-            .collect();
-        assert!(widths.windows(2).all(|w| w[0] == w[1]), "{widths:?}");
+        let shown = render(&catalog, "crow-2", usize::MAX);
+        let lines: Vec<&str> = shown.lines().take_while(|l| !l.is_empty()).collect();
+        assert_eq!(lines.len(), catalog.models.len() + 1, "{shown}");
+        let column = |line: &str, word: &str| line.find(word).map(|i| line[..i].chars().count());
+        let model = column(lines[0], "model");
+        for (line, m) in lines[1..].iter().zip(&catalog.models) {
+            assert_eq!(column(line, &m.id), model, "{line}");
+        }
+        assert!(lines.iter().any(|l| l.starts_with("●")), "{shown}");
+        assert!(!shown.contains('|'), "{shown}");
     }
 }

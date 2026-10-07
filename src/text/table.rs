@@ -140,6 +140,9 @@ pub fn grid(rows: &[Vec<Line>], aligns: &[Align], width: usize) -> Vec<Line> {
     lines.into_iter().map(|l| l.truncate(width)).collect()
 }
 
+/// Cells between the columns of a borderless table.
+pub const GAP: usize = 2;
+
 /// Borderless rows, cells `gap` apart, fitted to `width` by leaving out columns in `drop`
 /// order, then cutting.
 pub fn plain(

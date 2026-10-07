@@ -13,14 +13,14 @@ use crate::forums::{Forum, account, directory, store};
 use crate::io::term::KeyEvent;
 use crate::limits;
 use crate::text::styled::{Line, Style};
-use crate::text::table::{self, Align};
+use crate::text::table::{self, Align, GAP};
 use crate::text::template::fill;
 use crate::tui::boxed::boxed;
 use crate::tui::card::{Card, Step};
 use crate::tui::choice::{Choice, Opt};
 use crate::tui::editor::Editor;
 use crate::tui::keymap::Action;
-use crate::tui::picker::{self, GAP, MARKER};
+use crate::tui::picker::{self, MARKER};
 use crate::tui::ui;
 
 pub struct Forums {
