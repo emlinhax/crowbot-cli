@@ -93,7 +93,7 @@ pub async fn load(app: &App, refresh: bool) -> Catalog {
 
     if !refresh
         && let Some(cache) = &cached
-        && is_fresh(cache.fetched_at, now, ttl)
+        && io::clock::fresh(cache.fetched_at, now, ttl)
     {
         return from_cache(cache, None);
     }
@@ -155,11 +155,6 @@ fn read_cache(path: &std::path::Path) -> Option<Cached> {
         .filter(|cache| usable(&cache.data))
 }
 
-fn is_fresh(fetched_at: Timestamp, now: Timestamp, ttl: SignedDuration) -> bool {
-    let age = now.duration_since(fetched_at);
-    age >= SignedDuration::ZERO && age < ttl
-}
-
 fn from_cache(cache: &Cached, note: Option<String>) -> Catalog {
     Catalog {
         models: cache.data.clone(),
@@ -205,14 +200,5 @@ mod tests {
         assert!(read_cache(&path).is_none());
         write(snapshot());
         assert!(read_cache(&path).is_some());
-    }
-
-    #[test]
-    fn freshness_respects_ttl_and_clock_skew() {
-        let t: Timestamp = "2026-01-01T00:00:00Z".parse().unwrap();
-        let ttl = SignedDuration::from_secs(60);
-        assert!(is_fresh(t, t + SignedDuration::from_secs(59), ttl));
-        assert!(!is_fresh(t, t + SignedDuration::from_secs(60), ttl));
-        assert!(!is_fresh(t, t - SignedDuration::from_secs(1), ttl));
     }
 }

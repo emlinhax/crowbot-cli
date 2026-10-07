@@ -110,7 +110,7 @@ pub fn due(state: &State, now: Timestamp, enabled: bool) -> bool {
         && release::tag().is_some()
         && state
             .checked_at
-            .is_none_or(|at| now.duration_since(at) >= interval)
+            .is_none_or(|at| !io::clock::fresh(at, now, interval))
 }
 
 /// Checks and updates this binary now, recording the look and its result.
