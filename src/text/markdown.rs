@@ -36,7 +36,6 @@ struct Renderer {
     containers: Vec<Container>,
     /// A block ended; the next one starts after a blank line.
     gap: bool,
-    heading: Option<HeadingLevel>,
     code: Option<(String, String)>,
     link: Option<String>,
     table: Option<Table>,
@@ -132,7 +131,6 @@ impl Renderer {
             Tag::Paragraph => self.block_start(),
             Tag::Heading { level, .. } => {
                 self.block_start();
-                self.heading = Some(level);
                 let style = match level {
                     HeadingLevel::H1 | HeadingLevel::H2 => Style::fg("heading").bold(),
                     _ => Style::default().bold(),
@@ -228,7 +226,6 @@ impl Renderer {
             TagEnd::Heading(_) => {
                 self.flush();
                 self.styles.pop();
-                self.heading = None;
                 self.gap = true;
             }
             TagEnd::BlockQuote(_) => {
@@ -289,10 +286,14 @@ impl Renderer {
             return;
         }
         let inline = std::mem::take(&mut self.inline);
-        let (first, rest) = self.prefixes(true);
-        let avail = self.width.saturating_sub(first.width()).max(1);
+        let avail = self.width.saturating_sub(self.indent()).max(1);
         let wrapped = inline.wrap(avail, &Line::default());
-        self.out.extend(hang(wrapped, &first, &rest));
+        self.emit(wrapped);
+    }
+
+    /// Cells the current containers' prefixes take.
+    fn indent(&mut self) -> usize {
+        self.prefixes(false).0.width()
     }
 
     fn emit(&mut self, lines: Vec<Line>) {
@@ -331,8 +332,10 @@ impl Renderer {
         let fence = Style::fg("muted");
         let g = glyphs();
         let mut lines = vec![Line::styled(format!("{}{lang}", g.fence), fence.clone())];
-        let (first, _) = self.prefixes(false);
-        let avail = self.width.saturating_sub(first.width() + 2).max(1);
+        let avail = self
+            .width
+            .saturating_sub(self.indent() + width(&g.code_indent))
+            .max(1);
         for line in highlight::highlight(code.trim_end_matches('\n'), lang) {
             for part in line.wrap(avail, &Line::default()) {
                 let mut indented = Line::plain(&g.code_indent);
@@ -345,8 +348,7 @@ impl Renderer {
     }
 
     fn table_lines(&mut self, table: Table) {
-        let (first, _) = self.prefixes(false);
-        let room = self.width.saturating_sub(first.width());
+        let room = self.width.saturating_sub(self.indent());
         self.emit(table::grid(&table.rows, &table.aligns, room));
     }
 }

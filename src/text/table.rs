@@ -16,7 +16,7 @@ pub enum Align {
 
 /// Column widths for `rows` in `width` cells, `overhead` of which go to borders and gaps.
 /// CEILING: cells are cut, never wrapped; wrapping would need rows of several lines.
-pub fn widths(rows: &[Vec<Line>], width: usize, overhead: usize) -> Vec<usize> {
+fn widths(rows: &[Vec<Line>], width: usize, overhead: usize) -> Vec<usize> {
     let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
     let mut widths = vec![0; columns];
     for row in rows {
@@ -39,7 +39,7 @@ pub fn widths(rows: &[Vec<Line>], width: usize, overhead: usize) -> Vec<usize> {
 
 /// The columns to show in `width`: all of them while they fit uncut, else as few left out as
 /// needed, in `drop` order. What is kept may still be cut to fit.
-pub fn keep(rows: &[Vec<Line>], drop: &[usize], width: usize, gap: usize) -> Vec<usize> {
+fn keep(rows: &[Vec<Line>], drop: &[usize], width: usize, gap: usize) -> Vec<usize> {
     let natural = widths(rows, usize::MAX, 0);
     let fits = |kept: &[usize]| {
         kept.iter().map(|&i| natural[i]).sum::<usize>() + gap * kept.len().saturating_sub(1)
@@ -56,16 +56,12 @@ pub fn keep(rows: &[Vec<Line>], drop: &[usize], width: usize, gap: usize) -> Vec
 }
 
 /// `cell` cut or padded to exactly `width` cells.
-pub fn fit(cell: &Line, width: usize, align: Align) -> Line {
+fn fit(cell: &Line, width: usize, align: Align) -> Line {
     let cell = cell.truncate(width);
-    let pad = " ".repeat(width.saturating_sub(cell.width()));
     match align {
-        Align::Left => {
-            let mut out = cell;
-            out.push(pad, Style::default());
-            out
-        }
+        Align::Left => cell.padded(width, &Style::default()),
         Align::Right => {
+            let pad = " ".repeat(width.saturating_sub(cell.width()));
             let mut out = Line::plain(pad);
             out.extend(cell);
             out

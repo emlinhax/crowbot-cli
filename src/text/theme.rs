@@ -121,7 +121,7 @@ mod tests {
         let theme = get();
         assert!(theme.has("accent"));
         assert_eq!(theme.color("accent"), Some(Rgb(0x00, 0xDC, 0x82)));
-        assert_eq!(theme.color("text"), None);
+        assert_eq!(theme.color("strong"), None);
         for rule in &theme.syntax {
             assert!(
                 theme.has(&rule.role),

@@ -50,9 +50,7 @@ pub fn blank_lead(text: &str) -> usize {
 
 /// Hides a closing fence that has only partly arrived, so a code block does not flicker shut.
 pub fn trim_partial_fence(tail: &str) -> &str {
-    let Some(start) = tail.rfind('\n').map(|i| i + 1).or(Some(0)) else {
-        return tail;
-    };
+    let start = tail.rfind('\n').map_or(0, |i| i + 1);
     let last = tail[start..].trim_start();
     if !last.is_empty() && last.chars().all(|c| c == '`' || c == '~') {
         &tail[..start]
