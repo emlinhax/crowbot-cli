@@ -118,12 +118,30 @@ pub fn trust(paths: &Paths) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// What becomes of a project config that asked for more than an untrusted folder gets. With
+/// no one to ask, a note on stderr; else the user sees what it would change and is asked, and
+/// a yes is remembered. `true` when the folder is now trusted.
+pub fn settle(paths: &Paths, untrusted: &Untrusted, can_ask: bool) -> anyhow::Result<bool> {
+    if !can_ask {
+        io::term::err(&format!("crowbot: {}\n", ignored(untrusted)));
+        return Ok(false);
+    }
+    io::term::out(&warning(untrusted));
+    let yes = io::term::confirm(&DATA.question, false)?.unwrap_or(false);
+    if yes {
+        trust(paths)?;
+    } else {
+        io::term::out(&format!("{}\n", DATA.declined));
+    }
+    Ok(yes)
+}
+
 /// Shown before asking: what the project would change, and why that is dangerous.
-pub fn warning(file: &Path, keys: &[String]) -> String {
-    let file = file.display().to_string();
+fn warning(untrusted: &Untrusted) -> String {
+    let file = untrusted.file.display().to_string();
     let mut text = template::fill(&DATA.warning, &[("file", &file)]);
     text.push('\n');
-    for key in keys {
+    for key in &untrusted.keys {
         text.push_str(&format!("  {key}\n"));
     }
     text.push_str(&DATA.danger);
@@ -131,20 +149,12 @@ pub fn warning(file: &Path, keys: &[String]) -> String {
     text
 }
 
-pub fn question() -> &'static str {
-    &DATA.question
-}
-
-pub fn declined() -> &'static str {
-    &DATA.declined
-}
-
 /// For a run that cannot ask.
-pub fn ignored(file: &Path, keys: &[String]) -> String {
-    let file = file.display().to_string();
+fn ignored(untrusted: &Untrusted) -> String {
+    let file = untrusted.file.display().to_string();
     template::fill(
         &DATA.ignored,
-        &[("keys", &keys.join(", ")), ("file", &file)],
+        &[("keys", &untrusted.keys.join(", ")), ("file", &file)],
     )
 }
 

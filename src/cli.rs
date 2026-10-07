@@ -6,9 +6,8 @@ use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use crate::app::App;
 use crate::commands::{self, Ctx, Missing, Scope};
-use crate::config::settings::Overrides;
+use crate::config::settings::{self, Overrides};
 use crate::config::trust;
-use crate::config::trust::Untrusted;
 use crate::frontend::print::{self, Format};
 use crate::frontend::tui;
 use crate::io::term;
@@ -130,16 +129,10 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
     if session {
         install::offer(&app.paths)?;
     }
-    if let Some(untrusted) = app.settings.untrusted.take() {
-        if !session {
-            term::err(&format!(
-                "crowbot: {}\n",
-                trust::ignored(&untrusted.file, &untrusted.keys)
-            ));
-        } else if confirm_trust(&untrusted)? {
-            trust::trust(&app.paths)?;
-            app = App::load(&flags)?;
-        }
+    if let Some(untrusted) = app.settings.untrusted.take()
+        && trust::settle(&app.paths, &untrusted, session)?
+    {
+        app.settings = settings::load(&app.paths, &flags)?;
     }
     if let Some(command) = command {
         let cx = Ctx {
@@ -177,16 +170,6 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
     }
     let format = if cli.json { Format::Json } else { Format::Text };
     print::run(&app, prompt, format).await
-}
-
-/// Shows what the project's config would loosen and asks whether to trust the folder.
-fn confirm_trust(untrusted: &Untrusted) -> anyhow::Result<bool> {
-    term::out(&trust::warning(&untrusted.file, &untrusted.keys));
-    let yes = term::confirm(trust::question(), false)?.unwrap_or(false);
-    if !yes {
-        term::out(&format!("{}\n", trust::declined()));
-    }
-    Ok(yes)
 }
 
 /// One of crowbot's own flags after the words, where it would silently become prompt text (or
