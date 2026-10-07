@@ -15,7 +15,7 @@ use crate::agent::prompt::{self, Prompt, Reply};
 use crate::agent::run::RunCtx;
 use crate::agent::state::Shared;
 use crate::limits;
-use crate::mode::{DoomLoop, Mode};
+use crate::mode::DoomLoop;
 use crate::permission::gate::{self, Ask, Decision, Policy};
 use crate::text::template::fill;
 use crate::tools::{Output, Refusal, Tool, ToolCx, permissions};
@@ -45,8 +45,6 @@ pub async fn run<'a>(
     shared: &'a Shared,
     cancel: &'a CancellationToken,
 ) -> Batch {
-    let mode = shared.mode();
-
     let mut cleared = Vec::with_capacity(calls.len());
     let mut stop = false;
     for (i, call) in calls.iter().enumerate() {
@@ -54,7 +52,7 @@ pub async fn run<'a>(
             Err(Refused::from(model_text::get().rejected.clone()))
         } else {
             let repeats = doom_loop::repeats(history, calls, i);
-            clear(cx, shared, cancel, mode, repeats, call).await
+            clear(cx, shared, cancel, repeats, call).await
         };
         if let Err(refused) = &slot {
             stop |= refused.stop;
@@ -92,14 +90,15 @@ pub async fn run<'a>(
 
 /// Everything a call must pass before it runs, in order: not cancelled, a known tool, valid
 /// JSON, not a loop, the tool's own check, then the permission policy (asking if it says so).
+/// The mode is read per call: a switch at one call's prompt governs the calls after it.
 async fn clear<'a>(
     cx: &'a RunCtx<'a>,
     shared: &'a Shared,
     cancel: &'a CancellationToken,
-    mode: &Mode,
     repeats: usize,
     call: &'a ToolCall,
 ) -> Result<(Arc<dyn Tool>, Value), Refused> {
+    let mode = shared.mode();
     let text = model_text::get();
     if cancel.is_cancelled() {
         return Err(text.cancelled.clone().into());

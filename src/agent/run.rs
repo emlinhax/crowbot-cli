@@ -524,17 +524,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn switching_to_auto_approves_a_waiting_prompt() {
+    async fn switching_to_auto_approves_a_waiting_prompt_and_the_calls_after_it() {
         let h = Harness::new(vec![
             reply(
                 "",
-                &[("c1", "bash", json!({"command": "echo hi"}))],
+                &[
+                    ("c1", "bash", json!({"command": "echo hi"})),
+                    ("c2", "bash", json!({"command": "echo there"})),
+                ],
                 "tool_calls",
             ),
             text("done"),
         ])
         .await;
-        let (outcome, transcript, _) = h
+        let (outcome, transcript, events) = h
             .run(&shared("manual"), |event, shared| {
                 if matches!(event, AgentEvent::Prompt { .. }) {
                     shared.set_mode(mode::get("auto").unwrap());
@@ -542,11 +545,14 @@ mod tests {
             })
             .await;
         assert_eq!(outcome, Outcome::Done);
-        let ran = transcript
-            .messages
-            .iter()
-            .any(|m| matches!(m, Message::Tool(r) if r.content.contains("hi")));
-        assert!(ran);
+        assert_eq!(events.iter().filter(|e| *e == "prompt").count(), 1);
+        for said in ["hi", "there"] {
+            let ran = transcript
+                .messages
+                .iter()
+                .any(|m| matches!(m, Message::Tool(r) if r.content.contains(said)));
+            assert!(ran, "{said}");
+        }
     }
 
     #[tokio::test]
