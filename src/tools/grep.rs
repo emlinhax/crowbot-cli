@@ -5,8 +5,8 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
+use crate::permission::catalog;
 use std::path::Path;
 
 use crate::io::search::{FileHits, Report};
@@ -52,7 +52,7 @@ impl Tool for Grep {
         let args: Args = parse(args)?;
         let root = target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or("."))
             .map_err(Refusal::Refused)?;
-        Ok(Check::new(target::asks(permissions::SEARCH.name, &root)))
+        Ok(Check::new(target::asks(catalog::SEARCH.name, &root)))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {

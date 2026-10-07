@@ -8,11 +8,11 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::many::Many;
-use super::permissions;
 use super::target::{self, Target};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::io::{self, fs::Kind};
 use crate::limits;
+use crate::permission::catalog;
 
 static SPEC: LazyLock<Spec> = super::spec!("fs");
 
@@ -69,12 +69,12 @@ impl Tool for Fs {
         for step in &steps {
             // A copy only reads its source, so copying a secret asks as reading one does.
             let source = match args.action {
-                Action::Copy => permissions::READ.name,
-                _ => permissions::EDIT.name,
+                Action::Copy => catalog::READ.name,
+                _ => catalog::EDIT.name,
             };
             asks.extend(target::asks(source, &step.from));
             if let Some(to) = &step.to {
-                asks.extend(target::asks(permissions::EDIT.name, to));
+                asks.extend(target::asks(catalog::EDIT.name, to));
             }
             preview.push_str(&format!("{} {}\n", args.action.verbs().0, what(step)));
         }

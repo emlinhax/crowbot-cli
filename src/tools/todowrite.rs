@@ -4,8 +4,8 @@ use futures_util::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use crate::permission::catalog;
 use crate::permission::gate::Ask;
 
 static SPEC: LazyLock<Spec> = super::spec!("todowrite");
@@ -39,7 +39,7 @@ impl Tool for TodoWrite {
 
     fn check(&self, args: &Value, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let _: Args = parse(args)?;
-        Ok(Check::new(vec![Ask::new(permissions::TODO.name, "*")]))
+        Ok(Check::new(vec![Ask::new(catalog::TODO.name, "*")]))
     }
 
     fn run<'a>(&'a self, args: Value, _cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {

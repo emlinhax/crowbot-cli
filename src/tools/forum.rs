@@ -15,9 +15,9 @@ use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::data;
 use crate::forums::{Forum, Section, Thread, TopicList, mobiquo, store};
 use crate::limits;
+use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
-use crate::tools::permissions;
 
 static TEXT: LazyLock<Text> = data::load!("tools/forum.toml");
 
@@ -256,7 +256,7 @@ impl Tool for Sections {
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: SectionsArgs = parse(args)?;
         Ok(Check::new(vec![Ask::new(
-            permissions::FORUM.name,
+            catalog::FORUM.name,
             host_for(cx, &args.forum),
         )]))
     }
@@ -309,7 +309,7 @@ impl Tool for Topics {
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: TopicsArgs = parse(args)?;
         Ok(Check::new(vec![Ask::new(
-            permissions::FORUM.name,
+            catalog::FORUM.name,
             host_for(cx, &args.forum),
         )]))
     }
@@ -360,7 +360,7 @@ impl Tool for ThreadTool {
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: ThreadArgs = parse(args)?;
         Ok(Check::new(vec![Ask::new(
-            permissions::FORUM.name,
+            catalog::FORUM.name,
             host_for(cx, &args.forum),
         )]))
     }
@@ -416,7 +416,7 @@ impl Tool for Search {
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: SearchArgs = parse(args)?;
         Ok(Check::new(vec![Ask::new(
-            permissions::FORUM.name,
+            catalog::FORUM.name,
             host_for(cx, &args.forum),
         )]))
     }
@@ -496,7 +496,7 @@ impl Tool for Post {
             return Err(Refusal::InvalidArgs(TEXT.no_subject.clone()));
         }
         let forum = resolve(cx, &args.forum).map_err(|out| Refusal::Refused(out.content))?;
-        let ask = Ask::new(permissions::FORUM_POST.name, forum.host());
+        let ask = Ask::new(catalog::FORUM_POST.name, forum.host());
         Ok(Check::new(vec![ask])
             .with_preview(Self::preview(&forum, &args))
             .confirmed())

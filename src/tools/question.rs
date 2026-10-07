@@ -4,11 +4,11 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::agent::model_text;
 use crate::limits;
 use crate::live::prompt::{self, Answer, Prompt, Reply};
+use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
 
@@ -45,7 +45,7 @@ impl Tool for Question {
                 )));
             }
         }
-        Ok(Check::new(vec![Ask::new(permissions::QUESTION.name, "*")]))
+        Ok(Check::new(vec![Ask::new(catalog::QUESTION.name, "*")]))
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {

@@ -6,11 +6,11 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::many::{self, Many};
-use super::permissions;
 use super::truncate;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
 use crate::io::{self, fs::Kind};
 use crate::limits;
+use crate::permission::catalog;
 use crate::text::shorten;
 
 static SPEC: LazyLock<Spec> = super::spec!("read");
@@ -60,7 +60,7 @@ impl Tool for Read {
         let mut asks = Vec::new();
         for path in &paths {
             let target = target::resolve(&cx.app.paths, path).map_err(Refusal::Refused)?;
-            asks.extend(target::asks(permissions::READ.name, &target));
+            asks.extend(target::asks(catalog::READ.name, &target));
         }
         Ok(Check::new(asks))
     }

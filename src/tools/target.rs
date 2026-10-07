@@ -4,9 +4,9 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use super::permissions;
 use crate::io;
 use crate::paths::Paths;
+use crate::permission::catalog;
 use crate::permission::gate::Ask;
 
 pub struct Target {
@@ -76,7 +76,7 @@ pub fn asks(permission: &str, target: &Target) -> Vec<Ask> {
     let mut asks = vec![Ask::new(permission, target.shown.clone())];
     if target.outside {
         asks.push(Ask::new(
-            permissions::EXTERNAL_DIRECTORY.name,
+            catalog::EXTERNAL_DIRECTORY.name,
             target.shown.clone(),
         ));
     }

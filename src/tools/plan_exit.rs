@@ -7,13 +7,13 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::permissions;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::agent::model_text;
 use crate::data;
 use crate::io;
 use crate::live::prompt::{Prompt, Reply};
 use crate::mode;
+use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
 
@@ -43,7 +43,7 @@ impl Tool for PlanExit {
         if cx.shared.mode().id != PLAN_MODE {
             return Err(Refusal::Refused(model_text::get().plan_only.clone()));
         }
-        Ok(Check::new(vec![Ask::new(permissions::PLAN_EXIT.name, "*")]))
+        Ok(Check::new(vec![Ask::new(catalog::PLAN_EXIT.name, "*")]))
     }
 
     fn run<'a>(&'a self, _args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {

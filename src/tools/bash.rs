@@ -6,13 +6,13 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::permissions;
 use super::shell::Shell;
 use super::truncate::{self, Keep};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::io::shell::{self, Ended, ShellCommand};
 use crate::io::{self, fs::Access};
 use crate::limits;
+use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::permission::{filter, shell_split};
 use crate::text::controls;
@@ -57,19 +57,16 @@ impl Tool for Bash {
             .collect();
         let patterns = if fed.is_empty() { split.commands } else { fed };
         let mut asks = vec![Ask {
-            permission: permissions::BASH.name.into(),
+            permission: catalog::BASH.name.into(),
             patterns,
         }];
         // What runs cannot be read off a substitution, and a redirect writes files: both get
         // their own permission so read-only allowances never cover them.
         if split.complex {
-            asks.push(Ask::new(
-                permissions::BASH_COMPLEX.name,
-                args.command.trim(),
-            ));
+            asks.push(Ask::new(catalog::BASH_COMPLEX.name, args.command.trim()));
         }
         if split.writes {
-            asks.push(Ask::new(permissions::BASH_WRITE.name, args.command.trim()));
+            asks.push(Ask::new(catalog::BASH_WRITE.name, args.command.trim()));
         }
         Ok(Check::new(asks).with_preview(format!("$ {}", args.command.trim())))
     }

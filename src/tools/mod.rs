@@ -9,7 +9,6 @@ mod fs;
 mod glob;
 mod grep;
 mod many;
-pub mod permissions;
 mod plan_exit;
 mod question;
 mod read;

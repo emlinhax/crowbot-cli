@@ -5,10 +5,10 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::edit_match::{self, Fit, Miss};
-use super::permissions;
 use super::target::{self, Target};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::io::{self, fs::Access, fs::Kind};
+use crate::permission::catalog;
 
 static SPEC: LazyLock<Spec> = super::spec!("edit");
 
@@ -81,7 +81,7 @@ impl Tool for Edit {
         let applied = apply(&before, &edits)
             .map_err(|why| Refusal::Refused(format!("{why} ({})", target.shown)))?;
         Ok(
-            Check::new(target::asks(permissions::EDIT.name, &target)).with_preview(diff(
+            Check::new(target::asks(catalog::EDIT.name, &target)).with_preview(diff(
                 &before,
                 &applied.text,
                 &target.shown,

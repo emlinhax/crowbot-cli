@@ -5,12 +5,12 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use url::Url;
 
-use super::permissions;
 use super::truncate::{self, Keep};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::data;
 use crate::io::fetch::FetchError;
 use crate::limits;
+use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
 
@@ -105,7 +105,7 @@ impl Tool for WebFetch {
         let args: Args = parse(args)?;
         let url = parse_url(&args.url)?;
         Ok(
-            Check::new(vec![Ask::new(permissions::WEBFETCH.name, host(&url))])
+            Check::new(vec![Ask::new(catalog::WEBFETCH.name, host(&url))])
                 .with_preview(url.as_str()),
         )
     }

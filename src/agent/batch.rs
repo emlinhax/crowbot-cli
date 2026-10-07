@@ -16,9 +16,10 @@ use crate::live::event::AgentEvent;
 use crate::live::prompt::{self, Prompt, Reply};
 use crate::live::state::Shared;
 use crate::mode::DoomLoop;
+use crate::permission::catalog;
 use crate::permission::gate::{self, Ask, Decision};
 use crate::text::template::fill;
-use crate::tools::{Output, Refusal, Tool, ToolCx, permissions};
+use crate::tools::{Output, Refusal, Tool, ToolCx};
 
 pub struct Batch {
     pub results: Vec<ToolResult>,
@@ -150,7 +151,7 @@ async fn clear<'a>(
             DoomLoop::TellModel => {
                 return Err(fill(&text.doom_loop, &[("count", &repeats.to_string())]).into());
             }
-            DoomLoop::Ask => asks.push(Ask::new(permissions::DOOM_LOOP.name, call.name.clone())),
+            DoomLoop::Ask => asks.push(Ask::new(catalog::DOOM_LOOP.name, call.name.clone())),
         }
     }
     let check = tool
