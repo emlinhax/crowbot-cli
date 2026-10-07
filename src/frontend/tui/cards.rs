@@ -12,7 +12,8 @@ use crate::data;
 use crate::frontend::tui::boxed::capped;
 use crate::text::diff;
 use crate::text::styled::{Line, Style};
-use crate::text::{template, units};
+use crate::text::template;
+use crate::text::units::Plural;
 
 static CARDS: LazyLock<BTreeMap<String, Spec>> = data::load!("tool_cards.toml");
 
@@ -43,8 +44,8 @@ enum Summary {
     Count {
         /// The details key holding the number; `{n}` in the forms.
         count: String,
-        one: String,
-        many: String,
+        #[serde(flatten)]
+        forms: Plural,
     },
     /// The first of these whose details are all there: one file's lines, else how many files.
     First(Vec<Summary>),
@@ -218,12 +219,12 @@ fn summarize(summary: &Summary, result: &ToolResult, strict: bool) -> Option<Str
             });
             (complete || !strict).then(|| fill(text, result))
         }
-        Summary::Count { count, one, many } => {
+        Summary::Count { count, forms } => {
             if strict && !has(count) {
                 return None;
             }
             let n = lookup(count, result).parse().unwrap_or(0);
-            Some(units::plural(n, one, many))
+            Some(forms.of(n))
         }
         Summary::First(list) => list.iter().find_map(|s| summarize(s, result, true)),
     }
