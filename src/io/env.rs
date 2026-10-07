@@ -1,5 +1,4 @@
 //! The process environment, and the folders the OS names for this user.
-#![allow(clippy::disallowed_methods)]
 
 use std::io;
 use std::path::PathBuf;

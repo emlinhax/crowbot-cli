@@ -8,6 +8,7 @@ use futures_util::stream::{self, BoxStream};
 use futures_util::{Stream, StreamExt};
 
 use crate::api::error::{ApiError, ErrorInfo};
+use crate::io;
 use crate::io::http::HttpError;
 
 /// Each event's data from `body`, until `[DONE]` or the end. Silence longer than `idle`, a failed
@@ -32,7 +33,7 @@ pub fn events(
                 return None;
             }
             // Any bytes, keepalives included, restart the idle bound.
-            let failed = match tokio::time::timeout(idle, st.body.next()).await {
+            let failed = match io::clock::timeout(idle, st.body.next()).await {
                 Err(_) => Some(ErrorInfo::local(
                     "idle_timeout",
                     format!("no data for {}s", idle.as_secs()),

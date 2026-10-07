@@ -1,6 +1,5 @@
 //! Running a command line so that nothing it starts outlives it: a Job Object on Windows,
 //! a process group on Unix.
-#![allow(clippy::disallowed_methods)]
 
 use std::io;
 use std::path::Path;

@@ -1,5 +1,6 @@
 //! The only code that touches the network, files, terminal or clock; clippy.toml bans the raw
 //! calls everywhere else, so a transport change, retry or cache is one edit here.
+#![allow(clippy::disallowed_methods)]
 
 pub mod clipboard;
 pub mod clock;

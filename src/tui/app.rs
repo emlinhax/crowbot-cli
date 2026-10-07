@@ -313,8 +313,7 @@ impl<'a> Tui<'a> {
         let mut job: Option<BoxFuture<'a, Done>> = None;
         let mut work: FuturesUnordered<BoxFuture<'a, Work>> = FuturesUnordered::new();
         let mut inputs = Box::pin(term::inputs());
-        let mut tick = tokio::time::interval(limits::get().tui.frame_ms.ms());
-        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut tick = clock::ticks(limits::get().tui.frame_ms.ms());
         let shared = self.shared;
         loop {
             self.draw(turn.is_some());

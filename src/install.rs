@@ -124,7 +124,7 @@ pub fn install(place: &Place, exe: &Path) -> anyhow::Result<String> {
 pub fn uninstall(place: &Place, exe: &Path, paths: &Paths) -> anyhow::Result<String> {
     let text = &DATA.text;
     let shown = place.dir.display().to_string();
-    if !place.exe.exists() {
+    if !io::fs::exists(&place.exe) {
         return Ok(fill(&text.missing, &[("dir", &shown)]));
     }
     user_path::remove(&place.dir)?;
@@ -170,7 +170,7 @@ pub fn offer(paths: &Paths) -> anyhow::Result<()> {
     }
     let place = Place::here()?;
     let state_file = paths.home.join("install.json");
-    if place.exe.exists() || declined(&state_file) {
+    if io::fs::exists(&place.exe) || declined(&state_file) {
         return Ok(());
     }
     let exe = io::exe::current()?;
@@ -243,7 +243,7 @@ mod tests {
         let paths = Paths::at(root.path().join("home"), root.path().into());
         let said = uninstall(&place, &exe, &paths).unwrap();
         assert!(said.starts_with("Uninstalled from"), "{said}");
-        assert!(!place.exe.exists());
+        assert!(!io::fs::exists(&place.exe));
         assert!(
             uninstall(&place, &exe, &paths)
                 .unwrap()

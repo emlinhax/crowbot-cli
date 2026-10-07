@@ -70,15 +70,15 @@ pub async fn wait(api: &Api, started: &Started) -> Result<String, ApiError> {
         loop {
             match poll(api, &started.device_code).await {
                 Ok(Poll::Ready(key)) => return Ok(key),
-                Ok(Poll::Pending) => tokio::time::sleep(limits.poll_interval_ms.ms()).await,
+                Ok(Poll::Pending) => io::clock::sleep(limits.poll_interval_ms.ms()).await,
                 Err(e) if retry::retryable(&e.info) => {
-                    tokio::time::sleep(limits.backoff_ms.ms()).await;
+                    io::clock::sleep(limits.backoff_ms.ms()).await;
                 }
                 Err(e) => return Err(e),
             }
         }
     };
-    tokio::time::timeout(Duration::from_secs(started.ttl), collect)
+    io::clock::timeout(Duration::from_secs(started.ttl), collect)
         .await
         .unwrap_or_else(
             |_| Err(ErrorInfo::local("pair_expired", "the pairing code expired").into()),

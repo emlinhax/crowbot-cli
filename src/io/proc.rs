@@ -1,5 +1,4 @@
 //! Other programs and the machine we run on.
-#![allow(clippy::disallowed_methods)]
 
 use std::io;
 use std::path::{Path, PathBuf};

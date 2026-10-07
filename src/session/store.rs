@@ -81,7 +81,7 @@ mod tests {
         let paths = Paths::at(home.path().into(), home.path().join("proj"));
         let mut store = Store::create(&paths);
         assert!(
-            !store.path.exists(),
+            !io::fs::exists(&store.path),
             "a session that has said nothing has no file"
         );
         store.append(&Message::user_text("one")).unwrap();

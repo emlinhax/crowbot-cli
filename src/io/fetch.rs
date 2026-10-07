@@ -1,4 +1,3 @@
-#![allow(clippy::disallowed_methods)]
 //! The rest of the web, for webfetch: pages fetched the way a browser fetches them (real browser
 //! TLS through cffetch, another profile when one is challenged), with Cloudflare challenges told
 //! apart from real pages. crowbot's own API stays on `io::http`.

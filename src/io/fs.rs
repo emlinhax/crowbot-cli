@@ -1,5 +1,3 @@
-#![allow(clippy::disallowed_methods)]
-
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 
@@ -18,6 +16,10 @@ pub fn read_string(path: &Path) -> io::Result<Option<String>> {
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e),
     }
+}
+
+pub fn exists(path: &Path) -> bool {
+    path.exists()
 }
 
 /// A JSON file as `T`; `Ok(None)` when it does not exist. Errors name the file.

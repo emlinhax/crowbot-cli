@@ -1,4 +1,4 @@
-#![allow(clippy::disallowed_methods)]
+use std::time::Duration;
 
 use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp};
@@ -20,6 +20,25 @@ pub fn today() -> String {
 pub fn fresh(at: Timestamp, now: Timestamp, ttl: SignedDuration) -> bool {
     let age = now.duration_since(at);
     age >= SignedDuration::ZERO && age < ttl
+}
+
+pub async fn sleep(duration: Duration) {
+    tokio::time::sleep(duration).await;
+}
+
+/// `future`'s output, or `Err` once `duration` passes first.
+pub async fn timeout<F: Future>(
+    duration: Duration,
+    future: F,
+) -> Result<F::Output, tokio::time::error::Elapsed> {
+    tokio::time::timeout(duration, future).await
+}
+
+/// A tick every `period`; ticks missed while busy are skipped, not caught up in a burst.
+pub fn ticks(period: Duration) -> tokio::time::Interval {
+    let mut ticks = tokio::time::interval(period);
+    ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    ticks
 }
 
 /// A monotonic instant, for measuring durations.

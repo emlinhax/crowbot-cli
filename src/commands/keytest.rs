@@ -133,7 +133,7 @@ async fn burst(inputs: &mut (impl Stream<Item = Input> + Unpin)) -> std::io::Res
             Input::Paste(_) => pastes += 1,
             _ => {}
         }
-        match tokio::time::timeout(BURST_END, inputs.next()).await {
+        match io::clock::timeout(BURST_END, inputs.next()).await {
             Ok(Some(next)) => input = next,
             _ => break,
         }

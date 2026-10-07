@@ -1,5 +1,3 @@
-#![allow(clippy::disallowed_methods)]
-
 use std::io::{self, IsTerminal, Write};
 use std::sync::Arc;
 

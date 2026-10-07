@@ -1,6 +1,5 @@
 //! The program itself: where it runs from, and putting a new build in its place while it may be
 //! running.
-#![allow(clippy::disallowed_methods)]
 
 use std::io;
 use std::path::{Path, PathBuf};

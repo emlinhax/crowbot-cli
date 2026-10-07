@@ -1,7 +1,6 @@
 //! The user's PATH and, on Windows, the Apps & Features entry. Windows keeps both in the registry
 //! under HKCU, and crowbot edits them there. Elsewhere PATH belongs to the shell's profile, which
 //! crowbot only reads.
-#![allow(clippy::disallowed_methods)]
 
 use std::io;
 use std::path::Path;

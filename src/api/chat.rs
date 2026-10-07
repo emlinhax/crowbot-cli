@@ -13,6 +13,7 @@ use crate::api::models::Model;
 use crate::api::sse;
 use crate::api::wire::{self, Replay, StreamOptions, WireMessage, WireUsage};
 use crate::api::{Api, Call, retry};
+use crate::io;
 use crate::limits;
 
 pub struct Turn<'a> {
@@ -52,7 +53,7 @@ pub async fn stream(
                 error,
             });
             tokio::select! {
-                () = tokio::time::sleep(delay) => {}
+                () = io::clock::sleep(delay) => {}
                 () = cancel.cancelled() => return message(turn, Vec::new(), Finish::Aborted, None, None, None),
             }
             attempt += 1;

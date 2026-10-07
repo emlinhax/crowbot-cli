@@ -346,6 +346,8 @@ mod tests {
         assert_eq!(clean("\u{1b}[31mred\u{1b}[0m\n10%\r50%\r100%"), "red\n100%");
     }
 
+    // Ageing a file is something only this test does, so it reaches the filesystem itself.
+    #[allow(clippy::disallowed_methods)]
     #[test]
     fn old_spills_are_pruned_and_fresh_ones_kept() {
         let dir = tempfile::tempdir().unwrap();
