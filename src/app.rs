@@ -25,7 +25,7 @@ impl App {
         let key = auth::load(&paths).ok().flatten().map(|k| k.secret);
         Ok(Self {
             api: Api::new(http, key),
-            fetch: Fetch::new(limits::get().tools.webfetch_timeout_secs.secs())?,
+            fetch: Fetch::new(limits::get().http.fetch_timeout_secs.secs())?,
             paths,
             settings,
         })
@@ -39,8 +39,7 @@ impl App {
         let http = Http::new(limits::get().http.connect_timeout_ms.ms()).expect("http client");
         Self {
             api: Api::new(http, None),
-            fetch: Fetch::new(limits::get().tools.webfetch_timeout_secs.secs())
-                .expect("fetch client"),
+            fetch: Fetch::new(limits::get().http.fetch_timeout_secs.secs()).expect("fetch client"),
             paths,
             settings,
         }

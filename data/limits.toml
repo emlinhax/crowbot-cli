@@ -20,6 +20,10 @@ reason = "error envelopes are well under 1 KiB, and only their start is shown"
 value = 200
 reason = "a server's own words past this crowd a one-line notice"
 
+[http.fetch_timeout_secs]
+value = 30
+reason = "a page or forum call slower than this is not worth waiting for"
+
 [models.fetch_timeout_ms]
 value = 2500
 reason = "on the startup path a stale model list beats a slow start (same bound as crowbot's opencode plugin)"
@@ -171,10 +175,6 @@ reason = "a spill is read in the turn that made it; older ones only fill the dis
 [tools.webfetch_max_bytes]
 value = 5242880
 reason = "larger pages are rarely text a model can use"
-
-[tools.webfetch_timeout_secs]
-value = 30
-reason = "a page slower than this is not worth holding the turn for"
 
 [update.check_interval_secs]
 value = 86400

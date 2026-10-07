@@ -55,6 +55,7 @@ pub struct HttpLimits {
     pub error_body_ms: Limit<u64>,
     pub error_body_bytes: Limit<usize>,
     pub error_text_chars: Limit<usize>,
+    pub fetch_timeout_secs: Limit<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -128,7 +129,6 @@ pub struct ToolLimits {
     pub bash_spill_max_bytes: Limit<usize>,
     pub bash_spill_keep_days: Limit<u64>,
     pub webfetch_max_bytes: Limit<usize>,
-    pub webfetch_timeout_secs: Limit<u64>,
 }
 
 #[derive(Debug, Deserialize)]
