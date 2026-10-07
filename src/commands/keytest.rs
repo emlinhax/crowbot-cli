@@ -9,6 +9,7 @@ use super::{Command, Ctx, Outcome, Spec};
 use crate::data;
 use crate::io;
 use crate::io::term::{self, Input, KeyEvent};
+use crate::text::choices;
 
 static SPEC: LazyLock<Spec> = super::spec!("keytest");
 static STEPS: LazyLock<Steps> = data::load!("commands/keytest.toml");
@@ -53,8 +54,8 @@ impl Command for KeyTest {
                     .iter()
                     .any(|s| s.label.eq_ignore_ascii_case(label))
             {
-                let labels: Vec<&str> = STEPS.step.iter().map(|s| s.label.as_str()).collect();
-                anyhow::bail!("no step `{label}`; the steps are {}", labels.join(", "));
+                let steps = STEPS.step.iter().map(|s| (s.label.as_str(), None));
+                return Err(choices::unknown("step", label, steps));
             }
             let report = probe(only.as_deref()).await?;
             Ok(format!(

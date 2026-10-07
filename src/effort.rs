@@ -1,9 +1,9 @@
 use std::sync::LazyLock;
 
-use anyhow::bail;
 use serde::Deserialize;
 
 use crate::data;
+use crate::text::choices;
 
 static LEVELS: LazyLock<Catalog> = data::load!("effort.toml");
 
@@ -30,18 +30,14 @@ pub fn get(id: &str) -> Option<&'static Level> {
     levels().iter().find(|l| l.id == id)
 }
 
-pub fn validate(id: &str) -> anyhow::Result<()> {
-    if levels().iter().any(|l| l.id == id) {
-        return Ok(());
-    }
-    let choices: Vec<String> = levels()
-        .iter()
-        .map(|l| format!("{} ({})", l.id, l.summary))
-        .collect();
-    bail!(
-        "unknown effort `{id}`; choose one of: {}",
-        choices.join(", ")
-    )
+/// `Err` lists the levels there are.
+pub fn find(id: &str) -> anyhow::Result<&'static Level> {
+    get(id).ok_or_else(|| {
+        let levels = levels()
+            .iter()
+            .map(|l| (l.id.as_str(), Some(l.summary.clone())));
+        choices::unknown("effort", id, levels)
+    })
 }
 
 #[cfg(test)]
@@ -51,8 +47,8 @@ mod tests {
     #[test]
     fn catalog_parses_and_validates() {
         assert!(!levels().is_empty());
-        validate("high").unwrap();
-        assert!(validate("ludicrous").is_err());
+        find("high").unwrap();
+        assert!(find("ludicrous").is_err());
         for level in levels() {
             assert!(
                 crate::text::theme::get().has(&level.color),

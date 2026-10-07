@@ -8,6 +8,7 @@ use serde::{Deserialize, Deserializer};
 use crate::data;
 use crate::permission::gate::{Policy, Verdicts};
 use crate::permission::rule::{Action, Rule};
+use crate::text::choices;
 
 const SOURCES: &[&str] = &[
     data::raw!("modes/manual.toml"),
@@ -118,13 +119,12 @@ pub fn get(id: &str) -> Option<&'static Mode> {
 }
 
 /// `Err` lists the modes there are.
-pub fn find(id: &str) -> Result<&'static Mode, String> {
+pub fn find(id: &str) -> anyhow::Result<&'static Mode> {
     get(id).ok_or_else(|| {
-        let choices: Vec<String> = MODES
+        let modes = MODES
             .iter()
-            .map(|m| format!("{} ({}: {})", m.id, m.label, m.summary))
-            .collect();
-        format!("unknown mode `{id}`; choose one of: {}", choices.join(", "))
+            .map(|m| (m.id.as_str(), Some(format!("{}: {}", m.label, m.summary))));
+        choices::unknown("mode", id, modes)
     })
 }
 

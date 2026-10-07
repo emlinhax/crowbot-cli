@@ -46,7 +46,7 @@ impl Command for Effort {
                     .into())
                 }
                 [level] => {
-                    effort::validate(level)?;
+                    effort::find(level)?;
                     Ok(Outcome {
                         text: String::new(),
                         effects: vec![Effect::SetEffort(level.clone())],

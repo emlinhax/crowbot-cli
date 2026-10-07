@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use anyhow::{Context, anyhow};
+use anyhow::Context;
 use serde::Deserialize;
 
 use crate::config::paths::Paths;
@@ -75,9 +75,9 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
         settings.auto_update = false;
     }
     if let Some(level) = &settings.effort {
-        effort::validate(level)?;
+        effort::find(level)?;
     }
-    mode::find(&settings.mode).map_err(|e| anyhow!(e))?;
+    mode::find(&settings.mode)?;
     Ok(settings)
 }
 
