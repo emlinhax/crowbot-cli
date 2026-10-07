@@ -288,6 +288,20 @@ fn words(line: &Line) -> Vec<(String, Style)> {
     out
 }
 
+/// `lines` with `first` before the first and `rest` before each later one, as a list marker
+/// hangs over the item's wrapped text.
+pub fn hang(lines: impl IntoIterator<Item = Line>, first: &Line, rest: &Line) -> Vec<Line> {
+    lines
+        .into_iter()
+        .enumerate()
+        .map(|(i, line)| {
+            let mut out = if i == 0 { first.clone() } else { rest.clone() };
+            out.extend(line);
+            out
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

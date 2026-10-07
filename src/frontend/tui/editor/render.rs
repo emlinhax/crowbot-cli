@@ -3,7 +3,7 @@
 use unicode_segmentation::UnicodeSegmentation;
 
 use super::Editor;
-use crate::text::styled::{Line, Style, width};
+use crate::text::styled::{Line, Style, hang, width};
 
 impl Editor {
     /// Lines to draw, wrapped to `width` with a cursor cell, scrolled to show the cursor within
@@ -39,19 +39,10 @@ impl Editor {
         }
         let max_rows = max_rows.max(1);
         let top = (cursor_row + 1).saturating_sub(max_rows);
-        rows.into_iter()
-            .enumerate()
+        hang(rows, prompt, &indent)
+            .into_iter()
             .skip(top)
             .take(max_rows)
-            .map(|(i, row)| {
-                let mut line = if i == 0 {
-                    prompt.clone()
-                } else {
-                    indent.clone()
-                };
-                line.extend(row);
-                line
-            })
             .collect()
     }
 }

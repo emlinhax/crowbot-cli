@@ -12,7 +12,7 @@ use crate::frontend::tui::keymap::Action;
 use crate::frontend::tui::ui;
 use crate::io::term::{KeyCode, KeyEvent};
 use crate::live::prompt::{Answer, Question, Reply};
-use crate::text::styled::{Line, Style};
+use crate::text::styled::{Line, Style, hang};
 use crate::text::template::fill;
 
 pub struct Questions {
@@ -241,15 +241,8 @@ impl Questions {
                 .and_then(|o| o.description.as_ref())
             {
                 let line = Line::styled(description, Style::fg("muted"));
-                lines.extend(
-                    line.wrap(width.saturating_sub(indent.width()), &Line::default())
-                        .into_iter()
-                        .map(|l| {
-                            let mut out = indent.clone();
-                            out.extend(l);
-                            out
-                        }),
-                );
+                let wrapped = line.wrap(width.saturating_sub(indent.width()), &Line::default());
+                lines.extend(hang(wrapped, &indent, &indent));
             }
         }
         lines

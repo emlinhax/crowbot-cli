@@ -4,7 +4,7 @@ use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Par
 
 use crate::config::limits;
 use crate::text::highlight;
-use crate::text::styled::{Line, Style, width};
+use crate::text::styled::{Line, Style, hang, width};
 use crate::text::table::{self, Align};
 
 /// The markdown crowbot draws; the stream cut parses with the same, so both see one structure.
@@ -284,22 +284,12 @@ impl Renderer {
         let (first, rest) = self.prefixes(true);
         let avail = self.width.saturating_sub(first.width()).max(1);
         let wrapped = inline.wrap(avail, &Line::default());
-        let mut lines = Vec::with_capacity(wrapped.len());
-        for (i, line) in wrapped.into_iter().enumerate() {
-            let mut out = if i == 0 { first.clone() } else { rest.clone() };
-            out.extend(line);
-            lines.push(out);
-        }
-        self.out.extend(lines);
+        self.out.extend(hang(wrapped, &first, &rest));
     }
 
     fn emit(&mut self, lines: Vec<Line>) {
         let (first, rest) = self.prefixes(true);
-        for (i, line) in lines.into_iter().enumerate() {
-            let mut out = if i == 0 { first.clone() } else { rest.clone() };
-            out.extend(line);
-            self.out.push(out);
-        }
+        self.out.extend(hang(lines, &first, &rest));
     }
 
     /// Prefixes for the first and later lines of a block: quote bars and list markers.
