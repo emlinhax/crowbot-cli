@@ -295,3 +295,7 @@ reason = "eight frames carry the flock through one rise and fall in about three 
 [tui.shimmer_ms]
 value = 70
 reason = "the glint crosses a ten-letter verb in about a second"
+
+[print.note_chars]
+value = 100
+reason = "a stderr note is one line; a longer argument or error crowds the reply"

@@ -24,9 +24,6 @@ use crate::session::transcript::Transcript;
 use crate::text::shorten;
 use crate::tools::{self, Registry};
 
-/// How much of an argument or error a one-line note shows.
-const NOTE_CHARS: usize = 100;
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     Text,
@@ -129,7 +126,10 @@ impl Printer<'_> {
             } => self.note(&format!("› {name} {}", summary(arguments))),
             AgentEvent::ToolEnd { result } if result.is_error => {
                 let first = result.content.lines().next().unwrap_or_default();
-                self.note(&format!("  ✗ {}", shorten::line(first, NOTE_CHARS)));
+                self.note(&format!(
+                    "  ✗ {}",
+                    shorten::line(first, limits::get().print.note_chars.value)
+                ));
             }
             AgentEvent::Prompt {
                 prompt: Prompt::Permission { tool, asks, .. },
@@ -139,7 +139,7 @@ impl Printer<'_> {
                 self.declined.lock().unwrap().push(call_id.clone());
                 self.note(&format!(
                     "  ✗ {tool} needs permission ({}); rerun with --mode auto to allow it",
-                    shorten::line(&gate::describe(asks), NOTE_CHARS)
+                    shorten::line(&gate::describe(asks), limits::get().print.note_chars.value)
                 ));
             }
             AgentEvent::Retry {
@@ -210,5 +210,8 @@ fn summary(arguments: &str) -> String {
         .iter()
         .find_map(|key| args[key].as_str())
         .unwrap_or_default();
-    shorten::line(found.lines().next().unwrap_or_default(), NOTE_CHARS)
+    shorten::line(
+        found.lines().next().unwrap_or_default(),
+        limits::get().print.note_chars.value,
+    )
 }

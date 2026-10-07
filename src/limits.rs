@@ -47,6 +47,7 @@ pub struct Limits {
     pub edit: EditLimits,
     pub text: TextLimits,
     pub tui: TuiLimits,
+    pub print: PrintLimits,
 }
 
 #[derive(Debug, Deserialize)]
@@ -191,6 +192,12 @@ pub struct TuiLimits {
     pub scroll_lines: Limit<usize>,
     pub status_frame_ms: Limit<u64>,
     pub shimmer_ms: Limit<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrintLimits {
+    pub note_chars: Limit<usize>,
 }
 
 #[cfg(test)]
