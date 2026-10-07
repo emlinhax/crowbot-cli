@@ -249,16 +249,6 @@ pub fn remove_all(path: &Path) -> io::Result<()> {
     }
 }
 
-/// Removes `dir` and all it holds; absent is fine. Only Windows installs into a folder of
-/// crowbot's own.
-#[cfg(windows)]
-pub fn remove_dir(dir: &Path) -> io::Result<()> {
-    match std::fs::remove_dir_all(dir) {
-        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
-        _ => Ok(()),
-    }
-}
-
 /// `Ok(false)` when there was nothing to remove.
 pub fn remove(path: &Path) -> io::Result<bool> {
     match std::fs::remove_file(path) {

@@ -118,13 +118,6 @@ pub async fn interrupted() {
     }
 }
 
-/// OSC 52: asks the terminal to set the clipboard, which works across SSH.
-pub fn to_clipboard(text: &str) {
-    use base64::Engine;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(text);
-    out(&format!("\x1b]52;c;{encoded}\x07"));
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -21,15 +21,13 @@ mod windows {
         HWND_BROADCAST, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_SETTINGCHANGE,
     };
 
+    use crate::io::win::wide;
+
     pub const WRITES_PATH: bool = true;
     const ENVIRONMENT: &str = "Environment";
     const UNINSTALL: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall";
     /// A window that does not take the PATH change within this long is skipped, not waited on.
     const BROADCAST_WAIT_MS: u32 = 5000;
-
-    fn wide(s: &str) -> Vec<u16> {
-        s.encode_utf16().chain(Some(0)).collect()
-    }
 
     fn check(code: u32) -> io::Result<()> {
         if code == ERROR_SUCCESS {

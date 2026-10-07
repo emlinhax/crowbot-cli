@@ -144,7 +144,7 @@ fn remove_program(place: &Place, exe: &Path) -> anyhow::Result<()> {
         io::proc::after_exit(&format!("rmdir /s /q \"{}\"", place.dir.display()))?;
         return Ok(());
     }
-    io::fs::remove_dir(&place.dir)?;
+    io::fs::remove_all(&place.dir)?;
     Ok(())
 }
 

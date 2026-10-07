@@ -14,3 +14,5 @@ pub mod registry;
 pub mod search;
 pub mod secret;
 pub mod term;
+#[cfg(windows)]
+mod win;

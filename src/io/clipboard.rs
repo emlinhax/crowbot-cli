@@ -22,5 +22,12 @@ pub fn copy(text: &str) {
     {
         return;
     }
-    term::to_clipboard(text);
+    osc52(text);
+}
+
+/// Asks the terminal to set the clipboard, which works across SSH.
+fn osc52(text: &str) {
+    use base64::Engine;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(text);
+    term::out(&format!("\x1b]52;c;{encoded}\x07"));
 }

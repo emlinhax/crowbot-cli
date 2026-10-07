@@ -11,16 +11,11 @@ pub use tree::{Ended, ShellCommand, run};
 pub fn open_url(url: &str) -> io::Result<()> {
     #[cfg(windows)]
     {
-        use std::os::windows::ffi::OsStrExt;
         use windows_sys::Win32::UI::Shell::ShellExecuteW;
         use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+        use crate::io::win::wide;
         // ShellExecute, not `cmd /c start`, which splits URLs at `&`.
-        let wide = |s: &str| -> Vec<u16> {
-            std::ffi::OsStr::new(s)
-                .encode_wide()
-                .chain(Some(0))
-                .collect()
-        };
         let (verb, target) = (wide("open"), wide(url));
         // SAFETY: both strings are NUL-terminated and outlive the call.
         let result = unsafe {
