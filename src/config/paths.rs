@@ -65,6 +65,11 @@ impl Paths {
         self.home.join("trusted.json")
     }
 
+    /// Whether the user said no to installing, so they are not asked again.
+    pub fn install_state(&self) -> PathBuf {
+        self.home.join("install.json")
+    }
+
     /// When the updater last looked, and news of an update for the next start.
     pub fn update_state(&self) -> PathBuf {
         self.home.join("update.json")

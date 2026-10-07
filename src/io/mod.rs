@@ -10,7 +10,7 @@ pub mod fetch;
 pub mod fs;
 pub mod http;
 pub mod proc;
+pub mod registry;
 pub mod search;
 pub mod secret;
 pub mod term;
-pub mod user_path;

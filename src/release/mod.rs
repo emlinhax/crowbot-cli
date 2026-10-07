@@ -1,6 +1,10 @@
 //! Which release this binary is, and which file of a release each platform runs
 //! (data/release.toml).
 
+pub mod install;
+pub mod path;
+pub mod update;
+
 use std::sync::LazyLock;
 
 use serde::Deserialize;
@@ -92,7 +96,10 @@ mod tests {
 
     #[test]
     fn every_asset_is_a_target_the_release_builds() {
-        let ci = include_str!("../.github/workflows/ci.yml");
+        let ci = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/.github/workflows/ci.yml"
+        ));
         for asset in &CATALOG.asset {
             let target = asset
                 .file

@@ -12,7 +12,8 @@ use crate::config::trust::Untrusted;
 use crate::frontend::print::{self, Format};
 use crate::frontend::tui;
 use crate::io::term;
-use crate::{effort, install, mode, release};
+use crate::release::{self, install};
+use crate::{effort, mode};
 
 /// The help for `--effort`, `--mode` and the commands is filled in from their catalogs by
 /// `command()`, so a new level, mode or command shows up with no edit here.

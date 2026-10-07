@@ -1,106 +1,14 @@
-//! The user's PATH and, on Windows, the Apps & Features entry. Windows keeps both in the registry
-//! under HKCU, and crowbot edits them there. Elsewhere PATH belongs to the shell's profile, which
-//! crowbot only reads.
+//! Where the OS keeps the user's PATH and the Apps & Features entry: the registry under HKCU on
+//! Windows. Elsewhere PATH belongs to the shell's profile, which crowbot only reads, and there is
+//! no entry.
 
-use std::io;
-use std::path::Path;
-
-/// How a platform writes PATH: the separator, and whether case tells entries apart.
-#[derive(Clone, Copy)]
-struct Style {
-    sep: char,
-    ignore_case: bool,
-}
-
-const HERE: Style = if cfg!(windows) {
-    Style {
-        sep: ';',
-        ignore_case: true,
-    }
-} else {
-    Style {
-        sep: ':',
-        ignore_case: false,
-    }
-};
-
-/// What adding a folder to PATH came to.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Change {
-    Added,
-    Already,
-    /// Not on it, and only the user's shell profile can put it there.
-    ShellProfile,
-}
-
-/// Puts `dir` on the user's PATH for terminals opened from now on.
-pub fn add(dir: &Path) -> io::Result<Change> {
-    match with_dir(&sys::path()?, &dir.to_string_lossy(), HERE) {
-        None => Ok(Change::Already),
-        Some(path) if sys::WRITES_PATH => sys::set_path(&path).map(|()| Change::Added),
-        Some(_) => Ok(Change::ShellProfile),
-    }
-}
-
-/// Takes `dir` off the user's PATH; `false` when crowbot did not have it there.
-pub fn remove(dir: &Path) -> io::Result<bool> {
-    match without_dir(&sys::path()?, &dir.to_string_lossy(), HERE) {
-        Some(path) if sys::WRITES_PATH => sys::set_path(&path).map(|()| true),
-        _ => Ok(false),
-    }
-}
-
-/// The Apps & Features entry under `key`: string values, then numbers. Elsewhere there is none.
-pub fn register_app(
-    key: &str,
-    strings: &[(&str, &str)],
-    numbers: &[(&str, u32)],
-) -> io::Result<()> {
-    sys::register(key, strings, numbers)
-}
-
-pub fn unregister_app(key: &str) -> io::Result<()> {
-    sys::unregister(key)
-}
-
-/// `path` with `dir` at its end, or `None` when `dir` is already on it.
-fn with_dir(path: &str, dir: &str, style: Style) -> Option<String> {
-    let entries: Vec<&str> = entries(path, style).collect();
-    if entries.iter().any(|e| same(e, dir, style)) {
-        return None;
-    }
-    let joined: Vec<&str> = entries.into_iter().chain([dir]).collect();
-    Some(joined.join(&style.sep.to_string()))
-}
-
-/// `path` without `dir`, or `None` when `dir` was not on it.
-fn without_dir(path: &str, dir: &str, style: Style) -> Option<String> {
-    let entries: Vec<&str> = entries(path, style).collect();
-    let kept: Vec<&str> = entries
-        .iter()
-        .copied()
-        .filter(|e| !same(e, dir, style))
-        .collect();
-    (kept.len() < entries.len()).then(|| kept.join(&style.sep.to_string()))
-}
-
-fn entries(path: &str, style: Style) -> impl Iterator<Item = &str> {
-    path.split(style.sep).filter(|e| !e.trim().is_empty())
-}
-
-/// The same folder, however its trailing separator or (on Windows) its case is written.
-fn same(a: &str, b: &str, style: Style) -> bool {
-    let trim = |s: &str| s.trim().trim_end_matches(['/', '\\']).to_owned();
-    let (a, b) = (trim(a), trim(b));
-    if style.ignore_case {
-        a.eq_ignore_ascii_case(&b)
-    } else {
-        a == b
-    }
-}
+#[cfg(not(windows))]
+pub use elsewhere::*;
+#[cfg(windows)]
+pub use windows::*;
 
 #[cfg(windows)]
-mod sys {
+mod windows {
     use std::io;
 
     use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
@@ -116,6 +24,8 @@ mod sys {
     pub const WRITES_PATH: bool = true;
     const ENVIRONMENT: &str = "Environment";
     const UNINSTALL: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall";
+    /// A window that does not take the PATH change within this long is skipped, not waited on.
+    const BROADCAST_WAIT_MS: u32 = 5000;
 
     fn wide(s: &str) -> Vec<u16> {
         s.encode_utf16().chain(Some(0)).collect()
@@ -216,13 +126,13 @@ mod sys {
     }
 
     /// The user's own PATH (not the system's, which Windows adds before it).
-    pub fn path() -> io::Result<String> {
+    pub fn user_path() -> io::Result<String> {
         Ok(read_string(&open(ENVIRONMENT)?, "Path")?.unwrap_or_default())
     }
 
     /// Kept expandable, so entries written as `%USERPROFILE%\…` keep working, and announced so
     /// new terminals see it without signing out.
-    pub fn set_path(value: &str) -> io::Result<()> {
+    pub fn set_user_path(value: &str) -> io::Result<()> {
         write(
             &open(ENVIRONMENT)?,
             "Path",
@@ -230,8 +140,7 @@ mod sys {
             &string_bytes(value),
         )?;
         let environment = wide(ENVIRONMENT);
-        // SAFETY: a broadcast with a NUL-terminated string that outlives the call; a window
-        // that hangs is skipped after five seconds.
+        // SAFETY: a broadcast with a NUL-terminated string that outlives the call.
         unsafe {
             SendMessageTimeoutW(
                 HWND_BROADCAST,
@@ -239,14 +148,15 @@ mod sys {
                 0,
                 environment.as_ptr() as isize,
                 SMTO_ABORTIFHUNG,
-                5000,
+                BROADCAST_WAIT_MS,
                 std::ptr::null_mut(),
             );
         }
         Ok(())
     }
 
-    pub fn register(
+    /// The Apps & Features entry `name`: string values, then numbers.
+    pub fn register_app(
         name: &str,
         strings: &[(&str, &str)],
         numbers: &[(&str, u32)],
@@ -261,7 +171,7 @@ mod sys {
         Ok(())
     }
 
-    pub fn unregister(name: &str) -> io::Result<()> {
+    pub fn unregister_app(name: &str) -> io::Result<()> {
         let sub = wide(&format!(r"{UNINSTALL}\{name}"));
         // SAFETY: `sub` is NUL-terminated and outlives the call.
         let code = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, sub.as_ptr()) };
@@ -274,22 +184,22 @@ mod sys {
 
 /// Elsewhere the shell's profile owns PATH, and there is no Apps & Features.
 #[cfg(not(windows))]
-mod sys {
+mod elsewhere {
     use std::io;
 
     use crate::io::env;
 
     pub const WRITES_PATH: bool = false;
 
-    pub fn path() -> io::Result<String> {
+    pub fn user_path() -> io::Result<String> {
         Ok(env::var("PATH").unwrap_or_default())
     }
 
-    pub fn set_path(_value: &str) -> io::Result<()> {
+    pub fn set_user_path(_value: &str) -> io::Result<()> {
         Ok(())
     }
 
-    pub fn register(
+    pub fn register_app(
         _name: &str,
         _strings: &[(&str, &str)],
         _numbers: &[(&str, u32)],
@@ -297,50 +207,7 @@ mod sys {
         Ok(())
     }
 
-    pub fn unregister(_name: &str) -> io::Result<()> {
+    pub fn unregister_app(_name: &str) -> io::Result<()> {
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const WINDOWS: Style = Style {
-        sep: ';',
-        ignore_case: true,
-    };
-    const UNIX: Style = Style {
-        sep: ':',
-        ignore_case: false,
-    };
-
-    #[test]
-    fn a_folder_joins_the_path_once() {
-        let path = r"C:\Windows;%USERPROFILE%\bin;";
-        let dir = r"C:\Users\j\AppData\Local\Programs\crowbot";
-        assert_eq!(
-            with_dir(path, dir, WINDOWS).unwrap(),
-            format!(r"C:\Windows;%USERPROFILE%\bin;{dir}")
-        );
-        let written = with_dir(path, dir, WINDOWS).unwrap();
-        assert_eq!(with_dir(&written, &dir.to_uppercase(), WINDOWS), None);
-        assert_eq!(with_dir(&format!("{written}\\"), dir, WINDOWS), None);
-        assert_eq!(
-            with_dir("", "/home/j/.local/bin", UNIX).unwrap(),
-            "/home/j/.local/bin"
-        );
-        assert!(with_dir("/usr/bin:/HOME/j/.local/bin", "/home/j/.local/bin", UNIX).is_some());
-    }
-
-    #[test]
-    fn a_folder_leaves_the_path_and_nothing_else_does() {
-        let dir = r"C:\Users\j\AppData\Local\Programs\crowbot";
-        let path = format!(r"C:\Windows;{dir}\;%USERPROFILE%\bin");
-        assert_eq!(
-            without_dir(&path, dir, WINDOWS).unwrap(),
-            r"C:\Windows;%USERPROFILE%\bin"
-        );
-        assert_eq!(without_dir(r"C:\Windows", dir, WINDOWS), None);
     }
 }

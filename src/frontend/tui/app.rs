@@ -43,6 +43,7 @@ use crate::live::event::{AgentEvent, Outcome};
 use crate::live::state::Shared;
 use crate::mode;
 use crate::models::{self, Catalog};
+use crate::release::{self, update};
 use crate::session::store::Store;
 use crate::session::transcript::Transcript;
 use crate::text::styled::{Line, Style, TAB};
@@ -50,7 +51,6 @@ use crate::text::template;
 use crate::text::theme;
 use crate::text::units;
 use crate::tools::{self, Registry};
-use crate::{release, update};
 
 type Turn<'a> = Pin<Box<dyn Future<Output = (Transcript, Outcome)> + 'a>>;
 

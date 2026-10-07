@@ -10,7 +10,6 @@ mod data;
 mod effort;
 mod forums;
 mod frontend;
-mod install;
 mod io;
 mod live;
 mod mode;
@@ -20,7 +19,6 @@ mod release;
 mod session;
 mod text;
 mod tools;
-mod update;
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {

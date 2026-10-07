@@ -10,8 +10,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::paths::Paths;
 use crate::data;
-use crate::io::{self, fs::Access, user_path};
+use crate::io::{self, fs::Access, registry};
 use crate::release;
+use crate::release::path::{self, Change};
 use crate::text::template::fill;
 
 static DATA: LazyLock<Data> = data::load!("install.toml");
@@ -89,13 +90,13 @@ pub fn install(place: &Place, exe: &Path) -> anyhow::Result<String> {
         io::fs::make_dir(&place.dir)?;
         io::exe::stage_and_replace(&io::fs::read_bytes(exe)?, &place.exe)?;
     }
-    let change = user_path::add(&place.dir)?;
+    let change = path::add(&place.dir)?;
     let shown = place.dir.display().to_string();
     let exe_shown = place.exe.display().to_string();
     let uninstall = format!("\"{exe_shown}\" uninstall");
     let version = release::shown();
     let entry = &DATA.entry;
-    user_path::register_app(
+    registry::register_app(
         &entry.key,
         &[
             ("DisplayName", &entry.name),
@@ -109,9 +110,9 @@ pub fn install(place: &Place, exe: &Path) -> anyhow::Result<String> {
     )?;
     let text = &DATA.text;
     let next = match change {
-        user_path::Change::Added => text.added.clone(),
-        user_path::Change::Already => text.already.clone(),
-        user_path::Change::ShellProfile => fill(&text.profile, &[("dir", &shown)]),
+        Change::Added => text.added.clone(),
+        Change::Already => text.already.clone(),
+        Change::ShellProfile => fill(&text.profile, &[("dir", &shown)]),
     };
     Ok(format!(
         "{}{next}",
@@ -127,8 +128,8 @@ pub fn uninstall(place: &Place, exe: &Path, paths: &Paths) -> anyhow::Result<Str
     if !io::fs::exists(&place.exe) {
         return Ok(fill(&text.missing, &[("dir", &shown)]));
     }
-    user_path::remove(&place.dir)?;
-    user_path::unregister_app(&DATA.entry.key)?;
+    path::remove(&place.dir)?;
+    registry::unregister_app(&DATA.entry.key)?;
     remove_program(place, exe)?;
     Ok(fill(
         &text.uninstalled,
@@ -169,7 +170,7 @@ pub fn offer(paths: &Paths) -> anyhow::Result<()> {
         return Ok(());
     }
     let place = Place::here()?;
-    let state_file = paths.home.join("install.json");
+    let state_file = paths.install_state();
     if io::fs::exists(&place.exe) || declined(&state_file) {
         return Ok(());
     }

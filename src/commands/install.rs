@@ -3,8 +3,8 @@ use std::sync::LazyLock;
 use futures_util::future::BoxFuture;
 
 use super::{Command, Ctx, Outcome, Spec};
-use crate::install::{self, Place};
 use crate::io;
+use crate::release::install::{self, Place};
 
 static SPEC: LazyLock<Spec> = super::spec!("install");
 
