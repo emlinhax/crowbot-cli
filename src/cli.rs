@@ -1,30 +1,49 @@
+use std::collections::BTreeMap;
 use std::process::ExitCode;
+use std::sync::LazyLock;
 
 use anyhow::bail;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
+use serde::Deserialize;
 
 use crate::app::App;
 use crate::commands::{self, Ctx, Missing, Scope};
 use crate::config::settings::{self, Overrides};
 use crate::config::trust;
+use crate::data;
 use crate::frontend::print::{self, Format};
 use crate::frontend::tui;
 use crate::io::term;
 use crate::release::{self, install};
+use crate::text::template::fill;
 use crate::{effort, mode};
 
-/// The help for `--effort`, `--mode` and the commands is filled in from their catalogs by
-/// `command()`, so a new level, mode or command shows up with no edit here.
+static DATA: LazyLock<Data> = data::load!("cli.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Data {
+    /// Each flag's help, by arg id; `command()` fills it in.
+    help: BTreeMap<String, String>,
+    text: Text,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Text {
+    commands: String,
+    misplaced_flag: String,
+}
+
+/// The flags' help and the commands' list are data (data/cli.toml), filled in by `command()`.
 #[derive(Parser)]
 #[command(
-    version,
     about,
     allow_external_subcommands = true,
     subcommand_value_name = "COMMAND|PROMPT"
 )]
 struct Cli {
-    /// Model id for this run (see `crowbot models`).
     #[arg(long, global = true)]
     model: Option<String>,
 
@@ -34,11 +53,9 @@ struct Cli {
     #[arg(long, global = true)]
     mode: Option<String>,
 
-    /// Send the words as a prompt, never a command; print the reply, exit.
     #[arg(short, long)]
     print: bool,
 
-    /// Like --print, but stream every event as a JSON line.
     #[arg(long)]
     json: bool,
 
@@ -55,23 +72,22 @@ enum Sub {
 
 /// `Cli`'s shape with the parts that are data filled in.
 fn command() -> clap::Command {
-    let efforts = effort::ids().join(", ");
-    let modes = mode::ids().join(", ");
     let names: Vec<&str> = commands::listed(Scope::Cli)
         .map(|s| s.name.as_str())
         .collect();
-    Cli::command()
+    let vars = [
+        ("levels", effort::ids().join(", ")),
+        ("modes", mode::ids().join(", ")),
+        ("commands", names.join(", ")),
+    ];
+    let vars: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let mut command = Cli::command()
         .version(release::version())
-        .mut_arg("effort", |a| {
-            a.help(format!("Reasoning effort for this run: {efforts}"))
-        })
-        .mut_arg("mode", |a| {
-            a.help(format!("Permission mode for this run: {modes}"))
-        })
-        .after_help(format!(
-            "Commands: {}. Other words are the prompt.",
-            names.join(", ")
-        ))
+        .after_help(fill(&DATA.text.commands, &vars));
+    for (id, help) in &DATA.help {
+        command = command.mut_arg(id, |a| a.help(fill(help, &vars)));
+    }
+    command
 }
 
 fn parse() -> Cli {
@@ -86,7 +102,7 @@ pub async fn run() -> ExitCode {
         command()
             .error(
                 ErrorKind::ArgumentConflict,
-                format!("`{flag}` goes before the words; quote a prompt that contains it"),
+                fill(&DATA.text.misplaced_flag, &[("flag", flag)]),
             )
             .exit();
     }
