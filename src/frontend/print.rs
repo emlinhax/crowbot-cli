@@ -180,7 +180,7 @@ impl Printer<'_> {
                 if let Some(error) = last.and_then(|m| m.error) {
                     let entry = Entry::of(&error);
                     term::err(&format!("crowbot: {}: {error}\n", entry.title));
-                    if let Some(hint) = &entry.hint {
+                    if let Some(hint) = entry.hint() {
                         term::err(&format!("  {hint}\n"));
                     }
                 }

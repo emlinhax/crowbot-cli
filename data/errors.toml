@@ -1,5 +1,5 @@
 # How the client treats each error. Keys are crowbot's `error.type`, plus our own kinds for
-# failures that never reached crowbot. `retry` says whether an error is worth trying again
+# failures that never reached crowbot. A hint's {api} and {chat} are the configured sites. `retry` says whether an error is worth trying again
 # automatically; without it the HTTP status decides (429 and 5xx are, other statuses are not).
 
 [unknown]
@@ -11,7 +11,7 @@ title = "crowbot answered with an error"
 
 [network]
 title = "Could not reach crowbot"
-hint = "Check your connection; crowbot is at https://api.crowbot.sh."
+hint = "Check your connection; crowbot is at {api}."
 retry = true
 
 [timeout]
@@ -46,11 +46,11 @@ hint = "A card refund or chargeback froze it. Contact admin@crowbot.sh."
 
 [insufficient_balance]
 title = "Out of funds"
-hint = "Top up at chat.crowbot.sh."
+hint = "Top up at {chat}."
 
 [plan_allowance_spent]
 title = "Your plan's allowance is used up for now"
-hint = "It refills over the day, or turn balance fallback back on at chat.crowbot.sh."
+hint = "It refills over the day, or turn balance fallback back on at {chat}."
 
 [model_not_found]
 title = "That model is not being served"

@@ -502,7 +502,7 @@ fn error_lines(error: &ErrorInfo, width: usize) -> Vec<Line> {
     let mut detail = indent.clone();
     detail.push(&error.message, Style::default().dim());
     lines.extend(detail.wrap(width, &indent));
-    if let Some(hint) = &entry.hint {
+    if let Some(hint) = entry.hint() {
         let mut line = indent.clone();
         line.push(hint, Style::fg("muted"));
         lines.extend(line.wrap(width, &indent));

@@ -4,10 +4,12 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
+use crate::api::endpoints;
 use crate::config::limits;
 use crate::conversation::error::ErrorInfo;
 use crate::data;
 use crate::io::http::{HttpError, Response};
+use crate::text::template;
 
 static CATALOG: LazyLock<BTreeMap<String, Entry>> = data::load!("errors.toml");
 
@@ -16,8 +18,9 @@ static CATALOG: LazyLock<BTreeMap<String, Entry>> = data::load!("errors.toml");
 #[serde(deny_unknown_fields)]
 pub struct Entry {
     pub title: String,
+    /// What to do about it; `{api}` and `{chat}` name crowbot's sites (endpoints.toml).
     #[serde(default)]
-    pub hint: Option<String>,
+    hint: Option<String>,
     /// Whether it is worth trying again; `None` leaves that to the status.
     #[serde(default)]
     pub retry: Option<bool>,
@@ -29,6 +32,18 @@ impl Entry {
         CATALOG
             .get(&info.kind)
             .unwrap_or_else(|| &CATALOG["unknown"])
+    }
+
+    /// The hint, naming the sites this build talks to.
+    pub fn hint(&self) -> Option<String> {
+        let sites = [
+            ("api", endpoints::origin("api")),
+            ("chat", endpoints::origin("chat")),
+        ];
+        let sites: Vec<(&str, &str)> = sites.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        self.hint
+            .as_deref()
+            .map(|hint| template::fill(hint, &sites))
     }
 }
 
@@ -96,6 +111,20 @@ impl From<HttpError> for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_hint_fills_its_placeholders() {
+        for (kind, entry) in CATALOG.iter() {
+            if let Some(hint) = entry.hint() {
+                assert!(!hint.contains('{'), "{kind}: {hint}");
+            }
+        }
+        let low = Entry::of(&ErrorInfo::local("insufficient_balance", ""));
+        assert_eq!(
+            low.hint().as_deref(),
+            Some("Top up at https://chat.crowbot.sh.")
+        );
+    }
     use crate::io::http::Head;
 
     fn response(status: u16, body: &str) -> Response {

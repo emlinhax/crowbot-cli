@@ -93,7 +93,8 @@ async fn billing_errors_fail_with_a_hint_and_no_retry() {
     let err = run.stderr();
     assert!(err.contains("Out of funds"), "{err}");
     assert!(err.contains("req_fake"), "{err}");
-    assert!(err.contains("chat.crowbot.sh"), "{err}");
+    // The hint names the configured site, here the fake standing in for chat.crowbot.sh.
+    assert!(err.contains(&format!("Top up at {}.", fake.url)), "{err}");
     assert_eq!(fake.hits("/v1/chat/completions"), 1);
 }
 
