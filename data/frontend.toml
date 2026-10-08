@@ -10,5 +10,5 @@ retrying = "retrying in"
 [print]
 call = "› {tool}"
 failed = "  ✗ {error}"
-needs_permission = "  ✗ {tool} needs permission ({what}); rerun with --mode auto to allow it"
+needs_permission = "  ✗ {tool} needs permission ({what}); rerun with --mode {mode} to allow it"
 hint = "  {hint}"

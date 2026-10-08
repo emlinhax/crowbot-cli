@@ -103,6 +103,11 @@ pub enum DoomLoop {
 }
 
 impl Mode {
+    /// Whether this mode allows, without asking, every call another mode would ask about.
+    pub fn asks_nothing(&self) -> bool {
+        self.verdicts.ask == Action::Allow
+    }
+
     /// The locks with `{plan_file}` filled in for the session whose plan it is.
     pub fn locks(&self, plan_file: &str) -> Vec<Rule> {
         self.lock
@@ -126,6 +131,14 @@ impl Mode {
 
 pub fn all() -> &'static [Mode] {
     &MODES
+}
+
+/// The mode to suggest when nobody is there to answer: the first that asks nothing.
+pub fn unattended() -> &'static Mode {
+    MODES
+        .iter()
+        .find(|m| m.asks_nothing())
+        .expect("data/modes has a mode that asks nothing; tested")
 }
 
 pub fn get(id: &str) -> Option<&'static Mode> {
@@ -186,6 +199,7 @@ mod tests {
 
     #[test]
     fn modes_parse_with_unique_ids() {
+        assert!(unattended().asks_nothing());
         assert!(all().len() >= 3);
         for mode in all() {
             assert_eq!(all().iter().filter(|m| m.id == mode.id).count(), 1);

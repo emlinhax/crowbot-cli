@@ -10,7 +10,6 @@ use crate::conversation::message::Part;
 use crate::live::files::Files;
 use crate::live::prompt::Prompts;
 use crate::mode::Mode;
-use crate::permission::rule::Action;
 
 /// A mode change the model has to hear about.
 pub enum Reminder {
@@ -63,7 +62,7 @@ impl Shared {
     /// waiting (questions still wait for their answer).
     pub fn set_mode(&self, mode: &'static Mode) {
         *self.mode.lock().unwrap() = mode;
-        if mode.verdicts.ask == Action::Allow {
+        if mode.asks_nothing() {
             self.prompts.approve_permissions();
         }
     }

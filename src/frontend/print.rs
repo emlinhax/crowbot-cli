@@ -19,6 +19,7 @@ use crate::io::term;
 use crate::live::event::{AgentEvent, DeltaKind, Ended, Outcome};
 use crate::live::prompt::{Prompt, Reply};
 use crate::live::state::Shared;
+use crate::mode;
 use crate::permission::gate;
 use crate::text::shorten;
 use crate::text::template::fill;
@@ -148,7 +149,11 @@ impl Printer<'_> {
                 let what = shorten::line(&gate::describe(asks), note_chars());
                 self.note(&fill(
                     &words::get().print.needs_permission,
-                    &[("tool", tool), ("what", &what)],
+                    &[
+                        ("tool", tool),
+                        ("what", &what),
+                        ("mode", &mode::unattended().id),
+                    ],
                 ));
             }
             AgentEvent::Retry {

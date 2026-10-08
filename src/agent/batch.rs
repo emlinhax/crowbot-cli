@@ -13,7 +13,7 @@ use crate::agent::model_text;
 use crate::conversation::message::{Message, ToolCall, ToolResult};
 use crate::live::event::AgentEvent;
 use crate::live::prompt::{Prompt, Reply};
-use crate::mode::DoomLoop;
+use crate::mode::{self, DoomLoop};
 use crate::permission::catalog;
 use crate::permission::gate::{self, Ask, Decision};
 use crate::permission::rule::Rule;
@@ -183,7 +183,8 @@ async fn clear<'a>(
                     } else {
                         &text.non_interactive
                     };
-                    Err(fill(why, &[("what", &gate::describe(&asks))]).into())
+                    let mode = &mode::unattended().id;
+                    Err(fill(why, &[("what", &gate::describe(&asks)), ("mode", mode)]).into())
                 }
                 None => Err(tools::text().cancelled.clone().into()),
             }
