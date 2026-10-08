@@ -1,30 +1,25 @@
-//! The numbered card that replaces the editor when crowbot needs an answer: permission, or what
-//! to do with a finished plan; `/login` builds its menu from it too.
+//! The numbered card that replaces the editor when crowbot needs an answer (permission, what to
+//! do with a finished plan); the login and forums menus are built from it too.
 
-use crate::auth;
-use crate::config::limits;
 use crate::frontend::tui::boxed::{self, boxed};
-use crate::frontend::tui::card::{Card, Step};
+use crate::frontend::tui::card::{Card, Next};
 use crate::frontend::tui::editor::{Editor, Field};
 use crate::frontend::tui::keymap::Action;
-use crate::frontend::tui::rows::{self, capped};
-use crate::frontend::tui::ui::{self, PermissionReply};
+use crate::frontend::tui::rows;
+use crate::frontend::tui::ui;
 use crate::io::term::KeyEvent;
 use crate::live::prompt::Reply;
-use crate::permission::gate;
-use crate::text::diff;
-use crate::text::markdown;
 use crate::text::styled::{Line, Style};
 
 /// What picking an option means.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum Pick {
-    Reply(PermissionReply),
-    Index(usize),
-    /// Opens a line for the user's own words; a masked one shows only their end.
-    Text {
-        masked: bool,
-    },
+    /// Answers with this reply.
+    Answer(Reply),
+    /// Opens a line for a reason; its words answer `No { feedback }`.
+    Reason,
+    /// Opens a line whose words answer `Text`; `shown` hides all but that many last characters.
+    Text { shown: Option<usize> },
 }
 
 pub struct Opt {
@@ -33,33 +28,44 @@ pub struct Opt {
 }
 
 impl Opt {
-    /// Answers `Reply::Choice(index)`.
-    pub fn index(label: impl Into<String>, index: usize) -> Self {
+    pub fn answer(label: impl Into<String>, reply: Reply) -> Self {
         Self {
             label: label.into(),
-            pick: Pick::Index(index),
+            pick: Pick::Answer(reply),
         }
+    }
+
+    /// Answers `Reply::Choice(index)`.
+    pub fn index(label: impl Into<String>, index: usize) -> Self {
+        Self::answer(label, Reply::Choice(index))
     }
 
     /// Opens a line whose words answer `Reply::Text`.
     pub fn text(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
-            pick: Pick::Text { masked: false },
+            pick: Pick::Text { shown: None },
         }
     }
 
-    /// Like `text`, for a secret: only its last few characters show as it is typed.
-    pub fn secret(label: impl Into<String>) -> Self {
+    /// Like `text`, for a secret: only its last `shown` characters show as it is typed.
+    pub fn secret(label: impl Into<String>, shown: usize) -> Self {
         Self {
             label: label.into(),
-            pick: Pick::Text { masked: true },
+            pick: Pick::Text { shown: Some(shown) },
+        }
+    }
+
+    /// Opens a line for the reason behind a "no".
+    pub fn reason(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            pick: Pick::Reason,
         }
     }
 }
 
 pub struct Choice {
-    id: u64,
     title: String,
     body: Vec<Line>,
     options: Vec<Opt>,
@@ -73,16 +79,15 @@ pub struct Choice {
 }
 
 impl Choice {
-    pub fn new(id: u64, title: impl Into<String>, body: Vec<Line>, options: Vec<Opt>) -> Self {
+    pub fn new(title: impl Into<String>, body: Vec<Line>, options: Vec<Opt>) -> Self {
         assert!(!options.is_empty(), "a card needs something to choose");
         Self {
-            id,
             title: title.into(),
             body,
             options,
             selected: 0,
             input: None,
-            input_for: Pick::Text { masked: false },
+            input_for: Pick::Text { shown: None },
             hint: None,
         }
     }
@@ -92,88 +97,37 @@ impl Choice {
         self
     }
 
-    /// Asks to allow a call; every ask is on the card, since approving one call approves all.
-    pub fn permission(
-        id: u64,
-        tool: &str,
-        asks: &[gate::Ask],
-        preview: Option<&str>,
-        width: usize,
-    ) -> Self {
-        let text = &ui::get().card;
-        let inner = boxed::inner(width).max(1);
-        let max = limits::get().tui.prompt_body_lines.value;
-        let title = match asks {
-            [only] if only.permission == tool => format!("{tool} {}", only.patterns.join(", ")),
-            _ => format!("{tool}: {}", gate::describe(asks)),
-        };
-        let body = preview
-            .map(|p| capped(diff::render(p, inner), max))
-            .unwrap_or_default();
-        let options = text
-            .permission
-            .iter()
-            .map(|c| Opt {
-                label: c.label.clone(),
-                pick: Pick::Reply(c.reply),
-            })
-            .collect();
-        Self::new(id, title, body, options)
-    }
-
-    /// PLAN mode's finished plan, and what to do with it.
-    pub fn plan(id: u64, plan: &str, choices: &[String], width: usize) -> Self {
-        let text = &ui::get().card;
-        let inner = boxed::inner(width).max(1);
-        let max = limits::get().tui.prompt_body_lines.value;
-        let body = capped(markdown::render(plan, inner), max);
-        let mut options: Vec<Opt> = choices
-            .iter()
-            .enumerate()
-            .map(|(i, label)| Opt::index(label.clone(), i))
-            .collect();
-        options.push(Opt::text(text.plan_other.clone()));
-        Self::new(id, text.plan_title.clone(), body, options)
-    }
-
-    fn pick(&mut self, i: usize) -> Step {
-        let pick = self.options[i].pick;
+    fn pick(&mut self, i: usize) -> Next {
+        let pick = self.options[i].pick.clone();
         match pick {
-            Pick::Reply(PermissionReply::Yes) => Step::Answer(Reply::Yes),
-            Pick::Reply(PermissionReply::No) => Step::Answer(Reply::No { feedback: None }),
-            Pick::Index(n) => Step::Answer(Reply::Choice(n)),
-            Pick::Reply(PermissionReply::NoWhy) => self.open_input(pick, false),
-            Pick::Text { masked } => self.open_input(pick, masked),
+            Pick::Answer(reply) => Next::Answer(reply),
+            Pick::Reason => self.open_input(pick, None),
+            Pick::Text { shown } => self.open_input(pick, shown),
         }
     }
 
-    fn open_input(&mut self, pick: Pick, masked: bool) -> Step {
+    fn open_input(&mut self, pick: Pick, shown: Option<usize>) -> Next {
         let input = Editor::new();
-        self.input = Some(if masked {
-            input.masked(auth::HINT_CHARS)
-        } else {
-            input
+        self.input = Some(match shown {
+            Some(shown) => input.masked(shown),
+            None => input,
         });
         self.input_for = pick;
-        Step::Stay
+        Next::Stay
     }
 }
 
 impl Card for Choice {
-    fn id(&self) -> u64 {
-        self.id
-    }
-
-    fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Step {
+    fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Next {
         if let Some(input) = &mut self.input {
             match input.field_key(action, key) {
                 Field::Submit(words) => {
                     let words = words.trim().to_owned();
                     if words.is_empty() {
-                        return Step::Stay;
+                        return Next::Stay;
                     }
-                    return Step::Answer(match self.input_for {
-                        Pick::Reply(_) => Reply::No {
+                    return Next::Answer(match self.input_for {
+                        Pick::Reason => Reply::No {
                             feedback: Some(words),
                         },
                         _ => Reply::Text(words),
@@ -182,14 +136,14 @@ impl Card for Choice {
                 Field::Cancel => self.input = None,
                 Field::Edited => {}
             }
-            return Step::Stay;
+            return Next::Stay;
         }
         match action {
             Some(step @ (Action::Up | Action::Down)) => {
                 self.selected = rows::step(self.selected, step, self.options.len(), false);
             }
             Some(Action::Submit) => return self.pick(self.selected),
-            Some(Action::Escape) => return Step::Answer(Reply::No { feedback: None }),
+            Some(Action::Escape) => return Next::Answer(Reply::No { feedback: None }),
             _ => {
                 if let Some(i) = rows::digit(key, self.options.len()) {
                     self.selected = i;
@@ -197,7 +151,7 @@ impl Card for Choice {
                 }
             }
         }
-        Step::Stay
+        Next::Stay
     }
 
     /// Typed or pasted text, when the card has a line open for it.
@@ -224,97 +178,5 @@ impl Card for Choice {
         };
         lines.push(boxed::hint(hint, width));
         lines
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::io::term::{KeyCode, KeyEventKind, KeyModifiers};
-    use crate::permission::gate::Ask;
-
-    fn press(code: KeyCode) -> KeyEvent {
-        KeyEvent::new_with_kind(code, KeyModifiers::NONE, KeyEventKind::Press)
-    }
-
-    fn permission() -> Choice {
-        Choice::permission(
-            7,
-            "edit",
-            &[Ask::new("edit", "src/calc.txt")],
-            Some("@@ -1 +1 @@\n-2 + 2 = 5\n+2 + 2 = 4\n"),
-            50,
-        )
-    }
-
-    #[test]
-    fn a_permission_card_shows_the_diff_and_answers_by_number() {
-        let mut card = permission();
-        let text: Vec<String> = card.render(50).iter().map(Line::text).collect();
-        assert!(text[0].starts_with("╭ edit src/calc.txt"), "{text:?}");
-        assert!(text.iter().any(|l| l.contains("+2 + 2 = 4")));
-        assert!(text.iter().all(|l| crate::text::styled::width(l) <= 50));
-        assert!(matches!(
-            card.key(None, &press(KeyCode::Char('1'))),
-            Step::Answer(Reply::Yes)
-        ));
-    }
-
-    #[test]
-    fn a_call_that_asks_twice_shows_both_asks() {
-        let asks = [
-            Ask::new("read", "/etc/app.conf"),
-            Ask::new("external_directory", "/etc/app.conf"),
-        ];
-        let card = Choice::permission(8, "read", &asks, None, 100);
-        let top = card.render(100)[0].text();
-        assert!(
-            top.contains("read: read /etc/app.conf; external_directory /etc/app.conf"),
-            "{top}"
-        );
-    }
-
-    #[test]
-    fn no_with_a_reason_opens_a_line_and_sends_it() {
-        let mut card = permission();
-        assert!(matches!(
-            card.key(None, &press(KeyCode::Char('3'))),
-            Step::Stay
-        ));
-        card.insert("use trash");
-        match card.key(Some(Action::Submit), &press(KeyCode::Enter)) {
-            Step::Answer(Reply::No { feedback }) => {
-                assert_eq!(feedback.as_deref(), Some("use trash"))
-            }
-            _ => panic!("expected a refusal with a reason"),
-        }
-    }
-
-    #[test]
-    fn a_pasted_newline_in_a_reason_is_text_not_an_answer() {
-        let mut card = permission();
-        card.key(None, &press(KeyCode::Char('3')));
-        card.insert("use trash\nnot rm");
-        match card.key(Some(Action::Submit), &press(KeyCode::Enter)) {
-            Step::Answer(Reply::No { feedback }) => {
-                assert_eq!(feedback.as_deref(), Some("use trash\nnot rm"));
-            }
-            _ => panic!("expected a refusal with the whole reason"),
-        }
-    }
-
-    #[test]
-    fn escape_means_no_and_arrows_move() {
-        let mut card = permission();
-        card.key(Some(Action::Down), &press(KeyCode::Down));
-        assert!(matches!(
-            card.key(Some(Action::Submit), &press(KeyCode::Enter)),
-            Step::Answer(Reply::No { feedback: None })
-        ));
-        let mut card = permission();
-        assert!(matches!(
-            card.key(Some(Action::Escape), &press(KeyCode::Esc)),
-            Step::Answer(Reply::No { feedback: None })
-        ));
     }
 }

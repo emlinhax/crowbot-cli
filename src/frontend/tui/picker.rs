@@ -2,9 +2,11 @@
 //! ↑↓ move, → or Enter picks the model for the rest of the session, Esc or ← closes.
 
 use crate::frontend::tui::boxed::{self, boxed};
+use crate::frontend::tui::card::{Card, Next};
 use crate::frontend::tui::keymap::Action;
 use crate::frontend::tui::rows;
 use crate::frontend::tui::ui;
+use crate::io::term::KeyEvent;
 use crate::models::Catalog;
 use crate::models::table as models;
 use crate::text::styled::{Line, Style};
@@ -16,13 +18,6 @@ pub struct Picker {
     rows: Vec<Vec<Line>>,
     selected: usize,
     note: String,
-}
-
-pub enum Step {
-    Stay,
-    /// Use the model with this id.
-    Pick(String),
-    Close,
 }
 
 impl Picker {
@@ -39,8 +34,10 @@ impl Picker {
             note: models::source_note(catalog),
         }
     }
+}
 
-    pub fn key(&mut self, action: Option<Action>) -> Step {
+impl Card for Picker {
+    fn key(&mut self, action: Option<Action>, _key: &KeyEvent) -> Next {
         match action {
             Some(step @ (Action::Up | Action::Down)) => {
                 self.selected = rows::step(self.selected, step, self.ids.len(), false);
@@ -49,15 +46,15 @@ impl Picker {
                 return self
                     .ids
                     .get(self.selected)
-                    .map_or(Step::Close, |id| Step::Pick(id.clone()));
+                    .map_or(Next::Close(None), |id| Next::UseModel(id.clone()));
             }
-            Some(Action::Left | Action::Escape) => return Step::Close,
+            Some(Action::Left | Action::Escape) => return Next::Close(None),
             _ => {}
         }
-        Step::Stay
+        Next::Stay
     }
 
-    pub fn render(&self, width: usize) -> Vec<Line> {
+    fn render(&self, width: usize) -> Vec<Line> {
         let words = &ui::get().picker;
         let inner = boxed::inner(width).saturating_sub(rows::MARK);
         let mut lines = table::plain(
@@ -89,7 +86,13 @@ impl Picker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::io::term::{KeyCode, KeyEventKind, KeyModifiers};
     use crate::models::{self as catalogs, Source};
+
+    fn key(picker: &mut Picker, action: Action) -> Next {
+        let press = KeyEvent::new_with_kind(KeyCode::Null, KeyModifiers::NONE, KeyEventKind::Press);
+        picker.key(Some(action), &press)
+    }
 
     fn catalog() -> Catalog {
         Catalog {
@@ -105,11 +108,14 @@ mod tests {
         let catalog = catalog();
         let second = catalog.models[1].id.clone();
         let mut picker = Picker::new(&catalog, &second);
-        assert!(matches!(picker.key(Some(Action::Submit)), Step::Pick(id) if id == second));
-        picker.key(Some(Action::Up));
+        assert!(matches!(key(&mut picker, Action::Submit), Next::UseModel(id) if id == second));
+        key(&mut picker, Action::Up);
         let first = catalog.models[0].id.clone();
-        assert!(matches!(picker.key(Some(Action::Right)), Step::Pick(id) if id == first));
-        assert!(matches!(picker.key(Some(Action::Escape)), Step::Close));
+        assert!(matches!(key(&mut picker, Action::Right), Next::UseModel(id) if id == first));
+        assert!(matches!(
+            key(&mut picker, Action::Escape),
+            Next::Close(None)
+        ));
     }
 
     #[test]

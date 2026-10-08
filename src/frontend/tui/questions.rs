@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use crate::frontend::tui::boxed::{self, boxed};
-use crate::frontend::tui::card::{Card, Step};
+use crate::frontend::tui::card::{Card, Next};
 use crate::frontend::tui::editor::{Editor, Field};
 use crate::frontend::tui::keymap::Action;
 use crate::frontend::tui::rows;
@@ -16,7 +16,6 @@ use crate::text::styled::{Line, Style, hang};
 use crate::text::template::fill;
 
 pub struct Questions {
-    id: u64,
     questions: Vec<Question>,
     drafts: Vec<Draft>,
     /// The tab in view; one past the last question is the review, when there are several.
@@ -34,10 +33,9 @@ struct Draft {
 }
 
 impl Questions {
-    pub fn new(id: u64, questions: Vec<Question>) -> Self {
+    pub fn new(questions: Vec<Question>) -> Self {
         let drafts = questions.iter().map(|_| Draft::default()).collect();
         Self {
-            id,
             questions,
             drafts,
             at: 0,
@@ -56,7 +54,7 @@ impl Questions {
 
     /// After an answer: the next question still open, else the review (or straight back when
     /// there was only one question).
-    fn advance(&mut self) -> Step {
+    fn advance(&mut self) -> Next {
         let count = self.questions.len();
         let open = (self.at + 1..count)
             .chain(0..self.at)
@@ -66,14 +64,14 @@ impl Questions {
             None if count == 1 => return self.send(),
             None => self.at = count,
         }
-        Step::Stay
+        Next::Stay
     }
 
     /// Every answer back to the model, once each question has one.
-    fn send(&mut self) -> Step {
+    fn send(&mut self) -> Next {
         if let Some(open) = self.drafts.iter().position(|d| !d.done) {
             self.at = open;
-            return Step::Stay;
+            return Next::Stay;
         }
         let answers = self
             .drafts
@@ -83,12 +81,12 @@ impl Questions {
                 text: d.text.clone(),
             })
             .collect();
-        Step::Answer(Reply::Answers(answers))
+        Next::Answer(Reply::Answers(answers))
     }
 
     /// Row `row` chosen on the question in view: an option is picked (or toggled on a
     /// `multiple` question), "Other…" opens a line.
-    fn choose(&mut self, row: usize) -> Step {
+    fn choose(&mut self, row: usize) -> Next {
         let q = self.at;
         self.drafts[q].cursor = row;
         if row == self.other(q) {
@@ -97,14 +95,14 @@ impl Questions {
                 editor.set_text(text);
             }
             self.input = Some(editor);
-            return Step::Stay;
+            return Next::Stay;
         }
         let draft = &mut self.drafts[q];
         if self.questions[q].multiple {
             if !draft.picked.remove(&row) {
                 draft.picked.insert(row);
             }
-            return Step::Stay;
+            return Next::Stay;
         }
         draft.picked = BTreeSet::from([row]);
         draft.text = None;
@@ -114,7 +112,7 @@ impl Questions {
 
     /// Enter on a `multiple` question: what is ticked is the answer, or the highlighted option
     /// when nothing is.
-    fn confirm(&mut self) -> Step {
+    fn confirm(&mut self) -> Next {
         let q = self.at;
         let cursor = self.drafts[q].cursor;
         if cursor == self.other(q) {
@@ -129,14 +127,14 @@ impl Questions {
     }
 
     /// The user's own words for the question in view.
-    fn own_words(&mut self, words: String) -> Step {
+    fn own_words(&mut self, words: String) -> Next {
         let q = self.at;
         let multiple = self.questions[q].multiple;
         let draft = &mut self.drafts[q];
         draft.text = Some(words);
         // A `multiple` question keeps its ticks and waits for Enter.
         if multiple {
-            return Step::Stay;
+            return Next::Stay;
         }
         draft.picked.clear();
         draft.done = true;
@@ -245,11 +243,7 @@ impl Questions {
 }
 
 impl Card for Questions {
-    fn id(&self) -> u64 {
-        self.id
-    }
-
-    fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Step {
+    fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Next {
         if let Some(input) = &mut self.input {
             match input.field_key(action, key) {
                 Field::Submit(words) => {
@@ -262,10 +256,10 @@ impl Card for Questions {
                 Field::Cancel => self.input = None,
                 Field::Edited => {}
             }
-            return Step::Stay;
+            return Next::Stay;
         }
         match action {
-            Some(Action::Escape) => return Step::Answer(Reply::No { feedback: None }),
+            Some(Action::Escape) => return Next::Answer(Reply::No { feedback: None }),
             Some(Action::Left) => self.at = self.at.saturating_sub(1),
             Some(Action::Right | Action::Tab) => self.at = (self.at + 1).min(self.last_tab()),
             _ if self.reviewing() => match action {
@@ -296,7 +290,7 @@ impl Card for Questions {
             }
             _ => {}
         }
-        Step::Stay
+        Next::Stay
     }
 
     fn insert(&mut self, text: &str) {
@@ -354,11 +348,11 @@ mod tests {
         KeyEvent::new_with_kind(code, KeyModifiers::NONE, KeyEventKind::Press)
     }
 
-    fn digit(card: &mut Questions, n: char) -> Step {
+    fn digit(card: &mut Questions, n: char) -> Next {
         card.key(None, &press(KeyCode::Char(n)))
     }
 
-    fn enter(card: &mut Questions) -> Step {
+    fn enter(card: &mut Questions) -> Next {
         card.key(Some(Action::Submit), &press(KeyCode::Enter))
     }
 
@@ -366,21 +360,18 @@ mod tests {
         serde_json::from_value(json).unwrap()
     }
 
-    fn answers(step: Step) -> Vec<Answer> {
+    fn answers(step: Next) -> Vec<Answer> {
         match step {
-            Step::Answer(Reply::Answers(answers)) => answers,
+            Next::Answer(Reply::Answers(answers)) => answers,
             _ => panic!("the card did not answer"),
         }
     }
 
     #[test]
     fn one_question_answers_with_a_digit() {
-        let mut card = Questions::new(
-            1,
-            questions(serde_json::json!([
-                {"question": "Which DB?", "options": ["sqlite", "postgres"]}
-            ])),
-        );
+        let mut card = Questions::new(questions(serde_json::json!([
+            {"question": "Which DB?", "options": ["sqlite", "postgres"]}
+        ])));
         let got = answers(digit(&mut card, '2'));
         assert_eq!(
             got,
@@ -394,13 +385,10 @@ mod tests {
     #[test]
     fn other_keeps_a_digit_with_the_most_options_a_question_may_have() {
         let options: Vec<String> = (1..=8).map(|i| format!("option {i}")).collect();
-        let mut card = Questions::new(
-            1,
-            questions(serde_json::json!([
-                {"question": "Which?", "options": options}
-            ])),
-        );
-        assert!(matches!(digit(&mut card, '9'), Step::Stay));
+        let mut card = Questions::new(questions(serde_json::json!([
+            {"question": "Which?", "options": options}
+        ])));
+        assert!(matches!(digit(&mut card, '9'), Next::Stay));
         card.insert("my own");
         let got = answers(enter(&mut card));
         assert_eq!(got[0].text.as_deref(), Some("my own"));
@@ -409,20 +397,17 @@ mod tests {
 
     #[test]
     fn several_questions_go_back_together_after_a_review() {
-        let mut card = Questions::new(
-            1,
-            questions(serde_json::json!([
-                {"question": "Which DB?", "header": "Database", "options": ["sqlite", "postgres"]},
-                {"question": "Which checks?", "header": "Checks", "options": ["lint", "test", "e2e"], "multiple": true}
-            ])),
-        );
-        assert!(matches!(digit(&mut card, '1'), Step::Stay));
+        let mut card = Questions::new(questions(serde_json::json!([
+            {"question": "Which DB?", "header": "Database", "options": ["sqlite", "postgres"]},
+            {"question": "Which checks?", "header": "Checks", "options": ["lint", "test", "e2e"], "multiple": true}
+        ])));
+        assert!(matches!(digit(&mut card, '1'), Next::Stay));
         // On the second tab now: tick two, Enter confirms them.
         let tabs = card.render(60)[1].text();
         assert!(tabs.contains("Database ✓"), "{tabs}");
         digit(&mut card, '1');
         digit(&mut card, '3');
-        assert!(matches!(enter(&mut card), Step::Stay));
+        assert!(matches!(enter(&mut card), Next::Stay));
         let review: Vec<String> = card.render(60).iter().map(Line::text).collect();
         assert!(
             review.iter().any(|l| l.contains("Checks  lint, e2e")),
@@ -435,34 +420,28 @@ mod tests {
 
     #[test]
     fn the_review_will_not_send_with_a_question_unanswered() {
-        let mut card = Questions::new(
-            1,
-            questions(serde_json::json!([
-                {"question": "A?", "options": ["x"]},
-                {"question": "B?", "options": ["y"]}
-            ])),
-        );
+        let mut card = Questions::new(questions(serde_json::json!([
+            {"question": "A?", "options": ["x"]},
+            {"question": "B?", "options": ["y"]}
+        ])));
         card.key(Some(Action::Right), &press(KeyCode::Right));
         card.key(Some(Action::Right), &press(KeyCode::Right));
         assert!(card.reviewing());
-        assert!(matches!(enter(&mut card), Step::Stay));
+        assert!(matches!(enter(&mut card), Next::Stay));
         assert_eq!(card.at, 0, "sent back to the first open question");
     }
 
     #[test]
     fn escape_dismisses_and_every_row_fits_the_width() {
-        let mut card = Questions::new(
-            1,
-            questions(serde_json::json!([
-                {"question": "A question long enough to wrap inside a narrow card?", "options": [
-                    {"label": "first", "description": "what picking the first one means, at some length"}
-                ]}
-            ])),
-        );
+        let mut card = Questions::new(questions(serde_json::json!([
+            {"question": "A question long enough to wrap inside a narrow card?", "options": [
+                {"label": "first", "description": "what picking the first one means, at some length"}
+            ]}
+        ])));
         assert!(card.render(30).iter().all(|l| l.width() <= 30));
         assert!(matches!(
             card.key(Some(Action::Escape), &press(KeyCode::Esc)),
-            Step::Answer(Reply::No { feedback: None })
+            Next::Answer(Reply::No { feedback: None })
         ));
     }
 }

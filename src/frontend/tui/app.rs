@@ -8,9 +8,9 @@ use std::pin::Pin;
 use std::process::ExitCode;
 use std::time::Instant;
 
+use futures_util::StreamExt;
 use futures_util::future::BoxFuture;
 use futures_util::stream::FuturesUnordered;
-use futures_util::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 
 use crate::agent::setup::Setup;
@@ -20,7 +20,7 @@ use crate::app::App;
 use crate::commands::{self, Effect, Outcome as CommandOutcome, Scope, Session};
 use crate::config::limits;
 use crate::conversation::message::Part;
-use crate::frontend::tui::card::{self, Card};
+use crate::frontend::tui::card::{self, Card, Next};
 use crate::frontend::tui::command::{self, Work};
 use crate::frontend::tui::editor::Editor;
 use crate::frontend::tui::feed::{Block, Feed};
@@ -30,14 +30,14 @@ use crate::frontend::tui::login::{self, Login};
 use crate::frontend::tui::next_turn::NextTurn;
 use crate::frontend::tui::palette::{self, Palette};
 use crate::frontend::tui::paste::Burst;
-use crate::frontend::tui::picker::{self, Picker};
+use crate::frontend::tui::picker::Picker;
 use crate::frontend::tui::progress::Progress;
 use crate::frontend::tui::queue::{self, Kind};
 use crate::frontend::tui::screen::Screen;
 use crate::frontend::tui::toast::Toast;
 use crate::frontend::tui::view::View;
 use crate::frontend::tui::{bar, layout, ui, welcome};
-use crate::io::term::{self, Button, Input, KeyCode};
+use crate::io::term::{self, Button, Input, KeyCode, KeyEvent};
 use crate::io::{clipboard, clock};
 use crate::live::event::{AgentEvent, Ended};
 use crate::live::state::Shared;
@@ -66,17 +66,11 @@ enum Step<'a> {
     Send(String),
     Quit,
     /// Start network work for the card on screen.
-    Job(BoxFuture<'a, Done>),
+    Job(BoxFuture<'a, card::Done>),
     /// Put the conversation away and start a fresh one.
     NewConversation,
     /// Run beside input: a session command, or what one of them asked for.
     Work(BoxFuture<'a, Work>),
-}
-
-/// What a card's network work came to, for the card that started it.
-enum Done {
-    Login(login::Done),
-    Forums(forums::Done),
 }
 
 pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode> {
@@ -157,14 +151,11 @@ struct Tui<'a> {
     palette: Palette,
     burst: Burst,
     queue: Vec<(Kind, String)>,
-    /// Prompts waiting on the user; the first is on screen in place of the editor.
-    cards: VecDeque<Box<dyn Card>>,
-    /// The `/login` card, on screen in place of the editor while open.
-    login: Option<Login>,
-    /// The `/models` card, likewise.
-    picker: Option<Picker>,
-    /// The `/forums` card, likewise.
-    forums: Option<Forums>,
+    /// Prompts waiting on the user, each with its id; the first is on screen in place of the
+    /// editor.
+    cards: VecDeque<(u64, Box<dyn Card>)>,
+    /// The session card (`/login`, `/forums`, `/models`), on screen over any prompt while open.
+    panel: Option<Box<dyn Card>>,
     /// The turn in flight, for the working line.
     progress: Option<Progress>,
     last_verb: Option<usize>,
@@ -210,9 +201,7 @@ impl<'a> Tui<'a> {
             burst: Burst::new(limits.paste_gap_ms.ms(), limits.paste_min_keys.value),
             queue: Vec::new(),
             cards: VecDeque::new(),
-            login: None,
-            picker: None,
-            forums: None,
+            panel: None,
             progress: None,
             last_verb: None,
             rng: fastrand::Rng::new(),
@@ -301,7 +290,7 @@ impl<'a> Tui<'a> {
     ) -> (u64, Option<Transcript>) {
         let mut transcript = Some(transcript);
         let mut turn: Option<Turn<'a>> = None;
-        let mut job: Option<BoxFuture<'a, Done>> = None;
+        let mut job: Option<BoxFuture<'a, card::Done>> = None;
         let mut work: FuturesUnordered<BoxFuture<'a, Work>> = FuturesUnordered::new();
         let mut inputs = Box::pin(term::inputs());
         let mut tick = clock::ticks(limits::get().tui.frame_ms.ms());
@@ -311,7 +300,7 @@ impl<'a> Tui<'a> {
             let step = tokio::select! {
                 input = inputs.next() => {
                     let Some(input) = input else { break };
-                    self.input(input, turn.is_some())
+                    self.input(input, turn.is_some(), job.is_some())
                 }
                 Some(event) = events.recv() => {
                     self.agent(event);
@@ -375,14 +364,15 @@ impl<'a> Tui<'a> {
                 },
             }
             // Closing a card drops whatever it was waiting on.
-            if self.login.is_none() && self.forums.is_none() {
+            if self.panel.is_none() {
                 job = None;
             }
         }
         (self.cost_micros, transcript)
     }
 
-    fn input(&mut self, input: Input, running: bool) -> Step<'a> {
+    /// `running` is a turn in flight, `busy` a job the session card waits on.
+    fn input(&mut self, input: Input, running: bool, busy: bool) -> Step<'a> {
         // Inside a burst of keys (a paste where the terminal sends one as keystrokes), Enter
         // and Tab are text for whatever field has the keys, never commands.
         let input = match input {
@@ -412,15 +402,16 @@ impl<'a> Tui<'a> {
                 }
                 Step::Continue
             }
-            // The login card's code wherever it is clicked, else the block under the pointer.
+            // What the session card offers (the login code) wherever it is clicked, else the
+            // block under the pointer.
             Input::Click {
                 row,
                 button: Button::Right,
             } => {
                 let text = self
-                    .login
+                    .panel
                     .as_ref()
-                    .and_then(Login::code)
+                    .and_then(|card| card.copied())
                     .map(str::to_owned)
                     .or_else(|| {
                         let block = self.blocks.get(row).copied().flatten()?;
@@ -442,28 +433,18 @@ impl<'a> Tui<'a> {
                 self.view.scroll(if up { -page } else { page });
                 Step::Continue
             }
-            Input::Paste(_) if self.picker.is_some() => Step::Continue,
             Input::Paste(text) => {
-                if let Some(card) = &mut self.login {
+                if let Some(card) = &mut self.panel {
                     card.insert(&text);
-                } else if let Some(card) = &mut self.forums {
-                    card.insert(&text);
-                } else if let Some(card) = self.cards.front_mut() {
+                } else if let Some((_, card)) = self.cards.front_mut() {
                     card.insert(&text);
                 } else {
                     self.editor.insert(&text);
                 }
                 Step::Continue
             }
-            Input::Key(key) if self.login.is_some() => self.login_key(&key),
-            Input::Key(key) if self.forums.is_some() => self.forums_key(&key),
-            Input::Key(key) if self.picker.is_some() => {
-                self.picker_key(&key);
-                Step::Continue
-            }
-            Input::Key(key) if !self.cards.is_empty() => {
-                self.card_key(&key, running);
-                Step::Continue
+            Input::Key(key) if self.panel.is_some() || !self.cards.is_empty() => {
+                self.card_key(&key, running, busy)
             }
             Input::Key(key) => {
                 match keymap::get().action(&key) {
@@ -495,105 +476,69 @@ impl<'a> Tui<'a> {
         }
     }
 
-    /// Keys while a prompt card is up: the card answers most, the session keeps a few.
-    fn card_key(&mut self, key: &crate::io::term::KeyEvent, running: bool) {
+    /// Keys while a card is up: the session keeps a few, the card takes the rest.
+    fn card_key(&mut self, key: &KeyEvent, running: bool, busy: bool) -> Step<'a> {
         let action = keymap::get().action(key);
         match action {
-            Some(Action::CycleMode) => return self.cycle_mode(),
-            Some(Action::CtrlC) if running => return self.interrupt(),
+            Some(Action::CycleMode) => {
+                self.cycle_mode();
+                return Step::Continue;
+            }
+            Some(Action::CtrlC) if running => {
+                self.interrupt();
+                return Step::Continue;
+            }
+            // A session card waiting on its job closes, which drops the job.
+            Some(Action::Escape | Action::CtrlC) if busy && self.panel.is_some() => {
+                self.panel = None;
+                return Step::Continue;
+            }
             _ => {}
         }
-        let Some(card) = self.cards.front_mut() else {
-            return;
-        };
-        if let card::Step::Answer(reply) = card.key(action, key) {
-            self.shared.prompts.answer(card.id(), reply);
+        if let Some(card) = &mut self.panel {
+            let next = card.key(action, key);
+            return self.panel_next(next);
+        }
+        if let Some((id, card)) = self.cards.front_mut()
+            && let Next::Answer(reply) = card.key(action, key)
+        {
+            self.shared.prompts.answer(*id, reply);
             self.cards.pop_front();
         }
+        Step::Continue
     }
 
-    fn login_key(&mut self, key: &crate::io::term::KeyEvent) -> Step<'a> {
-        let action = keymap::get().action(key);
-        if action == Some(Action::CycleMode) {
-            self.cycle_mode();
-            return Step::Continue;
-        }
-        let next = match &mut self.login {
-            Some(card) => card.key(action, key),
-            None => return Step::Continue,
-        };
-        self.login_next(next)
-            .map_or(Step::Continue, |job| self.login_job(job))
-    }
-
-    fn login_job(&self, job: login::Job) -> Step<'a> {
-        Step::Job(login::run(self.app, job).map(Done::Login).boxed())
-    }
-
-    fn forums_key(&mut self, key: &crate::io::term::KeyEvent) -> Step<'a> {
-        let action = keymap::get().action(key);
-        if action == Some(Action::CycleMode) {
-            self.cycle_mode();
-            return Step::Continue;
-        }
-        match &mut self.forums {
-            Some(card) => {
-                let next = card.key(action, key);
-                self.forums_next(next)
-            }
-            None => Step::Continue,
-        }
-    }
-
-    fn forums_next(&mut self, next: forums::Next) -> Step<'a> {
+    /// Does what the session card asked for.
+    fn panel_next(&mut self, next: Next) -> Step<'a> {
         match next {
-            forums::Next::Stay => {}
-            forums::Next::Run(job) => {
-                return Step::Job(forums::run(self.app, job).map(Done::Forums).boxed());
+            // A session card answers no prompt.
+            Next::Stay | Next::Answer(_) => {}
+            Next::Run(job) => return Step::Job(card::run(self.app, job)),
+            Next::Note(text) => self.feed.notice(&text, "done"),
+            Next::Error(text) => self.feed.notice(&text, "error"),
+            Next::Close(message) => {
+                self.panel = None;
+                if let Some(message) = message {
+                    self.feed.notice(&message, "done");
+                }
             }
-            forums::Next::Note(text) => self.feed.notice(&text, "done"),
-            forums::Next::Error(text) => self.feed.notice(&text, "error"),
-            forums::Next::Close => self.forums = None,
+            Next::UseModel(id) => {
+                self.panel = None;
+                self.switch_model(&id);
+            }
         }
         Step::Continue
     }
 
     /// Hands a card's finished work back to it; what it asks next may be more work.
-    fn job_done(&mut self, done: Done) -> Step<'a> {
-        match done {
-            Done::Login(done) => {
-                let next = self.login.as_mut().map(|card| card.finished(done));
-                next.and_then(|next| self.login_next(next))
-                    .map_or(Step::Continue, |job| self.login_job(job))
-            }
-            Done::Forums(done) => {
-                // The prompt names the forums to browse; an added or removed one changes it.
-                if matches!(done, forums::Done::Changed { .. }) {
-                    self.next.reload(&self.app.paths);
-                }
-                match self.forums.as_mut().map(|card| card.finished(done)) {
-                    Some(next) => self.forums_next(next),
-                    None => Step::Continue,
-                }
-            }
+    fn job_done(&mut self, done: card::Done) -> Step<'a> {
+        // The prompt names the forums to browse; an added or removed one changes it.
+        if matches!(done, card::Done::Forums(forums::Done::Changed { .. })) {
+            self.next.reload(&self.app.paths);
         }
-    }
-
-    fn picker_key(&mut self, key: &crate::io::term::KeyEvent) {
-        let action = keymap::get().action(key);
-        if action == Some(Action::CycleMode) {
-            return self.cycle_mode();
-        }
-        let Some(picker) = &mut self.picker else {
-            return;
-        };
-        match picker.key(action) {
-            picker::Step::Stay => {}
-            picker::Step::Close => self.picker = None,
-            picker::Step::Pick(id) => {
-                self.picker = None;
-                self.switch_model(&id);
-            }
+        match self.panel.as_mut().map(|card| card.finished(done)) {
+            Some(next) => self.panel_next(next),
+            None => Step::Continue,
         }
     }
 
@@ -625,24 +570,6 @@ impl<'a> Tui<'a> {
         self.next.switch(&self.app.paths, model);
         let text = template::fill(&ui::get().picker.switched, &[("model", id)]);
         self.feed.notice(&text, "done");
-    }
-
-    fn login_next(&mut self, next: login::Next) -> Option<login::Job> {
-        match next {
-            login::Next::Stay => None,
-            login::Next::Run(job) => Some(job),
-            login::Next::Error(error) => {
-                self.feed.notice(&error, "error");
-                None
-            }
-            login::Next::Close(message) => {
-                self.login = None;
-                if let Some(message) = message {
-                    self.feed.notice(&message, "done");
-                }
-                None
-            }
-        }
     }
 
     fn action(&mut self, action: Action, running: bool) -> Step<'a> {
@@ -791,7 +718,7 @@ impl<'a> Tui<'a> {
         let outcome: CommandOutcome = match done {
             Work::Catalog(catalog) => {
                 self.catalog = catalog;
-                self.picker = Some(Picker::new(&self.catalog, &self.next.model.id));
+                self.panel = Some(Box::new(Picker::new(&self.catalog, &self.next.model.id)));
                 return Step::Continue;
             }
             Work::Command(Err(e)) => {
@@ -812,21 +739,22 @@ impl<'a> Tui<'a> {
                         self.shared.set_mode(mode);
                     }
                 }
-                Effect::Login { number: None } => self.login = Some(Login::new()),
+                Effect::Login { number: None } => self.panel = Some(Box::new(Login::new())),
                 Effect::Login {
                     number: Some(number),
                 } => {
-                    self.login = Some(Login::checking());
-                    return self.login_job(login::Job::Check(number));
+                    self.panel = Some(Box::new(Login::checking()));
+                    let job = card::Job::Login(login::Job::Check(number));
+                    return Step::Job(card::run(self.app, job));
                 }
                 Effect::PickModel { refresh: true } => {
                     return Step::Work(command::refresh_catalog(self.app));
                 }
                 Effect::PickModel { refresh: false } => {
-                    self.picker = Some(Picker::new(&self.catalog, &self.next.model.id));
+                    self.panel = Some(Box::new(Picker::new(&self.catalog, &self.next.model.id)));
                 }
-                Effect::Forums { login } => match crate::forums::store::load(&self.app.paths) {
-                    Ok(list) => self.forums = Some(Forums::new(list, login.as_deref())),
+                Effect::Forums { login } => match Forums::open(&self.app.paths, login.as_deref()) {
+                    Ok(card) => self.panel = Some(Box::new(card)),
                     Err(e) => self.feed.notice(&format!("{e:#}"), "error"),
                 },
                 Effect::NewConversation => return Step::NewConversation,
@@ -856,8 +784,8 @@ impl<'a> Tui<'a> {
                 }
             }
             AgentEvent::Prompt { id, prompt, .. } => {
-                self.cards
-                    .push_back(card::from_prompt(*id, prompt, self.draw_width()));
+                let card = card::from_prompt(prompt, self.draw_width());
+                self.cards.push_back((*id, card));
             }
             _ => {}
         }
@@ -889,17 +817,12 @@ impl<'a> Tui<'a> {
         }
         // Prompts answered elsewhere (AUTO approved them, the run was interrupted) go away.
         let shared = self.shared;
-        self.cards.retain(|card| shared.prompts.waiting(card.id()));
+        self.cards.retain(|(id, _)| shared.prompts.waiting(*id));
         // The command popup floats over the conversation instead of growing the bar.
         let mut floating = Vec::new();
-        let card = if let Some(login) = &self.login {
-            Some(login.render(width))
-        } else if let Some(forums) = &self.forums {
-            Some(forums.render(width))
-        } else if let Some(picker) = &self.picker {
-            Some(picker.render(width))
-        } else {
-            self.cards.front().map(|card| card.render(width))
+        let card = match &self.panel {
+            Some(card) => Some(card.render(width)),
+            None => self.cards.front().map(|(_, card)| card.render(width)),
         };
         match card {
             Some(lines) => live.extend(lines),

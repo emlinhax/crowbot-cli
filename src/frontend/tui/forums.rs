@@ -9,9 +9,10 @@ use crate::app::App;
 use crate::commands::Scope;
 use crate::commands::forums::{self as said, added, logged_in, logged_out, removed};
 use crate::config::limits;
+use crate::config::paths::Paths;
 use crate::forums::{Forum, account, directory, store};
 use crate::frontend::tui::boxed::{self, boxed};
-use crate::frontend::tui::card::{Card, Step};
+use crate::frontend::tui::card::{self, Card, Next};
 use crate::frontend::tui::choice::{Choice, Opt};
 use crate::frontend::tui::editor::{Editor, Field};
 use crate::frontend::tui::keymap::Action;
@@ -100,18 +101,6 @@ pub enum Done {
     Failed(String),
 }
 
-/// What the card wants next.
-// Made per key and dropped at once; boxing the big variant would only add noise.
-#[allow(clippy::large_enum_variant)]
-pub enum Next {
-    Stay,
-    Run(Job),
-    /// Show this above the card, which stays open.
-    Note(String),
-    Error(String),
-    Close,
-}
-
 pub fn run(app: &App, job: Job) -> BoxFuture<'_, Done> {
     Box::pin(async move {
         let (said, focus) = match job {
@@ -157,6 +146,11 @@ pub fn run(app: &App, job: Job) -> BoxFuture<'_, Done> {
 }
 
 impl Forums {
+    /// The stored forums' card, at the login for the one with base URL `login` when named.
+    pub fn open(paths: &Paths, login: Option<&str>) -> anyhow::Result<Self> {
+        Ok(Self::new(store::load(paths)?, login))
+    }
+
     /// The list, or the login for the forum with base URL `login` when one was named.
     pub fn new(forums: Vec<Forum>, login: Option<&str>) -> Self {
         let at = login.and_then(|url| forums.iter().position(|f| f.base_url == url));
@@ -170,25 +164,25 @@ impl Forums {
         }
     }
 
-    pub fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Next {
+    fn stage_key(&mut self, action: Option<Action>, key: &KeyEvent) -> Next {
         match &mut self.stage {
             Stage::List => return self.list_key(action),
             Stage::Menu { choice, acts } => match choice.key(action, key) {
-                Step::Stay => {}
-                Step::Answer(Reply::Choice(i)) => {
+                Next::Answer(Reply::Choice(i)) => {
                     let act = acts[i];
                     return self.act(act);
                 }
-                Step::Answer(_) => self.stage = Stage::List,
+                Next::Answer(_) => self.stage = Stage::List,
+                _ => {}
             },
             Stage::Add { choice, queries } => match choice.key(action, key) {
-                Step::Stay => {}
-                Step::Answer(Reply::Choice(i)) => {
+                Next::Answer(Reply::Choice(i)) => {
                     let query = queries[i].clone();
                     return self.search(query);
                 }
-                Step::Answer(Reply::Text(words)) => return self.search(words),
-                Step::Answer(_) => self.stage = Stage::List,
+                Next::Answer(Reply::Text(words)) => return self.search(words),
+                Next::Answer(_) => self.stage = Stage::List,
+                _ => {}
             },
             Stage::Found {
                 results, selected, ..
@@ -245,12 +239,8 @@ impl Forums {
                 Field::Cancel => self.stage = username(&user.clone()),
                 Field::Edited => {}
             },
-            // Only cancelling is left once the forum is being asked.
-            Stage::Working { .. } => {
-                if matches!(action, Some(Action::Escape | Action::CtrlC)) {
-                    return Next::Close;
-                }
-            }
+            // Only cancelling is left once the forum is being asked, and the session does that.
+            Stage::Working { .. } => {}
         }
         Next::Stay
     }
@@ -267,7 +257,7 @@ impl Forums {
                     None => add(&self.forums),
                 };
             }
-            Some(Action::Left | Action::Escape) => return Next::Close,
+            Some(Action::Left | Action::Escape) => return Next::Close(None),
             _ => {}
         }
         Next::Stay
@@ -293,11 +283,11 @@ impl Forums {
 
     fn work(&mut self, doing: String, back: Back, job: Job) -> Next {
         self.stage = Stage::Working { doing, back };
-        Next::Run(job)
+        Next::Run(card::Job::Forums(Box::new(job)))
     }
 
     /// Typed or pasted text, for whichever line is open.
-    pub fn insert(&mut self, text: &str) {
+    fn stage_insert(&mut self, text: &str) {
         match &mut self.stage {
             Stage::Username(input) | Stage::Password { input, .. } => input.insert(text),
             Stage::Menu { choice, .. } | Stage::Add { choice, .. } => choice.insert(text),
@@ -305,7 +295,7 @@ impl Forums {
         }
     }
 
-    pub fn finished(&mut self, done: Done) -> Next {
+    fn stage_finished(&mut self, done: Done) -> Next {
         let text = &ui::get().forums;
         let back = match std::mem::replace(&mut self.stage, Stage::List) {
             Stage::Working { back, .. } => back,
@@ -350,7 +340,7 @@ impl Forums {
         }
     }
 
-    pub fn render(&self, width: usize) -> Vec<Line> {
+    fn draw(&self, width: usize) -> Vec<Line> {
         let text = &ui::get().forums;
         let muted = Style::fg("muted");
         let forum = || &self.forums[self.selected];
@@ -392,6 +382,27 @@ impl Forums {
     }
 }
 
+impl Card for Forums {
+    fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Next {
+        self.stage_key(action, key)
+    }
+
+    fn insert(&mut self, text: &str) {
+        self.stage_insert(text);
+    }
+
+    fn render(&self, width: usize) -> Vec<Line> {
+        self.draw(width)
+    }
+
+    fn finished(&mut self, done: card::Done) -> Next {
+        match done {
+            card::Done::Forums(done) => self.stage_finished(done),
+            card::Done::Login(_) => Next::Stay,
+        }
+    }
+}
+
 fn username(typed: &str) -> Stage {
     let mut input = Editor::new();
     input.set_text(typed);
@@ -419,7 +430,7 @@ fn menu(forum: &Forum) -> Stage {
         .collect();
     let mut body = vec![status(forum)];
     body.extend(hint_of(Some(forum)));
-    let choice = Choice::new(0, forum.name.clone(), body, options).with_hint(&text.menu_hint);
+    let choice = Choice::new(forum.name.clone(), body, options).with_hint(&text.menu_hint);
     Stage::Menu { choice, acts }
 }
 
@@ -437,7 +448,7 @@ fn add(forums: &[Forum]) -> Stage {
         .collect();
     options.push(Opt::text(text.search.clone()));
     let body = vec![Line::styled(&text.add_note, Style::fg("muted"))];
-    let choice = Choice::new(0, text.add_title.clone(), body, options).with_hint(&text.menu_hint);
+    let choice = Choice::new(text.add_title.clone(), body, options).with_hint(&text.menu_hint);
     Stage::Add { choice, queries }
 }
 
@@ -515,6 +526,18 @@ mod tests {
         card.key(None, &press(KeyCode::Char(n)))
     }
 
+    fn finished(forums: &mut Forums, done: Done) -> Next {
+        forums.finished(card::Done::Forums(done))
+    }
+
+    /// The forum job a step asked the session for.
+    fn job(next: Next) -> Option<Job> {
+        match next {
+            Next::Run(card::Job::Forums(job)) => Some(*job),
+            _ => None,
+        }
+    }
+
     fn shown(card: &Forums) -> String {
         card.render(80)
             .iter()
@@ -563,14 +586,14 @@ mod tests {
         assert!(text.contains("Username: crow"), "{text}");
         assert!(text.contains("•••••••"), "{text}");
         assert!(!text.contains("hunter2"), "{text}");
-        match key(&mut card, Action::Submit) {
-            Next::Run(Job::Login { user, password, .. }) => {
+        match job(key(&mut card, Action::Submit)) {
+            Some(Job::Login { user, password, .. }) => {
                 assert_eq!((user.as_str(), password.as_str()), ("crow", "hunter2"));
             }
             _ => panic!("expected a login"),
         }
         assert!(shown(&card).contains("Logging in to Alpha as crow"));
-        match card.finished(Done::Failed("Wrong password".into())) {
+        match finished(&mut card, Done::Failed("Wrong password".into())) {
             Next::Error(error) => assert!(error.contains("Wrong password"), "{error}"),
             _ => panic!("expected the refusal"),
         }
@@ -590,11 +613,14 @@ mod tests {
         key(&mut card, Action::Submit);
         card.insert("pw");
         key(&mut card, Action::Submit);
-        let next = card.finished(Done::Changed {
-            message: "Logged in to Alpha as crow.".into(),
-            forums: vec![forum("Alpha", Some("crow"))],
-            focus: Some("https://alpha.example/forum".into()),
-        });
+        let next = finished(
+            &mut card,
+            Done::Changed {
+                message: "Logged in to Alpha as crow.".into(),
+                forums: vec![forum("Alpha", Some("crow"))],
+                focus: Some("https://alpha.example/forum".into()),
+            },
+        );
         assert!(matches!(next, Next::Note(m) if m.contains("Logged in")));
         let text = shown(&card);
         assert!(
@@ -603,7 +629,7 @@ mod tests {
         );
         // A logged-in forum can be logged out of.
         key(&mut card, Action::Submit);
-        assert!(matches!(digit(&mut card, '2'), Next::Run(Job::Logout(_))));
+        assert!(matches!(job(digit(&mut card, '2')), Some(Job::Logout(_))));
     }
 
     #[test]
@@ -615,15 +641,18 @@ mod tests {
         assert!(text.contains("Add a forum"), "{text}");
         assert!(!text.contains("unknowncheats"), "{text}");
         assert!(text.contains("1 mpgh"), "{text}");
-        assert!(matches!(digit(&mut card, '1'), Next::Run(Job::Search(q)) if q == "mpgh"));
-        card.finished(Done::Found {
-            query: "mpgh".into(),
-            results: vec![forum("MPGH", None), forum("Other", None)],
-        });
+        assert!(matches!(job(digit(&mut card, '1')), Some(Job::Search(q)) if q == "mpgh"));
+        finished(
+            &mut card,
+            Done::Found {
+                query: "mpgh".into(),
+                results: vec![forum("MPGH", None), forum("Other", None)],
+            },
+        );
         assert!(shown(&card).contains("Forums matching “mpgh”"));
         key(&mut card, Action::Down);
-        match key(&mut card, Action::Submit) {
-            Next::Run(Job::Add(found)) => assert_eq!(found.name, "Other"),
+        match job(key(&mut card, Action::Submit)) {
+            Some(Job::Add(found)) => assert_eq!(found.name, "Other"),
             _ => panic!("expected an add"),
         }
     }
@@ -636,14 +665,17 @@ mod tests {
         digit(&mut card, search.chars().next().unwrap());
         card.insert("nowhere");
         assert!(
-            matches!(key(&mut card, Action::Submit), Next::Run(Job::Search(q)) if q == "nowhere")
+            matches!(job(key(&mut card, Action::Submit)), Some(Job::Search(q)) if q == "nowhere")
         );
-        let next = card.finished(Done::Found {
-            query: "nowhere".into(),
-            results: Vec::new(),
-        });
+        let next = finished(
+            &mut card,
+            Done::Found {
+                query: "nowhere".into(),
+                results: Vec::new(),
+            },
+        );
         assert!(matches!(next, Next::Error(e) if e.contains("nowhere")));
         assert!(matches!(key(&mut card, Action::Escape), Next::Stay));
-        assert!(matches!(key(&mut card, Action::Escape), Next::Close));
+        assert!(matches!(key(&mut card, Action::Escape), Next::Close(None)));
     }
 }

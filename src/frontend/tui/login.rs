@@ -9,7 +9,7 @@ use crate::app::App;
 use crate::auth::{self, KeyKind};
 use crate::commands::login::logged_in;
 use crate::frontend::tui::boxed::{self, boxed};
-use crate::frontend::tui::card::{Card, Step};
+use crate::frontend::tui::card::{self, Card, Next};
 use crate::frontend::tui::choice::{Choice, Opt};
 use crate::frontend::tui::keymap::Action;
 use crate::frontend::tui::ui;
@@ -43,16 +43,6 @@ pub enum Done {
     /// The message to show.
     LoggedIn(String),
     Failed(String),
-}
-
-/// What the card wants next.
-pub enum Next {
-    Stay,
-    Run(Job),
-    /// Show an error above the card, which is back at its menu.
-    Error(String),
-    /// Close the card, with a message when it logged in.
-    Close(Option<String>),
 }
 
 pub fn run(app: &App, job: Job) -> BoxFuture<'_, Done> {
@@ -90,52 +80,51 @@ impl Login {
             stage: Stage::Checking,
         }
     }
+}
 
-    /// The pairing code while it waits to be entered, for copying.
-    pub fn code(&self) -> Option<&str> {
-        match &self.stage {
-            Stage::Waiting { code, .. } => Some(code),
-            _ => None,
-        }
-    }
+/// Work the card asks the session loop for.
+fn work(job: Job) -> Next {
+    Next::Run(card::Job::Login(job))
+}
 
-    pub fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Next {
+impl Card for Login {
+    fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Next {
+        // Once crowbot is being asked only cancelling is left, and the session does that.
         let Stage::Choose(card) = &mut self.stage else {
-            // Only cancelling is left once crowbot is being asked.
-            return match action {
-                Some(Action::Escape | Action::CtrlC) => Next::Close(None),
-                _ => Next::Stay,
-            };
+            return Next::Stay;
         };
         match card.key(action, key) {
-            Step::Stay => Next::Stay,
-            Step::Answer(Reply::Choice(_)) => {
+            Next::Answer(Reply::Choice(_)) => {
                 self.stage = Stage::Starting;
-                Next::Run(Job::Start)
+                work(Job::Start)
             }
-            Step::Answer(Reply::Text(number)) => {
+            Next::Answer(Reply::Text(number)) => {
                 self.stage = Stage::Checking;
-                Next::Run(Job::Check(number))
+                work(Job::Check(number))
             }
-            Step::Answer(_) => Next::Close(None),
+            Next::Answer(_) => Next::Close(None),
+            other => other,
         }
     }
 
     /// Typed or pasted text, for the account number line.
-    pub fn insert(&mut self, text: &str) {
+    fn insert(&mut self, text: &str) {
         if let Stage::Choose(card) = &mut self.stage {
             card.insert(text);
         }
     }
 
-    pub fn finished(&mut self, done: Done) -> Next {
+    fn finished(&mut self, done: card::Done) -> Next {
+        let card::Done::Login(done) = done else {
+            return Next::Stay;
+        };
         match done {
             Done::Started(started) => {
                 self.stage = Stage::Waiting {
                     url: pair::page(),
                     code: started.user_code.clone(),
                 };
-                Next::Run(Job::Wait(started))
+                work(Job::Wait(started))
             }
             Done::LoggedIn(message) => Next::Close(Some(message)),
             Done::Failed(error) => {
@@ -145,7 +134,15 @@ impl Login {
         }
     }
 
-    pub fn render(&self, width: usize) -> Vec<Line> {
+    /// The pairing code while it waits to be entered.
+    fn copied(&self) -> Option<&str> {
+        match &self.stage {
+            Stage::Waiting { code, .. } => Some(code),
+            _ => None,
+        }
+    }
+
+    fn render(&self, width: usize) -> Vec<Line> {
         let text = &ui::get().login;
         let muted = Style::fg("muted");
         let body = match &self.stage {
@@ -178,9 +175,9 @@ fn menu() -> Choice {
     let text = &ui::get().login;
     let options = vec![
         Opt::index(text.pair.clone(), 0),
-        Opt::secret(text.number.clone()),
+        Opt::secret(text.number.clone(), auth::HINT_CHARS),
     ];
-    Choice::new(0, text.title.clone(), Vec::new(), options)
+    Choice::new(text.title.clone(), Vec::new(), options)
 }
 
 #[cfg(test)]
@@ -211,7 +208,7 @@ mod tests {
         assert!(text(&login).contains("1 Pair this device"));
         assert!(matches!(
             login.key(None, &press('1')),
-            Next::Run(Job::Start)
+            Next::Run(card::Job::Login(Job::Start))
         ));
         assert!(text(&login).contains("pairing code"));
         let started = Started {
@@ -219,13 +216,14 @@ mod tests {
             user_code: "ABCD-1234".into(),
             ttl: 60,
         };
-        let next = login.finished(Done::Started(started));
-        assert!(matches!(next, Next::Run(Job::Wait(_))));
+        let next = login.finished(card::Done::Login(Done::Started(started)));
+        assert!(matches!(next, Next::Run(card::Job::Login(Job::Wait(_)))));
         let shown = text(&login);
         assert!(shown.contains("ABCD-1234"), "{shown}");
+        // While crowbot is asked the card only waits; the session closes it on Esc.
         assert!(matches!(
             login.key(Some(Action::Escape), &press('x')),
-            Next::Close(None)
+            Next::Stay
         ));
     }
 
@@ -238,10 +236,12 @@ mod tests {
         assert!(shown.contains("•••• •••• •••• 3456"), "{shown}");
         assert!(!shown.contains("1234"), "{shown}");
         match login.key(Some(Action::Submit), &enter()) {
-            Next::Run(Job::Check(number)) => assert_eq!(number, "1234 5678 9012 3456"),
+            Next::Run(card::Job::Login(Job::Check(number))) => {
+                assert_eq!(number, "1234 5678 9012 3456")
+            }
             _ => panic!("expected a check"),
         }
-        match login.finished(Done::Failed("invalid_api_key".into())) {
+        match login.finished(card::Done::Login(Done::Failed("invalid_api_key".into()))) {
             Next::Error(error) => assert!(error.contains("invalid_api_key"), "{error}"),
             _ => panic!("expected the error"),
         }
