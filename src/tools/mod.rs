@@ -12,7 +12,6 @@ mod many;
 mod plan_exit;
 mod question;
 mod read;
-mod shell;
 mod target;
 #[cfg(test)]
 pub mod testing;
@@ -263,7 +262,7 @@ pub struct Registry {
 impl Registry {
     /// Every tool, with bash running `shell` (the `shell` setting; `None` picks one).
     pub fn builtin(shell: Option<&str>) -> Self {
-        let shell = shell::resolve(shell);
+        let shell = bash::shell::resolve(shell);
         let mut vars = limits::vars("tools");
         vars.push(("shell_note".to_owned(), shell.note.clone()));
         let tools: Vec<Arc<dyn AnyTool>> = vec![
