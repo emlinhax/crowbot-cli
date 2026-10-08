@@ -1,10 +1,10 @@
 //! The agent loop (after pi's agent-loop): ask the model, run what it calls, feed the results
 //! back, until it stops calling tools. Messages queued meanwhile are delivered at safe points.
 
-use crate::agent::RunCtx;
 use crate::agent::batch::{self, Batch};
 use crate::agent::context;
 use crate::agent::model_text;
+use crate::agent::{Run, RunCtx};
 use crate::api::chat::{self, Turn};
 use crate::config::limits;
 use crate::conversation::message::{Finish, Message, Part, ToolCall};
@@ -12,6 +12,7 @@ use crate::live::event::{AgentEvent, Outcome};
 use crate::live::state::{Reminder, Shared};
 use crate::session::transcript::Transcript;
 use crate::text::template::fill;
+use crate::tools;
 
 pub async fn run(
     cx: &RunCtx<'_>,
@@ -19,8 +20,14 @@ pub async fn run(
     shared: &Shared,
     prompt: Vec<Part>,
 ) -> Outcome {
-    let cancel = shared.begin_run();
-    let parts = with_reminder(cx, shared, prompt);
+    let run = Run {
+        cx,
+        shared,
+        cancel: shared.begin_run(),
+        plan_file: tools::plan_file(&cx.app.paths, &transcript.id()),
+    };
+    let cancel = &run.cancel;
+    let parts = with_reminder(&run, prompt);
     record(cx, transcript, Message::User { parts });
     let tools = cx.tools.wire();
     let max_turns = limits::get().agent.max_turns.value;
@@ -41,7 +48,7 @@ pub async fn run(
                 messages: &messages,
                 tools: &tools,
             };
-            let reply = chat::stream(&cx.app.api, &turn, &cancel, &mut |event| {
+            let reply = chat::stream(&cx.app.api, &turn, cancel, &mut |event| {
                 (cx.emit)(AgentEvent::from(event));
             })
             .await;
@@ -59,10 +66,10 @@ pub async fn run(
                 let batch = if finish == Finish::Length {
                     // A reply cut off mid-call may carry truncated arguments; never run those.
                     let why = &model_text::get().truncated_tool_call;
-                    batch::refuse_all(cx, &calls, shared, &cancel, why).await
+                    batch::refuse_all(&run, &calls, why).await
                 } else {
                     let history = &transcript.messages[..transcript.messages.len() - 1];
-                    batch::run(cx, history, &calls, shared, &cancel).await
+                    batch::run(&run, history, &calls).await
                 };
                 let Batch { results, stop } = batch;
                 for result in results {
@@ -79,7 +86,7 @@ pub async fn run(
             let steered = shared.drain_steer();
             if !steered.is_empty() {
                 for parts in steered {
-                    deliver(cx, shared, transcript, parts);
+                    deliver(&run, transcript, parts);
                 }
                 continue;
             }
@@ -92,7 +99,7 @@ pub async fn run(
             break Outcome::Done;
         }
         for parts in queued {
-            deliver(cx, shared, transcript, parts);
+            deliver(&run, transcript, parts);
         }
     };
     (cx.emit)(AgentEvent::RunEnd { outcome });
@@ -111,21 +118,21 @@ fn record(cx: &RunCtx<'_>, transcript: &mut Transcript, message: Message) {
 }
 
 /// Hands a message typed mid-run to the model, and tells the frontend it landed.
-fn deliver(cx: &RunCtx<'_>, shared: &Shared, transcript: &mut Transcript, parts: Vec<Part>) {
+fn deliver(run: &Run<'_>, transcript: &mut Transcript, parts: Vec<Part>) {
     let text = Part::text_of(&parts);
-    (cx.emit)(AgentEvent::Delivered { text });
-    let parts = with_reminder(cx, shared, parts);
-    record(cx, transcript, Message::User { parts });
+    (run.cx.emit)(AgentEvent::Delivered { text });
+    let parts = with_reminder(run, parts);
+    record(run.cx, transcript, Message::User { parts });
 }
 
 /// Mode changes reach the model as a reminder on the next user message, so the system prompt
 /// (and the vendor's cache of it) never changes mid-session.
-fn with_reminder(cx: &RunCtx<'_>, shared: &Shared, mut parts: Vec<Part>) -> Vec<Part> {
-    let text = match shared.take_reminder() {
+fn with_reminder(run: &Run<'_>, mut parts: Vec<Part>) -> Vec<Part> {
+    let text = match run.shared.take_reminder() {
         Some(Reminder::Entered(mode)) => mode
             .reminder
             .as_deref()
-            .map(|text| fill(text.trim_end(), &[("plan_file", &cx.plan_file)])),
+            .map(|text| fill(text.trim_end(), &[("plan_file", &run.plan_file)])),
         Some(Reminder::Left { now }) => {
             Some(fill(&model_text::get().mode_left, &[("mode", &now.label)]))
         }
@@ -264,7 +271,6 @@ mod tests {
                 effort: None,
                 system: "sys",
                 tools: &registry,
-                plan_file: self.plan_file(),
                 emit: &emit,
             };
             let mut transcript = Transcript::new(None);
@@ -273,13 +279,9 @@ mod tests {
             (outcome, transcript, events.into_inner().unwrap())
         }
 
+        /// The plan file of the unsaved session every harness run uses.
         fn plan_file(&self) -> String {
-            self.app
-                .paths
-                .home
-                .join("plan.md")
-                .to_string_lossy()
-                .replace('\\', "/")
+            crate::tools::plan_file(&self.app.paths, &Transcript::new(None).id())
         }
 
         fn requests(&self) -> Vec<Value> {

@@ -50,7 +50,7 @@ use crate::text::styled::{Line, Style, TAB};
 use crate::text::template;
 use crate::text::theme;
 use crate::text::units;
-use crate::tools::{self, Registry};
+use crate::tools::Registry;
 
 type Turn<'a> = Pin<Box<dyn Future<Output = (Transcript, Outcome)> + 'a>>;
 
@@ -364,7 +364,6 @@ impl<'a> Tui<'a> {
                     self.progress = Some(progress);
                     let parts = vec![Part::Text { text }];
                     let (app, tools, emit) = (self.app, turns.tools, turns.emit);
-                    let plan_file = tools::plan_file(&app.paths, &owned.id());
                     let (model, system) = (self.model.clone(), self.system.clone());
                     let effort = self.effort.clone();
                     turn = Some(Box::pin(async move {
@@ -374,7 +373,6 @@ impl<'a> Tui<'a> {
                             effort: effort.as_deref(),
                             system: &system,
                             tools,
-                            plan_file,
                             emit,
                         };
                         let outcome = run::run(&cx, &mut owned, shared, parts).await;

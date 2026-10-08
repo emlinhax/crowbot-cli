@@ -6,16 +6,14 @@ use std::sync::Arc;
 
 use futures_util::future::join_all;
 use serde_json::Value;
-use tokio_util::sync::CancellationToken;
 
-use crate::agent::RunCtx;
+use crate::agent::Run;
 use crate::agent::doom_loop;
 use crate::agent::model_text;
 use crate::config::limits;
 use crate::conversation::message::{Message, ToolCall, ToolResult};
 use crate::live::event::AgentEvent;
 use crate::live::prompt::{self, Prompt, Reply};
-use crate::live::state::Shared;
 use crate::mode::DoomLoop;
 use crate::permission::catalog;
 use crate::permission::gate::{self, Ask, Decision};
@@ -47,13 +45,7 @@ type Slot = Result<(Arc<dyn AnyTool>, Value), Refused>;
 /// Each mode's locks, filled once a batch for the mode in force at each call.
 type Locks = HashMap<&'static str, Vec<Rule>>;
 
-pub async fn run<'a>(
-    cx: &'a RunCtx<'a>,
-    history: &[Message],
-    calls: &'a [ToolCall],
-    shared: &'a Shared,
-    cancel: &'a CancellationToken,
-) -> Batch {
+pub(super) async fn run<'a>(run: &'a Run<'a>, history: &[Message], calls: &'a [ToolCall]) -> Batch {
     let mut cleared = Vec::with_capacity(calls.len());
     let mut locks = Locks::new();
     let mut stop = false;
@@ -62,7 +54,7 @@ pub async fn run<'a>(
             Err(Refused::from(model_text::get().rejected.clone()))
         } else {
             let repeats = doom_loop::repeats(history, calls, i);
-            clear(cx, shared, cancel, &mut locks, repeats, call).await
+            clear(run, &mut locks, repeats, call).await
         };
         if let Err(refused) = &slot {
             stop |= refused.stop;
@@ -70,40 +62,28 @@ pub async fn run<'a>(
         cleared.push(slot);
     }
     Batch {
-        results: settle(cx, shared, cancel, calls, cleared).await,
+        results: settle(run, calls, cleared).await,
         stop,
     }
 }
 
 /// None of the calls run, each refused with `why`; they still get their start and end.
-pub async fn refuse_all<'a>(
-    cx: &'a RunCtx<'a>,
-    calls: &'a [ToolCall],
-    shared: &'a Shared,
-    cancel: &'a CancellationToken,
-    why: &str,
-) -> Batch {
+pub(super) async fn refuse_all<'a>(run: &'a Run<'a>, calls: &'a [ToolCall], why: &str) -> Batch {
     let slots = calls
         .iter()
         .map(|_| Err(Refused::from(why.to_owned())))
         .collect();
     Batch {
-        results: settle(cx, shared, cancel, calls, slots).await,
+        results: settle(run, calls, slots).await,
         stop: false,
     }
 }
 
 /// Polled in order, so tools start, and results come back, in the order they were called.
 /// A refused call gets its start and end too, so a frontend shows every call's fate.
-async fn settle<'a>(
-    cx: &'a RunCtx<'a>,
-    shared: &'a Shared,
-    cancel: &'a CancellationToken,
-    calls: &'a [ToolCall],
-    slots: Vec<Slot>,
-) -> Vec<ToolResult> {
+async fn settle<'a>(run: &'a Run<'a>, calls: &'a [ToolCall], slots: Vec<Slot>) -> Vec<ToolResult> {
     join_all(slots.into_iter().zip(calls).map(|(slot, call)| async move {
-        (cx.emit)(AgentEvent::ToolStart {
+        (run.cx.emit)(AgentEvent::ToolStart {
             call_id: call.id.clone(),
             name: call.name.clone(),
             arguments: call.arguments.clone(),
@@ -111,15 +91,15 @@ async fn settle<'a>(
         let out = match slot {
             Err(refused) => Output::error(refused.why),
             Ok((tool, args)) => {
-                let tcx = tool_cx(cx, shared, cancel, &call.id);
+                let tcx = tool_cx(run, &call.id);
                 tokio::select! {
                     out = tool.run(args, &tcx) => out,
-                    () = cancel.cancelled() => Output::cancelled(),
+                    () = run.cancel.cancelled() => Output::cancelled(),
                 }
             }
         };
         let done = result(call, out);
-        (cx.emit)(AgentEvent::ToolEnd {
+        (run.cx.emit)(AgentEvent::ToolEnd {
             result: done.clone(),
         });
         done
@@ -131,16 +111,15 @@ async fn settle<'a>(
 /// JSON, not a loop, the tool's own check, then the permission policy (asking if it says so).
 /// The mode is read per call: a switch at one call's prompt governs the calls after it.
 async fn clear<'a>(
-    cx: &'a RunCtx<'a>,
-    shared: &'a Shared,
-    cancel: &'a CancellationToken,
+    run: &'a Run<'a>,
     locks: &mut Locks,
     repeats: usize,
     call: &'a ToolCall,
 ) -> Slot {
+    let (cx, shared) = (run.cx, run.shared);
     let mode = shared.mode();
     let text = model_text::get();
-    if cancel.is_cancelled() {
+    if run.cancel.is_cancelled() {
         return Err(tools::text().cancelled.clone().into());
     }
     let tool = cx.tools.get(&call.name).ok_or_else(|| {
@@ -162,7 +141,7 @@ async fn clear<'a>(
         }
     }
     let check = tool
-        .check(&args, &tool_cx(cx, shared, cancel, &call.id))
+        .check(&args, &tool_cx(run, &call.id))
         .map_err(|refusal| match refusal {
             Refusal::InvalidArgs(error) => fill(
                 &text.invalid_arguments,
@@ -174,7 +153,7 @@ async fn clear<'a>(
 
     let lock = locks
         .entry(mode.id.as_str())
-        .or_insert_with(|| mode.locks(&cx.plan_file));
+        .or_insert_with(|| mode.locks(&run.plan_file));
     let policy = mode.policy(&cx.app.settings.permission, lock);
     let decision = match policy.decide(&asks) {
         Decision::Allow if check.confirm => Decision::Ask,
@@ -189,7 +168,7 @@ async fn clear<'a>(
                 asks: asks.clone(),
                 preview: check.preview,
             };
-            match prompt::ask(shared, cx.emit, &call.id, prompt, cancel).await {
+            match prompt::ask(shared, cx.emit, &call.id, prompt, &run.cancel).await {
                 Some(Reply::Yes) => Ok((tool.clone(), args)),
                 Some(Reply::No { feedback: Some(f) } | Reply::Text(f)) => {
                     Err(fill(&text.rejected_with_feedback, &[("feedback", &f)]).into())
@@ -214,19 +193,14 @@ async fn clear<'a>(
     }
 }
 
-fn tool_cx<'a>(
-    cx: &'a RunCtx<'a>,
-    shared: &'a Shared,
-    cancel: &CancellationToken,
-    call_id: &'a str,
-) -> ToolCx<'a> {
+fn tool_cx<'a>(run: &'a Run<'a>, call_id: &'a str) -> ToolCx<'a> {
     ToolCx {
-        app: cx.app,
-        shared,
-        emit: cx.emit,
+        app: run.cx.app,
+        shared: run.shared,
+        emit: run.cx.emit,
         call_id,
-        plan_file: &cx.plan_file,
-        cancel: cancel.clone(),
+        plan_file: &run.plan_file,
+        cancel: run.cancel.clone(),
     }
 }
 

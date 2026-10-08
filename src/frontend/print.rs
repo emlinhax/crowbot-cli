@@ -23,7 +23,7 @@ use crate::permission::gate;
 use crate::session::store::Store;
 use crate::session::transcript::Transcript;
 use crate::text::shorten;
-use crate::tools::{self, Registry};
+use crate::tools::Registry;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Format {
@@ -45,7 +45,6 @@ pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<Ex
     let registry = Registry::builtin(app.settings.shell.as_deref());
     let mut transcript = Transcript::new(Some(Store::create(&app.paths)));
     let shared = Shared::new(mode);
-    let plan_file = tools::plan_file(&app.paths, &transcript.id());
 
     let out = Printer {
         format,
@@ -61,7 +60,6 @@ pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<Ex
         effort: app.settings.effort.as_deref(),
         system: &system,
         tools: &registry,
-        plan_file,
         emit: &emit,
     };
 
