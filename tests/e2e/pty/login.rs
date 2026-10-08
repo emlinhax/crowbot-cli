@@ -1,6 +1,6 @@
 //! `/login` in a session, and a command typed while a turn runs.
 
-use super::harness::in_session;
+use super::harness::{ENTER, in_session};
 use crate::Sandbox;
 use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
 
@@ -13,11 +13,9 @@ async fn a_command_typed_during_a_run_never_reaches_the_model() {
     std::fs::write(sandbox.home.path().join("config.toml"), "mode = \"auto\"\n").unwrap();
     let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.wait_for("AUTO");
-        s.type_text("go");
-        s.send("\r");
+        s.submit("go");
         s.wait_for("sleep 3");
-        s.type_text("/login --key 1234 5678 9012 3456");
-        s.send("\r");
+        s.submit("/login --key 1234 5678 9012 3456");
         s.wait_for("Logged in with account number …3456");
         s.wait_for("Hello there!");
         s.contents()
@@ -49,15 +47,13 @@ async fn slash_login_pairs_this_device_and_the_session_chats_at_once() {
     fake.script([Reply::sse("hello.sse")]);
     let ended = in_session(&fake, Sandbox::default(), None, |s| {
         s.wait_for("type /login");
-        s.type_text("/login");
-        s.send("\r");
+        s.submit("/login");
         s.wait_for("Log in to crowbot");
         s.send("1");
         s.wait_for("ABCD-1234");
         s.wait_for("Logged in with device key …9999");
         // The key is live in this session: no restart needed.
-        s.type_text("hi");
-        s.send("\r");
+        s.submit("hi");
         s.wait_for("Hello there!");
     })
     .await;
@@ -70,18 +66,16 @@ async fn slash_login_takes_a_masked_account_number_and_retries_a_wrong_one() {
     let fake = Fake::start().await;
     let ended = in_session(&fake, Sandbox::default(), None, |s| {
         s.wait_for("type /login");
-        s.type_text("/login");
-        s.send("\r");
+        s.submit("/login");
         s.wait_for("Log in to crowbot");
         s.send("2");
-        s.type_text("0000 0000 0000 0000");
-        s.send("\r");
+        s.submit("0000 0000 0000 0000");
         s.wait_for("invalid_api_key");
         s.send("2");
         s.type_text("1234 5678 9012 3456");
         s.wait_for("•••• •••• •••• 3456");
         assert!(!s.contents().contains("1234 5678"), "{}", s.contents());
-        s.send("\r");
+        s.send(ENTER);
         s.wait_for("Logged in with account number …3456");
     })
     .await;
@@ -94,11 +88,9 @@ async fn slash_login_takes_the_same_arguments_as_the_command_line() {
     let fake = Fake::start().await;
     let ended = in_session(&fake, Sandbox::default(), None, |s| {
         s.wait_for("type /login");
-        s.type_text("/login --status");
-        s.send("\r");
+        s.submit("/login --status");
         s.wait_for("Not logged in. Run /login");
-        s.type_text("/login --key 1234 5678 9012 3456");
-        s.send("\r");
+        s.submit("/login --key 1234 5678 9012 3456");
         s.wait_for("Logged in with account number …3456");
     })
     .await;

@@ -1,6 +1,6 @@
 //! Cards that wait on the user: trust, permission, the model's questions.
 
-use super::harness::{Session, in_session};
+use super::harness::{CTRL_D, ENTER, Session, in_session};
 use crate::Sandbox;
 use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
 
@@ -13,7 +13,7 @@ async fn an_untrusted_folder_is_asked_about_once_before_its_config_loosens_anyth
     let (screens, trusted) = tokio::task::spawn_blocking(move || {
         let mut screens = Vec::new();
         for answer in ["n\r", "y\r", ""] {
-            let mut s = Session::start(&sandbox, &url);
+            let mut s = Session::start_as(&sandbox, &url, Some(ENV_KEY), &[]);
             if answer.is_empty() {
                 s.wait_for("AUTO");
             } else {
@@ -21,7 +21,7 @@ async fn an_untrusted_folder_is_asked_about_once_before_its_config_loosens_anyth
                 s.send(answer);
                 s.wait_for(if answer == "y\r" { "AUTO" } else { "MANUAL" });
             }
-            s.send("\x04");
+            s.send(CTRL_D);
             assert!(s.wait_exit(), "{}", s.contents());
             screens.push(s.contents());
         }
@@ -52,9 +52,7 @@ async fn manual_mode_shows_the_edit_and_applies_it_once_approved() {
     let sandbox = Sandbox::default();
     sandbox.copy_project("calc");
     let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
-        s.type_text("fix the sum");
-        s.send("\r");
+        s.submit("fix the sum");
         s.wait_for("edit src/calc.txt");
         s.wait_for("+2 + 2 = 4");
         s.wait_for("1 Yes");
@@ -71,9 +69,7 @@ async fn the_models_questions_are_answered_on_one_card() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("pty/questions.sse"), Reply::sse("hello.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
-        s.wait_for("MANUAL");
-        s.type_text("set it up");
-        s.send("\r");
+        s.submit("set it up");
         s.wait_for("Which database should the app use?");
         s.wait_for("what production runs");
         s.send("2");
@@ -82,10 +78,10 @@ async fn the_models_questions_are_answered_on_one_card() {
         s.wait_for("[x] lint");
         s.send("3");
         s.wait_for("[x] e2e");
-        s.send("\r");
+        s.send(ENTER);
         s.wait_for("Your answers");
         s.wait_for("lint, e2e");
-        s.send("\r");
+        s.send(ENTER);
         s.wait_for("Hello there!");
     })
     .await;

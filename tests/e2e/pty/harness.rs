@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
-use crate::fake_crowbot::{ENV_KEY, Fake};
+use crate::fake_crowbot::Fake;
 use crate::{CLEARED, Sandbox, launch_env};
 
 pub const ROWS: u16 = 30;
@@ -21,6 +21,17 @@ pub const POLL: Duration = Duration::from_millis(50);
 /// like a paste. CEILING: keys are timestamped when crowbot reads them, so a stall longer than
 /// two gaps can still bunch three into a paste (frontend/tui/paste.rs).
 pub const KEY_GAP: Duration = Duration::from_millis(30);
+
+/// Keys as a terminal sends them.
+pub const ENTER: &str = "\r";
+pub const TAB: &str = "\t";
+pub const ESC: &str = "\x1b";
+pub const DOWN: &str = "\x1b[B";
+pub const LEFT: &str = "\x1b[D";
+pub const SHIFT_TAB: &str = "\x1b[Z";
+pub const CTRL_D: &str = "\x04";
+pub const CTRL_T: &str = "\x14";
+pub const BACKSPACE: &str = "\x7f";
 
 pub struct Session {
     pub screen: vt100::Parser,
@@ -43,10 +54,6 @@ impl Drop for Session {
 }
 
 impl Session {
-    pub fn start(sandbox: &Sandbox, api_url: &str) -> Self {
-        Self::start_as(sandbox, api_url, Some(ENV_KEY), &[])
-    }
-
     /// `key: None` starts logged out; `args` go on the command line.
     pub fn start_as(sandbox: &Sandbox, api_url: &str, key: Option<&str>, args: &[&str]) -> Self {
         let pty = native_pty_system()
@@ -101,6 +108,12 @@ impl Session {
             self.send(&c.to_string());
             std::thread::sleep(KEY_GAP);
         }
+    }
+
+    /// Types `text` and presses Enter.
+    pub fn submit(&mut self, text: &str) {
+        self.type_text(text);
+        self.send(ENTER);
     }
 
     pub fn contents(&self) -> String {
@@ -158,6 +171,28 @@ impl Session {
         self.poll(WAIT, &format!("{text:?} never went away"), |s| {
             (!s.contents().contains(text)).then_some(())
         });
+    }
+
+    /// Until the bar under the editor shows `text`.
+    #[track_caller]
+    pub fn wait_bar(&mut self, text: &str) {
+        self.poll(WAIT, &format!("the bar never showed {text:?}"), |s| {
+            s.bottom_row().contains(text).then_some(())
+        });
+    }
+
+    /// Until the copied note shows, then that `text` went to the clipboard (as OSC 52 carries
+    /// it, base64).
+    #[track_caller]
+    pub fn wait_copied(&mut self, text: &str) {
+        use base64::Engine;
+        self.poll(WAIT, "no copied note", |s| {
+            s.row(0).contains("✓ Copied").then_some(())
+        });
+        let carried = base64::engine::general_purpose::STANDARD.encode(text);
+        let osc = format!("\x1b]52;c;{carried}\x07");
+        let sent = String::from_utf8_lossy(&self.written).contains(&osc);
+        assert!(sent, "no OSC 52 carrying {text:?}");
     }
 
     /// Until one poll interval passes with no new output: the screen has settled.
@@ -223,8 +258,8 @@ pub struct Ended<T> {
     pub sandbox: Sandbox,
 }
 
-/// Starts a session (logged out when `key` is `None`), waits for its welcome, runs `body`, then
-/// quits with Ctrl+D and asserts a clean exit.
+/// Starts a session (logged out when `key` is `None`), waits for its welcome and its bar, runs
+/// `body`, then quits with Ctrl+D and asserts a clean exit.
 pub async fn in_session<T: Send + 'static>(
     fake: &Fake,
     sandbox: Sandbox,
@@ -235,9 +270,11 @@ pub async fn in_session<T: Send + 'static>(
     tokio::task::spawn_blocking(move || {
         let mut s = Session::start_as(&sandbox, &url, key, &[]);
         s.wait_for("crowbot v");
+        // The bar names the mode and the model once the session is ready for keys.
+        s.wait_bar(" · ");
         let out = body(&mut s);
         let screen = s.contents();
-        s.send("\x04");
+        s.send(CTRL_D);
         assert!(
             s.wait_exit(),
             "crowbot exited with an error; screen:\n{}",
