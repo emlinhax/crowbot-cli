@@ -33,7 +33,7 @@ use crate::frontend::tui::paste::Burst;
 use crate::frontend::tui::picker::{self, Picker};
 use crate::frontend::tui::queue::{self, Kind};
 use crate::frontend::tui::screen::Screen;
-use crate::frontend::tui::status::{self, Progress};
+use crate::frontend::tui::status::Progress;
 use crate::frontend::tui::toast::Toast;
 use crate::frontend::tui::view::View;
 use crate::frontend::tui::{frame, layout, ui, welcome};
@@ -862,7 +862,7 @@ impl<'a> Tui<'a> {
             _ => {}
         }
         if let Some(progress) = &mut self.progress {
-            progress.event(&event);
+            progress.event(&event, now);
         }
         self.feed.event(&event, now);
     }
@@ -956,9 +956,6 @@ impl<'a> Tui<'a> {
     }
 
     fn status(&self, now: Instant, width: usize) -> Line {
-        if let Some((secs, why)) = self.feed.retry(now) {
-            return status::retrying(secs, why, width);
-        }
         let color = &self.shared.mode().color;
         self.progress
             .as_ref()

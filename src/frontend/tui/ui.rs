@@ -189,14 +189,6 @@ pub struct Text {
     pub spent: String,
 }
 
-impl Ui {
-    /// The spinner frame for `elapsed_ms` of work at `step_ms` per frame.
-    pub fn spinner_frame(&self, elapsed_ms: u128, step_ms: u64) -> &str {
-        let i = (elapsed_ms / u128::from(step_ms.max(1))) as usize % self.spinner.len().max(1);
-        self.spinner.get(i).map_or("", String::as_str)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #[test]

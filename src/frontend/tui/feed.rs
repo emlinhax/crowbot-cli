@@ -2,14 +2,14 @@
 //! their source so any width can redraw them and thinking can be opened and closed; whatever is
 //! still in flight is drawn fresh after them.
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::api::error::Entry as ErrorEntry;
 use crate::config::limits;
 use crate::conversation::error::ErrorInfo;
 use crate::conversation::message::{Assistant, Finish, ToolResult};
 use crate::frontend::tui::cards::{self, State};
-use crate::frontend::tui::{ui, welcome};
+use crate::frontend::tui::{status, ui, welcome};
 use crate::frontend::words;
 use crate::live::event::{AgentEvent, DeltaKind, Ended, Outcome};
 use crate::text::styled::{Line, Style};
@@ -82,7 +82,6 @@ pub struct Feed {
     reasoning: String,
     reasoning_since: Option<Instant>,
     running: Vec<Running>,
-    retry: Option<(Instant, String)>,
 }
 
 impl Feed {
@@ -99,7 +98,6 @@ impl Feed {
             reasoning: String::new(),
             reasoning_since: None,
             running: Vec::new(),
-            retry: None,
         }
     }
 
@@ -196,7 +194,6 @@ impl Feed {
     pub fn event(&mut self, event: &AgentEvent, now: Instant) {
         match event {
             AgentEvent::Delta { kind, text, .. } => {
-                self.retry = None;
                 match kind {
                     DeltaKind::Reasoning => {
                         self.reasoning_since.get_or_insert(now);
@@ -216,7 +213,6 @@ impl Feed {
                 }
             }
             AgentEvent::MessageEnd { message } => {
-                self.retry = None;
                 self.finish_reasoning(now);
                 self.finish_text();
                 self.outcome_of(message);
@@ -243,12 +239,6 @@ impl Feed {
                     result: result.clone(),
                 });
             }
-            AgentEvent::Retry {
-                delay_ms, error, ..
-            } => {
-                let until = now + Duration::from_millis(*delay_ms);
-                self.retry = Some((until, ErrorEntry::of(error).title.clone()));
-            }
             AgentEvent::Unsaved { path, error } => {
                 let text = fill(&words::get().unsaved, &[("path", path), ("error", error)]);
                 self.notice(&text, "warn");
@@ -257,7 +247,6 @@ impl Feed {
                 self.finish_reasoning(now);
                 self.finish_text();
                 self.running.clear();
-                self.retry = None;
                 let note = match outcome {
                     Outcome::Aborted => Some(words::get().interrupted.clone()),
                     Outcome::Rejected => Some(ui::get().text.declined.clone()),
@@ -276,7 +265,8 @@ impl Feed {
                 }
             }
             AgentEvent::Delivered { text } => self.user(text),
-            AgentEvent::Prompt { .. } => {}
+            // The working line shows a retry; a prompt is a card.
+            AgentEvent::Retry { .. } | AgentEvent::Prompt { .. } => {}
         }
     }
 
@@ -321,16 +311,6 @@ impl Feed {
             .collect()
     }
 
-    /// Seconds left before a retry, and why it is needed.
-    pub fn retry(&self, now: Instant) -> Option<(u64, &str)> {
-        self.retry.as_ref().map(|(until, why)| {
-            (
-                until.saturating_duration_since(now).as_secs() + 1,
-                why.as_str(),
-            )
-        })
-    }
-
     /// The part still in flight: thinking, the reply's unfinished tail, running tools.
     fn live_lines(&self, width: usize, now: Instant) -> Vec<Line> {
         let mut groups: Vec<Vec<Line>> = Vec::new();
@@ -359,7 +339,8 @@ impl Feed {
                     .iter()
                     .map(|tool| {
                         let elapsed = now.duration_since(tool.since).as_millis();
-                        let frame = ui::get().spinner_frame(elapsed, limits.spinner_ms.value);
+                        let frame =
+                            status::frame(&ui::get().spinner, elapsed, limits.spinner_ms.value);
                         cards::header(&tool.name, &tool.arguments, State::Running(frame))
                             .truncate(width)
                     })
@@ -522,6 +503,8 @@ fn error_lines(error: &ErrorInfo, width: usize) -> Vec<Line> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use crate::conversation::error::ErrorInfo;
     use crate::conversation::message::{Assistant, ToolResult};

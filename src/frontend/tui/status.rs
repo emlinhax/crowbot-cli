@@ -1,10 +1,11 @@
 //! The line above the bar while crowbot works: a murmuration of crows, a verb with a glint running
 //! along it, then time, tokens and how to stop. A retry says why and how long instead.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use unicode_segmentation::UnicodeSegmentation;
 
+use crate::api::error::Entry;
 use crate::config::limits;
 use crate::frontend::tui::ui;
 use crate::frontend::words;
@@ -25,6 +26,8 @@ pub struct Progress {
     output: u64,
     /// Characters streamed by the request in flight.
     streaming: usize,
+    /// A request waiting to be retried: when, and why.
+    retry: Option<(Instant, String)>,
 }
 
 impl Progress {
@@ -40,6 +43,7 @@ impl Progress {
             verb,
             output: 0,
             streaming: 0,
+            retry: None,
         }
     }
 
@@ -47,12 +51,22 @@ impl Progress {
         self.verb
     }
 
-    pub fn event(&mut self, event: &AgentEvent) {
+    pub fn event(&mut self, event: &AgentEvent, now: Instant) {
         match event {
-            AgentEvent::Delta { text, .. } => self.streaming += text.len(),
+            AgentEvent::Delta { text, .. } => {
+                self.retry = None;
+                self.streaming += text.len();
+            }
             AgentEvent::MessageEnd { message } => {
+                self.retry = None;
                 self.output += message.usage.map_or(0, |u| u.output);
                 self.streaming = 0;
+            }
+            AgentEvent::Retry {
+                delay_ms, error, ..
+            } => {
+                let until = now + Duration::from_millis(*delay_ms);
+                self.retry = Some((until, Entry::of(error).title.clone()));
             }
             _ => {}
         }
@@ -62,16 +76,18 @@ impl Progress {
         self.output + (self.streaming / CHARS_PER_TOKEN) as u64
     }
 
-    /// `color` is the mode's; `braille` picks the braille flock over plain characters.
+    /// The working line, or the retry's while one is pending. `color` is the mode's; `braille`
+    /// picks the braille flock over plain characters.
     pub fn render(&self, now: Instant, color: &str, braille: bool, width: usize) -> Line {
+        if let Some((until, why)) = &self.retry {
+            let secs = until.saturating_duration_since(now).as_secs() + 1;
+            return retrying(secs, why, width);
+        }
         let words = &ui::get().status;
         let limits = &limits::get().tui;
         let elapsed = now.duration_since(self.started).as_millis();
         let frames = if braille { &words.frames } else { &words.plain };
-        let step = (elapsed / u128::from(limits.status_frame_ms.value.get())) as usize;
-        let frame = frames
-            .get(step % frames.len().max(1))
-            .map_or("", String::as_str);
+        let frame = frame(frames, elapsed, limits.status_frame_ms.value.get());
         let verb = words.verbs.get(self.verb).map_or("", String::as_str);
 
         let mut line = Line::styled(format!("{frame} "), Style::fg(color));
@@ -91,7 +107,18 @@ impl Progress {
     }
 }
 
-pub fn retrying(secs: u64, why: &str, width: usize) -> Line {
+/// The frame of `frames` that `elapsed_ms` of work has reached at `step_ms` a frame.
+pub fn frame(frames: &[String], elapsed_ms: u128, step_ms: u64) -> &str {
+    let at = steps(elapsed_ms, step_ms) % frames.len().max(1);
+    frames.get(at).map_or("", String::as_str)
+}
+
+/// How many `step_ms` steps `elapsed_ms` holds.
+fn steps(elapsed_ms: u128, step_ms: u64) -> usize {
+    (elapsed_ms / u128::from(step_ms.max(1))) as usize
+}
+
+fn retrying(secs: u64, why: &str, width: usize) -> Line {
     let text = &ui::get().text;
     let muted = Style::fg("muted");
     let mut line = Line::styled(format!("{why} · "), Style::fg("warn"));
@@ -106,7 +133,7 @@ fn glint(word: &str, elapsed_ms: u128, step_ms: u64, color: &str) -> Line {
     let letters: Vec<&str> = word.graphemes(true).collect();
     // The centre starts one letter before the word and leaves one after, then rests.
     let pass = letters.len() + 2 + limits::get().tui.glint_rest.value;
-    let at = (elapsed_ms / u128::from(step_ms.max(1))) as usize % pass;
+    let at = steps(elapsed_ms, step_ms) % pass;
     let mut line = Line::default();
     for (i, letter) in letters.iter().enumerate() {
         let style = match (i + 1).abs_diff(at) {
@@ -156,6 +183,34 @@ mod tests {
     }
 
     #[test]
+    fn a_retry_holds_the_line_until_the_reply_streams() {
+        let (mut p, t0) = progress(2);
+        let retry = AgentEvent::Retry {
+            attempt: 1,
+            delay_ms: 2500,
+            error: crate::conversation::error::ErrorInfo::local("overloaded", "busy"),
+        };
+        p.event(&retry, t0);
+        let waiting = p.render(t0, "mode_auto", true, 80).text();
+        assert!(
+            waiting.contains(&format!("{} 3s", words::get().retrying)),
+            "{waiting}"
+        );
+        let delta = AgentEvent::Delta {
+            kind: DeltaKind::Text,
+            text: "x".into(),
+            index: None,
+            name: None,
+        };
+        p.event(&delta, t0);
+        assert!(
+            p.render(t0, "mode_auto", true, 80)
+                .text()
+                .contains("Cooking")
+        );
+    }
+
+    #[test]
     fn every_frame_is_as_wide_as_the_first_so_the_verb_stays_put() {
         let status = &ui::get().status;
         for frames in [&status.frames, &status.plain] {
@@ -199,15 +254,16 @@ mod tests {
 
     #[test]
     fn tokens_are_estimated_while_streaming_then_exact() {
-        let (mut p, _) = progress(0);
-        p.event(&AgentEvent::Delta {
+        let (mut p, t0) = progress(0);
+        let delta = AgentEvent::Delta {
             kind: DeltaKind::Text,
             text: "x".repeat(400),
             index: None,
             name: None,
-        });
+        };
+        p.event(&delta, t0);
         assert_eq!(p.tokens(), 100);
-        p.event(&AgentEvent::MessageEnd {
+        let end = AgentEvent::MessageEnd {
             message: Assistant {
                 usage: Some(Usage {
                     input: 10,
@@ -218,7 +274,8 @@ mod tests {
                 }),
                 ..Assistant::stub(Finish::Done, Vec::new())
             },
-        });
+        };
+        p.event(&end, t0);
         assert_eq!(p.tokens(), 250);
     }
 }
