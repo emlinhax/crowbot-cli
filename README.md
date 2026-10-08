@@ -30,6 +30,7 @@ download against the release's SHA256SUMS and swaps it in; the next start says i
 crowbot                          # interactive session
 crowbot "fix the failing test"   # the same, with the prompt typed in for you to review
 crowbot login                    # pair this machine (or: login --key <account number>)
+crowbot logout                   # forget this machine's key
 crowbot signup                   # create an account: no email, no password, no recovery
 crowbot -p "explain this repo"   # headless: one prompt, reply on stdout (pipe input works too)
 crowbot --json "..."             # headless, one JSON event per line (fields stable; additions only)
@@ -122,6 +123,7 @@ session, `/help` lists the commands:
 | `/copy` | the last reply to the clipboard, as markdown |
 | `/init` | crowbot studies the project and writes its `AGENTS.md` |
 | `/login`, `/logout` | pair this device or take an account number (shown masked), or forget the key |
+| `/forums` | the forums the agent can browse: log in, log out, remove, add |
 | `/quit` (or `/exit`) | leave |
 
 `/models` lists the models to pick from (↑↓, then → or Enter); `/login` takes effect without a
@@ -144,36 +146,29 @@ lines instead of sending.
 
 | Path | What lives there |
 |---|---|
-| `data/` | Every number, prompt, catalog, key and colour, embedded with `include_str!`. Change behaviour here first. |
+| `data/` | Every number, prompt, catalog, key, word and colour, embedded with `include_str!`; one file (or folder) per concern, each opening with what it holds. Change behaviour here first. |
 | `data/limits.toml` | Every limit, each with its reason. |
-| `data/endpoints.toml` | crowbot's origins and endpoints; `CROWBOT_API_URL` / `CROWBOT_CHAT_URL` override origins. |
-| `data/commands/` | One spec per command (name, summary, usage, where it works). |
-| `data/errors.toml` | Every error kind: title, hint, and whether it is retried (else its status decides). |
-| `data/prompts/` | System prompt pieces and mode reminders. |
-| `data/modes/` | One file per permission mode (MANUAL, PLAN, AUTO): colour, verdicts, locked rules. |
-| `data/tools/` | Each tool's description (`.md`), argument schema (`.schema.json`) and what it says back (`.toml`). |
-| `data/model_text.toml` | What the agent loop tells the model on the user's behalf (declines, refusals, errors). |
-| `data/shells.toml` | Which shell runs commands, per OS, and its environment. |
-| `data/filters.toml` | Pipe filters (`tail -30`, `grep -c ok`): which flags keep a command reading only its input. |
-| `data/theme.toml` | Colours by role, and syntax scopes mapped to roles. |
-| `data/keybinds.toml`, `data/ui.toml` | Keys; the session's words, spinner, bottom-rule items, prompt choices, login card. |
-| `data/tool_cards.toml` | How each tool call looks in the transcript. |
-| `data/code_aliases.toml` | Code-fence languages mapped onto the bundled grammars. |
-| `src/io/` | The only code that touches network, files, processes, terminal or clock (enforced by `clippy.toml`). `http.rs` is crowbot's API (reqwest); `fetch.rs` is the rest of the web, for webfetch (cffetch). |
-| `crates/cffetch/` | The user's Cloudflare-aware HTTP client, vendored unchanged (why it is outside the workspace: `Cargo.toml`). Re-sync by copying `src/`, `tests/`, `examples/` and `Cargo.toml` over; its own suite runs from that directory (it hits the network). |
-| `src/api/` | crowbot endpoints, errors, SSE parsing, chat streaming, retry, pairing, signup. |
-| `src/agent/` | The loop (`run.rs`), tool batches, prompts, context repair, doom-loop guard, shared run state. |
-| `src/tools/` | One file (or folder) per tool behind the `Tool` trait, registered in `tools/mod.rs`; `edit/find.rs` is the fuzzy matcher. |
-| `src/permission/` | Rules (last match wins), the gate that layers them with the mode, shell splitting. |
-| `src/frontend/tui/` | The session: `app/` (the loop, with input, effects, draw and turn beside it), `layout.rs` + `screen.rs` (frame, row diff), `feed.rs` transcript blocks, `calls.rs` tool-call cards, `view.rs` scrolling, `progress.rs` working line, editor, `bar.rs` rules, `boxed.rs` cards, `rows.rs` card lists, `choice.rs` prompts, `palette.rs` popup, `picker.rs` models, `login.rs`. |
-| `src/text/` | Styled lines, theme, markdown, tables, highlighting, diffs; shared by the TUI and the CLI. |
-| `src/session/` | Append-only JSONL session files under `~/.crowbot/sessions/<project>/`. |
-| `src/frontend/` | Headless `-p` / `--json` output. |
+| `data/endpoints.toml` | crowbot's origins and endpoints, and the variables that override them. |
+| `src/io/` | The only code that touches the network, files, processes, terminal or clock; `clippy.toml` bans the raw calls elsewhere. crowbot's API goes through reqwest, the rest of the web (webfetch, forums) through cffetch. |
+| `src/api/` | crowbot's endpoints, errors, streaming chat, retries, pairing and signup. |
+| `src/agent/` | The run loop, tool batches, what the model is sent, and the session setup both frontends share. |
+| `src/live/` | What a run shares with its tools and frontend while it is going: events, prompts, state, files read. |
+| `src/conversation/` | Messages, parts and errors as a conversation holds them. |
+| `src/tools/` | One file or folder per tool behind the `Tool` trait, registered in `tools/mod.rs`. |
+| `src/permission/` | Rules (last match wins), the gate that layers them with the mode, the bash command split. |
+| `src/forums/` | Forums: the directory, the sealed store, accounts and the Tapatalk backend. |
+| `src/models/` | The model catalog (live, cached or bundled) and its table. |
 | `src/commands/` | One file per command (effect-only ones share `fixed.rs`), registered in `commands/mod.rs`. |
-| `src/{app,cli,settings,paths,limits,mode}.rs` | Startup, routing, layered settings, locations, limits, modes. |
-| `tests/e2e/` | The real binary against an in-process fake crowbot; `pty.rs` drives real sessions. |
-| `tests/fixtures/` | Data the fake serves (`sse/*.sse`, `api/*.json`), sample `projects/`, `scenarios/*.toml`. |
-| `tests/golden/edit/` | Edit-matcher cases: `before.txt` + `args.json` → `after.txt` or `error.txt`. |
+| `src/frontend/` | What drives a run: `print` (headless) and `tui/` (the session), and the words and tool cards both share. |
+| `src/text/` | Styled lines, theme, markdown, tables, highlighting, diffs. |
+| `src/session/` | Append-only JSONL session files under `~/.crowbot/sessions/<project>/`. |
+| `src/config/` | Layered settings, locations, limits and the trusted-folder list. |
+| `src/release/` | Release identity, install and self-update. |
+| `src/*.rs` | Startup (`app`), routing (`cli`), the key (`auth`), data loading, efforts and modes. |
+| `crates/cffetch/` | The user's Cloudflare-aware HTTP client, vendored unchanged (why it is outside the workspace: `Cargo.toml`). Re-sync by copying `src/`, `tests/`, `examples/` and `Cargo.toml` over; its own suite runs from that directory (it hits the network). |
+| `tests/e2e/` | The real binary against an in-process fake crowbot; `pty/` drives real sessions. |
+| `tests/fixtures/` | What the fake serves (`sse/`, `api/`), sample `projects/`, `scenarios/*.toml`, frozen `session/` files. |
+| `tests/golden/` | Edit-matcher cases (`edit/`) and the `--json` stream (`json/`). |
 | `tests/smoke.rs` | The only tests that touch the real API (`make smoke`). |
 | `reference/` | Gitignored clones of opencode and pi plus crowbot's docs; designs are ported from here. |
 
