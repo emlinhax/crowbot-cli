@@ -2,10 +2,10 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 use url::Url;
 
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::config::limits;
 use crate::data;
 use crate::io::fetch::FetchError;
@@ -33,7 +33,7 @@ struct Text {
 }
 
 #[derive(Deserialize)]
-struct Args {
+pub struct Args {
     url: String,
 }
 
@@ -97,12 +97,13 @@ fn refusal(url: &str, status: u16, firewall: bool) -> Option<String> {
 }
 
 impl Tool for WebFetch {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: Args = parse(args)?;
+    fn check(&self, args: &Self::Args, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let url = parse_url(&args.url)?;
         Ok(
             Check::new(vec![Ask::new(catalog::WEBFETCH.name, host(&url))])
@@ -110,12 +111,8 @@ impl Tool for WebFetch {
         )
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let args: Args = match parse_or_fail(&args) {
-                Ok(args) => args,
-                Err(out) => return out,
-            };
             let limits = &limits::get().tools;
             let parsed = match parse_url(&args.url) {
                 Ok(url) => url,

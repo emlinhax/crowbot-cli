@@ -21,7 +21,7 @@ use crate::permission::catalog;
 use crate::permission::gate::{self, Ask, Decision};
 use crate::permission::rule::Rule;
 use crate::text::template::fill;
-use crate::tools::{Output, Refusal, Tool, ToolCx};
+use crate::tools::{AnyTool, Output, Refusal, ToolCx};
 
 pub struct Batch {
     pub results: Vec<ToolResult>,
@@ -42,7 +42,7 @@ impl From<String> for Refused {
 }
 
 /// A call cleared to run, or why it does not.
-type Slot = Result<(Arc<dyn Tool>, Value), Refused>;
+type Slot = Result<(Arc<dyn AnyTool>, Value), Refused>;
 
 /// Each mode's locks, filled once a batch for the mode in force at each call.
 type Locks = HashMap<&'static str, Vec<Rule>>;

@@ -2,9 +2,8 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::Value;
 
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::agent::model_text;
 use crate::config::limits;
 use crate::live::prompt::{self, Answer, Prompt, Reply};
@@ -15,19 +14,20 @@ use crate::text::template::fill;
 static SPEC: LazyLock<Spec> = super::spec!("question");
 
 #[derive(Deserialize)]
-struct Args {
+pub struct Args {
     questions: Vec<prompt::Question>,
 }
 
 pub struct Question;
 
 impl Tool for Question {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: Args = parse(args)?;
+    fn check(&self, args: &Self::Args, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let max = limits::get().tools.question_max.value;
         if args.questions.is_empty() || args.questions.len() > max {
             return Err(Refusal::InvalidArgs(format!(
@@ -48,12 +48,8 @@ impl Tool for Question {
         Ok(Check::new(vec![Ask::new(catalog::QUESTION.name, "*")]))
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let args: Args = match parse_or_fail(&args) {
-                Ok(args) => args,
-                Err(out) => return out,
-            };
             let text = model_text::get();
             let prompt = Prompt::Question {
                 questions: args.questions.clone(),

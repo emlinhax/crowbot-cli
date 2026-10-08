@@ -3,9 +3,9 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx, target};
 use crate::permission::catalog;
 use std::path::Path;
 
@@ -17,7 +17,7 @@ use crate::text::shorten;
 static SPEC: LazyLock<Spec> = super::spec!("grep");
 
 #[derive(Deserialize)]
-struct Args {
+pub struct Args {
     pattern: String,
     #[serde(default)]
     path: Option<String>,
@@ -44,23 +44,20 @@ enum Shape {
 pub struct Grep;
 
 impl Tool for Grep {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: Args = parse(args)?;
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let root = target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or("."))
             .map_err(Refusal::Refused)?;
         Ok(Check::new(target::asks(catalog::SEARCH.name, &root)))
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let args: Args = match parse_or_fail(&args) {
-                Ok(args) => args,
-                Err(out) => return out,
-            };
             let root = match target::search_root(&cx.app.paths, args.path.as_deref()) {
                 Ok(root) => root,
                 Err(why) => return Output::error(why),
@@ -147,6 +144,8 @@ fn lines(files: &[FileHits], context: usize, shown: &dyn Fn(&Path) -> String) ->
 
 #[cfg(test)]
 mod tests {
+    use serde_json::Value;
+
     use super::*;
     use crate::tools::testing::Project;
     use serde_json::json;
@@ -155,11 +154,8 @@ mod tests {
     async fn reports_path_line_and_text() {
         let project = Project::new();
         project.write("src/a.rs", "fn one() {}\nfn two() {}\n");
-        let out = Grep
-            .run(
-                json!({"pattern": "fn t\\w+", "glob": "*.rs"}),
-                &project.cx(),
-            )
+        let out = project
+            .run(&Grep, json!({"pattern": "fn t\\w+", "glob": "*.rs"}))
             .await;
         assert_eq!(out.content, "src/a.rs:2: fn two() {}");
     }
@@ -169,7 +165,7 @@ mod tests {
         let project = Project::new();
         project.write("a.txt", "one\nhit\ntwo\nthree\nfour\nhit\n");
         project.write("b.txt", "hit\nhit\n");
-        let grep = |args: Value| async { Grep.run(args, &project.cx()).await.content };
+        let grep = |args: Value| async { project.run(&Grep, args).await.content };
         let around = grep(json!({"pattern": "hit", "glob": "a.txt", "context": 1})).await;
         assert_eq!(
             around,

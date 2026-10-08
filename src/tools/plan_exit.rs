@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::Value;
+use serde::de::IgnoredAny;
 
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::agent::model_text;
@@ -33,18 +33,20 @@ struct Choice {
 pub struct PlanExit;
 
 impl Tool for PlanExit {
+    type Args = IgnoredAny;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, _args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+    fn check(&self, _args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         if !cx.shared.mode().plan_exit {
             return Err(Refusal::Refused(model_text::get().plan_only.clone()));
         }
         Ok(Check::new(vec![Ask::new(catalog::PLAN_EXIT.name, "*")]))
     }
 
-    fn run<'a>(&'a self, _args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, _args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
             let text = model_text::get();
             let plan = io::fs::read_string(std::path::Path::new(cx.plan_file))
@@ -102,8 +104,8 @@ mod tests {
     #[test]
     fn refuses_outside_plan_mode() {
         let project = Project::new();
-        assert!(PlanExit.check(&json!({}), &project.cx()).is_err());
+        assert!(project.check(&PlanExit, &json!({})).is_err());
         project.shared.set_mode(mode::get("plan").unwrap());
-        assert!(PlanExit.check(&json!({}), &project.cx()).is_ok());
+        assert!(project.check(&PlanExit, &json!({})).is_ok());
     }
 }

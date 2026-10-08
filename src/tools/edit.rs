@@ -2,11 +2,11 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::edit_match::{self, Fit, Miss};
 use super::target::{self, Target};
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::io::{self, fs::Access, fs::Kind};
 use crate::permission::catalog;
 use crate::text::diff;
@@ -14,7 +14,15 @@ use crate::text::diff;
 static SPEC: LazyLock<Spec> = super::spec!("edit");
 
 #[derive(Deserialize)]
-struct Args {
+#[serde(try_from = "Sent")]
+pub struct Args {
+    path: String,
+    edits: Vec<EditSpec>,
+}
+
+/// The call as sent, in whichever spelling of the edits the model used.
+#[derive(Deserialize)]
+struct Sent {
     path: String,
     #[serde(default)]
     edits: Option<Edits>,
@@ -42,36 +50,42 @@ pub struct EditSpec {
     pub replace_all: bool,
 }
 
-impl Args {
-    fn edits(self) -> Result<Vec<EditSpec>, Refusal> {
-        match (self.edits, self.old_text, self.new_text) {
-            (Some(Edits::List(list)), ..) => Ok(list),
-            (Some(Edits::One(one)), ..) => Ok(vec![one]),
+impl TryFrom<Sent> for Args {
+    type Error = String;
+
+    fn try_from(sent: Sent) -> Result<Self, String> {
+        let edits = match (sent.edits, sent.old_text, sent.new_text) {
+            (Some(Edits::List(list)), ..) => list,
+            (Some(Edits::One(one)), ..) => vec![one],
             (Some(Edits::Text(text)), ..) => serde_json::from_str::<Vec<EditSpec>>(&text)
                 .or_else(|_| serde_json::from_str::<EditSpec>(&text).map(|e| vec![e]))
-                .map_err(|e| Refusal::InvalidArgs(format!("edits: {e}"))),
-            (None, Some(old_text), Some(new_text)) => Ok(vec![EditSpec {
+                .map_err(|e| format!("edits: {e}"))?,
+            (None, Some(old_text), Some(new_text)) => vec![EditSpec {
                 old_text,
                 new_text,
                 replace_all: false,
-            }]),
-            _ => Err(Refusal::InvalidArgs("`edits` is required".into())),
-        }
+            }],
+            _ => return Err("`edits` is required".into()),
+        };
+        Ok(Self {
+            path: sent.path,
+            edits,
+        })
     }
 }
 
 pub struct Edit;
 
 impl Tool for Edit {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: Args = parse(args)?;
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let target = target::resolve(&cx.app.paths, &args.path).map_err(Refusal::Refused)?;
-        let edits = args.edits()?;
-        if edits.is_empty() {
+        if args.edits.is_empty() {
             return Err(Refusal::InvalidArgs("`edits` is empty".into()));
         }
         // A call that will fail is refused now, before anyone is asked to approve it.
@@ -79,7 +93,7 @@ impl Tool for Edit {
         cx.files()
             .check_fresh(&target.path, &target.shown)
             .map_err(Refusal::Refused)?;
-        let applied = apply(&before, &edits)
+        let applied = apply(&before, &args.edits)
             .map_err(|why| Refusal::Refused(format!("{why} ({})", target.shown)))?;
         Ok(
             Check::new(target::asks(catalog::EDIT.name, &target)).with_preview(diff::unified(
@@ -90,19 +104,11 @@ impl Tool for Edit {
         )
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let args: Args = match parse_or_fail(&args) {
-                Ok(args) => args,
-                Err(out) => return out,
-            };
             let target = match target::resolve(&cx.app.paths, &args.path) {
                 Ok(target) => target,
                 Err(why) => return Output::error(why),
-            };
-            let edits = match args.edits() {
-                Ok(edits) => edits,
-                Err(e) => return Output::error(e.to_string()),
             };
             let _guard = cx.files().lock(&target.path).await;
             if let Err(why) = cx.files().check_fresh(&target.path, &target.shown) {
@@ -112,7 +118,7 @@ impl Tool for Edit {
                 Ok(text) => text,
                 Err(why) => return Output::error(why),
             };
-            let applied = match apply(&before, &edits) {
+            let applied = match apply(&before, &args.edits) {
                 Ok(applied) => applied,
                 Err(why) => return Output::error(format!("{} ({})", why, target.shown)),
             };
@@ -332,13 +338,13 @@ mod tests {
     async fn edits_a_read_file_and_reports_a_diff() {
         let project = Project::new();
         project.write("a.rs", "fn a() {\n    1\n}\n");
-        crate::tools::read::Read
-            .run(json!({"path": "a.rs"}), &project.cx())
+        project
+            .run(&crate::tools::read::Read, json!({"path": "a.rs"}))
             .await;
-        let out = Edit
+        let out = project
             .run(
+                &Edit,
                 json!({"path": "a.rs", "edits": [{"old_text": "    1", "new_text": "    2"}]}),
-                &project.cx(),
             )
             .await;
         assert!(!out.is_error, "{}", out.content);
@@ -380,7 +386,7 @@ mod tests {
         project.write("d/x.txt", "x");
         let why = |path: &str| {
             let args = json!({"path": path, "old_text": "a", "new_text": "b"});
-            match Edit.check(&args, &project.cx()) {
+            match project.check(&Edit, &args) {
                 Err(Refusal::Refused(why)) => why,
                 _ => panic!("{path} was not refused"),
             }
@@ -400,10 +406,10 @@ mod tests {
     async fn refuses_files_it_has_not_read() {
         let project = Project::new();
         project.write("a.rs", "x");
-        let out = Edit
+        let out = project
             .run(
+                &Edit,
                 json!({"path": "a.rs", "old_text": "x", "new_text": "y"}),
-                &project.cx(),
             )
             .await;
         assert!(out.is_error);

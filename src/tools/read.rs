@@ -3,10 +3,10 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::many::{self, Many};
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx, target};
 use crate::config::limits;
 use crate::io::{self, fs::Kind};
 use crate::permission::catalog;
@@ -16,7 +16,7 @@ use crate::text::truncate;
 static SPEC: LazyLock<Spec> = super::spec!("read");
 
 #[derive(Deserialize)]
-struct Args {
+pub struct Args {
     path: Many<String>,
     #[serde(default)]
     offset: Option<usize>,
@@ -27,7 +27,7 @@ struct Args {
 }
 
 impl Args {
-    fn paths(self) -> (Vec<String>, Page) {
+    fn paths(&self) -> (&[String], Page) {
         let page = Page {
             offset: self.offset,
             limit: self.limit,
@@ -51,33 +51,32 @@ struct Page {
 pub struct Read;
 
 impl Tool for Read {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let (paths, _) = parse::<Args>(args)?.paths();
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+        let (paths, _) = args.paths();
         let mut asks = Vec::new();
-        for path in &paths {
+        for path in paths {
             let target = target::resolve(&cx.app.paths, path).map_err(Refusal::Refused)?;
             asks.extend(target::asks(catalog::READ.name, &target));
         }
         Ok(Check::new(asks))
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let (paths, page) = match parse_or_fail::<Args>(&args) {
-                Ok(args) => args.paths(),
-                Err(out) => return out,
-            };
-            if let [path] = paths.as_slice() {
+            let (paths, page) = args.paths();
+            if let [path] = paths {
                 return one(cx, path, page);
             }
             let budget = limits::get().tools.read_batch_bytes.value;
             let (mut used, mut read) = (0, 0);
             let mut parts = Vec::new();
-            for path in &paths {
+            for path in paths {
                 // A soft cap: the file that crosses it stays whole, and the rest are only named.
                 let out = if used < budget {
                     one(cx, path, page)
@@ -217,11 +216,13 @@ fn list(path: &std::path::Path, shown: &str, depth: usize) -> Output {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::Value;
+
     use super::*;
     use crate::tools::testing::Project;
 
     async fn read(project: &Project, args: Value) -> Output {
-        Read.run(args, &project.cx()).await
+        project.run(&Read, args).await
     }
 
     #[tokio::test]

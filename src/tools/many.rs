@@ -12,13 +12,12 @@ pub enum Many<T> {
 
 impl<T> Many<T> {
     /// The items, at most `max` of them.
-    pub fn capped(self, max: usize) -> Vec<T> {
-        let mut items = match self {
-            Self::One(item) => vec![item],
+    pub fn capped(&self, max: usize) -> &[T] {
+        let items = match self {
+            Self::One(item) => std::slice::from_ref(item),
             Self::Set(items) => items,
         };
-        items.truncate(max);
-        items
+        &items[..items.len().min(max)]
     }
 }
 

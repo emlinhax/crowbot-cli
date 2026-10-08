@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::many::{Many, join};
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::config::limits;
 use crate::data;
 use crate::forums::{Forum, Page, Section, Thread, TopicList, mobiquo, store};
@@ -59,14 +59,14 @@ fn resolve(cx: &ToolCx<'_>, key: &str) -> Result<Forum, Output> {
     }
 }
 
-fn page_of(args: &Value) -> i64 {
-    args.get("page").and_then(Value::as_i64).unwrap_or(1)
+fn page_of(page: &Value) -> i64 {
+    page.as_i64().unwrap_or(1)
 }
 
 /// Reads `page`: a positive number, or "last"/"latest" (also a number ≤ 0) for the final page.
-fn page_pref(args: &Value) -> Page {
-    match args.get("page") {
-        Some(Value::String(s)) => {
+fn page_pref(page: &Value) -> Page {
+    match page {
+        Value::String(s) => {
             let s = s.trim().to_lowercase();
             if matches!(s.as_str(), "last" | "latest" | "newest" | "end") {
                 Page::Last
@@ -78,7 +78,7 @@ fn page_pref(args: &Value) -> Page {
                 }
             }
         }
-        Some(Value::Number(n)) => match n.as_i64().unwrap_or(1) {
+        Value::Number(n) => match n.as_i64().unwrap_or(1) {
             n if n >= 1 => Page::Num(n),
             _ => Page::Last,
         },
@@ -118,19 +118,19 @@ enum Id {
 }
 
 impl Id {
-    fn into_string(self) -> String {
+    fn text(&self) -> String {
         match self {
-            Self::Str(s) => s,
+            Self::Str(s) => s.clone(),
             Self::Int(n) => n.to_string(),
         }
     }
 }
 
 /// A batch arg's ids as strings, capped to the batch limit so one call cannot hammer a forum.
-fn capped(many: Many<Id>) -> Vec<String> {
+fn capped(many: &Many<Id>) -> Vec<String> {
     many.capped(limits::get().forums.batch_max.value)
-        .into_iter()
-        .map(Id::into_string)
+        .iter()
+        .map(Id::text)
         .collect()
 }
 
@@ -230,30 +230,27 @@ pub struct Sections;
 static SECTIONS: LazyLock<Spec> = super::spec!("forum_sections");
 
 #[derive(Deserialize)]
-struct SectionsArgs {
+pub struct SectionsArgs {
     #[serde(default)]
     forum: String,
 }
 
 impl Tool for Sections {
+    type Args = SectionsArgs;
+
     fn spec(&self) -> &Spec {
         &SECTIONS
     }
 
-    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: SectionsArgs = parse(args)?;
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         Ok(Check::new(vec![Ask::new(
             catalog::FORUM.name,
             host_for(cx, &args.forum),
         )]))
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let args: SectionsArgs = match parse_or_fail(&args) {
-                Ok(a) => a,
-                Err(out) => return out,
-            };
             if args.forum.is_empty() {
                 let list = store::load(&cx.app.paths).unwrap_or_default();
                 return finish(render_forums(&list));
@@ -283,38 +280,37 @@ pub struct Topics;
 static TOPICS: LazyLock<Spec> = super::spec!("forum_topics");
 
 #[derive(Deserialize)]
-struct TopicsArgs {
+pub struct TopicsArgs {
     forum: String,
     section: Many<Id>,
+    #[serde(default)]
+    page: Value,
 }
 
 impl Tool for Topics {
+    type Args = TopicsArgs;
+
     fn spec(&self) -> &Spec {
         &TOPICS
     }
 
-    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: TopicsArgs = parse(args)?;
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         Ok(Check::new(vec![Ask::new(
             catalog::FORUM.name,
             host_for(cx, &args.forum),
         )]))
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let parsed: TopicsArgs = match parse_or_fail(&args) {
-                Ok(a) => a,
-                Err(out) => return out,
-            };
-            let forum = match resolve(cx, &parsed.forum) {
+            let forum = match resolve(cx, &args.forum) {
                 Ok(f) => f,
                 Err(out) => return out,
             };
-            let page = page_of(&args);
+            let page = page_of(&args.page);
             let (fetch, forum) = (&cx.app.fetch, &forum);
             let text = batch(
-                capped(parsed.section),
+                capped(&args.section),
                 |section| format!("Section {section}:"),
                 |section| async move {
                     let list = mobiquo::topics(fetch, forum, &section, page).await?;
@@ -334,38 +330,37 @@ pub struct ThreadTool;
 static THREAD: LazyLock<Spec> = super::spec!("forum_thread");
 
 #[derive(Deserialize)]
-struct ThreadArgs {
+pub struct ThreadArgs {
     forum: String,
     topic: Many<Id>,
+    #[serde(default)]
+    page: Value,
 }
 
 impl Tool for ThreadTool {
+    type Args = ThreadArgs;
+
     fn spec(&self) -> &Spec {
         &THREAD
     }
 
-    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: ThreadArgs = parse(args)?;
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         Ok(Check::new(vec![Ask::new(
             catalog::FORUM.name,
             host_for(cx, &args.forum),
         )]))
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let parsed: ThreadArgs = match parse_or_fail(&args) {
-                Ok(a) => a,
-                Err(out) => return out,
-            };
-            let forum = match resolve(cx, &parsed.forum) {
+            let forum = match resolve(cx, &args.forum) {
                 Ok(f) => f,
                 Err(out) => return out,
             };
-            let want = page_pref(&args);
+            let want = page_pref(&args.page);
             let (fetch, forum) = (&cx.app.fetch, &forum);
             let text = batch(
-                capped(parsed.topic),
+                capped(&args.topic),
                 |topic| format!("Topic {topic}:"),
                 |topic| async move {
                     let thread = mobiquo::thread(fetch, forum, &topic, want).await?;
@@ -385,38 +380,37 @@ pub struct Search;
 static SEARCH: LazyLock<Spec> = super::spec!("forum_search");
 
 #[derive(Deserialize)]
-struct SearchArgs {
+pub struct SearchArgs {
     forum: String,
     query: Many<Id>,
+    #[serde(default)]
+    page: Value,
 }
 
 impl Tool for Search {
+    type Args = SearchArgs;
+
     fn spec(&self) -> &Spec {
         &SEARCH
     }
 
-    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: SearchArgs = parse(args)?;
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         Ok(Check::new(vec![Ask::new(
             catalog::FORUM.name,
             host_for(cx, &args.forum),
         )]))
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let parsed: SearchArgs = match parse_or_fail(&args) {
-                Ok(a) => a,
-                Err(out) => return out,
-            };
-            let forum = match resolve(cx, &parsed.forum) {
+            let forum = match resolve(cx, &args.forum) {
                 Ok(f) => f,
                 Err(out) => return out,
             };
-            let page = page_of(&args);
+            let page = page_of(&args.page);
             let (fetch, forum) = (&cx.app.fetch, &forum);
             let text = batch(
-                capped(parsed.query),
+                capped(&args.query),
                 |query| format!("\"{query}\":"),
                 |query| async move {
                     let list = mobiquo::search(fetch, forum, &query, page).await?;
@@ -436,7 +430,7 @@ pub struct Post;
 static POST: LazyLock<Spec> = super::spec!("forum_post");
 
 #[derive(Deserialize)]
-struct PostArgs {
+pub struct PostArgs {
     forum: String,
     section: String,
     #[serde(default)]
@@ -468,48 +462,38 @@ impl Post {
 }
 
 impl Tool for Post {
+    type Args = PostArgs;
+
     fn spec(&self) -> &Spec {
         &POST
     }
 
-    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: PostArgs = parse(args)?;
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         if args.topic.is_none() && args.subject.as_deref().unwrap_or("").trim().is_empty() {
             return Err(Refusal::InvalidArgs(TEXT.no_subject.clone()));
         }
         let forum = resolve(cx, &args.forum).map_err(|out| Refusal::Refused(out.content))?;
         let ask = Ask::new(catalog::FORUM_POST.name, forum.host());
         Ok(Check::new(vec![ask])
-            .with_preview(Self::preview(&forum, &args))
+            .with_preview(Self::preview(&forum, args))
             .confirmed())
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let parsed: PostArgs = match parse_or_fail(&args) {
-                Ok(a) => a,
-                Err(out) => return out,
-            };
-            let forum = match resolve(cx, &parsed.forum) {
+            let forum = match resolve(cx, &args.forum) {
                 Ok(f) => f,
                 Err(out) => return out,
             };
 
-            let result = match &parsed.topic {
+            let result = match &args.topic {
                 Some(topic) => {
-                    mobiquo::reply(&cx.app.fetch, &forum, &parsed.section, topic, &parsed.body)
-                        .await
+                    mobiquo::reply(&cx.app.fetch, &forum, &args.section, topic, &args.body).await
                 }
                 None => {
-                    let subject = parsed.subject.as_deref().unwrap_or("");
-                    mobiquo::new_topic(
-                        &cx.app.fetch,
-                        &forum,
-                        &parsed.section,
-                        subject,
-                        &parsed.body,
-                    )
-                    .await
+                    let subject = args.subject.as_deref().unwrap_or("");
+                    mobiquo::new_topic(&cx.app.fetch, &forum, &args.section, subject, &args.body)
+                        .await
                 }
             };
             match result {
@@ -596,9 +580,9 @@ mod tests {
 
     #[test]
     fn page_pref_reads_numbers_and_last() {
-        let num = |v: Value| matches!(page_pref(&serde_json::json!({"page": v})), Page::Num(_));
-        let last = |v: Value| matches!(page_pref(&serde_json::json!({"page": v})), Page::Last);
-        assert!(matches!(page_pref(&serde_json::json!({})), Page::Num(1)));
+        let num = |v: Value| matches!(page_pref(&v), Page::Num(_));
+        let last = |v: Value| matches!(page_pref(&v), Page::Last);
+        assert!(matches!(page_pref(&Value::Null), Page::Num(1)));
         assert!(num(serde_json::json!(3)) && num(serde_json::json!("2")));
         assert!(last(serde_json::json!("last")) && last(serde_json::json!("latest")));
         assert!(last(serde_json::json!(-1)) && last(serde_json::json!(0)));
@@ -622,7 +606,7 @@ mod tests {
 
     #[test]
     fn a_batch_arg_takes_strings_numbers_and_arrays_and_caps() {
-        let parse = |v: Value| capped(serde_json::from_value::<Many<Id>>(v).unwrap());
+        let parse = |v: Value| capped(&serde_json::from_value::<Many<Id>>(v).unwrap());
         assert_eq!(parse(serde_json::json!("a")), ["a"]);
         // A bare number is accepted and coerced, which is how models often send an id.
         assert_eq!(parse(serde_json::json!(42)), ["42"]);
@@ -664,7 +648,7 @@ mod tests {
     fn a_new_topic_without_a_subject_is_rejected() {
         let project = crate::tools::testing::Project::new();
         let args = serde_json::json!({"forum": "x", "section": "1", "body": "hi"});
-        match Post.check(&args, &project.cx()) {
+        match project.check(&Post, &args) {
             Err(Refusal::InvalidArgs(_)) => {}
             _ => panic!("a new topic with no subject should be rejected"),
         }

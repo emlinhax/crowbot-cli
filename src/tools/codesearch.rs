@@ -5,9 +5,9 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Map, Value};
 
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::api::Call;
 use crate::api::error::Entry;
 use crate::config::limits;
@@ -17,9 +17,12 @@ use crate::text::shorten;
 
 static SPEC: LazyLock<Spec> = super::spec!("codesearch");
 
+/// The schema is crowbot's, so the arguments go through untouched; only `query` is read here.
 #[derive(Deserialize)]
-struct Args {
+pub struct Args {
     query: String,
+    #[serde(flatten)]
+    filters: Map<String, Value>,
 }
 
 #[derive(Deserialize)]
@@ -47,31 +50,30 @@ struct Hit {
 pub struct CodeSearch;
 
 impl Tool for CodeSearch {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: Args = parse(args)?;
+    fn check(&self, args: &Self::Args, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         Ok(Check::new(vec![Ask::new(
             catalog::CODESEARCH.name,
-            args.query,
+            &args.query,
         )]))
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            if let Err(out) = parse_or_fail::<Args>(&args) {
-                return out;
-            }
-            // The schema is crowbot's, so the arguments go through untouched.
+            let mut body = args.filters;
+            body.insert("query".to_owned(), args.query.into());
             let reply = cx
                 .app
                 .api
                 .call_json::<Reply>(
                     "codesearch",
                     Call {
-                        body: Some(&args),
+                        body: Some(&Value::Object(body)),
                         ..Call::default()
                     },
                 )

@@ -4,10 +4,10 @@ use std::time::Duration;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::shell::Shell;
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::config::limits;
 use crate::io::proc::{self, Ended, ShellCommand};
 use crate::io::{self, fs::Access};
@@ -18,7 +18,7 @@ use crate::text::truncate::{self, Keep};
 static SPEC: LazyLock<Spec> = super::spec!("bash");
 
 #[derive(Deserialize)]
-struct Args {
+pub struct Args {
     command: String,
     #[serde(default)]
     timeout: Option<u64>,
@@ -35,12 +35,13 @@ impl Bash {
 }
 
 impl Tool for Bash {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: Args = parse(args)?;
+    fn check(&self, args: &Self::Args, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         if args.command.trim().is_empty() {
             return Err(Refusal::InvalidArgs("`command` is empty".into()));
         }
@@ -48,12 +49,8 @@ impl Tool for Bash {
         Ok(Check::new(asks).with_preview(format!("$ {}", args.command.trim())))
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let args: Args = match parse_or_fail(&args) {
-                Ok(args) => args,
-                Err(out) => return out,
-            };
             let Some(program) = &self.shell.program else {
                 return Output::error(self.shell.note.clone());
             };
@@ -308,9 +305,7 @@ mod tests {
     async fn a_flood_of_output_is_held_in_bounds_and_spilled_whole() {
         let project = Project::new();
         let bash = Bash::new(shell::resolve(None));
-        let out = bash
-            .run(json!({"command": "seq 1 200000"}), &project.cx())
-            .await;
+        let out = project.run(&bash, json!({"command": "seq 1 200000"})).await;
         assert!(!out.is_error, "{}", out.content);
         assert!(out.content.contains("of 200000 lines"), "{}", out.content);
         assert!(out.content.ends_with("200000"), "{}", out.content);
@@ -330,9 +325,9 @@ mod tests {
         let project = Project::new();
         project.write("marker.txt", "here");
         let bash = Bash::new(shell::resolve(None));
-        let ok = bash.run(json!({"command": "ls"}), &project.cx()).await;
+        let ok = project.run(&bash, json!({"command": "ls"})).await;
         assert!(ok.content.contains("marker.txt"), "{}", ok.content);
-        let bad = bash.run(json!({"command": "exit 7"}), &project.cx()).await;
+        let bad = project.run(&bash, json!({"command": "exit 7"})).await;
         assert!(bad.is_error);
         assert!(bad.content.contains("exit code 7"), "{}", bad.content);
     }

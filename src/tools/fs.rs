@@ -5,11 +5,11 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::many::Many;
 use super::target::{self, Target};
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::config::limits;
 use crate::io::{self, fs::Kind};
 use crate::permission::catalog;
@@ -17,7 +17,7 @@ use crate::permission::catalog;
 static SPEC: LazyLock<Spec> = super::spec!("fs");
 
 #[derive(Deserialize)]
-struct Args {
+pub struct Args {
     action: Action,
     path: Many<String>,
     #[serde(default)]
@@ -57,13 +57,14 @@ struct Step {
 pub struct Fs;
 
 impl Tool for Fs {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: Args = parse(args)?;
-        let steps = plan(cx, &args).map_err(Refusal::Refused)?;
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+        let steps = plan(cx, args).map_err(Refusal::Refused)?;
         let mut asks = Vec::new();
         let mut preview = String::new();
         for step in &steps {
@@ -81,12 +82,8 @@ impl Tool for Fs {
         Ok(Check::new(asks).with_preview(preview.trim_end().to_owned()))
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let args: Args = match parse_or_fail(&args) {
-                Ok(args) => args,
-                Err(out) => return out,
-            };
             // Planned again: the files may have changed while the user was asked.
             let steps = match plan(cx, &args) {
                 Ok(steps) => steps,
@@ -236,11 +233,13 @@ fn destination(
 
 #[cfg(test)]
 mod tests {
+    use serde_json::Value;
+
     use super::*;
     use crate::tools::testing::Project;
 
     async fn fs(project: &Project, args: Value) -> Output {
-        Fs.run(args, &project.cx()).await
+        project.run(&Fs, args).await
     }
 
     fn exists(project: &Project, path: &str) -> bool {
@@ -334,7 +333,7 @@ mod tests {
     fn asks_to_edit_what_changes_and_to_read_what_a_copy_reads() {
         let project = Project::new();
         project.write("a.txt", "a");
-        let check = |args: Value| Fs.check(&args, &project.cx()).ok().unwrap().asks;
+        let check = |args: Value| project.check(&Fs, &args).ok().unwrap().asks;
         let asks = check(json!({"action": "move", "path": "a.txt", "to": "b.txt"}));
         let perms: Vec<(&str, &str)> = asks
             .iter()

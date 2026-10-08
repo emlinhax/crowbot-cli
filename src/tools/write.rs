@@ -2,9 +2,9 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx, target};
 use crate::io::{self, fs::Access, fs::Kind};
 use crate::permission::catalog;
 use crate::text::diff;
@@ -12,7 +12,7 @@ use crate::text::diff;
 static SPEC: LazyLock<Spec> = super::spec!("write");
 
 #[derive(Deserialize)]
-struct Args {
+pub struct Args {
     path: String,
     content: String,
 }
@@ -20,12 +20,13 @@ struct Args {
 pub struct Write;
 
 impl Tool for Write {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: Args = parse(args)?;
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let target = target::resolve(&cx.app.paths, &args.path).map_err(Refusal::Refused)?;
         if target.kind().map_err(Refusal::Refused)? == Kind::Dir {
             return Err(Refusal::Refused(format!(
@@ -40,12 +41,8 @@ impl Tool for Write {
         Ok(Check::new(target::asks(catalog::EDIT.name, &target)).with_preview(preview))
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let args: Args = match parse_or_fail(&args) {
-                Ok(args) => args,
-                Err(out) => return out,
-            };
             let target = match target::resolve(&cx.app.paths, &args.path) {
                 Ok(target) => target,
                 Err(why) => return Output::error(why),
@@ -78,11 +75,8 @@ mod tests {
     fn the_preview_holds_every_new_line_so_the_card_can_count_them() {
         let project = Project::new();
         let content: String = (0..100).map(|i| format!("line {i}\n")).collect();
-        let check = Write
-            .check(
-                &json!({"path": "big.txt", "content": content}),
-                &project.cx(),
-            )
+        let check = project
+            .check(&Write, &json!({"path": "big.txt", "content": content}))
             .unwrap();
         assert_eq!(check.preview.unwrap().lines().count(), 100);
     }
@@ -90,18 +84,15 @@ mod tests {
     #[tokio::test]
     async fn creates_new_files_but_only_replaces_read_ones() {
         let project = Project::new();
-        let out = Write
-            .run(
-                json!({"path": "new/a.txt", "content": "hi\n"}),
-                &project.cx(),
-            )
+        let out = project
+            .run(&Write, json!({"path": "new/a.txt", "content": "hi\n"}))
             .await;
         assert!(!out.is_error, "{}", out.content);
         assert_eq!(project.read("new/a.txt"), "hi\n");
 
         project.write("old.txt", "keep");
-        let refused = Write
-            .run(json!({"path": "old.txt", "content": "x"}), &project.cx())
+        let refused = project
+            .run(&Write, json!({"path": "old.txt", "content": "x"}))
             .await;
         assert!(refused.is_error);
         assert_eq!(project.read("old.txt"), "keep");

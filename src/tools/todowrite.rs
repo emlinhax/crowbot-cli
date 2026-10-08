@@ -2,16 +2,16 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::json;
 
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::permission::catalog;
 use crate::permission::gate::Ask;
 
 static SPEC: LazyLock<Spec> = super::spec!("todowrite");
 
 #[derive(Deserialize)]
-struct Args {
+pub struct Args {
     todos: Vec<Todo>,
 }
 
@@ -33,21 +33,18 @@ enum Status {
 pub struct TodoWrite;
 
 impl Tool for TodoWrite {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let _: Args = parse(args)?;
+    fn check(&self, _args: &Self::Args, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         Ok(Check::new(vec![Ask::new(catalog::TODO.name, "*")]))
     }
 
-    fn run<'a>(&'a self, args: Value, _cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(&'a self, args: Self::Args, _cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
         Box::pin(async move {
-            let args: Args = match parse_or_fail(&args) {
-                Ok(args) => args,
-                Err(out) => return out,
-            };
             let lines: Vec<String> = args
                 .todos
                 .iter()

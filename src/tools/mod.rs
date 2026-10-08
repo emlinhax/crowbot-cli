@@ -21,6 +21,7 @@ mod write;
 use std::sync::Arc;
 
 use futures_util::future::BoxFuture;
+use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
@@ -157,19 +158,38 @@ impl ToolCx<'_> {
 }
 
 pub trait Tool: Send + Sync {
+    /// The call's arguments, parsed from the model's JSON before `check` and `run` see them.
+    type Args: DeserializeOwned + Send;
     fn spec(&self) -> &Spec;
     /// Validates the call and says what it needs permission for; runs before any prompt.
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal>;
+    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output>;
+}
+
+/// A `Tool` that takes the model's JSON, so tools with different arguments share one registry.
+pub trait AnyTool: Send + Sync {
+    fn spec(&self) -> &Spec;
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal>;
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output>;
 }
 
-pub fn parse<T: DeserializeOwned>(args: &Value) -> Result<T, Refusal> {
-    serde_json::from_value(args.clone()).map_err(|e| Refusal::InvalidArgs(e.to_string()))
-}
+impl<T: Tool> AnyTool for T {
+    fn spec(&self) -> &Spec {
+        Tool::spec(self)
+    }
 
-/// `parse` for `run`, where `check` has already vetted the arguments.
-pub fn parse_or_fail<T: DeserializeOwned>(args: &Value) -> Result<T, Output> {
-    parse(args).map_err(|e| Output::error(e.to_string()))
+    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+        let args = T::Args::deserialize(args).map_err(|e| Refusal::InvalidArgs(e.to_string()))?;
+        Tool::check(self, &args, cx)
+    }
+
+    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+        // `check` has vetted the arguments, so this only fails when a caller skipped it.
+        match serde_json::from_value(args) {
+            Ok(args) => Tool::run(self, args, cx),
+            Err(e) => Box::pin(std::future::ready(Output::error(e.to_string()))),
+        }
+    }
 }
 
 /// Where PLAN writes this session's plan, spelled as the tools resolve it, so the lock that lets
@@ -181,7 +201,7 @@ pub fn plan_file(paths: &Paths, session: &str) -> String {
 }
 
 pub struct Registry {
-    tools: Vec<Arc<dyn Tool>>,
+    tools: Vec<Arc<dyn AnyTool>>,
     /// Values for `{placeholders}` in tool descriptions.
     vars: Vec<(&'static str, String)>,
 }
@@ -207,7 +227,7 @@ impl Registry {
             ("list_depth_max", limits.list_depth_max.value.to_string()),
             ("fs_batch_max", limits.fs_batch_max.value.to_string()),
         ];
-        let tools: Vec<Arc<dyn Tool>> = vec![
+        let tools: Vec<Arc<dyn AnyTool>> = vec![
             Arc::new(read::Read),
             Arc::new(write::Write),
             Arc::new(edit::Edit),
@@ -229,7 +249,7 @@ impl Registry {
         Self { tools, vars }
     }
 
-    pub fn get(&self, name: &str) -> Option<&Arc<dyn Tool>> {
+    pub fn get(&self, name: &str) -> Option<&Arc<dyn AnyTool>> {
         self.tools.iter().find(|t| t.spec().name == name)
     }
 
@@ -297,6 +317,16 @@ pub mod testing {
             }
         }
 
+        /// Checks a call as the agent does: from the model's JSON.
+        pub fn check(&self, tool: &dyn AnyTool, args: &Value) -> Result<Check, Refusal> {
+            tool.check(args, &self.cx())
+        }
+
+        /// Runs a call as the agent does: from the model's JSON.
+        pub async fn run(&self, tool: &dyn AnyTool, args: Value) -> Output {
+            tool.run(args, &self.cx()).await
+        }
+
         pub fn write(&self, path: &str, text: &str) {
             crate::io::fs::write_atomic(
                 &self.app.paths.project.join(path),
@@ -345,7 +375,7 @@ mod tests {
         let registry = Registry::builtin(&project.app);
         for tool in &registry.tools {
             let args = sample(&tool.spec().parameters);
-            if let Err(Refusal::InvalidArgs(e)) = tool.check(&args, &project.cx()) {
+            if let Err(Refusal::InvalidArgs(e)) = project.check(tool.as_ref(), &args) {
                 panic!("{}: schema sample rejected: {e}", tool.spec().name);
             }
         }
