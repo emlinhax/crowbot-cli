@@ -1,6 +1,5 @@
-//! crowbot replaces itself with the newest release: on demand (`crowbot update`), and once a day
-//! in the background of an interactive session for a release build. What happened is kept in
-//! `~/.crowbot/update.json`, so the next start can say so.
+//! Self-update to the newest release: `crowbot update`, or daily beside an interactive session
+//! (release builds). `~/.crowbot/update.json` keeps the result for the next start.
 
 use std::path::Path;
 use std::sync::LazyLock;
@@ -71,6 +70,7 @@ struct State {
     #[serde(default)]
     pub updated: Option<Change>,
     #[serde(default)]
+    /// Read by people, not code: the only trace of a failed background look.
     pub last_error: Option<String>,
 }
 
@@ -94,8 +94,7 @@ fn take_news(paths: &Paths) -> Option<Change> {
     Some(news)
 }
 
-/// Whether an interactive session should look now: updates on, a release build, and a day since
-/// the last look.
+/// Due: updates on, a release build, and `update.check_interval_secs` since the last look.
 fn due(state: &State, now: Timestamp, enabled: bool) -> bool {
     let interval = limits::get().update.check_interval_secs.signed_secs();
     enabled
@@ -173,8 +172,8 @@ struct Remote {
     browser_download_url: String,
 }
 
-/// Replaces `exe`, built as release `current`, with the release `latest_url` names, after
-/// checking the download against the release's checksums.
+/// Replaces `exe` (release `current`) with the release at `latest_url` once the download matches
+/// its checksum.
 /// CEILING: the checksums come from the same release, so they catch a damaged download, not a
 /// hostile upload. Upgrade: a minisign signature checked against a key built into crowbot.
 async fn run(http: &Http, latest_url: &str, current: &str, exe: &Path) -> anyhow::Result<Outcome> {
