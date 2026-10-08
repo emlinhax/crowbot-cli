@@ -69,11 +69,13 @@ pub struct Replay<'a> {
     pub reasoning: bool,
 }
 
+/// What wraps a reminder: the model trusts what is inside as crowbot's own.
+const TAG: &str = "system-reminder";
+
 /// The model trusts text in a reminder tag as crowbot's own, so text crowbot did not write (a
 /// file, a page, a command's output, what the user typed) cannot spell the tag: in any case it
 /// becomes `system_reminder`, which reads the same but opens nothing.
 fn defang(text: &str) -> Cow<'_, str> {
-    const TAG: &str = "system-reminder";
     let lower = text.to_ascii_lowercase();
     if !lower.contains(TAG) {
         return Cow::Borrowed(text);
@@ -122,9 +124,7 @@ impl WireMessage {
                     .iter()
                     .filter_map(|p| match p {
                         Part::Text { text } => Some(defang(text).into_owned()),
-                        Part::Reminder { text } => {
-                            Some(format!("<system-reminder>\n{text}\n</system-reminder>"))
-                        }
+                        Part::Reminder { text } => Some(format!("<{TAG}>\n{text}\n</{TAG}>")),
                         Part::Reasoning { .. } | Part::ToolCall(_) => None,
                     })
                     .collect::<Vec<_>>()
@@ -184,13 +184,13 @@ pub struct Chunk {
 #[derive(Debug, Default, Deserialize)]
 pub struct Choice {
     #[serde(default)]
-    pub delta: Delta,
+    pub delta: ChoiceDelta,
     #[serde(default)]
     pub finish_reason: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
-pub struct Delta {
+pub struct ChoiceDelta {
     #[serde(default)]
     pub content: Option<String>,
     #[serde(default)]

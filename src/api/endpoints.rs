@@ -6,6 +6,7 @@ use serde::Deserialize;
 use crate::data;
 use crate::io;
 use crate::io::http::Method;
+use crate::text::template;
 
 static CATALOG: LazyLock<Catalog> = data::load!("endpoints.toml");
 
@@ -56,10 +57,7 @@ pub fn url(endpoint: &Endpoint, args: &[(&str, &str)]) -> String {
 
 /// The endpoint's path with its `{placeholders}` filled.
 pub fn path(endpoint: &Endpoint, args: &[(&str, &str)]) -> String {
-    args.iter()
-        .fold(endpoint.path.clone(), |path, (key, value)| {
-            path.replace(&format!("{{{key}}}"), value)
-        })
+    template::fill(&endpoint.path, args)
 }
 
 #[cfg(test)]
