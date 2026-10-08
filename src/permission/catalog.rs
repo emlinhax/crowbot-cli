@@ -1,5 +1,5 @@
-//! Every permission a call can ask for, and what granting it lets the call do. The tests hold the
-//! secret rules and PLAN's locks to this list, so a new permission cannot slip past either.
+//! Every permission a call can ask for, and what granting it allows. Tests hold the secret rules
+//! and PLAN's locks to this list.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Effect {
@@ -11,7 +11,7 @@ pub enum Effect {
 
 pub struct Permission {
     pub name: &'static str,
-    /// Read by the tests below, which hold the secret rules and PLAN's locks to it.
+    /// Read only by the tests.
     #[cfg_attr(not(test), expect(dead_code))]
     pub effect: Effect,
 }
