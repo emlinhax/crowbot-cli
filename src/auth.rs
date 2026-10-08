@@ -119,9 +119,12 @@ pub async fn adopt(api: &Api, paths: &Paths, secret: &str, kind: KeyKind) -> any
     Ok(me)
 }
 
-/// `Ok(false)` when there was no stored key.
-pub fn remove(paths: &Paths) -> anyhow::Result<bool> {
-    Ok(io::fs::remove(&paths.auth())?)
+/// Removes the stored key, and has `api` go on with the environment's key if there is one;
+/// `false` when no key was stored.
+pub fn forget(api: &Api, paths: &Paths) -> anyhow::Result<bool> {
+    let removed = io::fs::remove(&paths.auth())?;
+    api.set_key(from_env().map(|key| key.secret));
+    Ok(removed)
 }
 
 /// How many trailing characters of a key are ever shown.
@@ -142,7 +145,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn save_load_remove_round_trip() {
+    fn save_load_forget_round_trip() {
         let home = tempfile::tempdir().unwrap();
         let paths = Paths::at(home.path().into(), home.path().into());
         save(&paths, "4192 0837 5561 2094", KeyKind::Account).unwrap();
@@ -154,8 +157,12 @@ mod tests {
         assert!(
             matches!(key.origin, Origin::File { kind: KeyKind::Account, ref hint } if hint == "…2094")
         );
-        assert!(remove(&paths).unwrap());
+        let http = crate::io::http::Http::new(std::time::Duration::from_secs(1)).unwrap();
+        let api = Api::new(http, Some(key.secret));
+        assert!(forget(&api, &paths).unwrap());
         assert!(stored(&paths).unwrap().is_none());
+        // What is left is whatever the environment holds.
+        assert_eq!(api.has_key(), from_env().is_some());
     }
 
     #[test]

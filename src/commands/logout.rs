@@ -21,10 +21,7 @@ impl Command for Logout {
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             cx.no_args(&SPEC, args)?;
-            let removed = auth::remove(&cx.app.paths)?;
-            // A running session stops using the key at once, unless the environment supplies one.
-            let left = auth::load(&cx.app.paths)?.map(|key| key.secret);
-            cx.app.api.set_key(left);
+            let removed = auth::forget(&cx.app.api, &cx.app.paths)?;
             let mut out = if removed {
                 // crowbot refuses to revoke the key making the request, so it can only go elsewhere.
                 "Logged out. The key still works until revoked on chat.crowbot.sh.".to_owned()
