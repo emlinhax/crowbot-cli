@@ -97,8 +97,7 @@ impl Api {
         error::json(&resp.body)
     }
 
-    /// Like `call`, but hands back the body as it streams. An error's body is read first, as far
-    /// as it comes within the error bounds in data/limits.toml.
+    /// Like `call`, but streams the body. An error's body is read within `http.error_body_*`.
     pub async fn open(&self, id: &str, call: Call<'_>) -> Result<Streaming, ApiError> {
         let resp = self.http.open(self.request(id, &call)?).await?;
         if resp.head.status >= 400 {

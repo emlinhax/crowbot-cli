@@ -1,6 +1,6 @@
-# How the client treats each error. Keys are crowbot's `error.type`, plus our own kinds for
-# failures that never reached crowbot. A hint's {api} and {chat} are the configured sites. `retry` says whether an error is worth trying again
-# automatically; without it the HTTP status decides (429 and 5xx are, other statuses are not).
+# How the client treats each error. Keys are crowbot's `error.type`, plus our own kinds for failures
+# that never reached crowbot. A hint's {api} and {chat} are the configured sites. `retry`: whether
+# to retry automatically; without it, 429 and 5xx retry and other statuses do not.
 
 [unknown]
 title = "Request failed"

@@ -72,9 +72,8 @@ pub struct Replay<'a> {
 /// What wraps a reminder: the model trusts what is inside as crowbot's own.
 const TAG: &str = "system-reminder";
 
-/// The model trusts text in a reminder tag as crowbot's own, so text crowbot did not write (a
-/// file, a page, a command's output, what the user typed) cannot spell the tag: in any case it
-/// becomes `system_reminder`, which reads the same but opens nothing.
+/// The model trusts reminder tags as crowbot's, so text crowbot did not write cannot spell one: any
+/// casing becomes `system_reminder`.
 fn defang(text: &str) -> Cow<'_, str> {
     let lower = text.to_ascii_lowercase();
     if !lower.contains(TAG) {

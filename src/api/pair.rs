@@ -61,7 +61,7 @@ pub async fn poll(api: &Api, device_code: &str) -> Result<Poll, ApiError> {
     Ok(Poll::Ready(ready.api_key))
 }
 
-/// Polls until the code is approved, backing off on any error worth retrying, until it expires.
+/// Polls until approved or expired, backing off on any error worth retrying.
 pub async fn wait(api: &Api, started: &Started) -> Result<String, ApiError> {
     let limits = &limits::get().pair;
     let collect = async {

@@ -1,4 +1,4 @@
-//! The signed-in account: balance, pass and spend.
+//! The signed-in account: balance and whether it can spend.
 
 use serde::Deserialize;
 

@@ -87,8 +87,7 @@ pub async fn load(api: &Api, paths: &Paths, refresh: bool) -> Catalog {
     }
 }
 
-/// An empty list must not read as "crowbot has no models", whether it came live or from the
-/// cache; what we had before is kept instead.
+/// An empty list, live or cached, is not "no models": the previous list is kept.
 fn usable(models: &[Model]) -> bool {
     !models.is_empty()
 }

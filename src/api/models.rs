@@ -49,8 +49,7 @@ impl Pricing {
 }
 
 impl Model {
-    /// The effort a request to this model carries: none for one that does not reason, which is
-    /// what gets sent, recorded and shown.
+    /// The effort sent, recorded and shown: none for a model that does not reason.
     pub fn effort<'a>(&self, requested: Option<&'a str>) -> Option<&'a str> {
         requested.filter(|_| self.capabilities.reasoning)
     }
