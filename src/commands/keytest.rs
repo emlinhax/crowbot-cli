@@ -47,17 +47,17 @@ impl Command for KeyTest {
             if args.len() > 1 {
                 return Err(cx.usage(&SPEC));
             }
-            let only = args.first().cloned();
-            if let Some(label) = &only
-                && !STEPS
-                    .step
-                    .iter()
-                    .any(|s| s.label.eq_ignore_ascii_case(label))
-            {
-                let steps = STEPS.step.iter().map(|s| (s.label.as_str(), None));
-                return Err(choices::unknown("step", label, steps));
+            let only = args.first();
+            let steps: Vec<&Step> = STEPS
+                .step
+                .iter()
+                .filter(|s| only.is_none_or(|o| s.label.eq_ignore_ascii_case(o)))
+                .collect();
+            if let (Some(label), []) = (only, steps.as_slice()) {
+                let known = STEPS.step.iter().map(|s| (s.label.as_str(), None));
+                return Err(choices::unknown("step", label, known));
             }
-            let report = probe(only.as_deref()).await?;
+            let report = probe(&steps).await?;
             Ok(format!(
                 "Report (paste this back):\n\n```\n{}\n```",
                 report.join("\n")
@@ -67,15 +67,11 @@ impl Command for KeyTest {
     }
 }
 
-/// Runs every step, or only the one labelled `only`.
-async fn probe(only: Option<&str>) -> std::io::Result<Vec<String>> {
+/// Runs `steps` in order and reports what each one got.
+async fn probe(steps: &[&Step]) -> std::io::Result<Vec<String>> {
     let raw = term::Raw::enter()?;
     let mut inputs = std::pin::pin!(term::inputs());
     let mut report = vec![format!("keyboard enhancement: {}", raw.enhanced())];
-    let steps = STEPS
-        .step
-        .iter()
-        .filter(|s| only.is_none_or(|o| s.label.eq_ignore_ascii_case(o)));
     for step in steps {
         term::out(&format!("\r\n{}\r\n", step.prompt));
         if let Some(sample) = &step.sample {
