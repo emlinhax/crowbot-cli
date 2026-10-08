@@ -14,6 +14,9 @@ use crate::{Sandbox, WITH_KEY, tests_path};
 struct Scenario {
     description: String,
     args: Vec<String>,
+    /// Runs with the fake's key; `false` runs with whatever the home stores.
+    #[serde(default = "yes")]
+    key: bool,
     #[serde(default)]
     project: Option<String>,
     /// Files to put under crowbot's home first, by path relative to it.
@@ -23,6 +26,7 @@ struct Scenario {
     #[serde(default)]
     project_files: BTreeMap<String, String>,
     /// The model's turns, in order.
+    #[serde(default)]
     reply: Vec<Turn>,
     expect: Expect,
 }
@@ -31,8 +35,13 @@ struct Scenario {
 #[serde(deny_unknown_fields)]
 struct Expect {
     exit: i32,
+    /// The whole of stdout.
+    #[serde(default)]
+    stdout: Option<String>,
     #[serde(default)]
     stdout_contains: Vec<String>,
+    #[serde(default)]
+    stdout_lacks: Vec<String>,
     #[serde(default)]
     stderr_contains: Vec<String>,
     /// Exact contents of files in the project afterwards.
@@ -48,13 +57,23 @@ struct Expect {
     min_hits: BTreeMap<String, usize>,
 }
 
-/// One model turn: what it says, the calls it makes, or a raw fixture under tests/fixtures/sse/.
+/// One answer to a chat request: what the model says, the calls it makes, a raw fixture under
+/// tests/fixtures/sse/, an error envelope, or an error whose body never ends.
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 enum Turn {
     Text(String),
     Calls(Vec<Call>),
     Sse(String),
+    Error {
+        status: u16,
+        kind: String,
+        #[serde(default)]
+        retry_after: Option<u64>,
+    },
+    Stall {
+        status: u16,
+    },
 }
 
 impl Turn {
@@ -63,8 +82,22 @@ impl Turn {
             Self::Text(text) => Reply::Text(text.clone()),
             Self::Calls(calls) => Reply::Calls(calls.clone()),
             Self::Sse(name) => Reply::Sse(name.clone()),
+            Self::Error {
+                status,
+                kind,
+                retry_after,
+            } => Reply::Error {
+                status: *status,
+                kind: kind.clone(),
+                retry_after: *retry_after,
+            },
+            Self::Stall { status } => Reply::Stall { status: *status },
         }
     }
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// A check on one chat request the model was sent.
@@ -93,15 +126,34 @@ async fn scenarios() {
         .collect();
     files.sort();
     assert!(!files.is_empty());
-    for file in files {
+    // All at once, each in its own task, so one failure neither stops nor hides the rest.
+    let runs = files.into_iter().map(|file| {
         let name = file.file_stem().unwrap().to_string_lossy().into_owned();
         let scenario: Scenario = toml::from_str(&std::fs::read_to_string(&file).unwrap())
             .unwrap_or_else(|e| panic!("{name}: {e}"));
-        check(&name, &scenario).await;
-    }
+        tokio::spawn(check(name, scenario))
+    });
+    let failures: Vec<String> = futures_util::future::join_all(runs)
+        .await
+        .into_iter()
+        .filter_map(|done| {
+            let panic = done.err()?.into_panic();
+            let why = panic
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| panic.downcast_ref::<&str>().map(|s| (*s).to_owned()));
+            Some(why.unwrap_or_else(|| "a scenario panicked".to_owned()))
+        })
+        .collect();
+    assert!(
+        failures.is_empty(),
+        "{} scenario(s) failed:\n\n{}",
+        failures.len(),
+        failures.join("\n\n")
+    );
 }
 
-async fn check(name: &str, scenario: &Scenario) {
+async fn check(name: String, scenario: Scenario) {
     let fake = Fake::start().await;
     fake.script(scenario.reply.iter().map(Turn::reply));
     let sandbox = Sandbox::default();
@@ -116,7 +168,8 @@ async fn check(name: &str, scenario: &Scenario) {
         sandbox.write_project(path, text);
     }
     let args: Vec<&str> = scenario.args.iter().map(String::as_str).collect();
-    let run = sandbox.run(&fake.url, &args, WITH_KEY).await;
+    let key = if scenario.key { WITH_KEY } else { None };
+    let run = sandbox.run(&fake.url, &args, key).await;
     let (stdout, stderr) = (run.stdout(), run.stderr());
     let context = format!(
         "scenario {name} ({})\nstdout:\n{stdout}\nstderr:\n{stderr}",
@@ -124,12 +177,20 @@ async fn check(name: &str, scenario: &Scenario) {
     );
     let expect = &scenario.expect;
 
+    // `{base}` in what is expected is the fake's address, which crowbot names as its site.
+    let filled = |want: &str| want.replace("{base}", &fake.url);
     assert_eq!(run.code(), Some(expect.exit), "{context}");
-    for want in &expect.stdout_contains {
-        assert!(stdout.contains(want), "stdout lacks {want:?}\n{context}");
+    if let Some(want) = &expect.stdout {
+        assert_eq!(&stdout, want, "stdout\n{context}");
     }
-    for want in &expect.stderr_contains {
-        assert!(stderr.contains(want), "stderr lacks {want:?}\n{context}");
+    for want in expect.stdout_contains.iter().map(|w| filled(w)) {
+        assert!(stdout.contains(&want), "stdout lacks {want:?}\n{context}");
+    }
+    for want in expect.stdout_lacks.iter().map(|w| filled(w)) {
+        assert!(!stdout.contains(&want), "stdout has {want:?}\n{context}");
+    }
+    for want in expect.stderr_contains.iter().map(|w| filled(w)) {
+        assert!(stderr.contains(&want), "stderr lacks {want:?}\n{context}");
     }
     for (path, want) in &expect.files {
         let got = std::fs::read_to_string(sandbox.project().join(path))

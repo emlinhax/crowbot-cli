@@ -1,0 +1,8 @@
+description = "Words after a command name are that command's arguments, refused with its usage, never dropped"
+args = ["help", "me", "fix", "the", "build"]
+reply = []
+
+[expect]
+exit = 1
+stderr_contains = ["usage: crowbot help"]
+stdout_lacks = ["Commands:"]

@@ -1,0 +1,11 @@
+description = "An error after output streamed keeps the partial reply and is not retried (it was billed)"
+args = ["-p", "hi"]
+
+[[reply]]
+sse = "error_midstream.sse"
+
+[expect]
+exit = 1
+stdout = "Partial answ\n"
+stderr_contains = ["vendor refused"]
+hits = { "/v1/chat/completions" = 1 }

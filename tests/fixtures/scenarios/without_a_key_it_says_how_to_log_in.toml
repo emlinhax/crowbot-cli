@@ -1,0 +1,9 @@
+description = "With no key, the run says how to log in and sends nothing"
+args = ["-p", "hi"]
+key = false
+reply = []
+
+[expect]
+exit = 1
+stderr_contains = ["crowbot login"]
+hits = { "/v1/chat/completions" = 0 }

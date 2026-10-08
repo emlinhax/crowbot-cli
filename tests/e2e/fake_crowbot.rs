@@ -33,7 +33,7 @@ pub enum Reply {
     /// A JSON error envelope with this status and `error.type`.
     Error {
         status: u16,
-        kind: &'static str,
+        kind: String,
         retry_after: Option<u64>,
     },
     /// An error that sends its headers (retry at once) and the start of its body, then nothing.
@@ -313,7 +313,7 @@ async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> 
             status,
             kind,
             retry_after,
-        }) => error(status, kind, retry_after),
+        }) => error(status, &kind, retry_after),
         Some(Reply::Stall { status }) => {
             let start =
                 futures_util::stream::once(async { Ok::<_, std::io::Error>(r#"{"error":"#) });

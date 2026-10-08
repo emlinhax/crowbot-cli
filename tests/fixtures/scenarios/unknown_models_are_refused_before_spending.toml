@@ -1,0 +1,8 @@
+description = "An unknown model is refused before any request is made"
+args = ["--model", "nope", "-p", "hi"]
+reply = []
+
+[expect]
+exit = 1
+stderr_contains = ["unknown model"]
+hits = { "/v1/chat/completions" = 0 }

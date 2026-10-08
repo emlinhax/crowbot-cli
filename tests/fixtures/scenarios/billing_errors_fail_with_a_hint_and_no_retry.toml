@@ -1,0 +1,10 @@
+description = "Out of funds fails at once, naming the request and where to top up (the configured site)"
+args = ["-p", "hi"]
+
+[[reply]]
+error = { status = 402, kind = "insufficient_balance" }
+
+[expect]
+exit = 1
+stderr_contains = ["Out of funds", "req_fake", "Top up at {base}."]
+hits = { "/v1/chat/completions" = 1 }

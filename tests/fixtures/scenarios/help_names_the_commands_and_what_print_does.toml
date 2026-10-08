@@ -1,0 +1,9 @@
+description = "--help names the commands and says --print never runs one"
+args = ["--help"]
+key = false
+reply = []
+
+[expect]
+exit = 0
+stdout_contains = ["Commands: help, login", "never a command"]
+hits = { "/v1/chat/completions" = 0 }
