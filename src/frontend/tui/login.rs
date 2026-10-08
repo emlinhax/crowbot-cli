@@ -7,7 +7,7 @@ use futures_util::future::BoxFuture;
 use crate::api::pair::{self, Started};
 use crate::app::App;
 use crate::auth::{self, KeyKind};
-use crate::commands::login::{logged_in, open_browser};
+use crate::commands::login::logged_in;
 use crate::frontend::tui::boxed::boxed;
 use crate::frontend::tui::card::{Card, Step};
 use crate::frontend::tui::choice::{Choice, Opt};
@@ -57,24 +57,20 @@ pub enum Next {
 
 pub fn run(app: &App, job: Job) -> BoxFuture<'_, Done> {
     Box::pin(async move {
-        let (key, kind) = match job {
+        let done = match job {
             Job::Start => {
                 return match pair::start(&app.api).await {
                     Ok(started) => Done::Started(started),
                     Err(e) => Done::Failed(format!("{e:#}")),
                 };
             }
-            Job::Wait(started) => {
-                open_browser(&pair::page());
-                match pair::wait(&app.api, &started).await {
-                    Ok(key) => (key, KeyKind::Device),
-                    Err(e) => return Done::Failed(format!("{e:#}")),
-                }
+            Job::Wait(started) => auth::pair(&app.api, &app.paths, &started).await,
+            Job::Check(number) => {
+                auth::adopt(&app.api, &app.paths, &number, KeyKind::Account).await
             }
-            Job::Check(number) => (number, KeyKind::Account),
         };
-        match auth::adopt(&app.api, &app.paths, &key, kind).await {
-            Ok(me) => Done::LoggedIn(logged_in(kind, &key, &me)),
+        match done {
+            Ok(done) => Done::LoggedIn(logged_in(&done)),
             Err(e) => Done::Failed(format!("{e:#}")),
         }
     })

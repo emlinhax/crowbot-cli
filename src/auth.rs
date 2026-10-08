@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::Api;
 use crate::api::account::{self, Me};
+use crate::api::pair::{self, Started};
 use crate::config::paths::Paths;
 use crate::io::{self, fs::Access};
 use crate::text::shorten;
@@ -50,8 +51,13 @@ pub fn load(paths: &Paths) -> anyhow::Result<Option<Key>> {
     }
 }
 
+/// Whether `CROWBOT_API_KEY` is set, and so used over any stored key.
+pub fn env_shadows() -> bool {
+    from_env().is_some()
+}
+
 /// `CROWBOT_API_KEY`, which wins over a stored key while it is set.
-pub fn from_env() -> Option<Key> {
+fn from_env() -> Option<Key> {
     io::env::var("CROWBOT_API_KEY").map(|secret| Key {
         secret: normalize(&secret),
         origin: Origin::Env,
@@ -102,14 +108,36 @@ pub fn save(paths: &Paths, secret: &str, kind: KeyKind) -> anyhow::Result<()> {
 }
 
 /// Checks `secret` with crowbot, stores it, and makes it the key this process uses from now on.
-pub async fn adopt(api: &Api, paths: &Paths, secret: &str, kind: KeyKind) -> anyhow::Result<Me> {
+pub async fn adopt(
+    api: &Api,
+    paths: &Paths,
+    secret: &str,
+    kind: KeyKind,
+) -> anyhow::Result<LoggedIn> {
     let secret = normalize(secret);
     let me = account::me(&api.with_key(secret.clone()))
         .await
         .context("checking that key with crowbot")?;
     save(paths, &secret, kind)?;
+    let hint = hint(&secret);
     api.set_key(Some(secret));
-    Ok(me)
+    Ok(LoggedIn { kind, hint, me })
+}
+
+/// A login that went through: the kind of key, its hint, and the account it opens. The secret
+/// stays in auth.
+pub struct LoggedIn {
+    pub kind: KeyKind,
+    pub hint: String,
+    pub me: Me,
+}
+
+/// Pairs this machine once the user has the code `started` gives: opens the page, waits for the
+/// approval, and keeps the device key.
+pub async fn pair(api: &Api, paths: &Paths, started: &Started) -> anyhow::Result<LoggedIn> {
+    io::proc::open_url(&pair::page());
+    let key = pair::wait(api, started).await?;
+    adopt(api, paths, &key, KeyKind::Device).await
 }
 
 /// Removes the stored key, and has `api` go on with the environment's key if there is one;

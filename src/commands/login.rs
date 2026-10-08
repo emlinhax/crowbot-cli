@@ -4,13 +4,12 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
 use super::{Command, Ctx, Effect, Outcome, Scope, Spec};
-use crate::api::account::Me;
 use crate::api::endpoints;
 use crate::api::pair;
 use crate::app::App;
-use crate::auth::{self, KeyKind, Origin};
+use crate::auth::{self, KeyKind, LoggedIn, Origin};
 use crate::data;
-use crate::io::{self, term};
+use crate::io::term;
 use crate::text::template::fill;
 use crate::text::units;
 
@@ -58,11 +57,9 @@ impl Command for Login {
             }
             let text = match number {
                 None => pair_here(cx.app).await?,
-                Some(number) => {
-                    let me =
-                        auth::adopt(&cx.app.api, &cx.app.paths, &number, KeyKind::Account).await?;
-                    logged_in(KeyKind::Account, &number, &me)
-                }
+                Some(number) => logged_in(
+                    &auth::adopt(&cx.app.api, &cx.app.paths, &number, KeyKind::Account).await?,
+                ),
             };
             Ok(text.into())
         })
@@ -77,32 +74,23 @@ async fn pair_here(app: &App) -> anyhow::Result<String> {
         "{}\n",
         fill(&TEXT.pair, &[("url", &url), ("code", code)])
     ));
-    open_browser(&url);
-    let key = pair::wait(&app.api, &started).await?;
-    let me = auth::adopt(&app.api, &app.paths, &key, KeyKind::Device).await?;
-    Ok(logged_in(KeyKind::Device, &key, &me))
-}
-
-/// Opens the pairing page unless `CROWBOT_NO_BROWSER` is set (tests, headless machines); the
-/// URL is always shown too.
-pub fn open_browser(url: &str) {
-    if io::env::var("CROWBOT_NO_BROWSER").is_none() {
-        let _ = io::proc::open_url(url);
-    }
+    Ok(logged_in(
+        &auth::pair(&app.api, &app.paths, &started).await?,
+    ))
 }
 
 /// What a successful login says, on the command line and in a session alike.
-pub fn logged_in(kind: KeyKind, secret: &str, me: &Me) -> String {
-    let balance = units::usd_micros(me.balance_microdollars);
+pub fn logged_in(done: &LoggedIn) -> String {
+    let balance = units::usd_micros(done.me.balance_microdollars);
     let mut out = fill(
         &TEXT.logged_in,
         &[
-            ("what", what(kind)),
-            ("hint", &auth::hint(secret)),
+            ("what", what(done.kind)),
+            ("hint", &done.hint),
             ("balance", &balance),
         ],
     );
-    if !me.can_spend {
+    if !done.me.can_spend {
         out.push_str(&fill(
             &TEXT.cannot_spend,
             &[("chat", &endpoints::origin("chat"))],
@@ -114,7 +102,7 @@ pub fn logged_in(kind: KeyKind, secret: &str, me: &Me) -> String {
 
 /// Said after login, logout and signup while the environment's key shadows the stored one.
 pub fn env_note() -> &'static str {
-    if auth::from_env().is_some() {
+    if auth::env_shadows() {
         &TEXT.env_note
     } else {
         ""
@@ -144,6 +132,7 @@ pub fn status(cx: &Ctx<'_>) -> anyhow::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::account::Me;
 
     #[test]
     fn text_parses_and_names_every_placeholder() {
@@ -151,7 +140,12 @@ mod tests {
             balance_microdollars: 12_300_000,
             can_spend: false,
         };
-        let out = logged_in(KeyKind::Device, "device-key-9999", &me);
+        let done = LoggedIn {
+            kind: KeyKind::Device,
+            hint: auth::hint("device-key-9999"),
+            me,
+        };
+        let out = logged_in(&done);
         assert!(out.starts_with("Logged in with device key …9999. Balance $12.30."));
         assert!(out.contains("cannot spend"));
         assert!(!out.contains('{'), "{out}");

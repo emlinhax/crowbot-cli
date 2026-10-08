@@ -7,8 +7,15 @@ mod tree;
 
 pub use tree::{Ended, ShellCommand, run};
 
-/// Opens `url` in the default browser. Best effort: callers always print the URL as well.
-pub fn open_url(url: &str) -> io::Result<()> {
+/// Opens `url` in the default browser, unless `CROWBOT_NO_BROWSER` is set (tests, headless
+/// machines). Best effort: callers always print the URL as well.
+pub fn open_url(url: &str) {
+    if super::env::var("CROWBOT_NO_BROWSER").is_none() {
+        let _ = launch(url);
+    }
+}
+
+fn launch(url: &str) -> io::Result<()> {
     #[cfg(windows)]
     {
         use windows_sys::Win32::UI::Shell::ShellExecuteW;
