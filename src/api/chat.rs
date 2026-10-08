@@ -80,10 +80,11 @@ async fn attempt_once(
     let limits = &limits::get().chat;
     let call = Call {
         body: Some(body),
+        timeout: Some(limits.headers_timeout_secs.secs()),
         ..Call::default()
     };
     let opened = tokio::select! {
-        r = api.open("chat", call, limits.headers_timeout_secs.secs()) => r,
+        r = api.open("chat", call) => r,
         () = cancel.cancelled() => return Outcome {
             message: message(turn, Vec::new(), Finish::Aborted, None, None, None),
             emitted: false,

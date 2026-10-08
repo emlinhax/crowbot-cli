@@ -74,7 +74,6 @@ impl Tool for CodeSearch {
                         body: Some(&args),
                         ..Call::default()
                     },
-                    limits::get().http.request_timeout_ms.ms(),
                 )
                 .await;
             let reply = match reply {

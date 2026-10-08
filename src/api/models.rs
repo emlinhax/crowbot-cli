@@ -66,7 +66,13 @@ pub struct Listing {
 pub async fn fetch(api: &Api) -> Result<Vec<Model>, String> {
     let timeout = limits::get().models.fetch_timeout_ms.ms();
     let listing: Listing = api
-        .call_json("models", Call::default(), timeout)
+        .call_json(
+            "models",
+            Call {
+                timeout: Some(timeout),
+                ..Call::default()
+            },
+        )
         .await
         .map_err(|e| e.to_string())?;
     if listing.data.is_empty() {

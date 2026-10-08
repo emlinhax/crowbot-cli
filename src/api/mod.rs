@@ -35,6 +35,8 @@ pub struct Call<'a> {
     pub args: &'a [(&'a str, &'a str)],
     pub headers: &'a [(&'a str, &'a str)],
     pub body: Option<&'a serde_json::Value>,
+    /// How long the reply may take; `None` is http.request_timeout_ms (data/limits.toml).
+    pub timeout: Option<Duration>,
 }
 
 impl Api {
@@ -77,13 +79,8 @@ impl Api {
         }
     }
 
-    pub async fn call(
-        &self,
-        id: &str,
-        call: Call<'_>,
-        timeout: Duration,
-    ) -> Result<Response, ApiError> {
-        let resp = self.http.send(self.request(id, &call, timeout)?).await?;
+    pub async fn call(&self, id: &str, call: Call<'_>) -> Result<Response, ApiError> {
+        let resp = self.http.send(self.request(id, &call)?).await?;
         if resp.head.status >= 400 {
             return Err(ApiError::from_response(&resp));
         }
@@ -95,21 +92,15 @@ impl Api {
         &self,
         id: &str,
         call: Call<'_>,
-        timeout: Duration,
     ) -> Result<T, ApiError> {
-        let resp = self.call(id, call, timeout).await?;
+        let resp = self.call(id, call).await?;
         error::json(&resp.body)
     }
 
     /// Like `call`, but hands back the body as it streams. An error's body is read first, as far
     /// as it comes within the error bounds in data/limits.toml.
-    pub async fn open(
-        &self,
-        id: &str,
-        call: Call<'_>,
-        timeout: Duration,
-    ) -> Result<Streaming, ApiError> {
-        let resp = self.http.open(self.request(id, &call, timeout)?).await?;
+    pub async fn open(&self, id: &str, call: Call<'_>) -> Result<Streaming, ApiError> {
+        let resp = self.http.open(self.request(id, &call)?).await?;
         if resp.head.status >= 400 {
             let limits = &crate::config::limits::get().http;
             let resp = resp
@@ -120,12 +111,7 @@ impl Api {
         Ok(resp)
     }
 
-    fn request<'a>(
-        &'a self,
-        id: &str,
-        call: &Call<'a>,
-        timeout: Duration,
-    ) -> Result<Request<'a>, ApiError> {
+    fn request<'a>(&'a self, id: &str, call: &Call<'a>) -> Result<Request<'a>, ApiError> {
         let endpoint = endpoints::get(id);
         let bearer = match (endpoint.auth, self.key()) {
             (false, _) => None,
@@ -145,7 +131,9 @@ impl Api {
             bearer,
             headers: call.headers,
             json: call.body,
-            timeout,
+            timeout: call
+                .timeout
+                .unwrap_or_else(|| crate::config::limits::get().http.request_timeout_ms.ms()),
         })
     }
 }

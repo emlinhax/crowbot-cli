@@ -65,7 +65,6 @@ async fn challenge(api: &Api) -> Result<Challenge, ApiError> {
             args: &[("kind", "signup")],
             ..Call::default()
         },
-        limits::get().http.request_timeout_ms.ms(),
     )
     .await
 }
@@ -78,7 +77,6 @@ async fn create(api: &Api, challenge: &str, nonce: &str) -> Result<Account, ApiE
             headers: &[("X-Pow", &proof)],
             ..Call::default()
         },
-        limits::get().http.request_timeout_ms.ms(),
     )
     .await
 }

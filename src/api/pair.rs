@@ -40,7 +40,6 @@ pub async fn start(api: &Api) -> Result<Started, ApiError> {
             body: Some(&body),
             ..Call::default()
         },
-        limits::get().http.request_timeout_ms.ms(),
     )
     .await
 }
@@ -53,7 +52,6 @@ pub async fn poll(api: &Api, device_code: &str) -> Result<Poll, ApiError> {
                 args: &[("code", device_code)],
                 ..Call::default()
             },
-            limits::get().http.request_timeout_ms.ms(),
         )
         .await?;
     if resp.head.status == 202 {

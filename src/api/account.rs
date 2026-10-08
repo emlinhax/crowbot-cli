@@ -4,7 +4,6 @@ use serde::Deserialize;
 
 use crate::api::error::ApiError;
 use crate::api::{Api, Call};
-use crate::config::limits;
 
 #[derive(Debug, Deserialize)]
 pub struct Me {
@@ -15,10 +14,5 @@ pub struct Me {
 }
 
 pub async fn me(api: &Api) -> Result<Me, ApiError> {
-    api.call_json(
-        "me",
-        Call::default(),
-        limits::get().http.request_timeout_ms.ms(),
-    )
-    .await
+    api.call_json("me", Call::default()).await
 }
