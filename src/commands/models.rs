@@ -7,7 +7,7 @@ use serde::Deserialize;
 use super::{Command, Ctx, Effect, Outcome, Scope, Spec};
 use crate::data;
 use crate::io::term;
-use crate::models::table::{aligns, drop_order, rows, source_note};
+use crate::models::table::{aligns, drop_order, mark, rows, source_note};
 use crate::models::{self, Catalog};
 use crate::text::table::{self, GAP};
 use crate::text::template::fill;
@@ -70,7 +70,8 @@ fn render(catalog: &Catalog, default_model: &str, width: usize) -> String {
     for row in rows {
         let _ = writeln!(out, "{}", row.text().trim_end());
     }
-    let _ = writeln!(out, "\n{} {}", TEXT.footnote, source_note(catalog));
+    let footnote = fill(&TEXT.footnote, &[("current", mark())]);
+    let _ = writeln!(out, "\n{footnote} {}", source_note(catalog));
     if !catalog.models.iter().any(|m| m.id == default_model) {
         let _ = writeln!(out, "{}", fill(&TEXT.missing, &[("model", default_model)]));
     }

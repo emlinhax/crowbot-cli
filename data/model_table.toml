@@ -40,9 +40,23 @@ align = "right"
 id = "capabilities"
 title = ""
 
+# What the capabilities column lists, in this order, for a model that has each.
+[[capability]]
+id = "reasoning"
+label = "reasoning"
+
+[[capability]]
+id = "tool_calling"
+label = "tools"
+
+[[capability]]
+id = "caching"
+label = "cache"
+
 [text]
 current = "●"
 live = "Live list from crowbot."
 cache = "Cached list from {when} (`--refresh` to update)."
+cache_time = "%Y-%m-%d %H:%M UTC"
 snapshot = "Offline: showing the list bundled with this build."
 unreachable = "Could not reach crowbot: {note}"

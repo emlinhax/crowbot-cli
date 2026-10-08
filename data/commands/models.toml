@@ -3,5 +3,5 @@ summary = "Pick the model for this session; on the command line, list them with 
 usage = "models [--refresh]"
 
 [text]
-footnote = "Prices are USD per 1M tokens; ● is your default."
+footnote = "Prices are USD per 1M tokens; {current} is your default."
 missing = "Your default model `{model}` is not in this list; pick another with `--model`."
