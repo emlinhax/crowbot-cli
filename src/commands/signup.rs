@@ -67,7 +67,7 @@ impl Command for Signup {
     }
 }
 
-/// Asks for the last digits back, when someone is at the keyboard to answer.
+/// Asks for the number's tail back when stdin is a terminal.
 fn confirm(number: &str) -> anyhow::Result<()> {
     if !term::stdin_is_terminal() {
         return Ok(());

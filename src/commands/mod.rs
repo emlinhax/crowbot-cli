@@ -82,8 +82,7 @@ pub enum Effect {
     PickModel {
         refresh: bool,
     },
-    /// Open the session's forums card, at the login for the forum with this base URL when one
-    /// was named.
+    /// Open the forums card; at the login of the forum with this base URL, if given.
     Forums {
         login: Option<String>,
     },
