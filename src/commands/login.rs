@@ -53,10 +53,7 @@ impl Command for Login {
             };
             // A session waits in its own card, which runs beside input.
             if cx.scope == Scope::Session {
-                return Ok(Outcome {
-                    text: String::new(),
-                    effects: vec![Effect::Login { number }],
-                });
+                return Ok(Effect::Login { number }.into());
             }
             let text = match number {
                 None => pair_here(cx.app).await?,

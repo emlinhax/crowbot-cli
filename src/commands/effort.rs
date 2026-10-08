@@ -47,10 +47,7 @@ impl Command for Effort {
                 }
                 [level] => {
                     effort::find(level)?;
-                    Ok(Outcome {
-                        text: String::new(),
-                        effects: vec![Effect::SetEffort(level.clone())],
-                    })
+                    Ok(Effect::SetEffort(level.clone()).into())
                 }
                 _ => Err(cx.usage(&SPEC)),
             }

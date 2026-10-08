@@ -20,10 +20,7 @@ impl Command for New {
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             cx.no_args(&SPEC, args)?;
-            Ok(Outcome {
-                text: String::new(),
-                effects: vec![Effect::NewConversation],
-            })
+            Ok(Effect::NewConversation.into())
         })
     }
 }

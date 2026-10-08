@@ -43,10 +43,7 @@ impl Command for Models {
                 }
             }
             if cx.scope == Scope::Session {
-                return Ok(Outcome {
-                    text: String::new(),
-                    effects: vec![Effect::PickModel { refresh }],
-                });
+                return Ok(Effect::PickModel { refresh }.into());
             }
             let catalog = models::load(&cx.app.api, &cx.app.paths, refresh).await;
             // Piped, the table keeps every column; a terminal gets what fits it.

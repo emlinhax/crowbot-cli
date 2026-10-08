@@ -25,10 +25,7 @@ impl Command for Mode {
                 [id] => Effect::SetMode(mode::find(id)?.id.clone()),
                 _ => return Err(cx.usage(&SPEC)),
             };
-            Ok(Outcome {
-                text: String::new(),
-                effects: vec![effect],
-            })
+            Ok(effect.into())
         })
     }
 }

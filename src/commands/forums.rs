@@ -48,13 +48,14 @@ impl Command for Forums {
             let session = cx.scope == Scope::Session;
             let text = match words.as_slice() {
                 // In a session the list is a card to act on; `list` still prints it.
-                [] if session => return Ok(card(None)),
+                [] if session => return Ok(Effect::Forums { login: None }.into()),
                 [] | ["list"] => list(cx),
                 ["add"] => add_hint(cx),
                 ["add", rest @ ..] => add(cx, &rest.join(" ")).await?,
                 ["login", key] if session => {
                     let forum = account::find_or_add(&cx.app.fetch, &cx.app.paths, key).await?;
-                    return Ok(card(Some(forum.base_url)));
+                    let login = Some(forum.base_url);
+                    return Ok(Effect::Forums { login }.into());
                 }
                 ["login", key] => login(cx, key).await?,
                 ["logout", key] => match store::get(&cx.app.paths, key)? {
@@ -78,13 +79,6 @@ impl Command for Forums {
             };
             Ok(text.into())
         })
-    }
-}
-
-fn card(login: Option<String>) -> Outcome {
-    Outcome {
-        text: String::new(),
-        effects: vec![Effect::Forums { login }],
     }
 }
 

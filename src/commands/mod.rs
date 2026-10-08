@@ -114,6 +114,15 @@ impl From<&str> for Outcome {
     }
 }
 
+impl From<Effect> for Outcome {
+    fn from(effect: Effect) -> Self {
+        Self {
+            text: String::new(),
+            effects: vec![effect],
+        }
+    }
+}
+
 pub trait Command: Sync {
     fn spec(&self) -> &Spec;
     fn run<'a>(

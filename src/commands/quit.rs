@@ -20,10 +20,7 @@ impl Command for Quit {
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             cx.no_args(&SPEC, args)?;
-            Ok(Outcome {
-                text: String::new(),
-                effects: vec![Effect::Quit],
-            })
+            Ok(Effect::Quit.into())
         })
     }
 }
