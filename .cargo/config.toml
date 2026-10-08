@@ -1,6 +1,4 @@
-# Static CRT so the Windows binary runs without the VC++ redistributable.
-[target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static"]
-
-[target.aarch64-pc-windows-msvc]
+# Static CRT so the Windows binary runs without the VC++ redistributable; every MSVC target, so a
+# new one needs no entry here.
+[target.'cfg(all(windows, target_env = "msvc"))']
 rustflags = ["-C", "target-feature=+crt-static"]
