@@ -66,11 +66,11 @@ impl Session {
             .expect("a pseudo-terminal");
         let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_crowbot"));
         cmd.args(args);
-        cmd.cwd(sandbox.project.path());
+        cmd.cwd(sandbox.project());
         for name in CLEARED {
             cmd.env_remove(name);
         }
-        for (name, value) in launch_env(sandbox.home.path(), api_url, key) {
+        for (name, value) in launch_env(sandbox.home(), api_url, key) {
             cmd.env(name, value);
         }
         cmd.env("TERM", "xterm-256color");

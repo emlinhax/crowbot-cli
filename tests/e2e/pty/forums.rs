@@ -1,8 +1,8 @@
 //! Logging in to a forum, from the card and from the command line.
 
 use super::harness::{ENTER, ESC, Session, in_session};
-use crate::Sandbox;
 use crate::fake_crowbot::{ENV_KEY, FORUM_PASSWORD, FORUM_PATH, Fake};
+use crate::{Sandbox, all_text};
 
 /// A forum store holding one guest forum on the fake server, sealed the way a non-Windows
 /// machine seals it.
@@ -17,21 +17,7 @@ fn seed_forum(sandbox: &Sandbox, fake_url: &str) {
     }]);
     let blob = base64::engine::general_purpose::STANDARD.encode(forums.to_string());
     let sealed = serde_json::json!({"v": 1, "scheme": "plain", "blob": blob});
-    std::fs::write(sandbox.home().join("forums.json"), sealed.to_string()).unwrap();
-}
-
-/// Every file under `dir`, read as text where it is text.
-fn all_text(dir: &std::path::Path) -> String {
-    let mut out = String::new();
-    for entry in std::fs::read_dir(dir).unwrap().flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            out.push_str(&all_text(&path));
-        } else {
-            out.push_str(&String::from_utf8_lossy(&std::fs::read(&path).unwrap()));
-        }
-    }
-    out
+    sandbox.write_home("forums.json", &sealed.to_string());
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -17,8 +17,8 @@ use tempfile::TempDir;
 
 /// A throwaway `CROWBOT_HOME` and project directory for one test.
 pub struct Sandbox {
-    pub home: TempDir,
-    pub project: TempDir,
+    home: TempDir,
+    project: TempDir,
 }
 
 impl Default for Sandbox {
@@ -33,6 +33,20 @@ impl Default for Sandbox {
 impl Sandbox {
     pub fn home(&self) -> &Path {
         self.home.path()
+    }
+
+    pub fn project(&self) -> &Path {
+        self.project.path()
+    }
+
+    /// Writes `text` at `rel` under the home, making its folders.
+    pub fn write_home(&self, rel: &str, text: &str) {
+        write(&self.home().join(rel), text);
+    }
+
+    /// Writes `text` at `rel` under the project, making its folders.
+    pub fn write_project(&self, rel: &str, text: &str) {
+        write(&self.project().join(rel), text);
     }
 
     /// Runs crowbot pointed at `api_url`, with `key` as its env key; with none it has only
@@ -58,10 +72,7 @@ impl Sandbox {
 
     /// Copies tests/fixtures/projects/<name> into the project directory.
     pub fn copy_project(&self, name: &str) {
-        let from = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/projects")
-            .join(name);
-        copy_dir(&from, self.project.path());
+        copy_dir(&tests_path("fixtures/projects").join(name), self.project());
     }
 
     /// Every session file written so far.
@@ -79,6 +90,34 @@ impl Sandbox {
         }
         found
     }
+}
+
+/// A file or folder under tests/.
+pub fn tests_path(rel: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join(rel)
+}
+
+/// Every file's text under `dir`, one after another, for what a run must not have written.
+pub fn all_text(dir: &Path) -> String {
+    let mut out = String::new();
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            out.push_str(&all_text(&path));
+        } else {
+            out.push_str(&String::from_utf8_lossy(
+                &std::fs::read(&path).unwrap_or_default(),
+            ));
+        }
+    }
+    out
+}
+
+fn write(path: &Path, text: &str) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, text).unwrap();
 }
 
 fn copy_dir(from: &Path, to: &Path) {
@@ -106,6 +145,28 @@ impl Run {
 
     pub fn code(&self) -> Option<i32> {
         self.0.status.code()
+    }
+
+    /// The `--json` event stream, one value per line.
+    pub fn events(&self) -> Vec<serde_json::Value> {
+        self.stdout()
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("every line is a JSON event"))
+            .collect()
+    }
+
+    #[track_caller]
+    pub fn stdout_has(&self, text: &str) -> &Self {
+        let stdout = self.stdout();
+        assert!(stdout.contains(text), "stdout lacks {text:?}:\n{stdout}");
+        self
+    }
+
+    #[track_caller]
+    pub fn stderr_has(&self, text: &str) -> &Self {
+        let stderr = self.stderr();
+        assert!(stderr.contains(text), "stderr lacks {text:?}:\n{stderr}");
+        self
     }
 
     #[track_caller]

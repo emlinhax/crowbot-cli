@@ -9,8 +9,7 @@ async fn a_command_typed_during_a_run_never_reaches_the_model() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("pty/sleep.sse"), Reply::sse("hello.sse")]);
     let sandbox = Sandbox::default();
-    std::fs::create_dir_all(sandbox.home.path()).unwrap();
-    std::fs::write(sandbox.home.path().join("config.toml"), "mode = \"auto\"\n").unwrap();
+    sandbox.write_home("config.toml", "mode = \"auto\"\n");
     let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.wait_for("AUTO");
         s.submit("go");

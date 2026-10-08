@@ -98,7 +98,7 @@ async fn slash_init_asks_for_an_agents_md_that_the_next_conversation_reads() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
     let sandbox = Sandbox::default();
-    let agents = sandbox.project.path().join("AGENTS.md");
+    let agents = sandbox.project().join("AGENTS.md");
     in_session(&fake, sandbox, Some(ENV_KEY), move |s| {
         s.submit("/init");
         s.wait_for("Hello there!");

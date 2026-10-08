@@ -237,9 +237,9 @@ async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> 
     };
     match reply {
         Some(Reply::Sse(name)) => {
-            let path = format!("{}/tests/fixtures/sse/{name}", env!("CARGO_MANIFEST_DIR"));
+            let path = crate::tests_path("fixtures/sse").join(name);
             let text = std::fs::read_to_string(&path)
-                .unwrap_or_else(|_| panic!("{path}"))
+                .unwrap_or_else(|_| panic!("{}", path.display()))
                 .replace("{base}", &base)
                 .replace("{home}", &home);
             (

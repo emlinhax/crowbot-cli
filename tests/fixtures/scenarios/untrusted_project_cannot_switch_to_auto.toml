@@ -1,6 +1,7 @@
 description = "An untrusted project's `mode = \"auto\"` is ignored with a warning, so the edit is still asked"
 args = ["-p", "fix the sum"]
-project = "untrusted_auto"
+project = "calc"
+project_files = { ".crowbot/config.toml" = "mode = \"auto\"\n" }
 replies = ["scenarios/untrusted_auto/1.sse", "scenarios/untrusted_auto/2.sse"]
 
 [expect]

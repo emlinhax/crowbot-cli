@@ -2,13 +2,12 @@
 //! replies, and what must be true afterwards. Adding a scenario is adding a file.
 
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::fake_crowbot::{Fake, Reply};
-use crate::{Sandbox, WITH_KEY};
+use crate::{Sandbox, WITH_KEY, tests_path};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -20,6 +19,9 @@ struct Scenario {
     /// Files to put under crowbot's home first, by path relative to it.
     #[serde(default)]
     home_files: BTreeMap<String, String>,
+    /// Files to put in the project first, over `project`'s, by path relative to it.
+    #[serde(default)]
+    project_files: BTreeMap<String, String>,
     /// SSE fixtures under tests/fixtures/sse/, one per model turn.
     replies: Vec<String>,
     expect: Expect,
@@ -63,7 +65,7 @@ struct RequestCheck {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn scenarios() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/scenarios");
+    let dir = tests_path("fixtures/scenarios");
     let mut files: Vec<_> = std::fs::read_dir(&dir)
         .unwrap()
         .flatten()
@@ -89,9 +91,10 @@ async fn check(name: &str, scenario: &Scenario) {
     }
     fake.set_home(sandbox.home());
     for (path, text) in &scenario.home_files {
-        let path = sandbox.home().join(path);
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(path, text).unwrap();
+        sandbox.write_home(path, text);
+    }
+    for (path, text) in &scenario.project_files {
+        sandbox.write_project(path, text);
     }
     let args: Vec<&str> = scenario.args.iter().map(String::as_str).collect();
     let run = sandbox.run(&fake.url, &args, WITH_KEY).await;
@@ -110,7 +113,7 @@ async fn check(name: &str, scenario: &Scenario) {
         assert!(stderr.contains(want), "stderr lacks {want:?}\n{context}");
     }
     for (path, want) in &expect.files {
-        let got = std::fs::read_to_string(sandbox.project.path().join(path))
+        let got = std::fs::read_to_string(sandbox.project().join(path))
             .unwrap_or_else(|_| panic!("{path} missing\n{context}"));
         assert_eq!(&got, want, "{path}\n{context}");
     }

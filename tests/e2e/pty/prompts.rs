@@ -8,7 +8,8 @@ use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
 async fn an_untrusted_folder_is_asked_about_once_before_its_config_loosens_anything() {
     let fake = Fake::start().await;
     let sandbox = Sandbox::default();
-    sandbox.copy_project("untrusted_auto");
+    sandbox.copy_project("calc");
+    sandbox.write_project(".crowbot/config.toml", "mode = \"auto\"\n");
     let url = fake.url.clone();
     let (screens, trusted) = tokio::task::spawn_blocking(move || {
         let mut screens = Vec::new();
@@ -25,7 +26,7 @@ async fn an_untrusted_folder_is_asked_about_once_before_its_config_loosens_anyth
             assert!(s.wait_exit(), "{}", s.contents());
             screens.push(s.contents());
         }
-        let trusted = std::fs::read_to_string(sandbox.home.path().join("trusted.json")).unwrap();
+        let trusted = std::fs::read_to_string(sandbox.home().join("trusted.json")).unwrap();
         (screens, trusted)
     })
     .await
@@ -60,7 +61,7 @@ async fn manual_mode_shows_the_edit_and_applies_it_once_approved() {
         s.wait_for("Fixed: 2 + 2 = 4.");
     })
     .await;
-    let fixed = std::fs::read_to_string(ended.sandbox.project.path().join("src/calc.txt")).unwrap();
+    let fixed = std::fs::read_to_string(ended.sandbox.project().join("src/calc.txt")).unwrap();
     assert_eq!(fixed, "2 + 2 = 4\n", "{}", ended.screen);
 }
 
