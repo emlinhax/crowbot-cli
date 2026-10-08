@@ -138,17 +138,14 @@ fn what(step: &Step) -> String {
 /// Each path resolved and checked, or why the call cannot be done, in words for the model.
 fn plan(cx: &ToolCx<'_>, args: &Args) -> Result<Vec<Step>, String> {
     let paths = &cx.app.paths;
-    let given: Vec<String> = match &args.path {
-        Many::One(path) => vec![path.clone()],
-        Many::Set(paths) => paths.clone(),
-    };
+    let given = args.path.all();
     let max = limits::get().tools.fs_batch_max.value;
     if given.len() > max {
         return Err(format!("At most {max} paths in one call."));
     }
     let project = io::fs::canonical(&paths.project);
     let mut steps = Vec::new();
-    for raw in &given {
+    for raw in given {
         let from = target::resolve(paths, raw)?;
         if from.link {
             return Err(format!(

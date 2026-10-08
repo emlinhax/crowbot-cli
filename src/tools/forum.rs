@@ -9,7 +9,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::many::{Many, join};
+use super::many::{Id, Many, batch};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::config::limits;
 use crate::data;
@@ -103,51 +103,12 @@ fn finish(text: String) -> Output {
     Output::ok(content)
 }
 
-/// An id or search word, which the model may send as a string or a bare number.
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum Id {
-    Str(String),
-    Int(i64),
-}
-
-impl Id {
-    fn text(&self) -> String {
-        match self {
-            Self::Str(s) => s.clone(),
-            Self::Int(n) => n.to_string(),
-        }
-    }
-}
-
 /// A batch arg's ids as strings, capped to the batch limit so one call cannot hammer a forum.
 fn capped(many: &Many<Id>) -> Vec<String> {
     many.capped(limits::get().forums.batch_max.value)
         .iter()
         .map(Id::text)
         .collect()
-}
-
-/// Run `each` over the items at once and stitch the results, labelling and inlining per-item
-/// errors so one bad id does not sink the batch. A single item gets no label or divider.
-async fn batch<F, Fut>(items: Vec<String>, label: impl Fn(&str) -> String, each: F) -> String
-where
-    F: Fn(String) -> Fut,
-    Fut: std::future::Future<Output = anyhow::Result<String>>,
-{
-    let each = &each;
-    let runs = items
-        .into_iter()
-        .map(move |item| async move { (item.clone(), each(item).await) });
-    let parts = futures_util::future::join_all(runs)
-        .await
-        .into_iter()
-        .map(|(item, result)| {
-            let text = result.unwrap_or_else(|e| format!("could not read {item}: {e:#}"));
-            (label(&item), text)
-        })
-        .collect();
-    join(parts)
 }
 
 fn render_forums(list: &[Forum]) -> String {
@@ -594,34 +555,6 @@ mod tests {
         assert_eq!(parse(serde_json::json!([1, 2])), ["1", "2"]);
         let big = serde_json::json!((0..50).collect::<Vec<_>>());
         assert_eq!(parse(big).len(), limits::get().forums.batch_max.value);
-    }
-
-    #[tokio::test]
-    async fn a_batch_labels_each_and_inlines_a_failure() {
-        let out = batch(
-            vec!["a".into(), "b".into()],
-            |x| format!("[{x}]"),
-            |x| async move {
-                if x == "b" {
-                    anyhow::bail!("nope")
-                } else {
-                    Ok(format!("ok {x}"))
-                }
-            },
-        )
-        .await;
-        assert!(out.contains("[a]\nok a"), "{out}");
-        assert!(out.contains("[b]\ncould not read b: nope"), "{out}");
-        assert!(out.contains("───"), "{out}");
-
-        // A single item carries no label or divider.
-        let solo = batch(
-            vec!["a".into()],
-            |x| format!("[{x}]"),
-            |x| async move { Ok(format!("ok {x}")) },
-        )
-        .await;
-        assert_eq!(solo, "ok a");
     }
 
     #[test]
