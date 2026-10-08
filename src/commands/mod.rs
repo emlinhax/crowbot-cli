@@ -185,11 +185,12 @@ pub fn redact_line(line: &str) -> String {
     }
 }
 
-pub fn available(scope: Scope) -> impl Iterator<Item = &'static dyn Command> {
+/// The specs of the commands `scope` offers and lists (hidden ones still run when typed).
+pub fn listed(scope: Scope) -> impl Iterator<Item = &'static Spec> {
     COMMANDS
         .iter()
-        .copied()
-        .filter(move |c| c.spec().scope.contains(&scope))
+        .map(|c| c.spec())
+        .filter(move |s| s.scope.contains(&scope) && !s.hidden)
 }
 
 #[cfg(test)]

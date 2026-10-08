@@ -58,9 +58,7 @@ fn command() -> clap::Command {
     let ids = |ids: Vec<&str>| ids.join(", ");
     let efforts = ids(effort::levels().iter().map(|l| l.id.as_str()).collect());
     let modes = ids(mode::all().iter().map(|m| m.id.as_str()).collect());
-    let names: Vec<&str> = commands::available(Scope::Cli)
-        .map(|c| c.spec())
-        .filter(|s| !s.hidden)
+    let names: Vec<&str> = commands::listed(Scope::Cli)
         .map(|s| s.name.as_str())
         .collect();
     Cli::command()

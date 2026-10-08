@@ -38,9 +38,8 @@ pub fn matches(text: &str) -> Vec<&'static Spec> {
     else {
         return Vec::new();
     };
-    let mut found: Vec<&'static Spec> = commands::available(Scope::Session)
-        .map(|c| c.spec())
-        .filter(|s| !s.hidden && s.names().any(|n| n.starts_with(prefix)))
+    let mut found: Vec<&'static Spec> = commands::listed(Scope::Session)
+        .filter(|s| s.names().any(|n| n.starts_with(prefix)))
         .collect();
     found.sort_by(|a, b| a.name.cmp(&b.name));
     found

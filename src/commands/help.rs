@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
-use super::{Command, Ctx, Outcome, Scope, Spec, available};
+use super::{Command, Ctx, Outcome, Scope, Spec, listed};
 use crate::data;
 use crate::text::template::fill;
 
@@ -40,7 +40,7 @@ impl Command for Help {
 
 fn render(scope: Scope) -> String {
     let mut out = format!("{}\n\n", TEXT.heading);
-    for spec in available(scope).map(|c| c.spec()).filter(|s| !s.hidden) {
+    for spec in listed(scope) {
         let aliases = if spec.aliases.is_empty() {
             String::new()
         } else {
