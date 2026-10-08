@@ -248,7 +248,7 @@ mod tests {
             shared: &Shared,
             on: impl Fn(&AgentEvent, &Shared) + Send + Sync,
         ) -> (Outcome, Transcript, Vec<String>) {
-            let registry = Registry::builtin(&self.app);
+            let registry = Registry::builtin(self.app.settings.shell.as_deref());
             let events = Mutex::new(Vec::new());
             let emit = |event: AgentEvent| {
                 on(&event, shared);

@@ -270,8 +270,7 @@ mod tests {
 
     #[test]
     fn every_section_names_a_real_tool() {
-        let app = crate::tools::testing::Project::new();
-        let registry = crate::tools::Registry::builtin(&app.app);
+        let registry = crate::tools::Registry::builtin(None);
         let names = registry.names();
         for tool in CARDS.keys().filter(|k| *k != "default") {
             assert!(

@@ -266,8 +266,9 @@ pub struct Registry {
 }
 
 impl Registry {
-    pub fn builtin(app: &App) -> Self {
-        let shell = shell::resolve(app.settings.shell.as_deref());
+    /// Every tool, with bash running `shell` (the `shell` setting; `None` picks one).
+    pub fn builtin(shell: Option<&str>) -> Self {
+        let shell = shell::resolve(shell);
         let mut vars = limits::vars("tools");
         vars.push(("shell_note".to_owned(), shell.note.clone()));
         let tools: Vec<Arc<dyn AnyTool>> = vec![
@@ -419,7 +420,7 @@ mod tests {
     #[test]
     fn every_schema_fits_its_arguments() {
         let project = Project::new();
-        let registry = Registry::builtin(&project.app);
+        let registry = Registry::builtin(None);
         for tool in &registry.tools {
             let args = sample(&tool.spec().parameters);
             if let Err(Refusal::InvalidArgs(e)) = project.check(tool.as_ref(), &args) {
@@ -441,8 +442,7 @@ mod tests {
 
     #[test]
     fn wire_specs_fill_every_placeholder() {
-        let project = Project::new();
-        for spec in Registry::builtin(&project.app).wire() {
+        for spec in Registry::builtin(None).wire() {
             let text = spec["function"]["description"].as_str().unwrap();
             assert!(!text.contains('{'), "unfilled placeholder in: {text}");
         }

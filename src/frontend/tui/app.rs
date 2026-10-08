@@ -90,7 +90,7 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
         )
     })?;
     let mode = mode::get(&app.settings.mode).ok_or_else(|| anyhow!("mode was validated"))?;
-    let registry = Registry::builtin(app);
+    let registry = Registry::builtin(app.settings.shell.as_deref());
     let store = Store::create(&app.paths);
     let session_file = store.path.display().to_string();
     let transcript = Transcript::new(Some(store));
