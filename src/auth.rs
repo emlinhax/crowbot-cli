@@ -56,7 +56,7 @@ pub fn env_shadows() -> bool {
     from_env().is_some()
 }
 
-/// `CROWBOT_API_KEY`, which wins over a stored key while it is set.
+/// `CROWBOT_API_KEY`, if set.
 fn from_env() -> Option<Key> {
     io::env::var("CROWBOT_API_KEY").map(|secret| Key {
         secret: normalize(&secret),
@@ -107,7 +107,7 @@ pub fn save(paths: &Paths, secret: &str, kind: KeyKind) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Checks `secret` with crowbot, stores it, and makes it the key this process uses from now on.
+/// Checks `secret` with crowbot, stores it, and switches this process to it.
 pub async fn adopt(
     api: &Api,
     paths: &Paths,
