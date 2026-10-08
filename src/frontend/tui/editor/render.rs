@@ -3,9 +3,16 @@
 use unicode_segmentation::UnicodeSegmentation;
 
 use super::Editor;
+use crate::config::limits;
 use crate::text::styled::{Line, Style, hang, width};
 
 impl Editor {
+    /// A card's own-words field, under its options behind the ✎ mark.
+    pub fn field_lines(&self, width: usize) -> Vec<Line> {
+        let prompt = Line::styled("   ✎ ", Style::fg("accent"));
+        self.render(width, limits::get().tui.field_rows.value, &prompt, "")
+    }
+
     /// Lines to draw, wrapped to `width` with a cursor cell, scrolled to show the cursor within
     /// `max_rows`. `prompt` starts the first line; later lines are indented to match.
     pub fn render(

@@ -5,7 +5,7 @@ use crate::auth;
 use crate::config::limits;
 use crate::frontend::tui::boxed::{self, boxed};
 use crate::frontend::tui::card::{Card, Step};
-use crate::frontend::tui::editor::Editor;
+use crate::frontend::tui::editor::{Editor, Field};
 use crate::frontend::tui::keymap::Action;
 use crate::frontend::tui::rows::{self, capped};
 use crate::frontend::tui::ui::{self, PermissionReply};
@@ -166,9 +166,9 @@ impl Card for Choice {
 
     fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Step {
         if let Some(input) = &mut self.input {
-            match action {
-                Some(Action::Submit) => {
-                    let words = input.text().trim().to_owned();
+            match input.field_key(action, key) {
+                Field::Submit(words) => {
+                    let words = words.trim().to_owned();
                     if words.is_empty() {
                         return Step::Stay;
                     }
@@ -179,11 +179,8 @@ impl Card for Choice {
                         _ => Reply::Text(words),
                     });
                 }
-                Some(Action::Escape) => self.input = None,
-                Some(other) => {
-                    input.apply(other);
-                }
-                None => input.type_key(key),
+                Field::Cancel => self.input = None,
+                Field::Edited => {}
             }
             return Step::Stay;
         }
@@ -220,8 +217,7 @@ impl Card for Choice {
         }
         let hint = match &self.input {
             Some(input) => {
-                let prompt = Line::styled("   ✎ ", Style::fg("accent"));
-                lines.extend(input.render(width, limits::get().tui.field_rows.value, &prompt, ""));
+                lines.extend(input.field_lines(width));
                 &text.input_hint
             }
             None => self.hint.as_ref().unwrap_or(&text.hint),

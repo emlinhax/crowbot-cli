@@ -4,10 +4,9 @@
 
 use std::collections::BTreeSet;
 
-use crate::config::limits;
 use crate::frontend::tui::boxed::{self, boxed};
 use crate::frontend::tui::card::{Card, Step};
-use crate::frontend::tui::editor::Editor;
+use crate::frontend::tui::editor::{Editor, Field};
 use crate::frontend::tui::keymap::Action;
 use crate::frontend::tui::rows;
 use crate::frontend::tui::ui;
@@ -251,19 +250,16 @@ impl Card for Questions {
 
     fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Step {
         if let Some(input) = &mut self.input {
-            match action {
-                Some(Action::Submit) => {
-                    let words = input.text().trim().to_owned();
+            match input.field_key(action, key) {
+                Field::Submit(words) => {
+                    let words = words.trim().to_owned();
                     self.input = None;
                     if !words.is_empty() {
                         return self.own_words(words);
                     }
                 }
-                Some(Action::Escape) => self.input = None,
-                Some(other) => {
-                    input.apply(other);
-                }
-                None => input.type_key(key),
+                Field::Cancel => self.input = None,
+                Field::Edited => {}
             }
             return Step::Stay;
         }
@@ -340,8 +336,7 @@ impl Card for Questions {
         if !self.reviewing() {
             lines.extend(self.question_lines(width));
             if let Some(input) = &self.input {
-                let prompt = Line::styled("   ✎ ", Style::fg("accent"));
-                lines.extend(input.render(width, limits::get().tui.field_rows.value, &prompt, ""));
+                lines.extend(input.field_lines(width));
             }
         }
         lines.push(boxed::hint(hint, width));

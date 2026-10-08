@@ -13,7 +13,7 @@ use crate::forums::{Forum, account, directory, store};
 use crate::frontend::tui::boxed::{self, boxed};
 use crate::frontend::tui::card::{Card, Step};
 use crate::frontend::tui::choice::{Choice, Opt};
-use crate::frontend::tui::editor::Editor;
+use crate::frontend::tui::editor::{Editor, Field};
 use crate::frontend::tui::keymap::Action;
 use crate::frontend::tui::rows;
 use crate::frontend::tui::ui;
@@ -204,9 +204,9 @@ impl Forums {
                 Some(Action::Left | Action::Escape) => self.stage = add(&self.forums),
                 _ => {}
             },
-            Stage::Username(input) => match action {
-                Some(Action::Submit) => {
-                    let user = input.text().trim().to_owned();
+            Stage::Username(input) => match input.field_key(action, key) {
+                Field::Submit(user) => {
+                    let user = user.trim().to_owned();
                     if !user.is_empty() {
                         self.stage = Stage::Password {
                             user,
@@ -215,16 +215,13 @@ impl Forums {
                         };
                     }
                 }
-                Some(Action::Escape) => self.stage = Stage::List,
-                Some(other) => {
-                    input.apply(other);
-                }
-                None => input.type_key(key),
+                Field::Cancel => self.stage = Stage::List,
+                Field::Edited => {}
             },
-            Stage::Password { user, input } => match action {
-                Some(Action::Submit) => {
+            Stage::Password { user, input } => match input.field_key(action, key) {
+                Field::Submit(password) => {
                     // A paste that ended in a newline still means just the password.
-                    let password = input.text().trim_end_matches(['\r', '\n']).to_owned();
+                    let password = password.trim_end_matches(['\r', '\n']).to_owned();
                     if password.is_empty() {
                         return Next::Stay;
                     }
@@ -245,11 +242,8 @@ impl Forums {
                         },
                     );
                 }
-                Some(Action::Escape) => self.stage = username(&user.clone()),
-                Some(other) => {
-                    input.apply(other);
-                }
-                None => input.type_key(key),
+                Field::Cancel => self.stage = username(&user.clone()),
+                Field::Edited => {}
             },
             // Only cancelling is left once the forum is being asked.
             Stage::Working { .. } => {

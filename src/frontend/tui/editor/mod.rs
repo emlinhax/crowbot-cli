@@ -9,6 +9,16 @@ use crate::frontend::tui::keymap::Action;
 use crate::io::term::{KeyCode, KeyEvent, KeyModifiers};
 use history::History;
 
+/// What a key did to a field inside a card.
+pub enum Field {
+    /// Enter: the text as typed; the caller trims what it means to.
+    Submit(String),
+    /// Esc: close the field.
+    Cancel,
+    /// Edited, moved, or nothing at all.
+    Edited,
+}
+
 #[derive(Default)]
 pub struct Editor {
     lines: Vec<String>,
@@ -103,6 +113,22 @@ impl Editor {
             self.row += 1;
             self.lines.insert(self.row, format!("{piece}{rest}"));
             self.col = piece.len();
+        }
+    }
+
+    /// A key in a field: Enter submits, Esc cancels, an action edits, a plain key types.
+    pub fn field_key(&mut self, action: Option<Action>, key: &KeyEvent) -> Field {
+        match action {
+            Some(Action::Submit) => Field::Submit(self.text()),
+            Some(Action::Escape) => Field::Cancel,
+            Some(other) => {
+                self.apply(other);
+                Field::Edited
+            }
+            None => {
+                self.type_key(key);
+                Field::Edited
+            }
         }
     }
 
