@@ -13,7 +13,6 @@ mod forums;
 mod keymap;
 mod layout;
 mod login;
-mod next_turn;
 mod palette;
 mod paste;
 mod picker;

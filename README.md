@@ -155,7 +155,7 @@ lines instead of sending.
 | `src/agent/` | The loop (`run.rs`), tool batches, prompts, context repair, doom-loop guard, shared run state. |
 | `src/tools/` | One file (or folder) per tool behind the `Tool` trait, registered in `tools/mod.rs`; `edit/find.rs` is the fuzzy matcher. |
 | `src/permission/` | Rules (last match wins), the gate that layers them with the mode, shell splitting. |
-| `src/frontend/tui/` | The session: `app.rs` loop, `layout.rs` + `screen.rs` (frame, row diff), `feed.rs` transcript blocks, `calls.rs` tool-call cards, `view.rs` scrolling, `progress.rs` working line, editor, `bar.rs` rules, `boxed.rs` cards, `rows.rs` card lists, `choice.rs` prompts, `palette.rs` popup, `picker.rs` models, `login.rs`. |
+| `src/frontend/tui/` | The session: `app/` (the loop, with input, effects, draw and turn beside it), `layout.rs` + `screen.rs` (frame, row diff), `feed.rs` transcript blocks, `calls.rs` tool-call cards, `view.rs` scrolling, `progress.rs` working line, editor, `bar.rs` rules, `boxed.rs` cards, `rows.rs` card lists, `choice.rs` prompts, `palette.rs` popup, `picker.rs` models, `login.rs`. |
 | `src/text/` | Styled lines, theme, markdown, tables, highlighting, diffs; shared by the TUI and the CLI. |
 | `src/session/` | Append-only JSONL session files under `~/.crowbot/sessions/<project>/`. |
 | `src/frontend/` | Headless `-p` / `--json` output. |

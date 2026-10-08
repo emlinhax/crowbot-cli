@@ -64,7 +64,7 @@ impl Change {
 
 /// What the updater remembers between runs. Every field is optional, so older files load.
 #[derive(Debug, Default, Serialize, Deserialize)]
-pub struct State {
+struct State {
     #[serde(default)]
     pub checked_at: Option<Timestamp>,
     /// An update not yet announced: the next start says so, then clears it.
@@ -74,7 +74,7 @@ pub struct State {
     pub last_error: Option<String>,
 }
 
-pub fn load(paths: &Paths) -> State {
+fn load(paths: &Paths) -> State {
     io::fs::read_json(&paths.update_state())
         .ok()
         .flatten()
@@ -87,7 +87,7 @@ fn save(paths: &Paths, state: &State) {
 }
 
 /// The update an earlier run installed, once: reading it clears it.
-pub fn take_news(paths: &Paths) -> Option<Change> {
+fn take_news(paths: &Paths) -> Option<Change> {
     let mut state = load(paths);
     let news = state.updated.take()?;
     save(paths, &state);
@@ -96,7 +96,7 @@ pub fn take_news(paths: &Paths) -> Option<Change> {
 
 /// Whether an interactive session should look now: updates on, a release build, and a day since
 /// the last look.
-pub fn due(state: &State, now: Timestamp, enabled: bool) -> bool {
+fn due(state: &State, now: Timestamp, enabled: bool) -> bool {
     let interval = limits::get().update.check_interval_secs.signed_secs();
     enabled
         && release::tag().is_some()
@@ -114,11 +114,32 @@ pub enum Tell {
     NextStart,
 }
 
+/// What a session does about updates as it starts: clears away a replaced binary, hands back the
+/// news an earlier run left (once), and when a look is due takes it in the background, recording
+/// only what it did.
+pub fn on_start(http: &Http, paths: &Paths, enabled: bool) -> Option<Change> {
+    let _ = swept();
+    let news = take_news(paths);
+    if due(&load(paths), io::clock::now(), enabled) {
+        let (http, paths) = (http.clone(), paths.clone());
+        tokio::spawn(async move {
+            let _ = now(&http, &paths, Tell::NextStart).await;
+        });
+    }
+    news
+}
+
+/// This binary, with any copy an earlier update left beside it cleared away.
+fn swept() -> anyhow::Result<std::path::PathBuf> {
+    let exe = io::exe::current()?;
+    io::exe::sweep(&exe);
+    Ok(exe)
+}
+
 /// Checks and updates this binary now, recording the look and its result.
 pub async fn now(http: &Http, paths: &Paths, tell: Tell) -> anyhow::Result<Outcome> {
     let current = release::tag().ok_or_else(|| anyhow!(TEXT.development.clone()))?;
-    let exe = io::exe::current()?;
-    io::exe::sweep(&exe);
+    let exe = swept()?;
     let latest = endpoints::url(endpoints::get("latest_release"), &[]);
     let mut state = load(paths);
     state.checked_at = Some(io::clock::now());

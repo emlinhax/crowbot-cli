@@ -133,6 +133,12 @@ pub fn all() -> &'static [Mode] {
     &MODES
 }
 
+/// The mode after `current`, round the list, as Shift+Tab cycles them.
+pub fn next(current: &Mode) -> &'static Mode {
+    let at = MODES.iter().position(|m| m.id == current.id).unwrap_or(0);
+    &MODES[(at + 1) % MODES.len()]
+}
+
 /// The mode to suggest when nobody is there to answer: the first that asks nothing.
 pub fn unattended() -> &'static Mode {
     MODES
