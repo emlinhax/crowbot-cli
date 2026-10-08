@@ -14,7 +14,7 @@ pub struct App {
     pub http: Http,
     /// crowbot's endpoints.
     pub api: Api,
-    /// Everything else on the web (the webfetch tool).
+    /// Everything else on the web: webfetch and forums.
     pub fetch: Fetch,
 }
 
@@ -22,8 +22,8 @@ impl App {
     pub fn load(flags: &Overrides) -> anyhow::Result<Self> {
         let paths = Paths::resolve()?;
         let settings = settings::load(&paths, flags)?;
-        // An unreadable auth.json must not stop every command, `logout` (which removes it) and
-        // `login --status` (which explains it) included; it just leaves this run without a key.
+        // An unreadable auth.json leaves the run keyless, so `logout` and `login --status` still
+        // work.
         let key = auth::load(&paths).ok().flatten().map(|k| k.secret);
         Self::assemble(paths, settings, key)
     }
