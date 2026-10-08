@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use crate::agent::setup::Setup;
 use crate::agent::system_prompt;
 use crate::agent::{RunCtx, run};
-use crate::api::error::Entry;
+use crate::api::error::{self, Entry};
 use crate::app::App;
 use crate::config::limits;
 use crate::conversation::message::{Assistant, Finish, Part, ToolResult};
@@ -174,7 +174,7 @@ impl Printer<'_> {
             Outcome::Failed => {
                 if let Some(error) = last.and_then(|m| m.error) {
                     let entry = Entry::of(&error);
-                    term::warn(&format!("{}: {error}", entry.title));
+                    term::warn(&error::headline(&error));
                     if let Some(hint) = entry.hint() {
                         term::err(&format!("  {hint}\n"));
                     }

@@ -9,7 +9,7 @@ use serde_json::{Map, Value};
 
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::api::Call;
-use crate::api::error::Entry;
+use crate::api::error;
 use crate::config::limits;
 use crate::data;
 use crate::permission::catalog;
@@ -92,7 +92,7 @@ impl Tool for CodeSearch {
                     },
                 )
                 .await
-                .map_err(|e| format!("{}: {}", Entry::of(&e.info).title, e.info))?;
+                .map_err(|e| error::headline(&e.info))?;
             if reply.results.is_empty() {
                 return Ok(Output::ok(TEXT.none.clone()));
             }

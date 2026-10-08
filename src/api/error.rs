@@ -26,6 +26,11 @@ pub struct Entry {
     pub retry: Option<bool>,
 }
 
+/// How an error reads on one line: its kind's title, then what crowbot said.
+pub fn headline(info: &ErrorInfo) -> String {
+    format!("{}: {info}", Entry::of(info).title)
+}
+
 impl Entry {
     /// How the client treats `info`'s kind; an unknown kind reads as `unknown`.
     pub fn of(info: &ErrorInfo) -> &'static Self {
