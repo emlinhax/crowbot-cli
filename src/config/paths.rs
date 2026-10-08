@@ -47,8 +47,9 @@ impl Paths {
         self.home.join("tmp")
     }
 
-    pub fn plans_dir(&self) -> PathBuf {
-        self.home.join("plans")
+    /// Where PLAN mode writes this session's plan.
+    pub fn plan_file(&self, session: &str) -> PathBuf {
+        self.home.join("plans").join(format!("{session}.md"))
     }
 
     pub fn auth(&self) -> PathBuf {

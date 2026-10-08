@@ -97,6 +97,13 @@ pub fn search_root(paths: &Paths, raw: Option<&str>) -> Result<Target, String> {
     }
 }
 
+/// Where PLAN writes this session's plan, spelled as the tools resolve it, so the lock that lets
+/// PLAN write there matches what the write tool asks for.
+pub fn plan_file(paths: &Paths, session: &str) -> String {
+    let file = paths.plan_file(session);
+    resolve(paths, &file.to_string_lossy()).map_or_else(|_| slashes(&file), |t| t.shown)
+}
+
 /// How `path` is shown and matched, given the resolved project root, and whether it lies outside.
 pub fn show(base: &Path, path: &Path) -> (String, bool) {
     match path.strip_prefix(base) {

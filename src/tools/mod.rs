@@ -18,6 +18,8 @@ mod todowrite;
 mod webfetch;
 mod write;
 
+pub use target::plan_file;
+
 use std::sync::{Arc, LazyLock};
 
 use futures_util::future::BoxFuture;
@@ -27,7 +29,6 @@ use serde_json::{Value, json};
 
 use crate::app::App;
 use crate::config::limits;
-use crate::config::paths::Paths;
 use crate::data;
 use crate::live::event::AgentEvent;
 use crate::live::files::Files;
@@ -249,14 +250,6 @@ impl<T: Tool> AnyTool for T {
             done.unwrap_or_else(Output::error)
         })
     }
-}
-
-/// Where PLAN writes this session's plan, spelled as the tools resolve it, so the lock that lets
-/// PLAN write there matches what the write tool asks for.
-pub fn plan_file(paths: &Paths, session: &str) -> String {
-    let file = paths.plans_dir().join(format!("{session}.md"));
-    let file = file.to_string_lossy();
-    target::resolve(paths, &file).map_or_else(|_| file.replace('\\', "/"), |t| t.shown)
 }
 
 pub struct Registry {
