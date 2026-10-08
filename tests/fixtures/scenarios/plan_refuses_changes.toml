@@ -1,7 +1,12 @@
 description = "PLAN reminds the model it is read-only and refuses a destructive command"
 args = ["--mode", "plan", "-p", "clean up"]
 project = "calc"
-replies = ["scenarios/plan_refuses/1.sse", "scenarios/plan_refuses/2.sse"]
+
+[[reply]]
+calls = [{ name = "bash", arguments = '{"command": "rm src/calc.txt"}' }]
+
+[[reply]]
+text = 'The plan is ready.'
 
 [expect]
 exit = 0

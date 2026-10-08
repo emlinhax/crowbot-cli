@@ -1,7 +1,18 @@
 description = "AUTO reads, edits and checks a file without asking"
 args = ["--mode", "auto", "-p", "fix the sum"]
 project = "calc"
-replies = ["scenarios/auto_fix/1.sse", "scenarios/auto_fix/2.sse", "scenarios/auto_fix/3.sse", "scenarios/auto_fix/4.sse"]
+
+[[reply]]
+calls = [{ name = "read", arguments = '{"path": "src/calc.txt"}' }]
+
+[[reply]]
+calls = [{ name = "edit", arguments = '{"path": "src/calc.txt", "edits": [{"old_text": "2 + 2 = 5", "new_text": "2 + 2 = 4"}]}' }]
+
+[[reply]]
+calls = [{ name = "bash", arguments = '{"command": "cat src/calc.txt"}' }]
+
+[[reply]]
+text = 'Fixed: 2 + 2 = 4.'
 
 [expect]
 exit = 0

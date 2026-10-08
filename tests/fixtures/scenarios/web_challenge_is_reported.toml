@@ -1,6 +1,11 @@
 description = "A Cloudflare challenge is reported to the model, never passed off as the page"
 args = ["--mode", "auto", "-p", "read the docs"]
-replies = ["web/fetch_blocked.sse", "web/done.sse"]
+
+[[reply]]
+calls = [{ name = "webfetch", arguments = '{"url": "{base}/web/blocked"}' }]
+
+[[reply]]
+text = 'Done.'
 
 [expect]
 exit = 0

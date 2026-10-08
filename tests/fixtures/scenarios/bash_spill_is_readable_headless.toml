@@ -1,9 +1,14 @@
 description = "The full output a bash cut points to, under crowbot's tmp dir, is readable in a headless run"
 args = ["--mode", "manual", "-p", "read the full output"]
-replies = ["scenarios/spill_read/1.sse", "scenarios/spill_read/2.sse"]
 
 [home_files]
 "tmp/bash-1.txt" = "line 99999\n"
+
+[[reply]]
+calls = [{ name = "read", arguments = '{"path": "{home}/tmp/bash-1.txt"}' }]
+
+[[reply]]
+text = 'It ends at line 99999.'
 
 [expect]
 exit = 0

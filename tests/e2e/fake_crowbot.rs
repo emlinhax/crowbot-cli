@@ -24,7 +24,11 @@ pub const FORUM_PATH: &str = "/forum";
 
 /// One scripted reply to a chat request.
 pub enum Reply {
-    /// An SSE fixture from tests/fixtures/sse/.
+    /// The model says this and stops.
+    Text(String),
+    /// The model makes these calls, one frame each, and stops for their results.
+    Calls(Vec<Call>),
+    /// A raw SSE fixture from tests/fixtures/sse/, for a stream the template cannot make.
     Sse(String),
     /// A JSON error envelope with this status and `error.type`.
     Error {
@@ -67,10 +71,59 @@ pub struct Fake {
     inner: Shared,
 }
 
+/// A tool call the scripted model makes.
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Call {
+    pub name: String,
+    /// As the model sends them: JSON text, or not (a model can cut its arguments short).
+    pub arguments: String,
+}
+
 impl Reply {
     pub fn sse(name: &str) -> Self {
         Self::Sse(name.to_owned())
     }
+
+    pub fn text(text: &str) -> Self {
+        Self::Text(text.to_owned())
+    }
+
+    pub fn call(name: &str, arguments: &str) -> Self {
+        Self::Calls(vec![Call {
+            name: name.to_owned(),
+            arguments: arguments.to_owned(),
+        }])
+    }
+}
+
+/// The stream every templated reply makes: its frames, the finish, the usage and the end,
+/// with `fill` applied to what the model says.
+fn stream(reply: &Reply, fill: impl Fn(&str) -> String) -> Option<String> {
+    let (mut frames, finish) = match reply {
+        Reply::Text(text) => (
+            vec![json!({"choices": [{"index": 0, "delta": {"content": fill(text)}}]})],
+            "stop",
+        ),
+        Reply::Calls(calls) => (
+            calls
+                .iter()
+                .enumerate()
+                .map(|(i, call)| {
+                    let call = json!({"index": i, "id": format!("c{}", i + 1), "type": "function",
+                        "function": {"name": call.name, "arguments": fill(&call.arguments)}});
+                    json!({"choices": [{"index": 0, "delta": {"tool_calls": [call]}}]})
+                })
+                .collect(),
+            "tool_calls",
+        ),
+        _ => return None,
+    };
+    frames.push(json!({"choices": [{"index": 0, "delta": {}, "finish_reason": finish}]}));
+    frames.push(json!({"choices": [], "usage": {"prompt_tokens": 100, "completion_tokens": 10}}));
+    let mut out: String = frames.iter().map(|f| format!("data: {f}\n\n")).collect();
+    out.push_str("data: [DONE]\n\n");
+    Some(out)
 }
 
 impl Fake {
@@ -235,21 +288,26 @@ async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> 
             inner.home.clone(),
         )
     };
+    let fill = |text: &str| text.replace("{base}", &base).replace("{home}", &home);
+    let sse = |text: String| {
+        (
+            [
+                (header::CONTENT_TYPE, "text/event-stream"),
+                (header::HeaderName::from_static("x-request-id"), "req_fake"),
+            ],
+            text,
+        )
+            .into_response()
+    };
     match reply {
+        Some(reply @ (Reply::Text(_) | Reply::Calls(_))) => {
+            sse(stream(&reply, fill).expect("a templated reply"))
+        }
         Some(Reply::Sse(name)) => {
             let path = crate::tests_path("fixtures/sse").join(name);
-            let text = std::fs::read_to_string(&path)
-                .unwrap_or_else(|_| panic!("{}", path.display()))
-                .replace("{base}", &base)
-                .replace("{home}", &home);
-            (
-                [
-                    (header::CONTENT_TYPE, "text/event-stream"),
-                    (header::HeaderName::from_static("x-request-id"), "req_fake"),
-                ],
-                text,
-            )
-                .into_response()
+            let text =
+                std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{}", path.display()));
+            sse(fill(&text))
         }
         Some(Reply::Error {
             status,

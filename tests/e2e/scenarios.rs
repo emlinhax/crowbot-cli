@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::fake_crowbot::{Fake, Reply};
+use crate::fake_crowbot::{Call, Fake, Reply};
 use crate::{Sandbox, WITH_KEY, tests_path};
 
 #[derive(Deserialize)]
@@ -22,8 +22,8 @@ struct Scenario {
     /// Files to put in the project first, over `project`'s, by path relative to it.
     #[serde(default)]
     project_files: BTreeMap<String, String>,
-    /// SSE fixtures under tests/fixtures/sse/, one per model turn.
-    replies: Vec<String>,
+    /// The model's turns, in order.
+    reply: Vec<Turn>,
     expect: Expect,
 }
 
@@ -46,6 +46,25 @@ struct Expect {
     /// At least this many; for counts that follow cffetch's own retries.
     #[serde(default)]
     min_hits: BTreeMap<String, usize>,
+}
+
+/// One model turn: what it says, the calls it makes, or a raw fixture under tests/fixtures/sse/.
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+enum Turn {
+    Text(String),
+    Calls(Vec<Call>),
+    Sse(String),
+}
+
+impl Turn {
+    fn reply(&self) -> Reply {
+        match self {
+            Self::Text(text) => Reply::Text(text.clone()),
+            Self::Calls(calls) => Reply::Calls(calls.clone()),
+            Self::Sse(name) => Reply::Sse(name.clone()),
+        }
+    }
 }
 
 /// A check on one chat request the model was sent.
@@ -84,7 +103,7 @@ async fn scenarios() {
 
 async fn check(name: &str, scenario: &Scenario) {
     let fake = Fake::start().await;
-    fake.script(scenario.replies.iter().map(|r| Reply::sse(r)));
+    fake.script(scenario.reply.iter().map(Turn::reply));
     let sandbox = Sandbox::default();
     if let Some(project) = &scenario.project {
         sandbox.copy_project(project);
@@ -120,7 +139,7 @@ async fn check(name: &str, scenario: &Scenario) {
     let bodies = fake.chat_bodies();
     assert_eq!(
         bodies.len(),
-        scenario.replies.len(),
+        scenario.reply.len(),
         "requests made\n{context}"
     );
     for (path, want) in &expect.hits {

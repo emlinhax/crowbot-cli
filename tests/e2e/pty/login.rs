@@ -7,7 +7,10 @@ use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
 #[tokio::test(flavor = "multi_thread")]
 async fn a_command_typed_during_a_run_never_reaches_the_model() {
     let fake = Fake::start().await;
-    fake.script([Reply::sse("pty/sleep.sse"), Reply::sse("hello.sse")]);
+    fake.script([
+        Reply::call("bash", r#"{"command": "sleep 3"}"#),
+        Reply::sse("hello.sse"),
+    ]);
     let sandbox = Sandbox::default();
     sandbox.write_home("config.toml", "mode = \"auto\"\n");
     let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {

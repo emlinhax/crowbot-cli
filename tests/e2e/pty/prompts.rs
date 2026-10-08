@@ -46,9 +46,12 @@ async fn an_untrusted_folder_is_asked_about_once_before_its_config_loosens_anyth
 async fn manual_mode_shows_the_edit_and_applies_it_once_approved() {
     let fake = Fake::start().await;
     fake.script([
-        Reply::sse("scenarios/auto_fix/1.sse"),
-        Reply::sse("scenarios/auto_fix/2.sse"),
-        Reply::sse("scenarios/auto_fix/4.sse"),
+        Reply::call("read", r#"{"path": "src/calc.txt"}"#),
+        Reply::call(
+            "edit",
+            r#"{"path": "src/calc.txt", "edits": [{"old_text": "2 + 2 = 5", "new_text": "2 + 2 = 4"}]}"#,
+        ),
+        Reply::text("Fixed: 2 + 2 = 4."),
     ]);
     let sandbox = Sandbox::default();
     sandbox.copy_project("calc");
@@ -68,7 +71,13 @@ async fn manual_mode_shows_the_edit_and_applies_it_once_approved() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_models_questions_are_answered_on_one_card() {
     let fake = Fake::start().await;
-    fake.script([Reply::sse("pty/questions.sse"), Reply::sse("hello.sse")]);
+    let questions = r#"{"questions": [
+        {"question": "Which database should the app use?", "header": "Database", "options": [
+            {"label": "SQLite", "description": "one file, nothing to run"},
+            {"label": "Postgres", "description": "what production runs"}]},
+        {"question": "Which checks run before a push?", "header": "Checks",
+            "options": ["lint", "test", "e2e"], "multiple": true}]}"#;
+    fake.script([Reply::call("question", questions), Reply::sse("hello.sse")]);
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.submit("set it up");
         s.wait_for("Which database should the app use?");

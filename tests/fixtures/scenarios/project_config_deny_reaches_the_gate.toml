@@ -1,7 +1,12 @@
 description = "A deny rule in the project's .crowbot/config.toml reaches the permission gate"
 args = ["--mode", "manual", "-p", "read the notes"]
 project = "denies_read"
-replies = ["scenarios/config_deny/1.sse", "scenarios/config_deny/2.sse"]
+
+[[reply]]
+calls = [{ name = "read", arguments = '{"path": "notes.txt"}' }]
+
+[[reply]]
+text = 'The plan is ready.'
 
 [expect]
 exit = 0

@@ -2,7 +2,12 @@ description = "An untrusted project's `mode = \"auto\"` is ignored with a warnin
 args = ["-p", "fix the sum"]
 project = "calc"
 project_files = { ".crowbot/config.toml" = "mode = \"auto\"\n" }
-replies = ["scenarios/untrusted_auto/1.sse", "scenarios/untrusted_auto/2.sse"]
+
+[[reply]]
+calls = [{ name = "bash", arguments = '{"command": "sed -i s/5/4/ src/calc.txt"}' }]
+
+[[reply]]
+text = 'The plan is ready.'
 
 [expect]
 exit = 0
