@@ -8,7 +8,7 @@ use crate::agent::{Run, RunCtx};
 use crate::api::chat::{self, Turn};
 use crate::config::limits;
 use crate::conversation::message::{Finish, Message, Part, ToolCall};
-use crate::live::event::{AgentEvent, Outcome};
+use crate::live::event::{AgentEvent, Ended, Outcome};
 use crate::live::state::{Reminder, Shared};
 use crate::session::transcript::Transcript;
 use crate::text::template::fill;
@@ -19,7 +19,7 @@ pub async fn run(
     transcript: &mut Transcript,
     shared: &Shared,
     prompt: Vec<Part>,
-) -> Outcome {
+) -> Ended {
     let run = Run {
         cx,
         shared,
@@ -101,8 +101,9 @@ pub async fn run(
             deliver(&run, transcript, parts);
         }
     };
-    (cx.emit)(AgentEvent::RunEnd { outcome });
-    outcome
+    let ended = Ended { outcome, turns };
+    (cx.emit)(AgentEvent::RunEnd(ended));
+    ended
 }
 
 /// Keeps `message`; a session file that can no longer be written is reported once, and the
@@ -258,7 +259,7 @@ mod tests {
             &self,
             shared: &Shared,
             on: impl Fn(&AgentEvent, &Shared) + Send + Sync,
-        ) -> (Outcome, Transcript, Vec<String>) {
+        ) -> (Ended, Transcript, Vec<String>) {
             let registry = Registry::builtin(self.app.settings.shell.as_deref());
             let events = Mutex::new(Vec::new());
             let emit = |event: AgentEvent| {
@@ -279,8 +280,8 @@ mod tests {
             };
             let mut transcript = Transcript::new(None);
             let prompt = vec![Part::Text { text: "go".into() }];
-            let outcome = run(&cx, &mut transcript, shared, prompt).await;
-            (outcome, transcript, events.into_inner().unwrap())
+            let ended = run(&cx, &mut transcript, shared, prompt).await;
+            (ended, transcript, events.into_inner().unwrap())
         }
 
         fn requests(&self) -> Vec<Value> {
@@ -317,8 +318,10 @@ mod tests {
         .await;
         h.write("a.txt", "AAA");
         h.write("b.txt", "BBB");
-        let (outcome, transcript, _) = h.run(&shared("manual"), |_, _| {}).await;
-        assert_eq!(outcome, Outcome::Done);
+        let (ended, transcript, _) = h.run(&shared("manual"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        // One turn made the calls and one read their results.
+        assert_eq!(ended.turns, 2);
         let results: Vec<&str> = transcript
             .messages
             .iter()
@@ -369,8 +372,8 @@ mod tests {
         state.follow_up(vec![Part::Text {
             text: "and then?".into(),
         }]);
-        let (outcome, _, _) = h.run(&state, |_, _| {}).await;
-        assert_eq!(outcome, Outcome::Done);
+        let (ended, _, _) = h.run(&state, |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
         let requests = h.requests();
         assert_eq!(requests.len(), 2);
         assert_eq!(last_message(&requests[1])["content"], "and then?");
@@ -384,14 +387,14 @@ mod tests {
             "tool_calls",
         )])
         .await;
-        let (outcome, transcript, _) = h
+        let (ended, transcript, _) = h
             .run(&shared("manual"), |event, shared| {
                 if let AgentEvent::Prompt { id, .. } = event {
                     shared.answer(*id, Reply::No { feedback: None });
                 }
             })
             .await;
-        assert_eq!(outcome, Outcome::Rejected);
+        assert_eq!(ended.outcome, Outcome::Rejected);
         assert_eq!(h.requests().len(), 1);
         assert!(matches!(transcript.messages.last(), Some(Message::Tool(r)) if r.is_error));
     }
@@ -509,14 +512,14 @@ mod tests {
             text("done"),
         ])
         .await;
-        let (outcome, transcript, events) = h
+        let (ended, transcript, events) = h
             .run(&shared("manual"), |event, shared| {
                 if matches!(event, AgentEvent::Prompt { .. }) {
                     shared.set_mode(mode::get("auto").unwrap());
                 }
             })
             .await;
-        assert_eq!(outcome, Outcome::Done);
+        assert_eq!(ended.outcome, Outcome::Done);
         assert_eq!(events.iter().filter(|e| *e == "prompt").count(), 1);
         for said in ["hi", "there"] {
             let ran = transcript
@@ -596,8 +599,8 @@ mod tests {
             text("ok"),
         ])
         .await;
-        let (outcome, _, events) = h.run(&shared("auto"), |_, _| {}).await;
-        assert_eq!(outcome, Outcome::Done);
+        let (ended, _, events) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
         for kind in ["tool_start", "tool_end"] {
             assert_eq!(events.iter().filter(|e| *e == kind).count(), 1, "{kind}");
         }
@@ -634,8 +637,8 @@ mod tests {
             text("planned"),
         ])
         .await;
-        let (outcome, _, _) = h.run(&shared("plan"), |_, _| {}).await;
-        assert_eq!(outcome, Outcome::Done);
+        let (ended, _, _) = h.run(&shared("plan"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
         let first = last_message(&h.requests()[0]);
         assert!(first["content"].as_str().unwrap().contains("PLAN mode"));
         let result = last_message(&h.requests()[1]);

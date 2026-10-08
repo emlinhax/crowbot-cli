@@ -14,7 +14,7 @@ use crate::app::App;
 use crate::config::limits;
 use crate::conversation::message::{Assistant, Finish, Part, ToolResult};
 use crate::io::term;
-use crate::live::event::{AgentEvent, DeltaKind, Outcome};
+use crate::live::event::{AgentEvent, DeltaKind, Ended, Outcome};
 use crate::live::prompt::{Prompt, Reply};
 use crate::live::state::Shared;
 use crate::mode;
@@ -69,11 +69,11 @@ pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<Ex
         std::future::pending::<()>().await;
     };
     let prompt = vec![Part::Text { text: prompt }];
-    let outcome = tokio::select! {
-        outcome = run::run(&cx, &mut transcript, &shared, prompt) => outcome,
+    let ended = tokio::select! {
+        ended = run::run(&cx, &mut transcript, &shared, prompt) => ended,
         () = interrupt => unreachable!("the interrupt future never finishes"),
     };
-    Ok(out.finish(outcome))
+    Ok(out.finish(ended))
 }
 
 struct Printer<'a> {
@@ -164,7 +164,7 @@ impl Printer<'_> {
         term::err(&format!("{line}\n"));
     }
 
-    fn finish(&self, outcome: Outcome) -> ExitCode {
+    fn finish(&self, Ended { outcome, turns }: Ended) -> ExitCode {
         if self.format == Format::Text && !self.at_line_start.load(Ordering::Relaxed) {
             term::out("\n");
         }
@@ -185,8 +185,7 @@ impl Printer<'_> {
                 ExitCode::FAILURE
             }
             Outcome::TurnLimit => {
-                let limit = limits::get().agent.max_turns.value;
-                term::err(&format!("crowbot: stopped after {limit} turns\n"));
+                term::err(&format!("crowbot: stopped after {turns} turns\n"));
                 ExitCode::FAILURE
             }
             Outcome::Rejected => ExitCode::FAILURE,

@@ -39,7 +39,7 @@ use crate::frontend::tui::view::View;
 use crate::frontend::tui::{frame, layout, ui, welcome};
 use crate::io::term::{self, Button, Input, KeyCode};
 use crate::io::{clipboard, clock};
-use crate::live::event::{AgentEvent, Outcome};
+use crate::live::event::{AgentEvent, Ended};
 use crate::live::state::Shared;
 use crate::mode;
 use crate::models::{self, Catalog};
@@ -52,7 +52,7 @@ use crate::text::theme;
 use crate::text::units;
 use crate::tools::Registry;
 
-type Turn<'a> = Pin<Box<dyn Future<Output = (Transcript, Outcome)> + 'a>>;
+type Turn<'a> = Pin<Box<dyn Future<Output = (Transcript, Ended)> + 'a>>;
 
 /// What every turn shares. The model and system prompt are not here: the session can switch
 /// them between turns.

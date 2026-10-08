@@ -24,6 +24,13 @@ pub enum Outcome {
     TurnLimit,
 }
 
+/// How a run ended, and after how many model turns.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct Ended {
+    pub outcome: Outcome,
+    pub turns: u32,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentEvent {
@@ -52,9 +59,7 @@ pub enum AgentEvent {
     Delivered {
         text: String,
     },
-    RunEnd {
-        outcome: Outcome,
-    },
+    RunEnd(Ended),
     Delta {
         kind: DeltaKind,
         text: String,

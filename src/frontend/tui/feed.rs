@@ -10,7 +10,7 @@ use crate::conversation::error::ErrorInfo;
 use crate::conversation::message::{Assistant, Finish, ToolResult};
 use crate::frontend::tui::cards::{self, State};
 use crate::frontend::tui::{ui, welcome};
-use crate::live::event::{AgentEvent, DeltaKind, Outcome};
+use crate::live::event::{AgentEvent, DeltaKind, Ended, Outcome};
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
 use crate::text::{markdown, stream};
@@ -252,18 +252,18 @@ impl Feed {
                 let text = fill(&ui::get().text.unsaved, &[("path", path), ("error", error)]);
                 self.notice(&text, "warn");
             }
-            AgentEvent::RunEnd { outcome } => {
+            AgentEvent::RunEnd(Ended { outcome, turns }) => {
                 self.finish_reasoning(now);
                 self.finish_text();
                 self.running.clear();
                 self.retry = None;
-                let limit = limits::get().agent.max_turns.value.to_string();
                 let note = match outcome {
                     Outcome::Aborted => Some(ui::get().text.interrupted.clone()),
                     Outcome::Rejected => Some(ui::get().text.declined.clone()),
-                    Outcome::TurnLimit => {
-                        Some(fill(&ui::get().outcome.turn_limit, &[("count", &limit)]))
-                    }
+                    Outcome::TurnLimit => Some(fill(
+                        &ui::get().outcome.turn_limit,
+                        &[("count", &turns.to_string())],
+                    )),
                     _ => None,
                 };
                 if let Some(note) = note {
