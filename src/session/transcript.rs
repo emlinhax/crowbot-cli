@@ -38,13 +38,13 @@ impl Transcript {
         self.store.path()
     }
 
-    /// Identifies the session in file names (plans).
+    /// Names this session's files (plans).
     pub fn id(&self) -> &str {
         self.store.name()
     }
 
-    /// Keeps `message`, then writes it. The first failed write is returned and ends saving:
-    /// later messages stay in memory only, so a full disk costs the file, not the conversation.
+    /// Keeps `message`, then writes it. The first failed write is returned and stops saving; later
+    /// messages stay in memory.
     pub fn push(&mut self, message: Message) -> Result<(), Unsaved> {
         let written = if self.unsaved {
             Ok(())

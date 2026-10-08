@@ -6,8 +6,7 @@ use crate::io;
 use crate::release;
 use crate::session::entry::{self, Entry, FORMAT_VERSION};
 
-/// An append-only JSONL session file; the only writer of its file. Nothing is written until
-/// the first message, so a session that never says anything leaves no file.
+/// Append-only JSONL session file and its only writer. Nothing is written before the first message.
 pub struct Store {
     /// `{stamp}_{id}`: the file's name without its extension, unique per session.
     name: String,

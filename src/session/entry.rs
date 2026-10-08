@@ -1,5 +1,5 @@
-//! One line of a session file. Entries are only added and optional fields default, so older
-//! files keep loading (tests/fixtures/session/v1.jsonl is frozen to prove it).
+//! One line of a session file. Fields are only added, with defaults, so older files load;
+//! tests/fixtures/session/v1.jsonl is frozen to prove it.
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
