@@ -1,8 +1,6 @@
 //! The crowbot key on this machine: `CROWBOT_API_KEY`, else `~/.crowbot/auth.json`.
 
 use anyhow::Context;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
@@ -35,17 +33,13 @@ pub enum Origin {
 
 #[derive(Serialize, Deserialize)]
 struct Stored {
-    #[serde(default = "version")]
+    #[serde(default = "io::secret::version")]
     v: u32,
     kind: KeyKind,
     hint: String,
     created: Timestamp,
     scheme: String,
     secret: String,
-}
-
-fn version() -> u32 {
-    1
 }
 
 /// The key this process uses: the environment's, else the stored one.
@@ -77,8 +71,7 @@ pub fn stored(paths: &Paths) -> anyhow::Result<Option<Key>> {
         )
     };
     let stored: Stored = serde_json::from_str(&text).with_context(unreadable)?;
-    let sealed = BASE64.decode(&stored.secret).with_context(unreadable)?;
-    let opened = io::secret::open(&stored.scheme, &sealed).with_context(unreadable)?;
+    let opened = io::secret::open_b64(&stored.scheme, &stored.secret).with_context(unreadable)?;
     let secret = String::from_utf8(opened).with_context(unreadable)?;
     Ok(Some(Key {
         secret,
@@ -91,14 +84,14 @@ pub fn stored(paths: &Paths) -> anyhow::Result<Option<Key>> {
 
 pub fn save(paths: &Paths, secret: &str, kind: KeyKind) -> anyhow::Result<()> {
     let secret = normalize(secret);
-    let (scheme, sealed) = io::secret::seal(secret.as_bytes())?;
+    let (scheme, sealed) = io::secret::seal_b64(secret.as_bytes())?;
     let stored = Stored {
-        v: version(),
+        v: io::secret::version(),
         kind,
         hint: hint(&secret),
         created: io::clock::now(),
         scheme: scheme.to_owned(),
-        secret: BASE64.encode(sealed),
+        secret: sealed,
     };
     io::fs::write_atomic(
         &paths.auth(),

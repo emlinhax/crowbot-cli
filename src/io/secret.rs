@@ -3,6 +3,28 @@
 
 use std::io;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
+
+/// The envelope version a sealed store writes; a file from before versions is this one.
+pub fn version() -> u32 {
+    1
+}
+
+/// `plain` sealed as a store keeps it: the scheme, and the sealed bytes as base64.
+pub fn seal_b64(plain: &[u8]) -> io::Result<(&'static str, String)> {
+    let (scheme, sealed) = seal(plain)?;
+    Ok((scheme, BASE64.encode(sealed)))
+}
+
+/// What `seal_b64` sealed, from its scheme and text.
+pub fn open_b64(scheme: &str, text: &str) -> io::Result<Vec<u8>> {
+    let sealed = BASE64
+        .decode(text)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    open(scheme, &sealed)
+}
+
 /// Returns the scheme name stored alongside the sealed bytes.
 pub fn seal(plain: &[u8]) -> io::Result<(&'static str, Vec<u8>)> {
     #[cfg(windows)]

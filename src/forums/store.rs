@@ -3,8 +3,6 @@
 //! list starts from the seed in `data/forums.toml`, so there is something to browse on first run.
 
 use anyhow::{Context, Result, bail};
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::{Deserialize, Serialize};
 
 use crate::config::paths::Paths;
@@ -13,14 +11,10 @@ use crate::io::{self, fs::Access};
 
 #[derive(Serialize, Deserialize)]
 struct Sealed {
-    #[serde(default = "version")]
+    #[serde(default = "io::secret::version")]
     v: u32,
     scheme: String,
     blob: String,
-}
-
-fn version() -> u32 {
-    1
 }
 
 /// The stored forums, or the default seed when there is no file yet.
@@ -36,8 +30,7 @@ pub fn load(paths: &Paths) -> Result<Vec<Forum>> {
         )
     };
     let sealed: Sealed = serde_json::from_str(&text).with_context(unreadable)?;
-    let bytes = BASE64.decode(&sealed.blob).with_context(unreadable)?;
-    let opened = io::secret::open(&sealed.scheme, &bytes).with_context(unreadable)?;
+    let opened = io::secret::open_b64(&sealed.scheme, &sealed.blob).with_context(unreadable)?;
     let mut forums: Vec<Forum> = serde_json::from_slice(&opened).with_context(unreadable)?;
     enrich_hints(&mut forums);
     Ok(forums)
@@ -58,11 +51,11 @@ fn enrich_hints(forums: &mut [Forum]) {
 
 fn save(paths: &Paths, forums: &[Forum]) -> Result<()> {
     let json = serde_json::to_vec(forums)?;
-    let (scheme, bytes) = io::secret::seal(&json)?;
+    let (scheme, blob) = io::secret::seal_b64(&json)?;
     let sealed = Sealed {
-        v: version(),
+        v: io::secret::version(),
         scheme: scheme.to_owned(),
-        blob: BASE64.encode(bytes),
+        blob,
     };
     io::fs::write_atomic(
         &paths.forums(),
