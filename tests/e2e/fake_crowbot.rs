@@ -99,6 +99,8 @@ impl Reply {
 
 /// The stream every templated reply makes: its frames, the finish, the usage and the end,
 /// with `fill` applied to what the model says.
+/// CEILING: twin of agent/run.rs's test turns, and the forum replies below of
+/// forums/mobiquo.rs's fake; crowbot is bin-only, so see src/testing.rs for the upgrade.
 fn stream(reply: &Reply, fill: impl Fn(&str) -> String) -> Option<String> {
     let (mut frames, finish) = match reply {
         Reply::Text(text) => (

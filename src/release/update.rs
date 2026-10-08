@@ -301,19 +301,19 @@ mod tests {
 
     /// A stand-in for GitHub: the newest release `tag`, its file for this platform, and sums.
     async fn github(tag: &str, file: Vec<u8>, sums: String) -> String {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
         let name = release::asset().unwrap().file.clone();
-        let latest = json!({"tag_name": tag, "assets": [
-            {"name": name, "browser_download_url": format!("{base}/file")},
-            {"name": release::sums(), "browser_download_url": format!("{base}/sums")},
-        ]});
         let file = Arc::new(file);
-        let router = Router::new()
-            .route("/latest", get(move || async move { axum::Json(latest) }))
-            .route("/file", get(move || async move { file.as_ref().clone() }))
-            .route("/sums", get(move || async move { sums }));
-        tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let base = crate::testing::serve(|base| {
+            let latest = json!({"tag_name": tag, "assets": [
+                {"name": name, "browser_download_url": format!("{base}/file")},
+                {"name": release::sums(), "browser_download_url": format!("{base}/sums")},
+            ]});
+            Router::new()
+                .route("/latest", get(move || async move { axum::Json(latest) }))
+                .route("/file", get(move || async move { file.as_ref().clone() }))
+                .route("/sums", get(move || async move { sums }))
+        })
+        .await;
         format!("{base}/latest")
     }
 

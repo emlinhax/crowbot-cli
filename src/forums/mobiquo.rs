@@ -333,8 +333,6 @@ mod tests {
 
     async fn fake() -> (Forum, Arc<Mutex<Seen>>) {
         let seen = Arc::new(Mutex::new(Seen::default()));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
         let seen_in = seen.clone();
 
         async fn handle(
@@ -433,10 +431,12 @@ mod tests {
                 .unwrap()
         }
 
-        let router = Router::new()
-            .route("/mob/mobiquo.php", post(handle))
-            .with_state(seen_in);
-        tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let base = crate::testing::serve(|_| {
+            Router::new()
+                .route("/mob/mobiquo.php", post(handle))
+                .with_state(seen_in)
+        })
+        .await;
 
         let forum = Forum {
             id: "1".into(),

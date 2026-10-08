@@ -210,26 +210,7 @@ fn failed(turn: &Turn<'_>, info: ErrorInfo) -> Assistant {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::models::{Capabilities, Pricing};
-
-    fn model(reasoning: bool) -> Model {
-        Model {
-            id: "m".into(),
-            display_name: String::new(),
-            description: String::new(),
-            context_window: 1000,
-            max_output_tokens: 100,
-            pricing: Pricing {
-                input_per_1m_usd: 6.0,
-                cached_input_per_1m_usd: 0.6,
-                output_per_1m_usd: 10.0,
-            },
-            capabilities: Capabilities {
-                reasoning,
-                ..Capabilities::default()
-            },
-        }
-    }
+    use crate::testing::model;
 
     #[test]
     fn cost_splits_cached_and_uncached_input() {

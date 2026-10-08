@@ -17,6 +17,8 @@ mod models;
 mod permission;
 mod release;
 mod session;
+#[cfg(test)]
+mod testing;
 mod text;
 mod tools;
 

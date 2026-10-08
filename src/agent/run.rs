@@ -162,7 +162,7 @@ mod tests {
 
     use super::*;
     use crate::api::Api;
-    use crate::api::models::{Capabilities, Model, Pricing};
+    use crate::api::models::Model;
     use crate::app::App;
     use crate::io::http::Http;
     use crate::live::prompt::{Answer, Prompt, Reply};
@@ -204,39 +204,27 @@ mod tests {
         async fn new(replies: Vec<String>) -> Self {
             let script: Script = Arc::new(Mutex::new((replies.into(), Vec::new())));
             let state = script.clone();
-            let router = Router::new().route(
-                "/v1/chat/completions",
-                post(move |body: String| {
-                    let state = state.clone();
-                    async move {
-                        let mut s = state.lock().unwrap();
-                        s.1.push(serde_json::from_str(&body).unwrap());
-                        let next = s.0.pop_front().unwrap_or_else(|| text("(unscripted)"));
-                        ([("content-type", "text/event-stream")], next)
-                    }
-                }),
-            );
-            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let base = format!("http://{}", listener.local_addr().unwrap());
-            tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+            let base = crate::testing::serve(|_| {
+                Router::new().route(
+                    "/v1/chat/completions",
+                    post(move |body: String| {
+                        let state = state.clone();
+                        async move {
+                            let mut s = state.lock().unwrap();
+                            s.1.push(serde_json::from_str(&body).unwrap());
+                            let next = s.0.pop_front().unwrap_or_else(|| text("(unscripted)"));
+                            ([("content-type", "text/event-stream")], next)
+                        }
+                    }),
+                )
+            })
+            .await;
 
             let dir = tempfile::tempdir().unwrap();
             let mut app = App::for_tests(dir.path());
             let http = Http::new(std::time::Duration::from_secs(5)).unwrap();
             app.api = Api::redirected(http, "k", &base);
-            let model = Model {
-                id: "m".into(),
-                display_name: String::new(),
-                description: String::new(),
-                context_window: 100_000,
-                max_output_tokens: 1000,
-                pricing: Pricing {
-                    input_per_1m_usd: 1.0,
-                    cached_input_per_1m_usd: 0.1,
-                    output_per_1m_usd: 2.0,
-                },
-                capabilities: Capabilities::default(),
-            };
+            let model = crate::testing::model(false);
             Self {
                 _dir: dir,
                 app,

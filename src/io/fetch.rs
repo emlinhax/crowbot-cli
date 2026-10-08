@@ -178,10 +178,8 @@ mod tests {
                 .unwrap()
         }
 
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let url = format!("http://{}/echo", listener.local_addr().unwrap());
-        let router = axum::Router::new().route("/echo", post(echo));
-        tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let base = crate::testing::serve(|_| axum::Router::new().route("/echo", post(echo))).await;
+        let url = format!("{base}/echo");
 
         let fetch = Fetch::new(Duration::from_secs(5)).unwrap();
         let got = fetch

@@ -120,8 +120,6 @@ mod tests {
 
     #[tokio::test]
     async fn a_url_resolves_to_its_renamed_endpoint() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
         // The shape the real service returns for UnknownCheats.
         let reply = serde_json::json!([{
             "id": "79565", "name": "UnknownCheats",
@@ -129,11 +127,13 @@ mod tests {
             "mobiquo_dir": "euehhp13n8dqw77", "ext": "php",
             "type": "vb3x_5.0.9", "useragent": "", "sso": "1"
         }]);
-        let router = Router::new().route(
-            "/search_forum_v2",
-            post(move || async move { axum::Json(reply) }),
-        );
-        tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let base = crate::testing::serve(|_| {
+            Router::new().route(
+                "/search_forum_v2",
+                post(move || async move { axum::Json(reply) }),
+            )
+        })
+        .await;
 
         let dir = Directory {
             url: base,
