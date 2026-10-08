@@ -5,8 +5,7 @@ use std::process::ExitCode;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use anyhow::anyhow;
-
+use crate::agent::setup::Setup;
 use crate::agent::system_prompt;
 use crate::agent::{RunCtx, run};
 use crate::api::error::Entry;
@@ -17,12 +16,8 @@ use crate::io::term;
 use crate::live::event::{AgentEvent, DeltaKind, Ended, Outcome};
 use crate::live::prompt::{Prompt, Reply};
 use crate::live::state::Shared;
-use crate::mode;
-use crate::models;
 use crate::permission::gate;
-use crate::session::transcript::Transcript;
 use crate::text::shorten;
-use crate::tools::Registry;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Format {
@@ -31,19 +26,14 @@ pub enum Format {
 }
 
 pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<ExitCode> {
-    let catalog = models::load(&app.api, &app.paths, false).await;
-    // crowbot silently swaps an unknown model id for its default, so refuse it here instead.
-    let model = catalog.get(&app.settings.model).ok_or_else(|| {
-        anyhow!(
-            "unknown model `{}`; see `crowbot models`",
-            app.settings.model
-        )
-    })?;
-    let mode = mode::get(&app.settings.mode).ok_or_else(|| anyhow!("mode was validated"))?;
+    let Setup {
+        model,
+        tools,
+        shared,
+        mut transcript,
+        ..
+    } = Setup::load(app).await?;
     let system = system_prompt::build(&app.paths, &model.id);
-    let registry = Registry::builtin(app.settings.shell.as_deref());
-    let mut transcript = Transcript::create(&app.paths);
-    let shared = Shared::new(mode);
 
     let out = Printer {
         format,
@@ -55,10 +45,10 @@ pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<Ex
     let emit = |event: AgentEvent| out.event(event);
     let cx = RunCtx {
         app,
-        model,
+        model: &model,
         effort: app.settings.effort.as_deref(),
         system: &system,
-        tools: &registry,
+        tools: &tools,
         emit: &emit,
     };
 

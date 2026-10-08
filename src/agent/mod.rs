@@ -3,6 +3,7 @@ pub mod context;
 pub mod doom_loop;
 pub mod model_text;
 pub mod run;
+pub mod setup;
 pub mod system_prompt;
 
 use tokio_util::sync::CancellationToken;

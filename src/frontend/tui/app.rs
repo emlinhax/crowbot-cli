@@ -8,12 +8,12 @@ use std::pin::Pin;
 use std::process::ExitCode;
 use std::time::Instant;
 
-use anyhow::anyhow;
 use futures_util::future::BoxFuture;
 use futures_util::stream::FuturesUnordered;
 use futures_util::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 
+use crate::agent::setup::Setup;
 use crate::agent::{RunCtx, run};
 use crate::api::models::Model;
 use crate::app::App;
@@ -42,7 +42,7 @@ use crate::io::{clipboard, clock};
 use crate::live::event::{AgentEvent, Ended};
 use crate::live::state::Shared;
 use crate::mode;
-use crate::models::{self, Catalog};
+use crate::models::Catalog;
 use crate::release::{self, update};
 use crate::session::transcript::Transcript;
 use crate::text::styled::{Line, Style, TAB};
@@ -80,25 +80,20 @@ enum Done {
 }
 
 pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode> {
-    let catalog = models::load(&app.api, &app.paths, false).await;
-    // crowbot silently swaps an unknown model id for its default, so refuse it here instead.
-    let model = catalog.get(&app.settings.model).cloned().ok_or_else(|| {
-        anyhow!(
-            "unknown model `{}`; see `crowbot models`",
-            app.settings.model
-        )
-    })?;
-    let mode = mode::get(&app.settings.mode).ok_or_else(|| anyhow!("mode was validated"))?;
-    let registry = Registry::builtin(app.settings.shell.as_deref());
-    let transcript = Transcript::create(&app.paths);
+    let Setup {
+        catalog,
+        model,
+        tools,
+        shared,
+        transcript,
+    } = Setup::load(app).await?;
     let session_file = transcript.file().display().to_string();
-    let shared = Shared::new(mode);
     let (tx, rx) = mpsc::unbounded_channel();
     let emit = move |event: AgentEvent| {
         let _ = tx.send(event);
     };
     let turns = Turns {
-        tools: &registry,
+        tools: &tools,
         emit: &emit,
     };
 
