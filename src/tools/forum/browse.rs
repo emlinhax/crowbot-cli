@@ -12,7 +12,6 @@ use crate::forums::{Page, mobiquo, store};
 use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
-use crate::text::truncate::{self, Keep};
 use crate::tools::many::{Id, Many, batch};
 use crate::tools::{Check, Output, Refusal, Spec, Tool, ToolCx};
 
@@ -54,29 +53,6 @@ fn page_pref(page: &Value) -> Page {
     }
 }
 
-/// Cut long output to the tool limits, noting when it was trimmed.
-fn finish(text: String) -> Output {
-    let limits = &limits::get().tools;
-    let cut = truncate::cut(
-        &text,
-        Keep::Head,
-        limits.max_lines.value,
-        limits.max_bytes.value,
-    );
-    let mut content = cut.text.clone();
-    if cut.truncated() {
-        content.push_str("\n\n");
-        content.push_str(&fill(
-            &crate::tools::text().cut,
-            &[
-                ("kept", &cut.kept_lines.to_string()),
-                ("total", &cut.total_lines.to_string()),
-            ],
-        ));
-    }
-    Output::ok(content)
-}
-
 /// A batch arg's ids as strings, capped to the batch limit so one call cannot hammer a forum.
 fn capped(many: &Many<Id>) -> Vec<String> {
     many.capped(limits::get().forums.batch_max.value)
@@ -91,7 +67,7 @@ where
     F: Fn(String) -> Fut,
     Fut: std::future::Future<Output = anyhow::Result<String>>,
 {
-    finish(batch(capped(ids), label, read).await)
+    Output::head(&batch(capped(ids), label, read).await)
 }
 
 pub struct Sections;
@@ -123,7 +99,7 @@ impl Tool for Sections {
         Box::pin(async move {
             if args.forum.is_empty() {
                 let list = store::load(&cx.app.paths).unwrap_or_default();
-                return Ok(finish(render::forums(&list)));
+                return Ok(Output::head(&render::forums(&list)));
             }
             let forum = find(cx, &args.forum)?;
             let sections = mobiquo::sections(&cx.app.fetch, &forum)
@@ -133,7 +109,7 @@ impl Tool for Sections {
             if !forum.hint.is_empty() {
                 text = format!("{} — {}\n\n{text}", forum.name, forum.hint);
             }
-            Ok(finish(text))
+            Ok(Output::head(&text))
         })
     }
 }

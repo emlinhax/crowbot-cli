@@ -12,7 +12,6 @@ use crate::io::fetch::FetchError;
 use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
-use crate::text::truncate::{self, Keep};
 
 static SPEC: LazyLock<Spec> = super::spec!("webfetch");
 
@@ -140,22 +139,7 @@ impl Tool for WebFetch {
             } else {
                 text.into_owned()
             };
-            let cut = truncate::cut(
-                &text,
-                Keep::Head,
-                limits.max_lines.value,
-                limits.max_bytes.value,
-            );
-            let mut content = cut.text.clone();
-            if cut.truncated() {
-                let (kept, total) = (cut.kept_lines.to_string(), cut.total_lines.to_string());
-                content.push_str("\n\n");
-                content.push_str(&fill(
-                    &super::text().cut,
-                    &[("kept", &kept), ("total", &total)],
-                ));
-            }
-            Ok(Output::ok(content).with_details(json!({
+            Ok(Output::head(&text).with_details(json!({
                 "url": url,
                 "final_url": page.url,
                 "status": page.status,

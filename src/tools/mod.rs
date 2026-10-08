@@ -35,6 +35,7 @@ use crate::live::prompt::{self, Prompt, Reply};
 use crate::live::state::Shared;
 use crate::permission::gate::Ask;
 use crate::text::template;
+use crate::text::truncate::{self, Keep};
 
 /// A `LazyLock` of tool `name`'s spec: data/tools/<name>.md and <name>.schema.json.
 macro_rules! spec {
@@ -148,6 +149,29 @@ impl Output {
             is_error: true,
             details: None,
         }
+    }
+
+    /// `text` from its head, cut to the tool limits, with a note saying so when it was.
+    pub fn head(text: &str) -> Self {
+        let limits = &limits::get().tools;
+        let cut = truncate::cut(
+            text,
+            Keep::Head,
+            limits.max_lines.value,
+            limits.max_bytes.value,
+        );
+        let mut content = cut.text.clone();
+        if cut.truncated() {
+            content.push_str("\n\n");
+            content.push_str(&template::fill(
+                &TEXT.cut,
+                &[
+                    ("kept", &cut.kept_lines.to_string()),
+                    ("total", &cut.total_lines.to_string()),
+                ],
+            ));
+        }
+        Self::ok(content)
     }
 
     /// The call was interrupted before it finished.
@@ -414,6 +438,17 @@ mod tests {
                 panic!("{}: schema sample rejected: {e}", tool.spec().name);
             }
         }
+    }
+
+    #[test]
+    fn a_long_reply_keeps_its_head_and_says_where_it_was_cut() {
+        let max = limits::get().tools.max_lines.value;
+        let text: String = (0..max + 5).map(|i| format!("{i}\n")).collect();
+        let out = Output::head(&text);
+        assert!(out.content.starts_with("0\n1\n"), "{}", out.content);
+        let note = format!("[Cut at {max} of {} lines.]", max + 5);
+        assert!(out.content.ends_with(&note), "{}", out.content);
+        assert_eq!(Output::head("short").content, "short");
     }
 
     #[test]
