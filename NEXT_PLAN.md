@@ -13,7 +13,7 @@ Record what each phase taught us under **Learned**.
 - [x] `crowbot models` (fresh cache → live → stale cache → bundled snapshot), `crowbot help`
 - [x] Fake crowbot (axum) + first e2e suite
 - [x] `crowbot keytest` on Windows Terminal: Shift+Tab, Shift+Enter, multi-line paste, key release
-- [ ] CI green on all three OSes (needs the GitHub remote)
+- [x] CI green on all three OSes (needs the GitHub remote)
 
 **Learned**
 - reqwest is 0.13: TLS features are `rustls` (aws-lc-rs provider, builds fine on MSVC without
@@ -22,9 +22,7 @@ Record what each phase taught us under **Learned**.
 - Binary crates warn on unread `pub` fields, so data fields are added only when read.
 - Windows Terminal via crossterm (no kitty enhancement): every key also sends a Release event
   (filter to Press/Repeat); Shift+Tab is `BackTab`+SHIFT; Shift+Enter keeps SHIFT; Ctrl+J is
-  `Char('j')`+CONTROL. A paste is plain key presses (13 for "one
-two
-three", 2 of them Enter)
+  `Char('j')`+CONTROL. A paste is plain key presses (13 for "one⏎two⏎three", 2 of them Enter),
   all queued at once, never `Event::Paste`: the TUI must treat an Enter with more input already
   pending as a newline.
 
@@ -60,6 +58,7 @@ three", 2 of them Enter)
 - Headless runs answer every prompt `Unavailable`, so the model hears why and carries on instead of
   the run hanging; the TUI will answer them for real.
 - `Reply`/`steer`/`follow_up`/`set_mode` carry `allow(dead_code)` outside tests until M3 wires them.
+
 ## M3 — TUI core
 Plan: inline renderer that commits finished blocks to real scrollback and diff-redraws only a live
 region; Enter queues and Tab steers while running; prompts are a numbered card (Yes / No / No +
@@ -114,6 +113,7 @@ command popup; `/login` inside the session.
 - Anything the session waits on (a turn, a login) is a future beside input in one `select!`; a
   command awaited inside the input branch would freeze the screen.
 - Opening the browser belongs in the job, not the state machine, or unit tests open real tabs.
+
 ## M3.9 — Full-screen session (after second use)
 Plan: the session moves to the alternate screen with its own scrollable transcript so the bar can
 never move and thinking blocks can be clicked; a crow working line; an aligned `/models` picker.
@@ -152,8 +152,8 @@ interstitial passed off as the article. The API stays on reqwest.
 - [x] `io/fetch.rs` (`Fetch` in `App`, replacing `App.http`); `CfError` → `FetchError`
 - [x] webfetch on `Fetch`; its messages in `data/tools/webfetch.toml`; the model told not to retry
 - [x] e2e: the real binary and client against a readable page and a Cloudflare-style challenge
-- [x] CI: `.github/actions/boringssl` on every job; glibc is the required Linux release target
-- [ ] First CI run (needs the GitHub remote): proves the toolchain on all three OSes, and
+- [x] CI: `.github/actions/setup` on every job; Linux ships static musl
+- [x] First CI run (needs the GitHub remote): proves the toolchain on all three OSes, and
       `release-musl` decides whether Linux ships fully static (it may fail until then)
 - [ ] Manual: webfetch on a normal docs page and on a known protected page in a session
 
@@ -172,7 +172,7 @@ interstitial passed off as the article. The API stays on reqwest.
 ## M5 — Context + sessions (compaction, shadow-git /undo)
 ## M6 — Subagents + MCP
 ## M7 — Release (`prod` → GitHub Releases, installers)
-- Added 2026-10-02, untried until the first `prod` push: every push to `prod` runs `ci.yml`
+- Added 2026-10-02, released since v0.2.0-2: every push to `prod` runs `ci.yml`
   through `release.yml` and publishes `crowbot-<target>` for musl Linux, Apple-silicon macOS and
   Windows, plus `SHA256SUMS`.
 - Added 2026-10-03: the repository is public (MIT OR Apache-2.0, history rewritten to a noreply
@@ -201,7 +201,7 @@ interstitial passed off as the article. The API stays on reqwest.
 - Verified by unit tests at every layer against in-process fakes (transport POST/cookies, codec
   incl. malformed XML and faults, backend against a fake mobiquo, directory against a fake
   directory, store round-trip, tool rendering, command parsing). Protocol facts came from a live
-  capture (`HANDOFF.md`) but have not yet been re-run live from this build.
+  capture (local notes) but have not yet been re-run live from this build.
 - Open:
   - a live smoke run against UnknownCheats: confirm `search`/`reply_post`/`new_topic` param shapes
     and that cffetch clears the WAF (the mobiquo dir can rotate — re-resolve on a 404);
