@@ -210,7 +210,7 @@ impl<'a> Tui<'a> {
         let mut tui = Self {
             app,
             catalog,
-            system: system_prompt::build(&app.paths, &model),
+            system: system_prompt::build(&app.paths, &model.id),
             model,
             effort: app.settings.effort.clone(),
             shared,
@@ -280,7 +280,7 @@ impl<'a> Tui<'a> {
         let put_away = std::mem::replace(&mut self.session_file, store.path.display().to_string());
         self.shared.start_over();
         // AGENTS.md may have changed (/init writes it), and the prompt is read at a start.
-        self.system = system_prompt::build(&self.app.paths, &self.model);
+        self.system = system_prompt::build(&self.app.paths, &self.model.id);
         self.feed = Feed::new();
         let welcome = self.welcome();
         self.feed.push(Block::Welcome(welcome));
@@ -580,7 +580,7 @@ impl<'a> Tui<'a> {
             Done::Forums(done) => {
                 // The prompt names the forums to browse; an added or removed one changes it.
                 if matches!(done, forums::Done::Changed { .. }) {
-                    self.system = system_prompt::build(&self.app.paths, &self.model);
+                    self.system = system_prompt::build(&self.app.paths, &self.model.id);
                 }
                 match self.forums.as_mut().map(|card| card.finished(done)) {
                     Some(next) => self.forums_next(next),
@@ -633,7 +633,7 @@ impl<'a> Tui<'a> {
         let Some(model) = self.catalog.get(id).cloned() else {
             return;
         };
-        self.system = system_prompt::build(&self.app.paths, &model);
+        self.system = system_prompt::build(&self.app.paths, &model.id);
         self.model = model;
         let text = template::fill(&ui::get().picker.switched, &[("model", id)]);
         self.feed.notice(&text, "done");

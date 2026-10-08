@@ -10,10 +10,9 @@ use serde_json::Value;
 use crate::agent::Run;
 use crate::agent::doom_loop;
 use crate::agent::model_text;
-use crate::config::limits;
 use crate::conversation::message::{Message, ToolCall, ToolResult};
 use crate::live::event::AgentEvent;
-use crate::live::prompt::{self, Prompt, Reply};
+use crate::live::prompt::{Prompt, Reply};
 use crate::mode::DoomLoop;
 use crate::permission::catalog;
 use crate::permission::gate::{self, Ask, Decision};
@@ -53,8 +52,8 @@ pub(super) async fn run<'a>(run: &'a Run<'a>, history: &[Message], calls: &'a [T
         let slot = if stop {
             Err(Refused::from(model_text::get().rejected.clone()))
         } else {
-            let repeats = doom_loop::repeats(history, calls, i);
-            clear(run, &mut locks, repeats, call).await
+            let looping = doom_loop::looping(history, calls, i);
+            clear(run, &mut locks, looping, call).await
         };
         if let Err(refused) = &slot {
             stop |= refused.stop;
@@ -113,7 +112,7 @@ async fn settle<'a>(run: &'a Run<'a>, calls: &'a [ToolCall], slots: Vec<Slot>) -
 async fn clear<'a>(
     run: &'a Run<'a>,
     locks: &mut Locks,
-    repeats: usize,
+    looping: Option<usize>,
     call: &'a ToolCall,
 ) -> Slot {
     let (cx, shared) = (run.cx, run.shared);
@@ -132,23 +131,22 @@ async fn clear<'a>(
         .map_err(|e| fill(&text.bad_json, &[("error", &e.to_string())]))?;
 
     let mut asks = Vec::new();
-    if repeats >= limits::get().agent.doom_loop_repeats.value {
+    if let Some(count) = looping {
         match mode.doom_loop {
             DoomLoop::TellModel => {
-                return Err(fill(&text.doom_loop, &[("count", &repeats.to_string())]).into());
+                return Err(fill(&text.doom_loop, &[("count", &count.to_string())]).into());
             }
             DoomLoop::Ask => asks.push(Ask::new(catalog::DOOM_LOOP.name, call.name.clone())),
         }
     }
-    let check = tool
-        .check(&args, &tool_cx(run, &call.id))
-        .map_err(|refusal| match refusal {
-            Refusal::InvalidArgs(error) => fill(
-                &text.invalid_arguments,
-                &[("name", &call.name), ("error", &error)],
-            ),
-            Refusal::Refused(why) => why,
-        })?;
+    let tcx = tool_cx(run, &call.id);
+    let check = tool.check(&args, &tcx).map_err(|refusal| match refusal {
+        Refusal::InvalidArgs(error) => fill(
+            &text.invalid_arguments,
+            &[("name", &call.name), ("error", &error)],
+        ),
+        Refusal::Refused(why) => why,
+    })?;
     asks.extend(check.asks);
 
     let lock = locks
@@ -168,7 +166,7 @@ async fn clear<'a>(
                 asks: asks.clone(),
                 preview: check.preview,
             };
-            match prompt::ask(shared, cx.emit, &call.id, prompt, &run.cancel).await {
+            match tcx.ask(prompt).await {
                 Some(Reply::Yes) => Ok((tool.clone(), args)),
                 Some(Reply::No { feedback: Some(f) } | Reply::Text(f)) => {
                     Err(fill(&text.rejected_with_feedback, &[("feedback", &f)]).into())

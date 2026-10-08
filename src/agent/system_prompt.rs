@@ -4,7 +4,6 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
-use crate::api::models::Model;
 use crate::config::limits;
 use crate::config::paths::Paths;
 use crate::data;
@@ -33,7 +32,7 @@ struct Forums {
 }
 
 /// Reminders a mode can name in data/modes/*.toml; one line per prompt file.
-pub fn build(paths: &Paths, model: &Model) -> String {
+pub fn build(paths: &Paths, model: &str) -> String {
     let cwd = paths.project.display().to_string();
     let date = io::clock::today();
     let env = template::fill(
@@ -42,7 +41,7 @@ pub fn build(paths: &Paths, model: &Model) -> String {
             ("cwd", &cwd),
             ("platform", std::env::consts::OS),
             ("date", &date),
-            ("model", &model.id),
+            ("model", model),
         ],
     );
     let parts = [
@@ -94,23 +93,6 @@ fn project(paths: &Paths) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::models::{Capabilities, Pricing};
-
-    fn model() -> Model {
-        Model {
-            id: "m".into(),
-            display_name: String::new(),
-            description: String::new(),
-            context_window: 1000,
-            max_output_tokens: 100,
-            pricing: Pricing {
-                input_per_1m_usd: 1.0,
-                cached_input_per_1m_usd: 0.1,
-                output_per_1m_usd: 2.0,
-            },
-            capabilities: Capabilities::default(),
-        }
-    }
 
     #[test]
     fn the_projects_instructions_join_the_prompt_before_the_environment() {
@@ -124,12 +106,12 @@ mod tests {
             )
             .unwrap();
         };
-        let bare = build(&paths, &model());
+        let bare = build(&paths, "m");
         assert!(!bare.contains("<project-instructions"));
         write("CLAUDE.md", "Use tabs.");
-        assert!(build(&paths, &model()).contains("file=\"CLAUDE.md\">\nUse tabs."));
+        assert!(build(&paths, "m").contains("file=\"CLAUDE.md\">\nUse tabs."));
         write("AGENTS.md", "Run make test.");
-        let prompt = build(&paths, &model());
+        let prompt = build(&paths, "m");
         assert!(
             prompt.contains("Run make test.") && !prompt.contains("Use tabs."),
             "{prompt}"
@@ -137,7 +119,7 @@ mod tests {
         assert!(prompt.find("Run make test.") < prompt.find("<env>"));
         let max = limits::get().agent.instructions_bytes.value;
         write("AGENTS.md", &"é".repeat(max));
-        let prompt = build(&paths, &model());
+        let prompt = build(&paths, "m");
         assert!(prompt.contains("is left out"), "the cut is not said");
         assert!(prompt.len() < bare.len() + max + 1000);
     }
@@ -148,7 +130,7 @@ mod tests {
         let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
         // With no store yet, the seed is what there is to browse.
         let seed = &crate::forums::data().seed[0];
-        let prompt = build(&paths, &model());
+        let prompt = build(&paths, "m");
         assert!(
             prompt.contains(&format!(
                 "- {} ({})\n  {}",
@@ -160,6 +142,6 @@ mod tests {
         );
         assert!(prompt.find("<forums>") < prompt.find("<env>"));
         crate::forums::store::remove(&paths, seed).unwrap();
-        assert!(!build(&paths, &model()).contains("<forums>"));
+        assert!(!build(&paths, "m").contains("<forums>"));
     }
 }

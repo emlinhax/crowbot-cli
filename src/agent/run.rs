@@ -27,8 +27,7 @@ pub async fn run(
         plan_file: tools::plan_file(&cx.app.paths, &transcript.id()),
     };
     let cancel = &run.cancel;
-    let parts = with_reminder(&run, prompt);
-    record(cx, transcript, Message::User { parts });
+    say(&run, transcript, prompt);
     let tools = cx.tools.wire();
     let max_turns = limits::get().agent.max_turns.value;
     let mut turns = 0;
@@ -121,6 +120,11 @@ fn record(cx: &RunCtx<'_>, transcript: &mut Transcript, message: Message) {
 fn deliver(run: &Run<'_>, transcript: &mut Transcript, parts: Vec<Part>) {
     let text = Part::text_of(&parts);
     (run.cx.emit)(AgentEvent::Delivered { text });
+    say(run, transcript, parts);
+}
+
+/// Records a user message, with any reminder that is due in front of it.
+fn say(run: &Run<'_>, transcript: &mut Transcript, parts: Vec<Part>) {
     let parts = with_reminder(run, parts);
     record(run.cx, transcript, Message::User { parts });
 }

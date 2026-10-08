@@ -1,12 +1,20 @@
 //! Spots a model repeating the same call, which burns money without progress.
 
+use crate::config::limits;
 use crate::conversation::message::{Message, ToolCall};
+
+/// How many times in a row `reply[i]` has now been made, once that reaches
+/// `agent.doom_loop_repeats`; `None` below it.
+pub fn looping(history: &[Message], reply: &[ToolCall], i: usize) -> Option<usize> {
+    let count = repeats(history, reply, i);
+    (count >= limits::get().agent.doom_loop_repeats.value).then_some(count)
+}
 
 /// How many times in a row the model has now made `reply[i]`, counting this one. The window is
 /// the current user turn: a call the user asks for again in a new message starts over at 1.
 /// CEILING: interleaved repeats ([a, b, a, b]) never count; upgrade: count by (name, args)
 /// within the window.
-pub fn repeats(history: &[Message], reply: &[ToolCall], i: usize) -> usize {
+fn repeats(history: &[Message], reply: &[ToolCall], i: usize) -> usize {
     let turn = history
         .iter()
         .rposition(|m| matches!(m, Message::User { .. }))
