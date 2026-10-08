@@ -15,8 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  # The tag is worked out once: the release builds carry it (`crowbot --version`, the updater)
-  # and the release is published under it.
+  # One tag for the builds (`--version`, the updater) and the release.
   tag:
     runs-on: ubuntu-latest
     outputs:

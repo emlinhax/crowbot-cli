@@ -30,7 +30,8 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-          # A release target is built where it is the host, so the checks above it cover it.
+          # Each release target builds on its own host (musl in its container below), so this
+          # job's checks cover it.
           - os: macos-latest
             target: aarch64-apple-darwin
           - os: windows-latest
@@ -45,8 +46,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     # Empty for every entry but musl's, which runs the job on the host.
     container: ${{ matrix.container }}
-    # A hung PTY test would otherwise hold three runners for six hours; cold BoringSSL builds
-    # set the bound.
+    # Bound set by a cold BoringSSL build; stops a hung PTY test holding runners for 6 h.
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
