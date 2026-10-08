@@ -261,31 +261,15 @@ pub fn plan_file(paths: &Paths, session: &str) -> String {
 
 pub struct Registry {
     tools: Vec<Arc<dyn AnyTool>>,
-    /// Values for `{placeholders}` in tool descriptions.
-    vars: Vec<(&'static str, String)>,
+    /// Values for `{placeholders}` in tool descriptions: every `tools.*` limit, and the shell.
+    vars: Vec<(String, String)>,
 }
 
 impl Registry {
     pub fn builtin(app: &App) -> Self {
         let shell = shell::resolve(app.settings.shell.as_deref());
-        let limits = &limits::get().tools;
-        let vars = vec![
-            ("shell_note", shell.note.clone()),
-            ("timeout", limits.bash_timeout_secs.value.to_string()),
-            (
-                "max_timeout",
-                limits.bash_max_timeout_secs.value.to_string(),
-            ),
-            ("max_lines", limits.max_lines.value.to_string()),
-            ("max_results", limits.max_results.value.to_string()),
-            (
-                "grep_context_max",
-                limits.grep_context_max.value.to_string(),
-            ),
-            ("read_batch_max", limits.read_batch_max.value.to_string()),
-            ("list_depth_max", limits.list_depth_max.value.to_string()),
-            ("fs_batch_max", limits.fs_batch_max.value.to_string()),
-        ];
+        let mut vars = limits::vars("tools");
+        vars.push(("shell_note".to_owned(), shell.note.clone()));
         let tools: Vec<Arc<dyn AnyTool>> = vec![
             Arc::new(read::Read),
             Arc::new(write::Write),
@@ -322,7 +306,11 @@ impl Registry {
 
     /// The `tools` array of a chat request.
     pub fn wire(&self) -> Vec<Value> {
-        let vars: Vec<(&str, &str)> = self.vars.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        let vars: Vec<(&str, &str)> = self
+            .vars
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
         self.tools
             .iter()
             .map(|t| {

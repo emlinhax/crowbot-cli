@@ -13,6 +13,24 @@ pub fn get() -> &'static Limits {
     &LIMITS
 }
 
+/// Every limit in `group` by its key, as `{placeholder}` values for text that names them.
+pub fn vars(group: &str) -> Vec<(String, String)> {
+    let table: toml::Table = data::parse(data::raw!("limits.toml"), "limits.toml");
+    let Some(limits) = table.get(group).and_then(toml::Value::as_table) else {
+        return Vec::new();
+    };
+    limits
+        .iter()
+        .filter_map(|(key, limit)| {
+            let value = match limit.get("value")? {
+                toml::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            Some((key.clone(), value))
+        })
+        .collect()
+}
+
 /// A number and the reason it is that number; the reason is for readers of limits.toml.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
