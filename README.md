@@ -205,16 +205,8 @@ BoringSSL for the web.
 Pushing `prod` (on an explicit go only) runs `.github/workflows/release.yml`: the full CI checks,
 then a GitHub release tagged `v<version>-<run>` holding one binary per target and `SHA256SUMS`.
 The binaries are built with that tag (`CROWBOT_RELEASE`), which `--version` and the updater read.
-Asset names never change, so these always serve the newest release:
-
-| Platform | Download |
-|---|---|
-| Linux x86_64 (static) | `https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-x86_64-unknown-linux-musl` |
-| macOS Apple silicon | `https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-aarch64-apple-darwin` |
-| Windows x86_64 | `https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-x86_64-pc-windows-msvc.exe` |
-
-A target is one entry in `ci.yml`'s matrix. The binaries are unsigned, so macOS Gatekeeper and
-Windows SmartScreen warn about a copy downloaded by a browser; `curl` downloads are not flagged.
+Asset names never change, so the Install links always serve the newest release. Adding a
+target: see `data/release.toml`'s header.
 
 ## Licence
 
