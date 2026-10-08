@@ -1,5 +1,4 @@
-//! Modes are data: each file in data/modes/ is one mode, and this list is the only place that
-//! names them. Adding a mode is a TOML file plus one line below.
+//! Modes are data: one TOML file per mode in data/modes/, registered in `SOURCES`.
 
 use std::sync::LazyLock;
 
@@ -50,9 +49,9 @@ pub struct Mode {
     pub lock: Vec<Rule>,
 }
 
-/// A lock as written: one pattern, a list of them, or commands that each match alone or followed
-/// by arguments (`git log` and `git log -5`, never `git logx`). Expanded in file order, so the
-/// last match still wins as it reads.
+/// A lock as written: `pattern`, `patterns`, or `commands` (each matches alone or with arguments:
+/// `git log`, `git log -5`, not `git logx`). Expanded in file order, so the last match wins as
+/// written.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Lock {
