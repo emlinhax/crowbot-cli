@@ -5,6 +5,8 @@ use std::process::ExitCode;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use anyhow::bail;
+
 use crate::agent::setup::Setup;
 use crate::agent::system_prompt;
 use crate::agent::{RunCtx, run};
@@ -25,7 +27,18 @@ pub enum Format {
     Json,
 }
 
-pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<ExitCode> {
+/// Runs `prompt` (the words given, then any piped stdin) without a session, and exits.
+pub async fn run(app: &App, mut prompt: String, format: Format) -> anyhow::Result<ExitCode> {
+    if let Some(piped) = term::piped_stdin()? {
+        prompt = if prompt.is_empty() {
+            piped
+        } else {
+            format!("{prompt}\n\n{piped}")
+        };
+    }
+    if prompt.trim().is_empty() {
+        bail!("nothing to send; pass a prompt or pipe one in");
+    }
     let Setup {
         model,
         tools,

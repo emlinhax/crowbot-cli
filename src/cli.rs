@@ -154,17 +154,6 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
         return tui::run(&app, initial).await;
     }
 
-    let mut prompt = prompt;
-    if let Some(piped) = term::piped_stdin()? {
-        prompt = if prompt.is_empty() {
-            piped
-        } else {
-            format!("{prompt}\n\n{piped}")
-        };
-    }
-    if prompt.trim().is_empty() {
-        bail!("nothing to send; pass a prompt or pipe one in");
-    }
     let format = if cli.json { Format::Json } else { Format::Text };
     print::run(&app, prompt, format).await
 }
