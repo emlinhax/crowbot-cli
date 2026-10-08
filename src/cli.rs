@@ -121,7 +121,7 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
         Some(name) => match commands::lookup(name, Scope::Cli) {
             Ok(command) => Some(command),
             Err(Missing::Elsewhere(spec)) => {
-                bail!("`{}` only works as {}", spec.name, commands::places(spec))
+                bail!(commands::elsewhere(spec, Scope::Cli))
             }
             Err(Missing::Unknown) => None,
         },

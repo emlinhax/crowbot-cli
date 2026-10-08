@@ -7,6 +7,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::config::limits;
 use crate::frontend::tui::ui;
+use crate::frontend::words;
 use crate::live::event::AgentEvent;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
@@ -94,7 +95,7 @@ pub fn retrying(secs: u64, why: &str, width: usize) -> Line {
     let text = &ui::get().text;
     let muted = Style::fg("muted");
     let mut line = Line::styled(format!("{why} · "), Style::fg("warn"));
-    line.push(format!("{} {secs}s", text.retrying), muted.clone());
+    line.push(format!("{} {secs}s", words::get().retrying), muted.clone());
     line.push(format!(" · {}", text.interrupt), muted);
     line.truncate(width)
 }

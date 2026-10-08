@@ -1,9 +1,22 @@
 //! What a command declares about itself: its names, usage and where it works (data/commands/),
 //! and how it is typed in each place.
 
+use std::sync::LazyLock;
+
 use serde::Deserialize;
 
 use crate::auth;
+use crate::data;
+use crate::text::template::fill;
+
+static TEXT: LazyLock<Text> = data::load!("commands.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Text {
+    elsewhere: String,
+    or: String,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -113,5 +126,14 @@ pub fn places(spec: &Spec) -> String {
         .iter()
         .map(|s| format!("`{}`", s.invoke(&spec.name)))
         .collect::<Vec<_>>()
-        .join(" or ")
+        .join(&TEXT.or)
+}
+
+/// That `spec` was typed where it does not run (`scope`), and where it does.
+pub fn elsewhere(spec: &Spec, scope: Scope) -> String {
+    let command = format!("`{}`", scope.invoke(&spec.name));
+    fill(
+        &TEXT.elsewhere,
+        &[("command", &command), ("places", &places(spec))],
+    )
 }

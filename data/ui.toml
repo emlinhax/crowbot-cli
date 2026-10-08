@@ -23,21 +23,16 @@ separator = " · "
 
 [text]
 interrupt = "esc to interrupt"
-retrying = "retrying in"
 queued = "queued"
 steering = "steering"
 cost_estimate = "est"
 not_logged_in = "Not logged in: type /login"
-interrupted = "Interrupted."
 declined = "Stopped: you declined a call."
-cut_off = "The reply hit its output limit (a low balance lowers that limit)."
 ctrl_c_again = "Press Ctrl+C again to quit"
 unknown_command = "Unknown command {command}. {help} lists them."
 more_lines = { one = "… {n} more line", many = "… {n} more lines" }
-elsewhere = "{command} only works as {places}."
 more_below = "↓ {n} more · PgDn"
 saved = "Session saved to {path}"
-unsaved = "No longer saving this session to {path}: {error}. The conversation goes on unsaved."
 spent = "Spent about {cost} this session."
 copied = "✓ Copied"
 nothing_to_copy = "Nothing to copy yet: crowbot has not replied."
@@ -152,4 +147,4 @@ reply = "no_why"
 
 # How a run that ended early is told.
 [outcome]
-turn_limit = "Stopped after {count} turns. Send a message to continue."
+turn_limit = "{stopped} Send a message to continue."

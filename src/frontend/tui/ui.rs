@@ -38,6 +38,7 @@ pub struct Ui {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OutcomeText {
+    /// `{stopped}` is the shared turn-limit line (data/frontend.toml).
     pub turn_limit: String,
 }
 
@@ -167,19 +168,15 @@ pub struct Footer {
 #[serde(deny_unknown_fields)]
 pub struct Text {
     pub interrupt: String,
-    pub retrying: String,
     pub queued: String,
     pub steering: String,
     pub cost_estimate: String,
     pub not_logged_in: String,
-    pub interrupted: String,
     pub declined: String,
-    pub cut_off: String,
     pub ctrl_c_again: String,
     pub unknown_command: String,
     /// Under a card cut to fit: how many lines it left out.
     pub more_lines: Plural,
-    pub elsewhere: String,
     pub more_below: String,
     pub saved: String,
     pub copied: String,
@@ -189,7 +186,6 @@ pub struct Text {
     pub effort_unsent: String,
     pub new_conversation: String,
     pub new_saved: String,
-    pub unsaved: String,
     pub spent: String,
 }
 

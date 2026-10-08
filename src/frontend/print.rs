@@ -14,12 +14,14 @@ use crate::api::error::{self, Entry};
 use crate::app::App;
 use crate::config::limits;
 use crate::conversation::message::{Assistant, Finish, Part, ToolResult};
+use crate::frontend::{tool_card, words};
 use crate::io::term;
 use crate::live::event::{AgentEvent, DeltaKind, Ended, Outcome};
 use crate::live::prompt::{Prompt, Reply};
 use crate::live::state::Shared;
 use crate::permission::gate;
 use crate::text::shorten;
+use crate::text::template::fill;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Format {
@@ -124,13 +126,18 @@ impl Printer<'_> {
             } if self.declined.lock().unwrap().contains(call_id) => {}
             AgentEvent::ToolStart {
                 name, arguments, ..
-            } => self.note(&format!("› {name} {}", summary(arguments))),
+            } => {
+                let mut line = fill(&words::get().print.call, &[("tool", name)]);
+                if let Some(title) = tool_card::title(name, arguments) {
+                    line.push(' ');
+                    line.push_str(&shorten::line(&title, note_chars()));
+                }
+                self.note(&line);
+            }
             AgentEvent::ToolEnd { result } if result.is_error => {
                 let first = result.content.lines().next().unwrap_or_default();
-                self.note(&format!(
-                    "  ✗ {}",
-                    shorten::line(first, limits::get().print.note_chars.value)
-                ));
+                let error = shorten::line(first, note_chars());
+                self.note(&fill(&words::get().print.failed, &[("error", &error)]));
             }
             AgentEvent::Prompt {
                 prompt: Prompt::Permission { tool, asks, .. },
@@ -138,20 +145,25 @@ impl Printer<'_> {
                 ..
             } => {
                 self.declined.lock().unwrap().push(call_id.clone());
-                self.note(&format!(
-                    "  ✗ {tool} needs permission ({}); rerun with --mode auto to allow it",
-                    shorten::line(&gate::describe(asks), limits::get().print.note_chars.value)
+                let what = shorten::line(&gate::describe(asks), note_chars());
+                self.note(&fill(
+                    &words::get().print.needs_permission,
+                    &[("tool", tool), ("what", &what)],
                 ));
             }
             AgentEvent::Retry {
                 delay_ms, error, ..
             } => self.note(&format!(
-                "{}; retrying in {:.1}s",
+                "{}; {} {:.1}s",
                 Entry::of(error).title,
+                words::get().retrying,
                 *delay_ms as f64 / 1000.0
             )),
             AgentEvent::Unsaved { path, error } => {
-                self.warn(&format!("no longer saving this session to {path}: {error}"));
+                self.warn(&fill(
+                    &words::get().unsaved,
+                    &[("path", path), ("error", error)],
+                ));
             }
             _ => {}
         }
@@ -181,7 +193,7 @@ impl Printer<'_> {
         let last = self.last.lock().unwrap().take();
         match outcome {
             Outcome::Aborted => {
-                term::warn("cancelled");
+                term::warn(&words::get().interrupted);
                 ExitCode::from(130)
             }
             Outcome::Failed => {
@@ -189,19 +201,21 @@ impl Printer<'_> {
                     let entry = Entry::of(&error);
                     term::warn(&error::headline(&error));
                     if let Some(hint) = entry.hint() {
-                        term::err(&format!("  {hint}\n"));
+                        let hint = fill(&words::get().print.hint, &[("hint", &hint)]);
+                        term::err(&format!("{hint}\n"));
                     }
                 }
                 ExitCode::FAILURE
             }
             Outcome::TurnLimit => {
-                term::warn(&format!("stopped after {turns} turns"));
+                let count = turns.to_string();
+                term::warn(&fill(&words::get().turn_limit, &[("count", &count)]));
                 ExitCode::FAILURE
             }
             Outcome::Rejected => ExitCode::FAILURE,
             Outcome::Done => {
                 if last.is_some_and(|m| m.finish == Finish::Length) {
-                    term::warn("the reply hit its output limit (a low balance lowers that limit)");
+                    term::warn(&words::get().cut_off);
                 }
                 ExitCode::SUCCESS
             }
@@ -209,15 +223,6 @@ impl Printer<'_> {
     }
 }
 
-/// The argument a person recognises a call by: its path, command, pattern, URL or query.
-fn summary(arguments: &str) -> String {
-    let args: serde_json::Value = serde_json::from_str(arguments).unwrap_or_default();
-    let found = ["path", "command", "pattern", "url", "query"]
-        .iter()
-        .find_map(|key| args[key].as_str())
-        .unwrap_or_default();
-    shorten::line(
-        found.lines().next().unwrap_or_default(),
-        limits::get().print.note_chars.value,
-    )
+fn note_chars() -> usize {
+    limits::get().print.note_chars.value
 }

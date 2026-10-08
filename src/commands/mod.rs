@@ -20,7 +20,7 @@ mod update;
 use futures_util::future::BoxFuture;
 
 pub(crate) use spec::spec;
-pub use spec::{Scope, Spec, places};
+pub use spec::{Scope, Spec, elsewhere};
 
 use crate::app::App;
 
@@ -213,7 +213,10 @@ mod tests {
         let Err(Missing::Elsewhere(spec)) = lookup("signup", Scope::Session) else {
             panic!("signup works in the session");
         };
-        assert_eq!(places(spec), "`crowbot signup`");
+        assert_eq!(
+            elsewhere(spec, Scope::Session),
+            "`/signup` only works as `crowbot signup`."
+        );
     }
 
     #[tokio::test]

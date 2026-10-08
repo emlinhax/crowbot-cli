@@ -36,10 +36,7 @@ pub fn start<'a>(app: &'a App, line: &str, session: Session) -> Result<Started<'
                     ("help", &Scope::Session.invoke("help")),
                 ],
             ),
-            Missing::Elsewhere(spec) => template::fill(
-                &text.elsewhere,
-                &[("command", &typed), ("places", &commands::places(spec))],
-            ),
+            Missing::Elsewhere(spec) => commands::elsewhere(spec, Scope::Session),
         }
     })?;
     Ok(Started {

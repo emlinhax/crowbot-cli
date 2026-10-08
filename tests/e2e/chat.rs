@@ -220,7 +220,8 @@ async fn a_session_command_on_the_command_line_names_where_it_works() {
     let run = Sandbox::default().run(&fake.url, &["mode"], WITH_KEY).await;
     assert_ne!(run.code(), Some(0));
     assert!(
-        run.stderr().contains("`mode` only works as `/mode`"),
+        run.stderr()
+            .contains("`crowbot mode` only works as `/mode`"),
         "{}",
         run.stderr()
     );

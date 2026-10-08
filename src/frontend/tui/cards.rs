@@ -1,65 +1,15 @@
-//! Tool calls as transcript cards, all drawn by this one renderer from data/tool_cards.toml.
+//! Tool calls as transcript cards, all drawn by this one renderer from their specs
+//! (frontend/tool_card.rs).
 
-use std::collections::BTreeMap;
-use std::sync::LazyLock;
-
-use serde::Deserialize;
 use serde_json::Value;
 
 use crate::config::limits;
 use crate::conversation::message::ToolResult;
-use crate::data;
+use crate::frontend::tool_card::{self, Body, Summary, at, spec};
 use crate::frontend::tui::boxed::capped;
 use crate::text::diff;
 use crate::text::styled::{Line, Style};
 use crate::text::template;
-use crate::text::units::Plural;
-
-static CARDS: LazyLock<BTreeMap<String, Spec>> = data::load!("tool_cards.toml");
-
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Spec {
-    #[serde(default)]
-    title: Option<Vec<String>>,
-    /// When set, the header joins every present title arg with this, instead of showing the first.
-    #[serde(default)]
-    title_join: Option<String>,
-    #[serde(default)]
-    body: Option<Body>,
-    #[serde(default)]
-    summary: Option<Summary>,
-    #[serde(default)]
-    max_lines: Option<usize>,
-    /// A batch title arg shows this many items; past it, one fewer and `+N`.
-    #[serde(default)]
-    title_items: Option<usize>,
-}
-
-/// A line from the result's details, or a count of one of them in the form that fits it.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(untagged)]
-enum Summary {
-    Text(String),
-    Count {
-        /// The details key holding the number; `{n}` in the forms.
-        count: String,
-        #[serde(flatten)]
-        forms: Plural,
-    },
-    /// The first of these whose details are all there: one file's lines, else how many files.
-    First(Vec<Summary>),
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-enum Body {
-    None,
-    Diff,
-    Head,
-    Tail,
-    Summary,
-}
 
 /// Where a call is in its life, which colours its header.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -70,20 +20,6 @@ pub enum State<'a> {
     Failed,
 }
 
-/// A tool's section merged over `[default]`.
-fn spec(tool: &str) -> Spec {
-    let default = CARDS.get("default").cloned().unwrap_or_default();
-    let own = CARDS.get(tool).cloned().unwrap_or_default();
-    Spec {
-        title: own.title.or(default.title),
-        title_join: own.title_join.or(default.title_join),
-        body: own.body.or(default.body),
-        summary: own.summary.or(default.summary),
-        max_lines: own.max_lines.or(default.max_lines),
-        title_items: own.title_items.or(default.title_items),
-    }
-}
-
 pub fn header(tool: &str, arguments: &str, state: State<'_>) -> Line {
     let (mark, role) = match state {
         State::Running(frame) => (frame, "running"),
@@ -92,24 +28,9 @@ pub fn header(tool: &str, arguments: &str, state: State<'_>) -> Line {
     };
     let mut line = Line::styled(format!("{mark} "), Style::fg(role));
     line.push(tool, Style::default().bold());
-    let args: Value = serde_json::from_str(arguments).unwrap_or(Value::Null);
-    let spec = spec(tool);
-    let items = spec.title_items.unwrap_or_default();
-    let present: Vec<String> = spec
-        .title
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|key| arg_text(&at(&args, &key), items))
-        .collect();
-    // With `title_join` several present args fold onto one line (a forum and its section or search
-    // term); otherwise the first present one titles the card, as every other tool does.
-    let title = match spec.title_join {
-        Some(sep) => (!present.is_empty()).then(|| present.join(&sep)),
-        None => present.into_iter().next(),
-    };
-    if let Some(title) = title {
+    if let Some(title) = tool_card::title(tool, arguments) {
         line.push(" ", Style::default());
-        line.push(title.lines().next().unwrap_or_default(), Style::fg("muted"));
+        line.push(title, Style::fg("muted"));
     }
     line
 }
@@ -172,39 +93,6 @@ fn body(tool: &str, result: &ToolResult, width: usize) -> Vec<Line> {
     }
 }
 
-/// A title arg as one short line: a string's first line, or a batch array as its items (a few, then
-/// `+N`); `None` when there is nothing to show.
-fn arg_text(value: &Value, max_items: usize) -> Option<String> {
-    match value {
-        Value::String(s) => {
-            let line = s.lines().next().unwrap_or_default();
-            (!line.is_empty()).then(|| line.to_owned())
-        }
-        Value::Array(items) => {
-            let parts: Vec<&str> = items.iter().filter_map(Value::as_str).collect();
-            let shown = max_items.saturating_sub(1);
-            match parts.len() {
-                0 => None,
-                n if n <= max_items => Some(parts.join(", ")),
-                n => Some(format!("{}, +{}", parts[..shown].join(", "), n - shown)),
-            }
-        }
-        _ => None,
-    }
-}
-
-/// The value at a dotted path, `a.0.b`: keys, and indices into arrays.
-fn at(value: &Value, path: &str) -> Value {
-    let mut value = value.clone();
-    for part in path.split('.') {
-        value = match part.parse::<usize>() {
-            Ok(i) => value[i].clone(),
-            Err(_) => value[part].clone(),
-        };
-    }
-    value
-}
-
 /// `{a.b}` reads `details.a.b` (array indices too).
 /// A summary's line. Strict (inside a list) it is `None` unless every detail it names is there;
 /// otherwise a missing one shows as `?`.
@@ -248,7 +136,7 @@ mod tests {
 
     #[test]
     fn the_default_card_sets_every_number_a_card_falls_back_to() {
-        let default = CARDS.get("default").unwrap();
+        let default = tool_card::default_spec();
         assert!(default.max_lines.is_some_and(|n| n > 0));
         assert!(default.title_items.is_some_and(|n| n > 1));
     }
@@ -272,7 +160,7 @@ mod tests {
     fn every_section_names_a_real_tool() {
         let registry = crate::tools::Registry::builtin(None);
         let names = registry.names();
-        for tool in CARDS.keys().filter(|k| *k != "default") {
+        for tool in tool_card::tools() {
             assert!(
                 names.split(", ").any(|n| n == tool),
                 "{tool} in data/tool_cards.toml is not a tool"
