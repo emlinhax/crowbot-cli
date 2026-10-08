@@ -1,19 +1,16 @@
-//! Commands: `crowbot <name>` on the command line, `/name` inside a session. One file per
+//! Commands: `crowbot <name>` on the command line, `/name` inside a session. One spec per
 //! command, one line in `COMMANDS`; where each works is data (`scope` in its spec).
 
-mod copy;
 mod effort;
+mod fixed;
 pub mod forums;
 mod help;
-mod init;
 mod install;
 mod keytest;
 pub mod login;
 mod logout;
 mod mode;
 pub mod models;
-mod new;
-mod quit;
 mod signup;
 mod spec;
 mod status;
@@ -145,10 +142,10 @@ pub static COMMANDS: &[&dyn Command] = &[
     &forums::Forums,
     &mode::Mode,
     &effort::Effort,
-    &copy::Copy,
-    &init::Init,
-    &new::New,
-    &quit::Quit,
+    &fixed::COPY,
+    &fixed::INIT,
+    &fixed::NEW,
+    &fixed::QUIT,
     &keytest::KeyTest,
 ];
 
