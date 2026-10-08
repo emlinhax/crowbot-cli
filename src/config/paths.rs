@@ -76,7 +76,7 @@ impl Paths {
         self.home.join("update.json")
     }
 
-    /// Grouped per project directory so resuming can list this project's sessions first.
+    /// One folder per project.
     pub fn sessions_dir(&self) -> PathBuf {
         self.home.join("sessions").join(slug(&self.project))
     }
