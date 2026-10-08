@@ -80,8 +80,7 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
     Ok(settings)
 }
 
-/// The layers merged so far must still make settings; what came before was valid, so an error
-/// belongs to the layer just added and names its file.
+/// Checked after each layer, so an error names the file that caused it.
 fn check(merged: &toml::Table, file: &Path) -> anyhow::Result<()> {
     toml::Value::Table(merged.clone())
         .try_into::<Settings>()
@@ -98,8 +97,8 @@ fn read_layer(file: &Path) -> anyhow::Result<Option<toml::Table>> {
         .map(Some)
 }
 
-/// Later layers win; arrays of tables (`[[permission]]`) append, because their order is their
-/// meaning: a later rule overrides an earlier one.
+/// Later layers win; arrays of tables (`[[permission]]`) append, since a later rule overrides an
+/// earlier one.
 fn merge(base: &mut toml::Table, layer: toml::Table) {
     for (key, value) in layer {
         match (base.get_mut(&key), value) {
