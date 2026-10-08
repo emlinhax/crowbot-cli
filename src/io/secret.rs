@@ -39,7 +39,7 @@ pub fn open(scheme: &str, sealed: &[u8]) -> io::Result<Vec<u8>> {
         #[cfg(windows)]
         "dpapi" => dpapi::unprotect(sealed),
         other => Err(io::Error::other(format!(
-            "key sealed with `{other}`, which this machine cannot open"
+            "sealed with `{other}`, which this machine cannot open"
         ))),
     }
 }

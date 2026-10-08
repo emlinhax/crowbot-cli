@@ -1,6 +1,5 @@
-//! The rest of the web, for webfetch: pages fetched the way a browser fetches them (real browser
-//! TLS through cffetch, another profile when one is challenged), with Cloudflare challenges told
-//! apart from real pages. crowbot's own API stays on `io::http`.
+//! The web beyond crowbot's API, fetched as a browser would (cffetch TLS, another profile when
+//! challenged); Cloudflare challenges are told apart from pages. crowbot's API stays on `io::http`.
 
 use std::time::Duration;
 
@@ -30,8 +29,7 @@ pub struct Fetched {
     pub set_cookies: Vec<String>,
 }
 
-/// A POST, for an API that speaks over the browser transport (the forum XML-RPC and directory).
-/// A page fetch stays on `get`.
+/// A POST over the browser transport, for an API behind the same checks as pages.
 pub struct Post<'a> {
     pub url: &'a str,
     pub body: Vec<u8>,

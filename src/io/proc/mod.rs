@@ -113,7 +113,7 @@ fn runnable(path: &Path) -> bool {
     }
 }
 
-/// This machine's name, shown on crowbot's key list after pairing.
+/// This machine's name, or `unknown`.
 pub fn hostname() -> String {
     os_hostname()
         .filter(|s| !s.is_empty())
