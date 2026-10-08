@@ -21,7 +21,7 @@ use crate::permission::catalog;
 use crate::permission::gate::{self, Ask, Decision};
 use crate::permission::rule::Rule;
 use crate::text::template::fill;
-use crate::tools::{AnyTool, Output, Refusal, ToolCx};
+use crate::tools::{self, AnyTool, Output, Refusal, ToolCx};
 
 pub struct Batch {
     pub results: Vec<ToolResult>,
@@ -114,7 +114,7 @@ async fn settle<'a>(
                 let tcx = tool_cx(cx, shared, cancel, &call.id);
                 tokio::select! {
                     out = tool.run(args, &tcx) => out,
-                    () = cancel.cancelled() => Output::error(model_text::get().cancelled.clone()),
+                    () = cancel.cancelled() => Output::cancelled(),
                 }
             }
         };
@@ -141,7 +141,7 @@ async fn clear<'a>(
     let mode = shared.mode();
     let text = model_text::get();
     if cancel.is_cancelled() {
-        return Err(text.cancelled.clone().into());
+        return Err(tools::text().cancelled.clone().into());
     }
     let tool = cx.tools.get(&call.name).ok_or_else(|| {
         fill(
@@ -208,7 +208,7 @@ async fn clear<'a>(
                     };
                     Err(fill(why, &[("what", &gate::describe(&asks))]).into())
                 }
-                None => Err(text.cancelled.clone().into()),
+                None => Err(tools::text().cancelled.clone().into()),
             }
         }
     }

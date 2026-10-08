@@ -2,51 +2,75 @@
 
 use super::TEXT;
 use crate::forums::{Forum, Section, Thread, TopicList};
+use crate::text::template::fill;
 
-pub fn forums(list: &[Forum]) -> String {
-    if list.is_empty() {
+/// One line per forum, each with its hint under it; `logins` adds who each is browsed as. The
+/// system prompt names the forums with this too.
+pub fn list(list: &[Forum], logins: bool) -> String {
+    let lines: Vec<String> = list
+        .iter()
+        .map(|f| {
+            let mut line = fill(&TEXT.line, &[("name", &f.name), ("host", &f.host())]);
+            if logins {
+                line.push_str(&match &f.username {
+                    Some(user) => fill(&TEXT.logged_in, &[("user", user)]),
+                    None => TEXT.guest.clone(),
+                });
+            }
+            if !f.hint.is_empty() {
+                line.push('\n');
+                line.push_str(&fill(&TEXT.hint, &[("hint", &f.hint)]));
+            }
+            line
+        })
+        .collect();
+    lines.join("\n")
+}
+
+pub fn forums(forums: &[Forum]) -> String {
+    if forums.is_empty() {
         return TEXT.no_forums.clone();
     }
-    let mut out = String::from("Forums you can browse:\n");
-    for f in list {
-        let who = match &f.username {
-            Some(user) => format!("logged in as {user}"),
-            None => "guest".to_owned(),
-        };
-        out.push_str(&format!("- {} ({}) — {who}\n", f.name, f.host()));
-        if !f.hint.is_empty() {
-            out.push_str(&format!("  {}\n", f.hint));
-        }
-    }
-    out
+    format!("{}\n{}", TEXT.heading, list(forums, true))
 }
 
 pub fn sections(sections: &[Section]) -> String {
     if sections.is_empty() {
-        return "No sections.".to_owned();
+        return TEXT.no_sections.clone();
     }
     let mut out = String::new();
     for s in sections {
-        let indent = "  ".repeat(s.depth);
-        let tail = if s.sub_only { "  (heading)" } else { "" };
-        out.push_str(&format!("{indent}[{}] {}{tail}\n", s.id, s.name));
+        out.push_str(&"  ".repeat(s.depth));
+        out.push_str(&fill(&TEXT.section, &[("id", &s.id), ("name", &s.name)]));
+        if s.sub_only {
+            out.push_str(&TEXT.sub_only);
+        }
+        out.push('\n');
     }
     out
 }
 
 pub fn topics(list: &TopicList) -> String {
     if list.topics.is_empty() {
-        return "No topics.".to_owned();
+        return TEXT.no_topics.clone();
     }
     let mut out = String::new();
     if let Some(total) = list.total {
-        out.push_str(&format!("{total} topics in total.\n"));
+        out.push_str(&fill(&TEXT.total_topics, &[("total", &total.to_string())]));
+        out.push('\n');
     }
     for t in &list.topics {
-        out.push_str(&format!(
-            "[{}] {} — {} ({} replies)\n",
-            t.id, t.title, t.author, t.replies
+        let replies = t.replies.to_string();
+        out.push_str(&fill(
+            &TEXT.topic,
+            &[
+                ("id", &t.id),
+                ("title", &t.title),
+                ("author", &t.author),
+                ("replies", &replies),
+            ],
         ));
+        out.push('\n');
     }
     out
 }
@@ -55,15 +79,27 @@ pub fn thread(thread: &Thread) -> String {
     let mut out = thread.title.clone();
     let page = thread.page;
     if let (Some(total), Some(pages)) = (thread.total, thread.pages) {
-        out.push_str(&format!(" — page {page} of {pages}, {total} posts"));
-        // Posts are oldest first; nudge toward the end rather than paging there one by one.
+        out.push_str(&fill(
+            &TEXT.pages,
+            &[
+                ("page", &page.to_string()),
+                ("pages", &pages.to_string()),
+                ("total", &total.to_string()),
+            ],
+        ));
         if page < pages {
-            out.push_str("\n(oldest first; for the newest posts read page \"last\")");
+            out.push('\n');
+            out.push_str(&TEXT.newest);
         }
     }
     out.push('\n');
     for p in &thread.posts {
-        out.push_str(&format!("\n── #{} {} {}\n", p.id, p.author, p.time));
+        out.push('\n');
+        out.push_str(&fill(
+            &TEXT.post,
+            &[("id", &p.id), ("author", &p.author), ("time", &p.time)],
+        ));
+        out.push('\n');
         out.push_str(p.content.trim_end());
         out.push('\n');
     }

@@ -6,6 +6,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, target};
+use crate::data;
 use crate::permission::catalog;
 use std::path::Path;
 
@@ -13,8 +14,19 @@ use crate::config::limits;
 use crate::io;
 use crate::io::search::{FileHits, Report};
 use crate::text::shorten;
+use crate::text::template::fill;
 
 static SPEC: LazyLock<Spec> = super::spec!("grep");
+
+static TEXT: LazyLock<Text> = data::load!("tools/grep.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Text {
+    none: String,
+    stopped_matches: String,
+    stopped_files: String,
+}
 
 #[derive(Deserialize)]
 pub struct Args {
@@ -82,20 +94,20 @@ impl Tool for Grep {
             };
             let (files, capped) = io::search::grep(query).await.map_err(|e| e.to_string())?;
             if files.is_empty() {
-                return Ok(Output::ok("No matches.").with_details(json!({"matches": 0})));
+                return Ok(Output::ok(TEXT.none.clone()).with_details(json!({"matches": 0})));
             }
             let shown = |path: &Path| target::show(&base, path).0;
             let matched: usize = files.iter().map(|f| f.matched).sum();
-            let (mut out, details, unit) = match report {
+            let (mut out, details, stopped) = match report {
                 Report::Lines { context } => (
                     lines(&files, context, &shown),
                     json!({ "matches": matched }),
-                    "matches",
+                    &TEXT.stopped_matches,
                 ),
                 Report::Files => (
                     files.iter().map(|f| shown(&f.path) + "\n").collect(),
                     json!({ "files": files.len() }),
-                    "files",
+                    &TEXT.stopped_files,
                 ),
                 Report::Counts => (
                     files
@@ -103,11 +115,12 @@ impl Tool for Grep {
                         .map(|f| format!("{}: {}\n", shown(&f.path), f.matched))
                         .collect(),
                     json!({ "matches": matched, "files": files.len() }),
-                    "files",
+                    &TEXT.stopped_files,
                 ),
             };
             if capped {
-                let _ = write!(out, "\n[Stopped at {max} {unit}; narrow the search.]");
+                out.push('\n');
+                out.push_str(&fill(stopped, &[("max", &max.to_string())]));
             }
             Ok(Output::ok(out.trim_end().to_owned()).with_details(details))
         })

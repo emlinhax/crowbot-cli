@@ -13,6 +13,7 @@ use serde::Deserialize;
 
 pub use browse::{Search, Sections, ThreadTool, Topics};
 pub use post::Post;
+pub use render::list;
 
 use super::ToolCx;
 use crate::data;
@@ -28,7 +29,27 @@ struct Text {
     unknown: String,
     no_subject: String,
     posted: String,
-    cut: String,
+    posted_url: String,
+    posted_id: String,
+    reply_preview: String,
+    topic_preview: String,
+    heading: String,
+    line: String,
+    logged_in: String,
+    guest: String,
+    hint: String,
+    no_sections: String,
+    section: String,
+    sub_only: String,
+    no_topics: String,
+    total_topics: String,
+    topic: String,
+    pages: String,
+    newest: String,
+    post: String,
+    section_label: String,
+    topic_label: String,
+    query_label: String,
 }
 
 /// Find the forum `key` names, or an error the model can act on, from one read of the store.

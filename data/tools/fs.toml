@@ -1,0 +1,30 @@
+# What fs tells the model; {placeholders} are filled in. Each action's `ask` words the permission
+# card and a failure; `done` words the result.
+too_many = "At most {max} paths in one call."
+link = "{path} is a symbolic link; handle links in the shell."
+holds_cwd = "{path} holds the working directory; it stays where it is."
+is_file = "{path} is a file."
+full_dir = "{path} is a directory holding {entries} entries; pass `recursive: true` to delete it and everything in it."
+no_to = "`to` is required to move or copy."
+no_name = "{path} has no name to keep."
+into_file = "{path} is not a directory; several paths can only go into one."
+exists = "{path} already exists; delete it first or pick another name."
+into_itself = "{path} cannot go inside itself."
+failed = "Could not {verb} {path}: {error}"
+with_contents = "{path} and everything in it"
+
+[verbs.move]
+ask = "move"
+done = "Moved"
+
+[verbs.copy]
+ask = "copy"
+done = "Copied"
+
+[verbs.delete]
+ask = "delete"
+done = "Deleted"
+
+[verbs.mkdir]
+ask = "make"
+done = "Made"

@@ -1,4 +1,3 @@
-use std::fmt::Write as _;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -9,13 +8,32 @@ use serde_json::json;
 use super::shell::Shell;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::config::limits;
+use crate::data;
 use crate::io::proc::{self, Ended, ShellCommand};
 use crate::io::{self, fs::Access};
 use crate::permission;
 use crate::text::controls;
+use crate::text::template::fill;
 use crate::text::truncate::{self, Keep};
 
 static SPEC: LazyLock<Spec> = super::spec!("bash");
+
+static TEXT: LazyLock<Text> = data::load!("tools/bash.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Text {
+    empty: String,
+    no_start: String,
+    tail: String,
+    full: String,
+    stops: String,
+    exit_code: String,
+    signal: String,
+    timed_out: String,
+    cancelled: String,
+    no_output: String,
+}
 
 #[derive(Deserialize)]
 pub struct Args {
@@ -43,7 +61,7 @@ impl Tool for Bash {
 
     fn check(&self, args: &Self::Args, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         if args.command.trim().is_empty() {
-            return Err(Refusal::InvalidArgs("`command` is empty".into()));
+            return Err(Refusal::InvalidArgs(TEXT.empty.clone()));
         }
         let asks = permission::bash::asks(&args.command);
         Ok(Check::new(asks).with_preview(format!("$ {}", args.command.trim())))
@@ -78,7 +96,12 @@ impl Tool for Bash {
                 &mut |chunk| sink.take(chunk),
             )
             .await
-            .map_err(|e| format!("Could not start {}: {e}", self.shell.name))?;
+            .map_err(|e| {
+                fill(
+                    &TEXT.no_start,
+                    &[("shell", &self.shell.name), ("error", &e.to_string())],
+                )
+            })?;
             let text = controls::as_printed(&String::from_utf8_lossy(&sink.held));
             let cut = truncate::cut(
                 &text,
@@ -97,28 +120,42 @@ impl Tool for Bash {
                 if spill.is_none() {
                     spill = save_full(cx, &text);
                 }
-                let stopped = if sink.spill.as_ref().is_some_and(|s| s.stopped) {
-                    format!(" It stops at {} bytes.", limits.bash_spill_max_bytes.value)
+                let stops = if sink.spill.as_ref().is_some_and(|s| s.stopped) {
+                    let bytes = limits.bash_spill_max_bytes.value.to_string();
+                    fill(&TEXT.stops, &[("bytes", &bytes)])
                 } else {
                     String::new()
                 };
-                let _ = writeln!(
-                    content,
-                    "[Showing the last {} of {total} lines.{}{stopped}]",
-                    cut.kept_lines,
-                    spill
-                        .as_ref()
-                        .map(|p| format!(" Full output: {p}"))
-                        .unwrap_or_default()
-                );
+                let full = spill
+                    .as_ref()
+                    .map(|p| fill(&TEXT.full, &[("path", p)]))
+                    .unwrap_or_default();
+                content.push_str(&fill(
+                    &TEXT.tail,
+                    &[
+                        ("kept", &cut.kept_lines.to_string()),
+                        ("total", &total.to_string()),
+                        ("full", &full),
+                        ("stops", &stops),
+                    ],
+                ));
+                content.push('\n');
             }
             content.push_str(&cut.text);
             let (status, failed, code) = match ended {
                 Ended::Exited(Some(0)) => (String::new(), false, Some(0)),
-                Ended::Exited(Some(code)) => (format!("[exit code {code}]"), true, Some(code)),
-                Ended::Exited(None) => ("[terminated by a signal]".into(), true, None),
-                Ended::TimedOut => (format!("[timed out after {secs}s; stopped]"), true, None),
-                Ended::Cancelled => ("[cancelled by the user]".into(), true, None),
+                Ended::Exited(Some(code)) => (
+                    fill(&TEXT.exit_code, &[("code", &code.to_string())]),
+                    true,
+                    Some(code),
+                ),
+                Ended::Exited(None) => (TEXT.signal.clone(), true, None),
+                Ended::TimedOut => (
+                    fill(&TEXT.timed_out, &[("secs", &secs.to_string())]),
+                    true,
+                    None,
+                ),
+                Ended::Cancelled => (TEXT.cancelled.clone(), true, None),
             };
             if !status.is_empty() {
                 if !content.is_empty() {
@@ -127,7 +164,7 @@ impl Tool for Bash {
                 content.push_str(&status);
             }
             if content.is_empty() {
-                content = "(no output)".into();
+                content = TEXT.no_output.clone();
             }
             let out = if failed {
                 Output::error(content)

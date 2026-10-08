@@ -1,0 +1,3 @@
+# What write tells the model; {placeholders} are filled in.
+created = "Created {path} ({lines} lines)."
+replaced = "Replaced {path} ({lines} lines)."

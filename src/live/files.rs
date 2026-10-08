@@ -3,10 +3,23 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::SystemTime;
 
+use serde::Deserialize;
+
+use crate::data;
 use crate::io;
+use crate::text::template::fill;
+
+static TEXT: LazyLock<Text> = data::load!("tools/files.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Text {
+    unread: String,
+    stale: String,
+}
 
 #[derive(Default)]
 pub struct Files {
@@ -32,10 +45,8 @@ impl Files {
             return Ok(());
         };
         match self.seen.lock().unwrap().get(path) {
-            None => Err(format!("Read {shown} before changing it.")),
-            Some(seen) if *seen != Some(current) => Err(format!(
-                "{shown} changed since you last read it; read it again first."
-            )),
+            None => Err(fill(&TEXT.unread, &[("path", shown)])),
+            Some(seen) if *seen != Some(current) => Err(fill(&TEXT.stale, &[("path", shown)])),
             Some(_) => Ok(()),
         }
     }

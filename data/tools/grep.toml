@@ -1,0 +1,4 @@
+# What grep tells the model; {max} is the result limit.
+none = "No matches."
+stopped_matches = "[Stopped at {max} matches; narrow the search.]"
+stopped_files = "[Stopped at {max} files; narrow the search.]"

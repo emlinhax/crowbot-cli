@@ -5,10 +5,23 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
+use crate::data;
 use crate::permission::catalog;
 use crate::permission::gate::Ask;
+use crate::text::template::fill;
 
 static SPEC: LazyLock<Spec> = super::spec!("todowrite");
+
+static TEXT: LazyLock<Text> = data::load!("tools/todowrite.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Text {
+    pending: String,
+    in_progress: String,
+    completed: String,
+    open: String,
+}
 
 #[derive(Deserialize)]
 pub struct Args {
@@ -54,9 +67,9 @@ impl Tool for TodoWrite {
                 .iter()
                 .map(|t| {
                     let mark = match t.status {
-                        Status::Pending => "[ ]",
-                        Status::InProgress => "[>]",
-                        Status::Completed => "[x]",
+                        Status::Pending => &TEXT.pending,
+                        Status::InProgress => &TEXT.in_progress,
+                        Status::Completed => &TEXT.completed,
                     };
                     format!("{mark} {}", t.content)
                 })
@@ -66,8 +79,27 @@ impl Tool for TodoWrite {
                 .iter()
                 .filter(|t| t.status != Status::Completed)
                 .count();
-            Ok(Output::ok(format!("{}\n\n{open} open.", lines.join("\n")))
+            let open = fill(&TEXT.open, &[("open", &open.to_string())]);
+            Ok(Output::ok(format!("{}\n\n{open}", lines.join("\n")))
                 .with_details(json!({"todos": args.todos})))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::testing::Project;
+
+    #[tokio::test]
+    async fn lists_the_todos_back_with_marks_and_the_open_count() {
+        let project = Project::new();
+        let todos = json!({"todos": [
+            {"content": "a", "status": "completed"},
+            {"content": "b", "status": "in_progress"},
+            {"content": "c", "status": "pending"},
+        ]});
+        let out = project.run(&TodoWrite, todos).await;
+        assert_eq!(out.content, "[x] a\n[>] b\n[ ] c\n\n2 open.");
     }
 }

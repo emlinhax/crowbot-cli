@@ -5,11 +5,22 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, target};
+use crate::data;
 use crate::io::{self, fs::Access, fs::Kind};
 use crate::permission::catalog;
 use crate::text::diff;
+use crate::text::template::fill;
 
 static SPEC: LazyLock<Spec> = super::spec!("write");
+
+static TEXT: LazyLock<Text> = data::load!("tools/write.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Text {
+    created: String,
+    replaced: String,
+}
 
 #[derive(Deserialize)]
 pub struct Args {
@@ -29,7 +40,7 @@ impl Tool for Write {
     fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let target = target::resolve(&cx.app.paths, &args.path)?;
         if target.kind()? == Kind::Dir {
-            return Err(format!("{} is a directory.", target.shown).into());
+            return Err(fill(&target::TEXT.is_dir, &[("path", &target.shown)]).into());
         }
         cx.files().check_fresh(&target.path, &target.shown)?;
         let preview = diff::added(&args.content);
@@ -46,15 +57,26 @@ impl Tool for Write {
             let _guard = cx.files().lock(&target.path).await;
             cx.files().check_fresh(&target.path, &target.shown)?;
             let created = target.kind() == Ok(Kind::Missing);
-            io::fs::write_atomic(&target.path, args.content.as_bytes(), Access::Shared)
-                .map_err(|e| format!("Could not write {}: {e}", target.shown))?;
+            io::fs::write_atomic(&target.path, args.content.as_bytes(), Access::Shared).map_err(
+                |e| {
+                    fill(
+                        &target::TEXT.write_failed,
+                        &[("path", &target.shown), ("error", &e.to_string())],
+                    )
+                },
+            )?;
             cx.files().saw(&target.path);
             let lines = args.content.lines().count();
-            let verb = if created { "Created" } else { "Replaced" };
-            Ok(
-                Output::ok(format!("{verb} {} ({lines} lines).", target.shown))
-                    .with_details(json!({"created": created, "lines": lines})),
-            )
+            let said = if created {
+                &TEXT.created
+            } else {
+                &TEXT.replaced
+            };
+            Ok(Output::ok(fill(
+                said,
+                &[("path", &target.shown), ("lines", &lines.to_string())],
+            ))
+            .with_details(json!({"created": created, "lines": lines})))
         })
     }
 }

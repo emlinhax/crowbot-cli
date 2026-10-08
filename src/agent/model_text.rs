@@ -12,7 +12,6 @@ static TEXT: LazyLock<ModelText> = data::load!("model_text.toml");
 #[serde(deny_unknown_fields)]
 pub struct ModelText {
     pub no_result: String,
-    pub cancelled: String,
     pub truncated_tool_call: String,
     pub unknown_tool: String,
     pub bad_json: String,
@@ -23,17 +22,6 @@ pub struct ModelText {
     pub non_interactive: String,
     pub unconfirmed: String,
     pub doom_loop: String,
-    pub questions_answered: String,
-    pub question_answer: String,
-    pub question_own_words: String,
-    pub question_dismissed: String,
-    pub question_unavailable: String,
-    pub plan_missing: String,
-    pub plan_approved: String,
-    pub plan_keep: String,
-    pub plan_changes: String,
-    pub plan_unavailable: String,
-    pub plan_only: String,
     pub mode_left: String,
 }
 

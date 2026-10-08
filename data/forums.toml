@@ -9,6 +9,13 @@ path = "/search_forum_v2"
 app_id = "1"
 app_key = "hdp3jtrujmsUis3r"
 
+# What a failed call says when the forum gives no reason of its own.
+[text]
+refused = "the forum refused the request"
+rejected = "the forum rejected the post"
+login_failed = "login failed"
+unreadable = "reading {method} from {forum}"
+
 # Enabled on first run, so there is something to browse right away. A mobiquo dir can be rotated by
 # the forum; if a call starts 404ing, re-resolve through the directory to refresh it.
 [[seed]]

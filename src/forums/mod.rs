@@ -32,10 +32,21 @@ pub fn data() -> &'static Data {
 #[serde(deny_unknown_fields)]
 pub struct Data {
     pub directory: directory::Directory,
+    pub text: Text,
     #[serde(default)]
     pub seed: Vec<Forum>,
     #[serde(default)]
     pub suggest: Vec<Suggestion>,
+}
+
+/// What a failed call says when the forum gives no reason of its own.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Text {
+    pub refused: String,
+    pub rejected: String,
+    pub login_failed: String,
+    pub unreadable: String,
 }
 
 #[derive(Debug, Deserialize)]

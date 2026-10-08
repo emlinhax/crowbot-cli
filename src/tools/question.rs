@@ -4,14 +4,29 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
-use crate::agent::model_text;
 use crate::config::limits;
+use crate::data;
 use crate::live::prompt::{self, Answer, Prompt, Reply};
 use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
 
 static SPEC: LazyLock<Spec> = super::spec!("question");
+
+static TEXT: LazyLock<Text> = data::load!("tools/question.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Text {
+    count: String,
+    no_text: String,
+    options: String,
+    answered: String,
+    answer: String,
+    own_words: String,
+    dismissed: String,
+    unavailable: String,
+}
 
 #[derive(Deserialize)]
 pub struct Args {
@@ -30,18 +45,20 @@ impl Tool for Question {
     fn check(&self, args: &Self::Args, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let max = limits::get().tools.question_max.value;
         if args.questions.is_empty() || args.questions.len() > max {
-            return Err(Refusal::InvalidArgs(format!(
-                "ask between 1 and {max} questions"
+            return Err(Refusal::InvalidArgs(fill(
+                &TEXT.count,
+                &[("max", &max.to_string())],
             )));
         }
         let options_max = limits::get().tools.question_options_max.value;
         for q in &args.questions {
             if q.question.trim().is_empty() {
-                return Err(Refusal::InvalidArgs("a question has no text".into()));
+                return Err(Refusal::InvalidArgs(TEXT.no_text.clone()));
             }
             if q.options.is_empty() || q.options.len() > options_max {
-                return Err(Refusal::InvalidArgs(format!(
-                    "give each question between 1 and {options_max} options"
+                return Err(Refusal::InvalidArgs(fill(
+                    &TEXT.options,
+                    &[("max", &options_max.to_string())],
                 )));
             }
         }
@@ -54,15 +71,14 @@ impl Tool for Question {
         cx: &'a ToolCx<'a>,
     ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let text = model_text::get();
             let prompt = Prompt::Question {
                 questions: args.questions.clone(),
             };
             Ok(match cx.ask(prompt).await {
                 Some(Reply::Answers(answers)) => Output::ok(said(&args.questions, &answers)),
-                Some(Reply::Unavailable) => Output::ok(text.question_unavailable.clone()),
-                Some(_) => Output::ok(text.question_dismissed.clone()),
-                None => Output::error(text.cancelled.clone()),
+                Some(Reply::Unavailable) => Output::ok(TEXT.unavailable.clone()),
+                Some(_) => Output::ok(TEXT.dismissed.clone()),
+                None => Output::cancelled(),
             })
         })
     }
@@ -70,7 +86,6 @@ impl Tool for Question {
 
 /// Each question with what the user picked and said, for the model.
 fn said(questions: &[prompt::Question], answers: &[Answer]) -> String {
-    let text = model_text::get();
     let lines: Vec<String> = questions
         .iter()
         .zip(answers)
@@ -82,15 +97,15 @@ fn said(questions: &[prompt::Question], answers: &[Answer]) -> String {
                 .map(|o| o.label.clone())
                 .collect();
             if let Some(own) = a.text.as_deref().filter(|t| !t.trim().is_empty()) {
-                parts.push(fill(&text.question_own_words, &[("text", own)]));
+                parts.push(fill(&TEXT.own_words, &[("text", own)]));
             }
             fill(
-                &text.question_answer,
+                &TEXT.answer,
                 &[("question", &q.question), ("answer", &parts.join(", "))],
             )
         })
         .collect();
-    fill(&text.questions_answered, &[("answers", &lines.join("\n"))])
+    fill(&TEXT.answered, &[("answers", &lines.join("\n"))])
 }
 
 #[cfg(test)]

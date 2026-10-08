@@ -67,7 +67,7 @@ fn finish(text: String) -> Output {
     if cut.truncated() {
         content.push_str("\n\n");
         content.push_str(&fill(
-            &TEXT.cut,
+            &crate::tools::text().cut,
             &[
                 ("kept", &cut.kept_lines.to_string()),
                 ("total", &cut.total_lines.to_string()),
@@ -172,7 +172,7 @@ impl Tool for Topics {
             let (fetch, forum) = (&cx.app.fetch, &forum);
             Ok(read_each(
                 &args.section,
-                |section| format!("Section {section}:"),
+                |section| fill(&TEXT.section_label, &[("id", section)]),
                 |section| async move {
                     let list = mobiquo::topics(fetch, forum, &section, page).await?;
                     Ok(render::topics(&list))
@@ -217,7 +217,7 @@ impl Tool for ThreadTool {
             let (fetch, forum) = (&cx.app.fetch, &forum);
             Ok(read_each(
                 &args.topic,
-                |topic| format!("Topic {topic}:"),
+                |topic| fill(&TEXT.topic_label, &[("id", topic)]),
                 |topic| async move {
                     let thread = mobiquo::thread(fetch, forum, &topic, want).await?;
                     Ok(render::thread(&thread))
@@ -262,7 +262,7 @@ impl Tool for Search {
             let (fetch, forum) = (&cx.app.fetch, &forum);
             Ok(read_each(
                 &args.query,
-                |query| format!("\"{query}\":"),
+                |query| fill(&TEXT.query_label, &[("query", query)]),
                 |query| async move {
                     let list = mobiquo::search(fetch, forum, &query, page).await?;
                     Ok(render::topics(&list))

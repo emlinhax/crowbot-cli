@@ -30,8 +30,6 @@ static FORUMS: LazyLock<Forums> = data::load!("prompts/forums.toml");
 #[serde(deny_unknown_fields)]
 struct Forums {
     frame: String,
-    line: String,
-    hint: String,
 }
 
 /// Reminders a mode can name in data/modes/*.toml; one line per prompt file.
@@ -63,24 +61,9 @@ fn forums(paths: &Paths) -> Option<String> {
     if list.is_empty() {
         return None;
     }
-    let lines: Vec<String> = list
-        .iter()
-        .map(|forum| {
-            let line = template::fill(
-                &FORUMS.line,
-                &[("name", &forum.name), ("host", &forum.host())],
-            );
-            match forum.hint.as_str() {
-                "" => line,
-                hint => format!(
-                    "{line}\n{}",
-                    template::fill(&FORUMS.hint, &[("hint", hint)])
-                ),
-            }
-        })
-        .collect();
+    let lines = crate::tools::forum::list(&list, false);
     Some(
-        template::fill(&FORUMS.frame, &[("forums", &lines.join("\n"))])
+        template::fill(&FORUMS.frame, &[("forums", &lines)])
             .trim()
             .to_owned(),
     )

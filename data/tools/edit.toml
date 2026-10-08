@@ -1,0 +1,16 @@
+# What edit tells the model; {placeholders} are filled in. {label} names the edit's old_text.
+bad_edits = "edits: {error}"
+no_edits = "`edits` is required"
+empty_edits = "`edits` is empty"
+missing = "{path} does not exist; use write to create it."
+not_utf8 = "{path} is not UTF-8 text; edit would corrupt it."
+empty_old = "{label} is empty; use write to create a file"
+identical = "{label} and new_text are identical"
+not_found = "{label} was not found"
+closest = "The closest line is {line} ({percent}% similar): `{text}`"
+reread = "Read the file again and copy the text exactly"
+ambiguous = "{label} matches {count} places; include more surrounding lines to make it unique, or set replace_all"
+overlap = "edits[{first}] and edits[{second}] overlap; merge them into one edit"
+no_change = "the edits change nothing"
+loose = " (loose match: {matches})"
+edited = { one = "Edited {path}: {n} replacement{loose}.", many = "Edited {path}: {n} replacements{loose}." }

@@ -7,11 +7,36 @@ use serde_json::json;
 use super::edit_match::{self, Fit, Miss};
 use super::target::{self, Target};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
+use crate::data;
 use crate::io::{self, fs::Access, fs::Kind};
 use crate::permission::catalog;
 use crate::text::diff;
+use crate::text::template::fill;
+use crate::text::units::Plural;
 
 static SPEC: LazyLock<Spec> = super::spec!("edit");
+
+static TEXT: LazyLock<Text> = data::load!("tools/edit.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Text {
+    bad_edits: String,
+    no_edits: String,
+    empty_edits: String,
+    missing: String,
+    not_utf8: String,
+    empty_old: String,
+    identical: String,
+    not_found: String,
+    closest: String,
+    reread: String,
+    ambiguous: String,
+    overlap: String,
+    no_change: String,
+    loose: String,
+    edited: Plural,
+}
 
 #[derive(Deserialize)]
 #[serde(try_from = "Sent")]
@@ -59,13 +84,13 @@ impl TryFrom<Sent> for Args {
             (Some(Edits::One(one)), ..) => vec![one],
             (Some(Edits::Text(text)), ..) => serde_json::from_str::<Vec<EditSpec>>(&text)
                 .or_else(|_| serde_json::from_str::<EditSpec>(&text).map(|e| vec![e]))
-                .map_err(|e| format!("edits: {e}"))?,
+                .map_err(|e| fill(&TEXT.bad_edits, &[("error", &e.to_string())]))?,
             (None, Some(old_text), Some(new_text)) => vec![EditSpec {
                 old_text,
                 new_text,
                 replace_all: false,
             }],
-            _ => return Err("`edits` is required".into()),
+            _ => return Err(TEXT.no_edits.clone()),
         };
         Ok(Self {
             path: sent.path,
@@ -86,7 +111,7 @@ impl Tool for Edit {
     fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let target = target::resolve(&cx.app.paths, &args.path)?;
         if args.edits.is_empty() {
-            return Err(Refusal::InvalidArgs("`edits` is empty".into()));
+            return Err(Refusal::InvalidArgs(TEXT.empty_edits.clone()));
         }
         // A call that will fail is refused now, before anyone is asked to approve it.
         let before = load(&target)?;
@@ -114,20 +139,24 @@ impl Tool for Edit {
             let before = load(&target)?;
             let applied =
                 apply(&before, &args.edits).map_err(|why| format!("{why} ({})", target.shown))?;
-            io::fs::write_atomic(&target.path, applied.text.as_bytes(), Access::Shared)
-                .map_err(|e| format!("Could not write {}: {e}", target.shown))?;
+            io::fs::write_atomic(&target.path, applied.text.as_bytes(), Access::Shared).map_err(
+                |e| {
+                    fill(
+                        &target::TEXT.write_failed,
+                        &[("path", &target.shown), ("error", &e.to_string())],
+                    )
+                },
+            )?;
             cx.files().saw(&target.path);
             let diff = diff::unified(&before, &applied.text, &target.shown);
             let loose = if applied.loose.is_empty() {
                 String::new()
             } else {
-                format!(" (loose match: {})", applied.loose.join("; "))
+                fill(&TEXT.loose, &[("matches", &applied.loose.join("; "))])
             };
-            Ok(Output::ok(format!(
-                "Edited {}: {} replacement{}{loose}.",
-                target.shown,
-                applied.replacements,
-                if applied.replacements == 1 { "" } else { "s" }
+            Ok(Output::ok(fill(
+                &TEXT.edited.of(applied.replacements),
+                &[("path", &target.shown), ("loose", &loose)],
             ))
             .with_details(json!({"diff": diff})))
         })
@@ -144,20 +173,21 @@ pub struct Applied {
 
 /// The file's text, read the same way for the check and the run, or why edit cannot work on it.
 fn load(target: &Target) -> Result<String, String> {
-    let missing = || format!("{} does not exist; use write to create it.", target.shown);
+    let path = [("path", target.shown.as_str())];
+    let missing = || fill(&TEXT.missing, &path);
     match target.kind()? {
         Kind::File => {}
         Kind::Missing => return Err(missing()),
-        Kind::Dir => return Err(format!("{} is a directory.", target.shown)),
+        Kind::Dir => return Err(fill(&target::TEXT.is_dir, &path)),
     }
     match io::fs::read_string(&target.path) {
         Ok(Some(text)) => Ok(text),
         Ok(None) => Err(missing()),
-        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => Err(format!(
-            "{} is not UTF-8 text; edit would corrupt it.",
-            target.shown
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => Err(fill(&TEXT.not_utf8, &path)),
+        Err(e) => Err(fill(
+            &target::TEXT.read_failed,
+            &[("path", &target.shown), ("error", &e.to_string())],
         )),
-        Err(e) => Err(format!("Could not read {}: {e}", target.shown)),
     }
 }
 
@@ -178,26 +208,35 @@ pub fn apply(original: &str, edits: &[EditSpec]) -> Result<Applied, String> {
         };
         let old = edit.old_text.replace("\r\n", "\n");
         let new = edit.new_text.replace("\r\n", "\n");
+        let named = [("label", label.as_str())];
         if old.is_empty() {
-            return Err(format!("{label} is empty; use write to create a file"));
+            return Err(fill(&TEXT.empty_old, &named));
         }
         if old == new {
-            return Err(format!("{label} and new_text are identical"));
+            return Err(fill(&TEXT.identical, &named));
         }
-        let found = edit_match::find(&content, &old, edit.replace_all).map_err(|miss| match miss {
-            Miss::NotFound { hint } => {
-                let mut why = format!("{label} was not found");
-                if let Some(hint) = hint {
-                    why.push_str(". ");
-                    why.push_str(&hint);
+        let found =
+            edit_match::find(&content, &old, edit.replace_all).map_err(|miss| match miss {
+                Miss::NotFound { closest } => {
+                    let mut parts = vec![fill(&TEXT.not_found, &named)];
+                    parts.extend(closest.map(|c| {
+                        fill(
+                            &TEXT.closest,
+                            &[
+                                ("line", &c.line.to_string()),
+                                ("percent", &format!("{:.0}", c.percent)),
+                                ("text", &c.text),
+                            ],
+                        )
+                    }));
+                    parts.push(TEXT.reread.clone());
+                    parts.join(". ")
                 }
-                why.push_str(". Read the file again and copy the text exactly");
-                why
-            }
-            Miss::Ambiguous(n) => format!(
-                "{label} matches {n} places; include more surrounding lines to make it unique, or set replace_all"
-            ),
-        })?;
+                Miss::Ambiguous(n) => fill(
+                    &TEXT.ambiguous,
+                    &[("label", &label), ("count", &n.to_string())],
+                ),
+            })?;
         for span in found.spans {
             if found.strategy != "exact" {
                 let line = content[..span.start].matches('\n').count() + 1;
@@ -219,9 +258,12 @@ pub fn apply(original: &str, edits: &[EditSpec]) -> Result<Applied, String> {
     replacements.sort_by_key(|(span, ..)| span.start);
     for pair in replacements.windows(2) {
         if pair[0].0.end > pair[1].0.start {
-            return Err(format!(
-                "edits[{}] and edits[{}] overlap; merge them into one edit",
-                pair[0].1, pair[1].1
+            return Err(fill(
+                &TEXT.overlap,
+                &[
+                    ("first", &pair[0].1.to_string()),
+                    ("second", &pair[1].1.to_string()),
+                ],
             ));
         }
     }
@@ -231,7 +273,7 @@ pub fn apply(original: &str, edits: &[EditSpec]) -> Result<Applied, String> {
         text.replace_range(span.start..span.end, new);
     }
     if text == content {
-        return Err("the edits change nothing".into());
+        return Err(TEXT.no_change.clone());
     }
     // CEILING: a file mixing CRLF and LF comes back all CRLF; per-line endings would need
     // tracking each line's terminator through the replacement.

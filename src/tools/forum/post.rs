@@ -31,19 +31,25 @@ pub struct PostArgs {
 impl Post {
     /// What the user sees before anything is sent.
     fn preview(forum: &Forum, args: &PostArgs) -> String {
+        let user = forum.username.as_deref().unwrap_or("?");
         match &args.topic {
-            Some(topic) => format!(
-                "Reply to topic {topic} on {} as {}:\n\n{}",
-                forum.name,
-                forum.username.as_deref().unwrap_or("?"),
-                args.body
+            Some(topic) => fill(
+                &TEXT.reply_preview,
+                &[
+                    ("topic", topic),
+                    ("forum", &forum.name),
+                    ("user", user),
+                    ("body", &args.body),
+                ],
             ),
-            None => format!(
-                "New topic on {} as {}\nSubject: {}\n\n{}",
-                forum.name,
-                forum.username.as_deref().unwrap_or("?"),
-                args.subject.as_deref().unwrap_or(""),
-                args.body
+            None => fill(
+                &TEXT.topic_preview,
+                &[
+                    ("forum", &forum.name),
+                    ("user", user),
+                    ("subject", args.subject.as_deref().unwrap_or("")),
+                    ("body", &args.body),
+                ],
             ),
         }
     }
@@ -87,8 +93,8 @@ impl Tool for Post {
             .map_err(|e| format!("{e:#}"))?;
             let extra = posted
                 .url
-                .map(|u| format!(" {u}"))
-                .or_else(|| posted.id.map(|id| format!(" (post {id})")))
+                .map(|url| fill(&TEXT.posted_url, &[("url", &url)]))
+                .or_else(|| posted.id.map(|id| fill(&TEXT.posted_id, &[("id", &id)])))
                 .unwrap_or_default();
             Ok(Output::ok(fill(
                 &TEXT.posted,

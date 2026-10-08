@@ -8,7 +8,6 @@ use serde::Deserialize;
 use serde::de::IgnoredAny;
 
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
-use crate::agent::model_text;
 use crate::data;
 use crate::io;
 use crate::live::prompt::{Prompt, Reply};
@@ -19,7 +18,20 @@ use crate::text::template::fill;
 
 static SPEC: LazyLock<Spec> = super::spec!("plan_exit");
 
-static CHOICES: LazyLock<Vec<Choice>> = data::load!("tools/plan_exit.toml", "choice");
+static TEXT: LazyLock<Text> = data::load!("tools/plan_exit.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Text {
+    only: String,
+    missing: String,
+    approved: String,
+    keep: String,
+    changes: String,
+    unavailable: String,
+    unknown_mode: String,
+    choice: Vec<Choice>,
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -41,7 +53,7 @@ impl Tool for PlanExit {
 
     fn check(&self, _args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         if !cx.shared.mode().plan_exit {
-            return Err(model_text::get().plan_only.clone().into());
+            return Err(TEXT.only.clone().into());
         }
         Ok(Check::new(vec![Ask::new(catalog::PLAN_EXIT.name, "*")]))
     }
@@ -52,38 +64,39 @@ impl Tool for PlanExit {
         cx: &'a ToolCx<'a>,
     ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let text = model_text::get();
             let plan = io::fs::read_string(std::path::Path::new(cx.plan_file))
                 .ok()
                 .flatten()
                 .filter(|p| !p.trim().is_empty());
             let Some(plan) = plan else {
-                return Err(fill(&text.plan_missing, &[("plan_file", cx.plan_file)]));
+                return Err(fill(&TEXT.missing, &[("plan_file", cx.plan_file)]));
             };
             let prompt = Prompt::PlanExit {
                 plan,
-                choices: CHOICES.iter().map(|c| c.label.clone()).collect(),
+                choices: TEXT.choice.iter().map(|c| c.label.clone()).collect(),
             };
             Ok(match cx.ask(prompt).await {
-                Some(Reply::Choice(i)) => match CHOICES.get(i).and_then(|c| c.mode.as_deref()) {
-                    Some(id) => {
-                        let Some(next) = mode::get(id) else {
-                            return Err(format!("unknown mode `{id}`"));
-                        };
-                        cx.shared.set_mode(next);
-                        Output::ok(fill(&text.plan_approved, &[("mode", &next.label)]))
+                Some(Reply::Choice(i)) => {
+                    match TEXT.choice.get(i).and_then(|c| c.mode.as_deref()) {
+                        Some(id) => {
+                            let Some(next) = mode::get(id) else {
+                                return Err(fill(&TEXT.unknown_mode, &[("mode", id)]));
+                            };
+                            cx.shared.set_mode(next);
+                            Output::ok(fill(&TEXT.approved, &[("mode", &next.label)]))
+                        }
+                        None => Output::ok(TEXT.keep.clone()),
                     }
-                    None => Output::ok(text.plan_keep.clone()),
-                },
+                }
                 Some(
                     Reply::Text(feedback)
                     | Reply::No {
                         feedback: Some(feedback),
                     },
-                ) => Output::ok(fill(&text.plan_changes, &[("feedback", &feedback)])),
-                Some(Reply::Unavailable) => Output::ok(text.plan_unavailable.clone()),
-                Some(_) => Output::ok(text.plan_keep.clone()),
-                None => Output::error(text.cancelled.clone()),
+                ) => Output::ok(fill(&TEXT.changes, &[("feedback", &feedback)])),
+                Some(Reply::Unavailable) => Output::ok(TEXT.unavailable.clone()),
+                Some(_) => Output::ok(TEXT.keep.clone()),
+                None => Output::cancelled(),
             })
         })
     }
@@ -97,8 +110,8 @@ mod tests {
 
     #[test]
     fn choices_name_real_modes() {
-        assert!(!CHOICES.is_empty());
-        for choice in CHOICES.iter() {
+        assert!(!TEXT.choice.is_empty());
+        for choice in TEXT.choice.iter() {
             if let Some(id) = &choice.mode {
                 assert!(mode::get(id).is_some(), "unknown mode {id}");
             }

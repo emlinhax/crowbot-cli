@@ -3,6 +3,8 @@
 
 use serde::Deserialize;
 
+use crate::text::template::fill;
+
 #[derive(Deserialize)]
 #[serde(untagged)]
 pub enum Many<T> {
@@ -57,7 +59,12 @@ where
         .await
         .into_iter()
         .map(|(item, result)| {
-            let text = result.unwrap_or_else(|e| format!("could not read {item}: {e:#}"));
+            let text = result.unwrap_or_else(|e| {
+                fill(
+                    &super::text().item_failed,
+                    &[("item", &item), ("error", &format!("{e:#}"))],
+                )
+            });
             (label(&item), text)
         })
         .collect();

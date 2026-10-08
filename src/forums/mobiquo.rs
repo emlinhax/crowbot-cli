@@ -8,6 +8,7 @@ use crate::config::limits;
 use crate::forums::xmlrpc::{self, Arg, Value};
 use crate::forums::{self, Forum, Login, Page, Post, Posted, Section, Thread, Topic, TopicList};
 use crate::io::fetch::{self, Fetch};
+use crate::text::template::fill;
 
 /// This backend's name in a forum's `kind`.
 pub const KIND: &str = "mobiquo";
@@ -56,13 +57,18 @@ async fn send(
         cookie: cookie.as_deref(),
     };
     let resp = forums::post(fetch, &forum.name, request).await?;
-    let value = xmlrpc::parse(&resp.body)
-        .with_context(|| format!("reading {method} from {}", forum.name))?;
+    let value = xmlrpc::parse(&resp.body).with_context(|| {
+        fill(
+            &text().unreadable,
+            &[("method", method), ("forum", &forum.name)],
+        )
+    })?;
     Ok((value, resp.set_cookies))
 }
 
-/// Why a call failed when the forum does not say.
-const REFUSED: &str = "the forum refused the request";
+fn text() -> &'static forums::Text {
+    &forums::data().text
+}
 
 /// The forum's error convention: a `result` member set false, carrying why in `result_text`;
 /// `why` stands in when the forum gives none.
@@ -92,7 +98,7 @@ fn span(page: i64) -> (i64, i64) {
 }
 
 pub async fn sections(fetch: &Fetch, forum: &Forum) -> Result<Vec<Section>> {
-    let value = call(fetch, forum, "get_forum", &[], REFUSED).await?;
+    let value = call(fetch, forum, "get_forum", &[], &text().refused).await?;
     let mut out = Vec::new();
     flatten(value.as_array().unwrap_or(&[]), 0, &mut out);
     Ok(out)
@@ -126,7 +132,7 @@ pub async fn topics(fetch: &Fetch, forum: &Forum, forum_id: &str, page: i64) -> 
             Arg::Int(start),
             Arg::Int(end),
         ],
-        REFUSED,
+        &text().refused,
     )
     .await?;
     Ok(topic_list(&value))
@@ -143,7 +149,7 @@ pub async fn search(fetch: &Fetch, forum: &Forum, query: &str, page: i64) -> Res
             ("page", Arg::Int(page.max(1))),
             ("perpage", Arg::Int(per)),
         ])],
-        REFUSED,
+        &text().refused,
     )
     .await?;
     Ok(topic_list(&value))
@@ -220,7 +226,7 @@ async fn get_thread(
         Arg::Int(end),
         Arg::Bool(false),
     ];
-    call(fetch, forum, "get_thread", &range, REFUSED).await
+    call(fetch, forum, "get_thread", &range, &text().refused).await
 }
 
 /// The last page number for `total` posts at the forum's page size (at least 1).
@@ -231,7 +237,7 @@ fn last_page(total: i64) -> i64 {
 
 pub async fn login(fetch: &Fetch, forum: &Forum, user: &str, password: &str) -> Result<Login> {
     let (value, set) = send(fetch, forum, "login", &[Arg::b64(user), Arg::b64(password)]).await?;
-    let value = ok(value, "login failed")?;
+    let value = ok(value, &text().login_failed)?;
     let cookies = if set.is_empty() {
         forum.cookies.clone()
     } else {
@@ -260,7 +266,7 @@ pub async fn reply(
             Arg::b64(""),
             Arg::b64(body),
         ],
-        REJECTED,
+        &text().rejected,
     )
     .await?;
     Ok(posted(&value))
@@ -282,14 +288,11 @@ pub async fn new_topic(
             Arg::b64(subject),
             Arg::b64(body),
         ],
-        REJECTED,
+        &text().rejected,
     )
     .await?;
     Ok(posted(&value))
 }
-
-/// Why a post failed when the forum does not say.
-const REJECTED: &str = "the forum rejected the post";
 
 fn posted(value: &Value) -> Posted {
     Posted {

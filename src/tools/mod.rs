@@ -4,7 +4,7 @@ mod bash;
 mod codesearch;
 mod edit;
 mod edit_match;
-mod forum;
+pub mod forum;
 mod fs;
 mod glob;
 mod grep;
@@ -18,7 +18,7 @@ mod todowrite;
 mod webfetch;
 mod write;
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
@@ -28,6 +28,7 @@ use serde_json::{Value, json};
 use crate::app::App;
 use crate::config::limits;
 use crate::config::paths::Paths;
+use crate::data;
 use crate::live::event::AgentEvent;
 use crate::live::files::Files;
 use crate::live::prompt::{self, Prompt, Reply};
@@ -64,6 +65,21 @@ impl Spec {
             parameters: serde_json::from_str(schema).expect("tool schemas are checked by tests"),
         }
     }
+}
+
+static TEXT: LazyLock<Text> = data::load!("tools/output.toml");
+
+/// What any tool says about its own output.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Text {
+    pub cut: String,
+    pub item_failed: String,
+    pub cancelled: String,
+}
+
+pub fn text() -> &'static Text {
+    &TEXT
 }
 
 /// What a call needs before it may run, and what it would do, for the permission prompt.
@@ -132,6 +148,11 @@ impl Output {
             is_error: true,
             details: None,
         }
+    }
+
+    /// The call was interrupted before it finished.
+    pub fn cancelled() -> Self {
+        Self::error(TEXT.cancelled.clone())
     }
 
     pub fn with_details(mut self, details: Value) -> Self {

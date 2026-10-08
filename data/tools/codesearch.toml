@@ -1,0 +1,3 @@
+# What codesearch tells the model.
+none = "No results. Drop the repo filter or a term and search again."
+more = "[More results exist; narrow the query.]"

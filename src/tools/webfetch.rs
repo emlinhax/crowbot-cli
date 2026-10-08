@@ -27,7 +27,6 @@ struct Text {
     challenge: String,
     browser: String,
     slow: String,
-    cut: String,
     redirect: String,
     invalid: String,
 }
@@ -151,7 +150,10 @@ impl Tool for WebFetch {
             if cut.truncated() {
                 let (kept, total) = (cut.kept_lines.to_string(), cut.total_lines.to_string());
                 content.push_str("\n\n");
-                content.push_str(&fill(&TEXT.cut, &[("kept", &kept), ("total", &total)]));
+                content.push_str(&fill(
+                    &super::text().cut,
+                    &[("kept", &kept), ("total", &total)],
+                ));
             }
             Ok(Output::ok(content).with_details(json!({
                 "url": url,

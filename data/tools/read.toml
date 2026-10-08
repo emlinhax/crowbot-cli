@@ -1,0 +1,9 @@
+# What read tells the model; {placeholders} are filled in.
+over_budget = "Not read: this batch already holds {budget} bytes. Read it on its own."
+binary = "{path} is a binary file; it cannot be shown as text."
+empty = "{path} is empty."
+past_end = "{path} has {lines} lines; offset {offset} is past the end."
+more_lines = "[Showing lines {first}-{last} of {total}. Use offset={next} to continue.]"
+list_failed = "Could not list {path}: {error}"
+empty_dir = "{path} is an empty directory."
+more_entries = "[{count} more entries; use glob to search.]"

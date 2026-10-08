@@ -141,8 +141,8 @@ lines instead of sending.
 | `data/errors.toml` | Every error kind: title, hint, and whether it is retried (else its status decides). |
 | `data/prompts/` | System prompt pieces and mode reminders. |
 | `data/modes/` | One file per permission mode (MANUAL, PLAN, AUTO): colour, verdicts, locked rules. |
-| `data/tools/` | Each tool's description (`.md`) and argument schema (`.schema.json`). |
-| `data/model_text.toml` | Everything crowbot tells the model on the user's behalf (declines, answers, errors). |
+| `data/tools/` | Each tool's description (`.md`), argument schema (`.schema.json`) and what it says back (`.toml`). |
+| `data/model_text.toml` | What the agent loop tells the model on the user's behalf (declines, refusals, errors). |
 | `data/shells.toml` | Which shell runs commands, per OS, and its environment. |
 | `data/filters.toml` | Pipe filters (`tail -30`, `grep -c ok`): which flags keep a command reading only its input. |
 | `data/theme.toml` | Colours by role, and syntax scopes mapped to roles. |

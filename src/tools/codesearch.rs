@@ -11,11 +11,21 @@ use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::api::Call;
 use crate::api::error::Entry;
 use crate::config::limits;
+use crate::data;
 use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::text::shorten;
 
 static SPEC: LazyLock<Spec> = super::spec!("codesearch");
+
+static TEXT: LazyLock<Text> = data::load!("tools/codesearch.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Text {
+    none: String,
+    more: String,
+}
 
 /// The schema is crowbot's, so the arguments go through untouched; only `query` is read here.
 #[derive(Deserialize)]
@@ -84,9 +94,7 @@ impl Tool for CodeSearch {
                 .await
                 .map_err(|e| format!("{}: {}", Entry::of(&e.info).title, e.info))?;
             if reply.results.is_empty() {
-                return Ok(Output::ok(
-                    "No results. Drop the repo filter or a term and search again.",
-                ));
+                return Ok(Output::ok(TEXT.none.clone()));
             }
             let width = limits::get().tools.grep_line_chars.value;
             let mut out = String::new();
@@ -98,9 +106,17 @@ impl Tool for CodeSearch {
                 }
             }
             if reply.truncated {
-                out.push_str("[More results exist; narrow the query.]");
+                out.push_str(&TEXT.more);
             }
             Ok(Output::ok(out.trim_end().to_owned()))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn text_parses() {
+        std::sync::LazyLock::force(&super::TEXT);
     }
 }

@@ -10,10 +10,19 @@ pub struct Span {
     pub end: usize,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum Miss {
-    NotFound { hint: Option<String> },
+    NotFound { closest: Option<Closest> },
     Ambiguous(usize),
+}
+
+/// The line most like what the model wrote, to point it at the right place.
+#[derive(Debug, PartialEq)]
+pub struct Closest {
+    /// 1-based.
+    pub line: usize,
+    pub percent: f64,
+    pub text: String,
 }
 
 /// How a match relates to the text the model wrote, so the edit can fit its replacement.
@@ -86,7 +95,7 @@ pub fn find(content: &str, needle: &str, all: bool) -> Result<Found, Miss> {
         }
     }
     Err(Miss::NotFound {
-        hint: closest(&doc, needle),
+        closest: closest(&doc, needle),
     })
 }
 
@@ -355,7 +364,7 @@ fn block_anchor(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
 }
 
 /// The line most like the needle's first line, to point the model at the right place.
-fn closest(doc: &Doc<'_>, needle: &str) -> Option<String> {
+fn closest(doc: &Doc<'_>, needle: &str) -> Option<Closest> {
     let limits = &limits::get().edit;
     let first = needle.lines().find(|l| !l.trim().is_empty())?.trim();
     let width = first.chars().count();
@@ -373,13 +382,10 @@ fn closest(doc: &Doc<'_>, needle: &str) -> Option<String> {
         .enumerate()
         .map(|(i, (_, l))| (i, similarity(l.trim(), first)))
         .max_by(|a, b| a.1.total_cmp(&b.1))?;
-    (score * 100.0 >= limits.hint_similarity_pct.value as f64).then(|| {
-        format!(
-            "The closest line is {} ({:.0}% similar): `{}`",
-            index + 1,
-            score * 100.0,
-            doc.lines[index].1.trim()
-        )
+    (score * 100.0 >= limits.hint_similarity_pct.value as f64).then(|| Closest {
+        line: index + 1,
+        percent: score * 100.0,
+        text: doc.lines[index].1.trim().to_owned(),
     })
 }
 
