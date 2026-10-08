@@ -153,13 +153,13 @@ lines instead of sending.
 | `crates/cffetch/` | The user's Cloudflare-aware HTTP client, vendored unchanged (why it is outside the workspace: `Cargo.toml`). Re-sync by copying `src/`, `tests/`, `examples/` and `Cargo.toml` over; its own suite runs from that directory (it hits the network). |
 | `src/api/` | crowbot endpoints, errors, SSE parsing, chat streaming, retry, pairing, signup. |
 | `src/agent/` | The loop (`run.rs`), tool batches, prompts, context repair, doom-loop guard, shared run state. |
-| `src/tools/` | One file per tool behind the `Tool` trait, registered in `tools/mod.rs`; `edit_match.rs` is the fuzzy matcher. |
+| `src/tools/` | One file (or folder) per tool behind the `Tool` trait, registered in `tools/mod.rs`; `edit/find.rs` is the fuzzy matcher. |
 | `src/permission/` | Rules (last match wins), the gate that layers them with the mode, shell splitting. |
 | `src/tui/` | The session: `app.rs` loop, `layout.rs` + `screen.rs` (frame, row diff), `feed.rs` transcript blocks, `view.rs` scrolling, `status.rs` working line, editor, `frame.rs` rules, `boxed.rs` cards, `choice.rs` prompts, `palette.rs` popup, `picker.rs` models, `login.rs`. |
 | `src/text/` | Styled lines, theme, markdown, tables, highlighting, diffs; shared by the TUI and the CLI. |
 | `src/session/` | Append-only JSONL session files under `~/.crowbot/sessions/<project>/`. |
 | `src/frontend/` | Headless `-p` / `--json` output. |
-| `src/commands/` | One file per command, registered in `commands/mod.rs`. |
+| `src/commands/` | One file per command (effect-only ones share `fixed.rs`), registered in `commands/mod.rs`. |
 | `src/{app,cli,settings,paths,limits,mode}.rs` | Startup, routing, layered settings, locations, limits, modes. |
 | `tests/e2e/` | The real binary against an in-process fake crowbot; `pty.rs` drives real sessions. |
 | `tests/fixtures/` | Data the fake serves (`sse/*.sse`, `api/*.json`), sample `projects/`, `scenarios/*.toml`. |
