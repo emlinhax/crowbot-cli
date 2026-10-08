@@ -130,6 +130,16 @@ conversation starts, up to `agent.instructions_bytes`. Pasting works everywhere;
 where a paste arrives as keystrokes, a burst of keys is recognised as a paste so its Enters add
 lines instead of sending.
 
+## Environment
+
+| Variable | Does |
+|---|---|
+| `CROWBOT_HOME` | moves `~/.crowbot` (keys, sessions, settings, caches) |
+| `CROWBOT_API_KEY` | the key to use, over any stored one |
+| `CROWBOT_NO_UPDATE` | turns the daily self-update off, as `auto_update = false` does |
+| `CROWBOT_API_URL`, `CROWBOT_CHAT_URL` | point crowbot's API and its chat site elsewhere (`data/endpoints.toml`) |
+| `CROWBOT_RELEASES_URL` | where the updater lists releases (GitHub's API by default) |
+
 ## Layout
 
 | Path | What lives there |
