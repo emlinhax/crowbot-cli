@@ -59,8 +59,8 @@ fn answer_open(out: &mut Vec<Message>, open: &mut Vec<(String, String)>) {
     }
 }
 
-/// A reply cut off at the output limit may end in a call whose JSON stops halfway; it was never
-/// run (its result says so), and it goes back as `{}` so the history is one a vendor accepts.
+/// A reply cut at the output limit may end in half-written JSON. That call never ran (its result
+/// says so); it is replayed as `{}` so vendors accept the history.
 fn whole_arguments(a: &Assistant) -> Assistant {
     let mut a = a.clone();
     for part in &mut a.parts {

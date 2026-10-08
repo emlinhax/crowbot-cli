@@ -1,5 +1,4 @@
-//! Session state a run shares with whoever drives it: queued messages, pending prompts, the
-//! mode, and the interrupt. Frontends change it while a run is live.
+//! Session state shared by a run and the frontend driving it, which may change it mid-run.
 
 use std::collections::VecDeque;
 use std::sync::Mutex;
