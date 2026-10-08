@@ -30,6 +30,10 @@ pub fn get(id: &str) -> Option<&'static Level> {
     levels().iter().find(|l| l.id == id)
 }
 
+pub fn ids() -> Vec<&'static str> {
+    levels().iter().map(|l| l.id.as_str()).collect()
+}
+
 /// `Err` lists the levels there are.
 pub fn find(id: &str) -> anyhow::Result<&'static Level> {
     get(id).ok_or_else(|| {

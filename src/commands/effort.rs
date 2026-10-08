@@ -8,7 +8,7 @@ use crate::data;
 use crate::effort;
 use crate::text::template::fill;
 
-static SPEC: LazyLock<Spec> = super::spec!("effort");
+static SPEC: LazyLock<Spec> = super::spec!("effort", "levels" => effort::ids().join("|"));
 static TEXT: LazyLock<Text> = data::load!("commands/effort.toml", "text");
 
 #[derive(Deserialize)]
@@ -34,13 +34,11 @@ impl Command for Effort {
             match args {
                 [] => {
                     let current = cx.session.as_ref().and_then(|s| s.effort.as_deref());
-                    let levels: Vec<&str> =
-                        effort::levels().iter().map(|l| l.id.as_str()).collect();
                     Ok(fill(
                         &TEXT.current,
                         &[
                             ("effort", current.unwrap_or(&TEXT.unset)),
-                            ("levels", &levels.join(", ")),
+                            ("levels", &effort::ids().join(", ")),
                         ],
                     )
                     .into())
@@ -52,21 +50,5 @@ impl Command for Effort {
                 _ => Err(cx.usage(&SPEC)),
             }
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_usage_offers_every_level() {
-        for level in effort::levels() {
-            assert!(
-                SPEC.usage.contains(&level.id),
-                "{} is not in the usage",
-                level.id
-            );
-        }
     }
 }

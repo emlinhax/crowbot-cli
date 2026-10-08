@@ -132,6 +132,10 @@ pub fn get(id: &str) -> Option<&'static Mode> {
     MODES.iter().find(|m| m.id == id)
 }
 
+pub fn ids() -> Vec<&'static str> {
+    MODES.iter().map(|m| m.id.as_str()).collect()
+}
+
 /// `Err` lists the modes there are.
 pub fn find(id: &str) -> anyhow::Result<&'static Mode> {
     get(id).ok_or_else(|| {

@@ -55,9 +55,8 @@ enum Sub {
 
 /// `Cli`'s shape with the parts that are data filled in.
 fn command() -> clap::Command {
-    let ids = |ids: Vec<&str>| ids.join(", ");
-    let efforts = ids(effort::levels().iter().map(|l| l.id.as_str()).collect());
-    let modes = ids(mode::all().iter().map(|m| m.id.as_str()).collect());
+    let efforts = effort::ids().join(", ");
+    let modes = mode::ids().join(", ");
     let names: Vec<&str> = commands::listed(Scope::Cli)
         .map(|s| s.name.as_str())
         .collect();
@@ -71,7 +70,7 @@ fn command() -> clap::Command {
         })
         .after_help(format!(
             "Commands: {}. Other words are the prompt.",
-            ids(names)
+            names.join(", ")
         ))
 }
 

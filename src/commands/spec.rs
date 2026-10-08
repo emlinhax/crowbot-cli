@@ -26,14 +26,16 @@ impl Scope {
     }
 }
 
-/// A `LazyLock` of command `name`'s spec, from data/commands/<name>.toml.
+/// A `LazyLock` of command `name`'s spec, from data/commands/<name>.toml, with `{key}` in its
+/// usage filled in from each `key => value` given.
 macro_rules! spec {
-    ($name:literal) => {
+    ($name:literal $(, $key:literal => $value:expr)* $(,)?) => {
         std::sync::LazyLock::new(|| {
-            $crate::data::parse(
+            let spec: $crate::commands::Spec = $crate::data::parse(
                 $crate::data::raw!("commands/", $name, ".toml"),
                 concat!("commands/", $name, ".toml"),
-            )
+            );
+            spec.fill(&[$(($key, &$value)),*])
         })
     };
 }
@@ -56,6 +58,14 @@ pub struct Spec {
     /// Flags whose values are secrets: echoed and remembered only as a hint.
     #[serde(default)]
     pub secret: Vec<String>,
+}
+
+impl Spec {
+    /// The usage with `{key}` placeholders filled in, for usages that list a catalog's ids.
+    pub fn fill(mut self, vars: &[(&str, &str)]) -> Self {
+        self.usage = crate::text::template::fill(&self.usage, vars);
+        self
+    }
 }
 
 fn everywhere() -> Vec<Scope> {
