@@ -8,8 +8,8 @@ use crate::api::error::Entry as ErrorEntry;
 use crate::config::limits;
 use crate::conversation::error::ErrorInfo;
 use crate::conversation::message::{Assistant, Finish, ToolResult};
-use crate::frontend::tui::cards::{self, State};
-use crate::frontend::tui::{status, ui, welcome};
+use crate::frontend::tui::calls::{self, State};
+use crate::frontend::tui::{progress, ui, welcome};
 use crate::frontend::words;
 use crate::live::event::{AgentEvent, DeltaKind, Ended, Outcome};
 use crate::text::styled::{Line, Style};
@@ -340,8 +340,8 @@ impl Feed {
                     .map(|tool| {
                         let elapsed = now.duration_since(tool.since).as_millis();
                         let frame =
-                            status::frame(&ui::get().spinner, elapsed, limits.spinner_ms.value);
-                        cards::header(&tool.name, &tool.arguments, State::Running(frame))
+                            progress::frame(&ui::get().spinner, elapsed, limits.spinner_ms.value);
+                        calls::header(&tool.name, &tool.arguments, State::Running(frame))
                             .truncate(width)
                     })
                     .collect(),
@@ -410,7 +410,7 @@ fn render(block: &Block, open: bool, width: usize) -> Vec<Line> {
             Line::styled(text, Style::fg(role)).wrap(width, &Line::default())
         }
         Block::Tool { arguments, result } => {
-            cards::finished(&result.name, arguments, result, width)
+            calls::finished(&result.name, arguments, result, width)
         }
         Block::Thinking { text, secs } => {
             let words = &ui::get().thinking;

@@ -31,12 +31,12 @@ use crate::frontend::tui::next_turn::NextTurn;
 use crate::frontend::tui::palette::{self, Palette};
 use crate::frontend::tui::paste::Burst;
 use crate::frontend::tui::picker::{self, Picker};
+use crate::frontend::tui::progress::Progress;
 use crate::frontend::tui::queue::{self, Kind};
 use crate::frontend::tui::screen::Screen;
-use crate::frontend::tui::status::Progress;
 use crate::frontend::tui::toast::Toast;
 use crate::frontend::tui::view::View;
-use crate::frontend::tui::{frame, layout, ui, welcome};
+use crate::frontend::tui::{bar, layout, ui, welcome};
 use crate::io::term::{self, Button, Input, KeyCode};
 use crate::io::{clipboard, clock};
 use crate::live::event::{AgentEvent, Ended};
@@ -904,7 +904,7 @@ impl<'a> Tui<'a> {
         match card {
             Some(lines) => live.extend(lines),
             None => {
-                live.push(frame::top(mode, width));
+                live.push(bar::top(mode, width));
                 if !running {
                     let found = self.palette.open(&self.editor.text());
                     if !found.is_empty() {
@@ -918,9 +918,9 @@ impl<'a> Tui<'a> {
                 live.extend(self.editor.render(width, rows, &prompt, &ui.placeholder));
             }
         }
-        live.push(frame::bottom(
+        live.push(bar::bottom(
             mode,
-            &frame::Info {
+            &bar::Info {
                 model: &self.next.model.id,
                 effort: self.next.effort(),
                 context_pct: self.context_pct(),
