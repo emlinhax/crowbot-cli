@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
 use crate::fake_crowbot::Fake;
-use crate::{CLEARED, Sandbox, launch_env};
+use crate::{Sandbox, cleared, launch_env};
 
 pub const ROWS: u16 = 30;
 pub const COLS: u16 = 100;
@@ -67,10 +67,10 @@ impl Session {
         let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_crowbot"));
         cmd.args(args);
         cmd.cwd(sandbox.project());
-        for name in CLEARED {
+        for name in cleared() {
             cmd.env_remove(name);
         }
-        for (name, value) in launch_env(sandbox.home(), api_url, key) {
+        for (name, value) in launch_env(sandbox.home(), Some(api_url), key) {
             cmd.env(name, value);
         }
         cmd.env("TERM", "xterm-256color");

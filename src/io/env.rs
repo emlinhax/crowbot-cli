@@ -4,8 +4,8 @@ use std::io;
 use std::path::PathBuf;
 
 // CEILING: variables that change what crowbot shows (colour depth, glyphs, clock, clipboard) are
-// read across io/, and tests/e2e/main.rs `CLEARED` mirrors them by hand. A typed list here would
-// let the harness clear exactly what crowbot reads.
+// read across io/, and tests/common `cleared()` lists them by hand, past what data/terminals.toml
+// names. A typed list here would let the harness clear exactly what crowbot reads.
 
 /// One variable; empty counts as unset.
 pub fn var(name: &str) -> Option<String> {
