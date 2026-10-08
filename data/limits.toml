@@ -74,7 +74,7 @@ reason = "the same cadence crowbot's own installer uses; approval is a human act
 
 [pair.backoff_ms]
 value = 5000
-reason = "pause after crowbot rate-limits the polling"
+reason = "pause after a polling error worth retrying"
 
 [signup.max_attempts]
 value = 3
@@ -130,7 +130,7 @@ reason = "files one read call returns; each keeps its own line cap, and past thi
 
 [tools.read_batch_bytes]
 value = 153600
-reason = "a batched read stops adding files past three single reads' worth (~37k tokens); the rest are named so they can be read on their own"
+reason = "three single reads' worth (~37k tokens); files past it are named, not read"
 
 [tools.list_depth_max]
 value = 5
@@ -170,7 +170,7 @@ reason = "after the shell exits, output still in flight gets this long before th
 
 [tools.bash_memory_bytes]
 value = 262144
-reason = "output held in memory before the rest goes to a spill file; a few max_bytes, since escapes and redrawn progress lines shrink it"
+reason = "held in memory before spilling to a file; a few max_bytes, since cleaning shrinks it"
 
 [tools.bash_spill_max_bytes]
 value = 67108864
@@ -198,11 +198,11 @@ reason = "topics or posts fetched per page, matching what the Tapatalk app reque
 
 [forums.batch_max]
 value = 8
-reason = "threads, topic pages or searches fetched in one batched forum tool call, run at once; enough to be useful without hammering the forum"
+reason = "fetches one batched forum call runs at once; useful without hammering the forum"
 
 [forums.directory_results]
 value = 10
-reason = "forums a directory search offers to pick from; past this the search words need narrowing, not a longer list"
+reason = "forums a directory search offers; more means the words need narrowing"
 
 [edit.anchor_similarity_pct]
 value = 65
@@ -294,7 +294,7 @@ reason = "rows one wheel notch scrolls the transcript; terminals scroll their ow
 
 [tui.status_frame_ms]
 value = 90
-reason = "eight frames carry the flock through one rise and fall in about three quarters of a second, calm but alive"
+reason = "eight frames make one rise and fall in about 0.7 s"
 
 [tui.shimmer_ms]
 value = 70
