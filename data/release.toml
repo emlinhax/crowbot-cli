@@ -1,7 +1,6 @@
-# Which file of a release each platform runs, by Rust's names for the OS and CPU
-# (std::env::consts). The release workflow names its assets `crowbot-<target>`; a test holds
-# these to the targets .github/workflows/ci.yml builds. crowbot.sh lists the same files in the
-# website repo's src/crowbot/content/cli.yaml: a new or renamed asset changes both.
+# Release file per platform, keyed by std::env::consts OS and ARCH. Assets are `crowbot-<target>`;
+# a test checks them against ci.yml. The website's src/crowbot/content/cli.yaml lists the same
+# files: change both.
 sums = "SHA256SUMS"
 
 [[asset]]
