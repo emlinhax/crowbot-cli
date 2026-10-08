@@ -165,6 +165,7 @@ async fn clear<'a>(
                 tool: call.name.clone(),
                 asks: asks.clone(),
                 preview: check.preview,
+                confirm: check.confirm,
             };
             match tcx.ask(prompt).await {
                 Some(Reply::Yes) => Ok((tool.clone(), args)),

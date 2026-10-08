@@ -165,7 +165,7 @@ mod tests {
     use crate::api::models::{Capabilities, Model, Pricing};
     use crate::app::App;
     use crate::io::http::Http;
-    use crate::live::prompt::{Answer, Reply};
+    use crate::live::prompt::{Answer, Prompt, Reply};
     use crate::mode;
     use crate::tools::Registry;
 
@@ -573,14 +573,20 @@ mod tests {
     #[tokio::test]
     async fn a_forum_post_asks_once_even_in_auto() {
         let h = posting().await;
+        let confirmed = Mutex::new(Vec::new());
         let (_, _, events) = h
             .run(&shared("auto"), |event, shared| {
-                if let AgentEvent::Prompt { id, .. } = event {
+                if let AgentEvent::Prompt { id, prompt, .. } = event {
+                    if let Prompt::Permission { confirm, .. } = prompt {
+                        confirmed.lock().unwrap().push(*confirm);
+                    }
                     shared.prompts.answer(*id, Reply::Yes);
                 }
             })
             .await;
         assert_eq!(events.iter().filter(|e| *e == "prompt").count(), 1);
+        // The prompt says so, so a frontend words it as a confirmation.
+        assert_eq!(*confirmed.lock().unwrap(), [true]);
     }
 
     #[tokio::test]

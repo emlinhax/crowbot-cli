@@ -25,6 +25,7 @@ pub struct PrintWords {
     pub call: String,
     pub failed: String,
     pub needs_permission: String,
+    pub unconfirmed: String,
     pub hint: String,
 }
 

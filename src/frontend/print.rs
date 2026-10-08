@@ -141,14 +141,26 @@ impl Printer<'_> {
                 self.note(&fill(&words::get().print.failed, &[("error", &error)]));
             }
             AgentEvent::Prompt {
-                prompt: Prompt::Permission { tool, asks, .. },
+                prompt:
+                    Prompt::Permission {
+                        tool,
+                        asks,
+                        confirm,
+                        ..
+                    },
                 call_id,
                 ..
             } => {
                 self.declined.lock().unwrap().push(call_id.clone());
                 let what = shorten::line(&gate::describe(asks), note_chars());
+                let print = &words::get().print;
+                let line = if *confirm {
+                    &print.unconfirmed
+                } else {
+                    &print.needs_permission
+                };
                 self.note(&fill(
-                    &words::get().print.needs_permission,
+                    line,
                     &[
                         ("tool", tool),
                         ("what", &what),

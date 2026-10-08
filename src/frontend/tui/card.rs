@@ -31,6 +31,7 @@ pub fn from_prompt(id: u64, prompt: &Prompt, width: usize) -> Box<dyn Card> {
             tool,
             asks,
             preview,
+            ..
         } => Box::new(Choice::permission(
             id,
             tool,

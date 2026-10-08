@@ -22,6 +22,9 @@ pub enum Prompt {
         /// What the call would do: a diff, a command.
         #[serde(skip_serializing_if = "Option::is_none")]
         preview: Option<String>,
+        /// The user confirms this call every time; no mode answers it for them.
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        confirm: bool,
     },
     /// The model asks the user to choose; several questions share one card.
     Question { questions: Vec<Question> },
@@ -163,7 +166,9 @@ pub async fn ask(
     prompt: Prompt,
     cancel: &CancellationToken,
 ) -> Option<Reply> {
-    let (id, reply) = prompts.register(matches!(prompt, Prompt::Permission { .. }));
+    // A confirmation is the user's every time, so a switch to a mode that asks nothing leaves it.
+    let approvable = matches!(prompt, Prompt::Permission { confirm: false, .. });
+    let (id, reply) = prompts.register(approvable);
     emit(AgentEvent::Prompt {
         id,
         call_id: call_id.to_owned(),
@@ -175,5 +180,31 @@ pub async fn ask(
             prompts.forget(id);
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_mode_that_asks_nothing_approves_permissions_but_not_confirmations() {
+        let prompts = Prompts::default();
+        let cancel = CancellationToken::new();
+        let emit = |_: AgentEvent| {};
+        let permission = |confirm| Prompt::Permission {
+            tool: "forum_post".into(),
+            asks: Vec::new(),
+            preview: None,
+            confirm,
+        };
+        let plain = ask(&prompts, &emit, "a", permission(false), &cancel);
+        let confirm = ask(&prompts, &emit, "b", permission(true), &cancel);
+        tokio::pin!(plain, confirm);
+        assert!(futures_util::poll!(&mut plain).is_pending());
+        assert!(futures_util::poll!(&mut confirm).is_pending());
+        prompts.approve_permissions();
+        assert!(matches!(plain.await, Some(Reply::Yes)));
+        assert!(prompts.waiting(2), "the confirmation still waits");
     }
 }
