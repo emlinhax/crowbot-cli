@@ -1,6 +1,5 @@
-//! Columns that fit a width. Each column starts as wide as its widest cell, then the widest one
-//! gives up a cell at a time (its cells cut with `…`) until the table fits, so rows always stay
-//! aligned. Markdown grids, `crowbot models` and the model picker all lay out here.
+//! Columns that fit a width: each starts at its widest cell, then the widest gives up one cell at a
+//! time (cut with `…`) until the table fits.
 
 use crate::config::limits;
 use crate::text::styled::{Line, Style};

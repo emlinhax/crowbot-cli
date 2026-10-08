@@ -1,5 +1,5 @@
-# Code-fence languages the bundled syntaxes know under another name. Unknown languages (TOML,
-# PowerShell, … are not bundled) are shown uncoloured rather than guessed.
+# Fence names the bundled grammars know by another name. Languages without a grammar (TOML,
+# PowerShell, …) stay uncoloured.
 [alias]
 ts = "js"
 tsx = "js"

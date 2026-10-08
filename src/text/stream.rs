@@ -5,11 +5,9 @@ use pulldown_cmark::{Event, Parser};
 
 use crate::text::markdown;
 
-/// The byte length of `text` made of finished blocks: everything before the last top-level
-/// block that follows a blank line. What comes after may still be growing (a list gains items,
-/// a fence its closing line), and a block with no blank line before it may still turn out to be
-/// part of the one above: half a table row parses as a paragraph until its cells arrive. Parsed
-/// as the renderer parses, so a cut never falls inside a block it draws whole.
+/// Byte length of the finished blocks: all before the last top-level block that follows a blank
+/// line. Later blocks may still grow, or join the one above (half a table row parses as a
+/// paragraph). Parsed with the renderer's options.
 pub fn complete_prefix(text: &str) -> usize {
     let mut depth = 0usize;
     let mut last = 0;
