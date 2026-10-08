@@ -1,3 +1,8 @@
 name = "logout"
 summary = "Remove this machine's stored key"
 usage = "logout"
+
+# What logout says; {chat} is crowbot's chat site.
+[text]
+logged_out = "Logged out. The key still works until revoked on {chat}."
+no_key = "No key was stored on this machine."

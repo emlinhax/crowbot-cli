@@ -29,6 +29,9 @@ struct Text {
     username_prompt: String,
     password_prompt: String,
     no_results: String,
+    add_hint: String,
+    suggest: String,
+    needs_terminal: String,
 }
 
 pub struct Forums;
@@ -109,15 +112,15 @@ fn list(cx: &Ctx<'_>) -> String {
 }
 
 fn add_hint(cx: &Ctx<'_>) -> String {
-    let example = format!(
-        "Add a forum by URL or name, e.g. `{}`.",
-        cx.scope.invoke("forums add unknowncheats")
-    );
+    let example = cx.scope.invoke("forums add unknowncheats");
+    let mut out = fill(&TEXT.add_hint, &[("example", &example)]);
     let stored = store::load(&cx.app.paths).unwrap_or_default();
-    match account::suggestions(&stored).as_slice() {
-        [] => example,
-        suggestions => format!("{example} Try: {}.", suggestions.join(", ")),
+    let suggestions = account::suggestions(&stored);
+    if !suggestions.is_empty() {
+        let suggestions = suggestions.join(", ");
+        out.push_str(&fill(&TEXT.suggest, &[("suggestions", &suggestions)]));
     }
+    out
 }
 
 async fn add(cx: &Ctx<'_>, query: &str) -> anyhow::Result<String> {
@@ -142,7 +145,7 @@ pub fn added(scope: Scope, forum: &Forum) -> String {
 
 async fn login(cx: &Ctx<'_>, key: &str) -> anyhow::Result<String> {
     if !term::stdin_is_terminal() {
-        anyhow::bail!("logging in needs a terminal");
+        anyhow::bail!(TEXT.needs_terminal.clone());
     }
     let forum = account::find_or_add(&cx.app.fetch, &cx.app.paths, key).await?;
     term::out(&fill(&TEXT.username_prompt, &[("name", &forum.name)]));

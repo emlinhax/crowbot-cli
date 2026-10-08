@@ -2,3 +2,12 @@ name = "signup"
 summary = "Create a crowbot account on this machine (no email, no password)"
 usage = "signup [--force]"
 scope = ["cli"]
+
+# What signup says; {placeholders} are filled in.
+[text]
+logged_in = "this machine is already logged in; `{logout}` first, or pass --force if the current key is saved elsewhere"
+creating = "Creating a crowbot account (solving a proof-of-work challenge)…"
+number = "\nYour account number:  {number}\n\nThis number is your login and your API key. There is no email and no recovery,\nso store it in a password manager now. A copy is saved in {path}.\n"
+next = "Next: fund it at {chat}."
+confirm = "Type its last {n} digits to confirm you saved it: "
+mismatch = "That does not match; check what you saved."

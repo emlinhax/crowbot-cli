@@ -12,7 +12,7 @@ Pair this machine with your crowbot account:
 
 Waiting for approval (Ctrl+C to cancel)…"""
 logged_in = "Logged in with {what} {hint}. Balance {balance}."
-cannot_spend = " The account cannot spend yet; top it up at chat.crowbot.sh."
+cannot_spend = " The account cannot spend yet; top it up at {chat}."
 status = "Logged in with {what} {hint}."
 from_env = "Using CROWBOT_API_KEY from the environment."
 env_note = " CROWBOT_API_KEY is set in this environment; crowbot uses it over any stored key until it is unset."

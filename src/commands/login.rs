@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use super::{Command, Ctx, Effect, Outcome, Scope, Spec};
 use crate::api::account::Me;
+use crate::api::endpoints;
 use crate::api::pair;
 use crate::app::App;
 use crate::auth::{self, KeyKind, Origin};
@@ -102,7 +103,10 @@ pub fn logged_in(kind: KeyKind, secret: &str, me: &Me) -> String {
         ],
     );
     if !me.can_spend {
-        out.push_str(&TEXT.cannot_spend);
+        out.push_str(&fill(
+            &TEXT.cannot_spend,
+            &[("chat", &endpoints::origin("chat"))],
+        ));
     }
     out.push_str(env_note());
     out
