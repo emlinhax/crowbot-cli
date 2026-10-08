@@ -25,6 +25,13 @@ pub struct Turn<'a> {
     pub tools: &'a [serde_json::Value],
 }
 
+impl Turn<'_> {
+    /// The effort sent and recorded: none for a model that does not reason.
+    pub fn effort(&self) -> Option<&str> {
+        self.model.effort(self.effort)
+    }
+}
+
 pub enum Event<'a> {
     Delta(Delta<'a>),
     Retry {
@@ -55,7 +62,7 @@ pub async fn stream(
             });
             tokio::select! {
                 () = io::clock::sleep(delay) => {}
-                () = cancel.cancelled() => return message(turn, Vec::new(), Finish::Aborted, None, None, None),
+                () = cancel.cancelled() => return reply(turn, Finish::Aborted),
             }
             attempt += 1;
             continue;
@@ -86,7 +93,7 @@ async fn attempt_once(
     let opened = tokio::select! {
         r = api.open("chat", call) => r,
         () = cancel.cancelled() => return Outcome {
-            message: message(turn, Vec::new(), Finish::Aborted, None, None, None),
+            message: reply(turn, Finish::Aborted),
             emitted: false,
             retry_after: None,
         },
@@ -94,16 +101,8 @@ async fn attempt_once(
     let resp = match opened {
         Ok(resp) => resp,
         Err(ApiError { info, retry_after }) => {
-            let request_id = info.request_id.clone();
             return Outcome {
-                message: message(
-                    turn,
-                    Vec::new(),
-                    Finish::Error,
-                    None,
-                    Some(info),
-                    request_id,
-                ),
+                message: failed(turn, info),
                 emitted: false,
                 retry_after,
             };
@@ -153,7 +152,13 @@ async fn attempt_once(
     };
     let usage = done.usage.map(|u| cost(turn.model, &u));
     Outcome {
-        message: message(turn, done.parts, finish, usage, error, request_id),
+        message: Assistant {
+            parts: done.parts,
+            usage,
+            error,
+            request_id,
+            ..reply(turn, finish)
+        },
         emitted,
         retry_after: None,
     }
@@ -180,7 +185,7 @@ fn request(turn: &Turn<'_>) -> wire::Request {
         stream_options: StreamOptions {
             include_usage: true,
         },
-        reasoning_effort: turn.model.effort(turn.effort).map(str::to_owned),
+        reasoning_effort: turn.effort().map(str::to_owned),
     }
 }
 
@@ -205,22 +210,25 @@ fn with_request_id(mut error: ErrorInfo, request_id: &Option<String>) -> ErrorIn
     error
 }
 
-fn message(
-    turn: &Turn<'_>,
-    parts: Vec<crate::conversation::message::Part>,
-    finish: Finish,
-    usage: Option<Usage>,
-    error: Option<ErrorInfo>,
-    request_id: Option<String>,
-) -> Assistant {
+/// A reply with nothing in it, as a turn records one.
+fn reply(turn: &Turn<'_>, finish: Finish) -> Assistant {
     Assistant {
-        parts,
+        parts: Vec::new(),
         model: turn.model.id.clone(),
-        effort: turn.model.effort(turn.effort).map(str::to_owned),
-        usage,
+        effort: turn.effort().map(str::to_owned),
+        usage: None,
         finish,
-        error,
-        request_id,
+        error: None,
+        request_id: None,
+    }
+}
+
+/// A reply that never came, recording why.
+fn failed(turn: &Turn<'_>, info: ErrorInfo) -> Assistant {
+    Assistant {
+        request_id: info.request_id.clone(),
+        error: Some(info),
+        ..reply(turn, Finish::Error)
     }
 }
 
@@ -270,8 +278,7 @@ mod tests {
             messages: &[],
             tools: &[],
         };
-        let recorded =
-            |turn: &Turn<'_>| message(turn, vec![], Finish::Done, None, None, None).effort;
+        let recorded = |turn: &Turn<'_>| reply(turn, Finish::Done).effort;
         assert!(request(&turn).reasoning_effort.is_none());
         assert_eq!(recorded(&turn), None);
         let m = model(true);
