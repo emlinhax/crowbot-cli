@@ -86,6 +86,11 @@ fn ensure_parent(path: &Path) -> io::Result<()> {
     }
 }
 
+/// `path` with `/` separators, as tools show and match paths on every OS.
+pub fn slashed(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
 /// `path` with links, `.` and `..` resolved as far as it exists on disk; the part that does not
 /// exist yet (a file about to be written) is appended as written.
 pub fn canonical(path: &Path) -> PathBuf {

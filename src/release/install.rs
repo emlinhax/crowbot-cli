@@ -202,7 +202,7 @@ mod tests {
     #[test]
     fn the_install_folder_is_the_users_own() {
         let place = Place::here().unwrap();
-        let shown = place.dir.to_string_lossy().replace('\\', "/");
+        let shown = crate::io::fs::slashed(&place.dir);
         if cfg!(windows) {
             assert!(shown.ends_with("/Programs/crowbot"), "{shown}");
             assert!(place.exe.ends_with("crowbot.exe"));

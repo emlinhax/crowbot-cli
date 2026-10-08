@@ -249,10 +249,7 @@ fn compile(pattern: &str) -> Result<GlobMatcher, String> {
 }
 
 fn relative_slashes(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/")
+    super::fs::slashed(path.strip_prefix(root).unwrap_or(path))
 }
 
 #[cfg(test)]
