@@ -170,7 +170,7 @@ lines instead of sending.
 | `tests/fixtures/` | What the fake serves (`sse/`, `api/`), sample `projects/`, `scenarios/*.toml`, frozen `session/` files. |
 | `tests/golden/` | Edit-matcher cases (`edit/`) and the `--json` stream (`json/`). |
 | `tests/smoke.rs` | The only tests that touch the real API (`make smoke`). |
-| `reference/` | Gitignored clones of opencode and pi plus crowbot's docs; designs are ported from here. |
+| `reference/` | Clones of opencode and pi plus crowbot's docs; local only, see AGENTS.md. |
 
 Settings layer in this order, later wins: `data/defaults.toml`, `~/.crowbot/config.toml`,
 `.crowbot/config.toml` in the start directory, then flags; `[[permission]]` rules append instead.
@@ -183,7 +183,7 @@ A session started there shows what the file asks for and asks first, and remembe
 
 ## Checks
 
-GNU make, run from Git Bash on Windows (`winget install ezwinports.make`).
+GNU make (see the Makefile's first line).
 
 webfetch fetches through cffetch, whose BoringSSL is built from source, so a build also needs
 CMake and libclang (`LIBCLANG_PATH` pointing at LLVM's `bin` when it is not found on its own),
@@ -191,18 +191,20 @@ plus NASM on Windows (`winget install Kitware.CMake LLVM.LLVM NASM.NASM`). CI in
 through `.github/actions/setup`. The binary carries two TLS stacks: rustls for crowbot's API,
 BoringSSL for the web.
 
-| Target | Runs | When |
-|---|---|---|
-| `make lint` | `cargo fmt --check`, `clippy -D warnings` (includes the io-wrapper rule) | before every push |
-| `make test` | unit, snapshot, renderer and data-integrity tests | before every push |
-| `make e2e` | binary vs fake crowbot, including PTY sessions | CI on every push to `main`; locally only for critical changes |
-| `make golden` | rewrite failing goldens and snapshots | only for a deliberate change |
-| `make smoke` | real API round trip, needs `CROWBOT_SMOKE_KEY` (costs a fraction of a cent) | by hand, never in CI |
-| `make build` | static release binary | as needed |
+| Target | Runs |
+|---|---|
+| `make lint` | `cargo fmt --check`, `clippy -D warnings` (includes the io-wrapper rule) |
+| `make test` | unit, snapshot, renderer and data-integrity tests |
+| `make e2e` | binary vs fake crowbot, including PTY sessions |
+| `make golden` | rewrite failing goldens and snapshots |
+| `make smoke` | real API round trip, needs `CROWBOT_SMOKE_KEY` (costs a fraction of a cent) |
+| `make build` | static release binary |
+
+When to run each: AGENTS.md.
 
 ## Releases
 
-Pushing `prod` (on an explicit go only) runs `.github/workflows/release.yml`: the full CI checks,
+Pushing `prod` runs `.github/workflows/release.yml`: the full CI checks,
 then a GitHub release tagged `v<version>-<run>` holding one binary per target and `SHA256SUMS`.
 The binaries are built with that tag (`CROWBOT_RELEASE`), which `--version` and the updater read.
 Asset names never change, so the Install links always serve the newest release. Adding a
