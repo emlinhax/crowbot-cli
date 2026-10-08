@@ -1,5 +1,5 @@
-//! Headless mode: one prompt in, the agent runs to completion, the reply (or a JSON event
-//! stream) out. Permission prompts cannot be answered here, so they are declined.
+//! Headless run: one prompt in, the reply (or one JSON event per line) out. Nobody can answer a
+//! prompt here.
 
 use std::process::ExitCode;
 use std::sync::Mutex;
@@ -93,7 +93,7 @@ struct Printer<'a> {
 
 impl Printer<'_> {
     fn event(&self, event: AgentEvent) {
-        // Nobody can answer a prompt here; decline it so the model hears why and carries on.
+        // Declined at once, so the model hears why and carries on.
         if let AgentEvent::Prompt { id, .. } = &event {
             self.shared.prompts.answer(*id, Reply::Unavailable);
         }
