@@ -3,7 +3,7 @@
 //! data/ui.toml). When the terminal is narrow the dashes shrink before any item is cut.
 
 use crate::effort;
-use crate::frontend::tui::ui;
+use crate::frontend::tui::ui::{self, FooterItem};
 use crate::mode::Mode;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
@@ -55,7 +55,7 @@ fn items(mode: &Mode, info: &Info<'_>) -> Line {
     let footer = footer();
     let mut line = Line::default();
     for item in &footer.items {
-        let Some(part) = item_line(mode, info, item) else {
+        let Some(part) = item_line(mode, info, *item) else {
             continue;
         };
         if !line.spans.is_empty() {
@@ -66,11 +66,11 @@ fn items(mode: &Mode, info: &Info<'_>) -> Line {
     line
 }
 
-fn item_line(mode: &Mode, info: &Info<'_>, item: &str) -> Option<Line> {
+fn item_line(mode: &Mode, info: &Info<'_>, item: FooterItem) -> Option<Line> {
     let muted = Style::fg("muted");
     Some(match item {
-        "mode" => Line::styled(&mode.label, Style::fg(&mode.color).bold()),
-        "model" => {
+        FooterItem::Mode => Line::styled(&mode.label, Style::fg(&mode.color).bold()),
+        FooterItem::Model => {
             let mut line = Line::styled(info.model, muted.clone());
             if let Some(id) = info.effort {
                 let color = effort::get(id).map_or("muted", |l| l.color.as_str());
@@ -78,17 +78,13 @@ fn item_line(mode: &Mode, info: &Info<'_>, item: &str) -> Option<Line> {
             }
             line
         }
-        "context" => {
+        FooterItem::Context => {
             let pct = info.context_pct?.to_string();
             Line::styled(fill(&footer().context, &[("pct", &pct)]), muted)
         }
-        "cost" => {
+        FooterItem::Cost => {
             let cost = units::usd_micros(info.cost_micros);
             Line::styled(fill(&footer().cost, &[("cost", &cost)]), muted)
-        }
-        other => {
-            debug_assert!(false, "unknown footer item `{other}` in data/ui.toml");
-            return None;
         }
     })
 }

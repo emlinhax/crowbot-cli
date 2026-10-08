@@ -512,11 +512,8 @@ fn login(user: Option<&str>, input: &Editor, width: usize) -> Vec<Line> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::term::{KeyCode, KeyEventKind, KeyModifiers};
-
-    fn press(code: KeyCode) -> KeyEvent {
-        KeyEvent::new_with_kind(code, KeyModifiers::NONE, KeyEventKind::Press)
-    }
+    use crate::frontend::tui::keymap::press;
+    use crate::io::term::KeyCode;
 
     fn key(card: &mut Forums, action: Action) -> Next {
         card.key(Some(action), &press(KeyCode::Null))

@@ -71,9 +71,7 @@ impl Palette {
                 self.selected = rows::step(self.selected, action, found.len(), true);
             }
             Action::Tab => {
-                return Step::Complete(
-                    Scope::Session.invoke(&format!("{} ", found[self.selected].name)),
-                );
+                return Step::Complete(completion(found[self.selected]));
             }
             Action::Submit => return Step::Run(found[self.selected].name.clone()),
             Action::Escape => self.dismissed = true,
@@ -98,6 +96,11 @@ impl Palette {
         let title = Line::styled(&ui::get().palette.title, Style::fg("muted").bold());
         boxed(title, &body, width)
     }
+}
+
+/// The command as the editor holds it once completed: typed, with room for its arguments.
+pub fn completion(spec: &Spec) -> String {
+    Scope::Session.invoke(&format!("{} ", spec.name))
 }
 
 #[cfg(test)]

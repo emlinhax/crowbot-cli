@@ -129,12 +129,9 @@ fn plan_card(plan: &str, choices: &[String], width: usize) -> Choice {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::term::{KeyCode, KeyEventKind, KeyModifiers};
+    use crate::frontend::tui::keymap::press;
+    use crate::io::term::KeyCode;
     use crate::permission::gate::Ask;
-
-    fn press(code: KeyCode) -> KeyEvent {
-        KeyEvent::new_with_kind(code, KeyModifiers::NONE, KeyEventKind::Press)
-    }
 
     fn permission() -> Choice {
         super::permission(

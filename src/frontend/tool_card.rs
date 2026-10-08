@@ -80,7 +80,7 @@ pub fn title(tool: &str, arguments: &str) -> Option<String> {
         .title
         .unwrap_or_default()
         .into_iter()
-        .filter_map(|key| arg_text(&at(&args, &key), items))
+        .filter_map(|key| arg_text(at(Some(&args), &key)?, items))
         .collect();
     // With `title_join` several present args fold onto one line (a forum and its section or search
     // term); otherwise the first present one titles the call, as every other tool does.
@@ -124,16 +124,9 @@ fn arg_text(value: &Value, max_items: usize) -> Option<String> {
     }
 }
 
-/// The value at a dotted path, `a.0.b`: keys, and indices into arrays.
-pub fn at(value: &Value, path: &str) -> Value {
-    let mut value = value.clone();
-    for part in path.split('.') {
-        value = match part.parse::<usize>() {
-            Ok(i) => value[i].clone(),
-            Err(_) => value[part].clone(),
-        };
-    }
-    value
+/// The value at a dotted path, `a.0.b` (keys, and indices into arrays), when there is one.
+pub fn at<'v>(value: Option<&'v Value>, path: &str) -> Option<&'v Value> {
+    value?.pointer(&format!("/{}", path.replace('.', "/")))
 }
 
 #[cfg(test)]

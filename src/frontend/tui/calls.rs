@@ -95,11 +95,10 @@ fn body(tool: &str, result: &ToolResult, width: usize) -> Vec<Line> {
     }
 }
 
-/// `{a.b}` reads `details.a.b` (array indices too).
 /// A summary's line. Strict (inside a list) it is `None` unless every detail it names is there;
 /// otherwise a missing one shows as `?`.
 fn summarize(summary: &Summary, result: &ToolResult, strict: bool) -> Option<String> {
-    let has = |key: &str| !at(result.details.as_ref().unwrap_or(&Value::Null), key).is_null();
+    let has = |key: &str| at(result.details.as_ref(), key).is_some_and(|v| !v.is_null());
     match summary {
         Summary::Text(text) => {
             let mut complete = true;
@@ -120,15 +119,16 @@ fn summarize(summary: &Summary, result: &ToolResult, strict: bool) -> Option<Str
     }
 }
 
+/// `{a.b}` reads `details.a.b` (array indices too).
 fn fill(template: &str, result: &ToolResult) -> String {
     template::fill_with(template, |key| Some(lookup(key, result).into()))
 }
 
 fn lookup(key: &str, result: &ToolResult) -> String {
-    match at(result.details.as_ref().unwrap_or(&Value::Null), key) {
-        Value::String(s) => s,
-        Value::Null => "?".into(),
-        other => other.to_string(),
+    match at(result.details.as_ref(), key) {
+        Some(Value::String(s)) => s.clone(),
+        None | Some(Value::Null) => "?".into(),
+        Some(other) => other.to_string(),
     }
 }
 

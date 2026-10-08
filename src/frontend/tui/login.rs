@@ -183,14 +183,11 @@ fn menu() -> Choice {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::term::{KeyCode, KeyEventKind, KeyModifiers};
+    use crate::frontend::tui::keymap::press;
+    use crate::io::term::KeyCode;
 
-    fn press(c: char) -> KeyEvent {
-        KeyEvent::new_with_kind(KeyCode::Char(c), KeyModifiers::NONE, KeyEventKind::Press)
-    }
-
-    fn enter() -> KeyEvent {
-        KeyEvent::new_with_kind(KeyCode::Enter, KeyModifiers::NONE, KeyEventKind::Press)
+    fn digit(c: char) -> KeyEvent {
+        press(KeyCode::Char(c))
     }
 
     fn text(login: &Login) -> String {
@@ -207,7 +204,7 @@ mod tests {
         let mut login = Login::new();
         assert!(text(&login).contains("1 Pair this device"));
         assert!(matches!(
-            login.key(None, &press('1')),
+            login.key(None, &digit('1')),
             Next::Run(card::Job::Login(Job::Start))
         ));
         assert!(text(&login).contains("pairing code"));
@@ -222,7 +219,7 @@ mod tests {
         assert!(shown.contains("ABCD-1234"), "{shown}");
         // While crowbot is asked the card only waits; the session closes it on Esc.
         assert!(matches!(
-            login.key(Some(Action::Escape), &press('x')),
+            login.key(Some(Action::Escape), &digit('x')),
             Next::Stay
         ));
     }
@@ -230,12 +227,12 @@ mod tests {
     #[test]
     fn two_takes_a_masked_number_and_a_failure_comes_back_to_the_menu() {
         let mut login = Login::new();
-        login.key(None, &press('2'));
+        login.key(None, &digit('2'));
         login.insert("1234 5678 9012 3456");
         let shown = text(&login);
         assert!(shown.contains("•••• •••• •••• 3456"), "{shown}");
         assert!(!shown.contains("1234"), "{shown}");
-        match login.key(Some(Action::Submit), &enter()) {
+        match login.key(Some(Action::Submit), &press(KeyCode::Enter)) {
             Next::Run(card::Job::Login(Job::Check(number))) => {
                 assert_eq!(number, "1234 5678 9012 3456")
             }

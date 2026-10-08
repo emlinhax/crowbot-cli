@@ -206,7 +206,6 @@ impl Questions {
         let question = &self.questions[q];
         let draft = &self.drafts[q];
         let mut lines = Vec::new();
-        let indent = Line::plain("       ");
         for row in 0..=question.options.len() {
             let other = row == question.options.len();
             let marks = &ui::get().marks;
@@ -233,6 +232,9 @@ impl Questions {
                 .get(row)
                 .and_then(|o| o.description.as_ref())
             {
+                // Under the label, past the row's mark, number and tick.
+                let prefix = rows::option(row + 1, "", &tick, false).width();
+                let indent = Line::plain(" ".repeat(prefix));
                 let line = Line::styled(description, Style::fg("muted"));
                 let wrapped = line.wrap(width.saturating_sub(indent.width()), &Line::default());
                 lines.extend(hang(wrapped, &indent, &indent));
@@ -342,11 +344,7 @@ impl Card for Questions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::term::{KeyEventKind, KeyModifiers};
-
-    fn press(code: KeyCode) -> KeyEvent {
-        KeyEvent::new_with_kind(code, KeyModifiers::NONE, KeyEventKind::Press)
-    }
+    use crate::frontend::tui::keymap::press;
 
     fn digit(card: &mut Questions, n: char) -> Next {
         card.key(None, &press(KeyCode::Char(n)))

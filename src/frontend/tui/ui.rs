@@ -189,10 +189,21 @@ pub enum PermissionReply {
     NoWhy,
 }
 
+/// What the footer can show, in data/ui.toml's order.
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FooterItem {
+    Mode,
+    /// The model, with the effort it is sent.
+    Model,
+    Context,
+    Cost,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Footer {
-    pub items: Vec<String>,
+    pub items: Vec<FooterItem>,
     pub separator: String,
     pub context: String,
     pub cost: String,

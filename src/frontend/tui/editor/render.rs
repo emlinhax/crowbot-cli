@@ -107,15 +107,13 @@ fn wrap_with_cursor(text: &str, cursor: Option<usize>, avail: usize) -> (Vec<Lin
             rows.push(Line::default());
             used = 0;
         }
+        // `rows` starts with one row and only grows.
+        let last = rows.len() - 1;
         if is_cursor {
-            at = Some(rows.len() - 1);
-            rows.last_mut()
-                .unwrap_or(&mut Line::default())
-                .push(shown, cursor_style.clone());
+            at = Some(last);
+            rows[last].push(shown, cursor_style.clone());
         } else {
-            rows.last_mut()
-                .unwrap_or(&mut Line::default())
-                .push(shown, Style::default());
+            rows[last].push(shown, Style::default());
         }
         used += w;
     }

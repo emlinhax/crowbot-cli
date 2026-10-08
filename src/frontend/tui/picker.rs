@@ -86,12 +86,12 @@ impl Card for Picker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::term::{KeyCode, KeyEventKind, KeyModifiers};
+    use crate::frontend::tui::keymap::press;
+    use crate::io::term::KeyCode;
     use crate::models::{self as catalogs, Source};
 
     fn key(picker: &mut Picker, action: Action) -> Next {
-        let press = KeyEvent::new_with_kind(KeyCode::Null, KeyModifiers::NONE, KeyEventKind::Press);
-        picker.key(Some(action), &press)
+        picker.key(Some(action), &press(KeyCode::Null))
     }
 
     fn catalog() -> Catalog {

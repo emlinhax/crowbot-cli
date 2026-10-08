@@ -144,6 +144,16 @@ fn chord(spec: &str) -> Result<Chord, String> {
     Ok(chord)
 }
 
+/// A key pressed with no modifiers, as the cards' tests send one.
+#[cfg(test)]
+pub fn press(code: KeyCode) -> KeyEvent {
+    KeyEvent::new_with_kind(
+        code,
+        KeyModifiers::NONE,
+        crate::io::term::KeyEventKind::Press,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -246,7 +246,7 @@ impl<'a> Tui<'a> {
             mode_label: mode.label.clone(),
             mode_color: mode.color.clone(),
             logged_in: self.app.api.has_key(),
-            braille: term::braille(),
+            braille: self.braille,
         }
     }
 
@@ -422,17 +422,6 @@ impl<'a> Tui<'a> {
                 }
                 Step::Continue
             }
-            Input::Key(key)
-                if matches!(
-                    keymap::get().action(&key),
-                    Some(Action::PageUp | Action::PageDown)
-                ) =>
-            {
-                let page = self.view.page();
-                let up = keymap::get().action(&key) == Some(Action::PageUp);
-                self.view.scroll(if up { -page } else { page });
-                Step::Continue
-            }
             Input::Paste(text) => {
                 if let Some(card) = &mut self.panel {
                     card.insert(&text);
@@ -443,42 +432,62 @@ impl<'a> Tui<'a> {
                 }
                 Step::Continue
             }
-            Input::Key(key) if self.panel.is_some() || !self.cards.is_empty() => {
-                self.card_key(&key, running, busy)
-            }
-            Input::Key(key) => {
-                match keymap::get().action(&key) {
-                    Some(action) => {
-                        // The command popup takes its keys first; it is closed during a run,
-                        // where Tab steers.
-                        if !running {
-                            match self.palette.key(action, &self.editor.text()) {
-                                palette::Step::Ignored => {}
-                                palette::Step::Handled => return Step::Continue,
-                                palette::Step::Complete(text) => {
-                                    self.editor.set_text(&text);
-                                    return Step::Continue;
-                                }
-                                palette::Step::Run(name) => {
-                                    self.editor.set_text(&Scope::Session.invoke(&name));
-                                    return self.submit(running);
-                                }
-                            }
+            Input::Key(key) => self.key(&key, running, busy),
+        }
+    }
+
+    /// A key: paging scrolls wherever the keys go, a card on screen takes the rest, and
+    /// otherwise the palette and then the editor do.
+    fn key(&mut self, key: &KeyEvent, running: bool, busy: bool) -> Step<'a> {
+        let action = keymap::get().action(key);
+        if let Some(paging @ (Action::PageUp | Action::PageDown)) = action {
+            let page = self.view.page();
+            let rows = if paging == Action::PageUp {
+                -page
+            } else {
+                page
+            };
+            self.view.scroll(rows);
+            return Step::Continue;
+        }
+        if self.panel.is_some() || !self.cards.is_empty() {
+            return self.card_key(action, key, running, busy);
+        }
+        match action {
+            Some(action) => {
+                // The command popup takes its keys first; it is closed during a run,
+                // where Tab steers.
+                if !running {
+                    match self.palette.key(action, &self.editor.text()) {
+                        palette::Step::Ignored => {}
+                        palette::Step::Handled => return Step::Continue,
+                        palette::Step::Complete(text) => {
+                            self.editor.set_text(&text);
+                            return Step::Continue;
                         }
-                        self.action(action, running)
-                    }
-                    None => {
-                        self.editor.type_key(&key);
-                        Step::Continue
+                        palette::Step::Run(name) => {
+                            self.editor.set_text(&Scope::Session.invoke(&name));
+                            return self.submit(running);
+                        }
                     }
                 }
+                self.action(action, running)
+            }
+            None => {
+                self.editor.type_key(key);
+                Step::Continue
             }
         }
     }
 
     /// Keys while a card is up: the session keeps a few, the card takes the rest.
-    fn card_key(&mut self, key: &KeyEvent, running: bool, busy: bool) -> Step<'a> {
-        let action = keymap::get().action(key);
+    fn card_key(
+        &mut self,
+        action: Option<Action>,
+        key: &KeyEvent,
+        running: bool,
+        busy: bool,
+    ) -> Step<'a> {
         match action {
             Some(Action::CycleMode) => {
                 self.cycle_mode();
@@ -629,8 +638,8 @@ impl<'a> Tui<'a> {
             // its arguments (a `--key`) to the model.
             let line = line.to_owned();
             let shown = Scope::Session.invoke(&commands::redact_line(&line));
-            self.editor.take_remembering(shown);
-            return self.command(&line);
+            self.editor.take_remembering(shown.clone());
+            return self.command(&line, &shown);
         }
         if running {
             self.enqueue(Kind::Queued);
@@ -686,8 +695,7 @@ impl<'a> Tui<'a> {
     fn complete(&mut self) {
         let text = self.editor.text();
         if let [only] = palette::matches(&text).as_slice() {
-            self.editor
-                .set_text(&Scope::Session.invoke(&format!("{} ", only.name)));
+            self.editor.set_text(&palette::completion(only));
         }
     }
 
@@ -698,11 +706,12 @@ impl<'a> Tui<'a> {
             .starts_with(Scope::Session.prefix())
     }
 
-    fn command(&mut self, line: &str) -> Step<'a> {
+    /// Runs the command `line`; `shown` is how it is echoed, secrets hidden.
+    fn command(&mut self, line: &str, shown: &str) -> Step<'a> {
         match command::start(self.app, line, self.session()) {
-            Ok(started) => {
-                self.feed.user(&started.echo);
-                Step::Work(started.run)
+            Ok(run) => {
+                self.feed.user(shown);
+                Step::Work(run)
             }
             Err(note) => {
                 if !note.is_empty() {

@@ -15,15 +15,13 @@ pub enum Work {
     Catalog(Catalog),
 }
 
-pub struct Started<'a> {
-    /// The line as the transcript shows it, secrets hidden.
-    pub echo: String,
-    pub run: BoxFuture<'a, Work>,
-}
-
 /// Starts `line` (what followed the `/`); `Err` is the notice for a command that does not run
 /// here.
-pub fn start<'a>(app: &'a App, line: &str, session: Session) -> Result<Started<'a>, String> {
+pub fn start<'a>(
+    app: &'a App,
+    line: &str,
+    session: Session,
+) -> Result<BoxFuture<'a, Work>, String> {
     let (name, args) = commands::split(line).ok_or_else(String::new)?;
     let command = commands::lookup(&name, Scope::Session).map_err(|missing| {
         let text = &ui::get().text;
@@ -39,17 +37,14 @@ pub fn start<'a>(app: &'a App, line: &str, session: Session) -> Result<Started<'
             Missing::Elsewhere(spec) => commands::elsewhere(spec, Scope::Session),
         }
     })?;
-    Ok(Started {
-        echo: Scope::Session.invoke(&commands::redact_line(line)),
-        run: Box::pin(async move {
-            let cx = Ctx {
-                app,
-                scope: Scope::Session,
-                session: Some(session),
-            };
-            Work::Command(command.run(&cx, &args).await)
-        }),
-    })
+    Ok(Box::pin(async move {
+        let cx = Ctx {
+            app,
+            scope: Scope::Session,
+            session: Some(session),
+        };
+        Work::Command(command.run(&cx, &args).await)
+    }))
 }
 
 /// A fresh model list, fetched without holding up input.
