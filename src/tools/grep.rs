@@ -11,7 +11,7 @@ use std::path::Path;
 
 use crate::config::limits;
 use crate::io;
-use crate::io::search::{FileHits, Report, SearchError};
+use crate::io::search::{FileHits, Report};
 use crate::text::shorten;
 
 static SPEC: LazyLock<Spec> = super::spec!("grep");
@@ -51,17 +51,17 @@ impl Tool for Grep {
     }
 
     fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let root = target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or("."))
-            .map_err(Refusal::Refused)?;
+        let root = target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or("."))?;
         Ok(Check::new(target::asks(catalog::SEARCH.name, &root)))
     }
 
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let root = match target::search_root(&cx.app.paths, args.path.as_deref()) {
-                Ok(root) => root,
-                Err(why) => return Output::error(why),
-            };
+            let root = target::search_root(&cx.app.paths, args.path.as_deref())?;
             let base = io::fs::canonical(&cx.app.paths.project);
             let limits = &limits::get().tools;
             let max = limits.max_results.value;
@@ -80,15 +80,9 @@ impl Tool for Grep {
                 report,
                 max,
             };
-            let (files, capped) = match io::search::grep(query).await {
-                Ok(found) => found,
-                Err(SearchError::BadPattern(e)) => {
-                    return Output::error(format!("Bad pattern: {e}"));
-                }
-                Err(e) => return Output::error(e.to_string()),
-            };
+            let (files, capped) = io::search::grep(query).await.map_err(|e| e.to_string())?;
             if files.is_empty() {
-                return Output::ok("No matches.").with_details(json!({"matches": 0}));
+                return Ok(Output::ok("No matches.").with_details(json!({"matches": 0})));
             }
             let shown = |path: &Path| target::show(&base, path).0;
             let matched: usize = files.iter().map(|f| f.matched).sum();
@@ -115,7 +109,7 @@ impl Tool for Grep {
             if capped {
                 let _ = write!(out, "\n[Stopped at {max} {unit}; narrow the search.]");
             }
-            Output::ok(out.trim_end().to_owned()).with_details(details)
+            Ok(Output::ok(out.trim_end().to_owned()).with_details(details))
         })
     }
 }

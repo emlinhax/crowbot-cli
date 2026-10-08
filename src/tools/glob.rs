@@ -7,7 +7,6 @@ use serde_json::json;
 
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, target};
 use crate::config::limits;
-use crate::io::search::SearchError;
 use crate::io::{self, fs::Kind};
 use crate::permission::catalog;
 
@@ -30,33 +29,27 @@ impl Tool for Glob {
     }
 
     fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let root = target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or("."))
-            .map_err(Refusal::Refused)?;
+        let root = target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or("."))?;
         Ok(Check::new(target::asks(catalog::SEARCH.name, &root)))
     }
 
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let root = match target::search_root(&cx.app.paths, args.path.as_deref()) {
-                Ok(root) => root,
-                Err(why) => return Output::error(why),
-            };
-            match root.kind() {
-                Ok(Kind::Dir) => {}
-                Ok(_) => return Output::error(format!("{} is not a directory.", root.shown)),
-                Err(why) => return Output::error(why),
+            let root = target::search_root(&cx.app.paths, args.path.as_deref())?;
+            if root.kind()? != Kind::Dir {
+                return Err(format!("{} is not a directory.", root.shown));
             }
             let base = io::fs::canonical(&cx.app.paths.project);
-            let mut found = match io::search::glob(root.path.clone(), args.pattern.clone()).await {
-                Ok(found) => found,
-                Err(SearchError::BadPattern(e)) => {
-                    return Output::error(format!("Bad pattern: {e}"));
-                }
-                Err(e) => return Output::error(e.to_string()),
-            };
+            let mut found = io::search::glob(root.path.clone(), args.pattern.clone())
+                .await
+                .map_err(|e| e.to_string())?;
             if found.is_empty() {
-                return Output::ok(format!("No files match {}.", args.pattern))
-                    .with_details(json!({"files": 0}));
+                return Ok(Output::ok(format!("No files match {}.", args.pattern))
+                    .with_details(json!({"files": 0})));
             }
             // Newest first: the file being worked on is usually the one changed last.
             found.sort_by_key(|f| std::cmp::Reverse(f.modified));
@@ -69,7 +62,7 @@ impl Tool for Glob {
             if found.len() > max {
                 let _ = write!(out, "\n[{} more; narrow the pattern.]", found.len() - max);
             }
-            Output::ok(out.trim_end().to_owned()).with_details(json!({"files": found.len()}))
+            Ok(Output::ok(out.trim_end().to_owned()).with_details(json!({"files": found.len()})))
         })
     }
 }

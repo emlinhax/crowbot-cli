@@ -48,18 +48,22 @@ impl Tool for Question {
         Ok(Check::new(vec![Ask::new(catalog::QUESTION.name, "*")]))
     }
 
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
             let text = model_text::get();
             let prompt = Prompt::Question {
                 questions: args.questions.clone(),
             };
-            match cx.ask(prompt).await {
+            Ok(match cx.ask(prompt).await {
                 Some(Reply::Answers(answers)) => Output::ok(said(&args.questions, &answers)),
                 Some(Reply::Unavailable) => Output::ok(text.question_unavailable.clone()),
                 Some(_) => Output::ok(text.question_dismissed.clone()),
                 None => Output::error(text.cancelled.clone()),
-            }
+            })
         })
     }
 }

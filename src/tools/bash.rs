@@ -49,10 +49,14 @@ impl Tool for Bash {
         Ok(Check::new(asks).with_preview(format!("$ {}", args.command.trim())))
     }
 
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
             let Some(program) = &self.shell.program else {
-                return Output::error(self.shell.note.clone());
+                return Err(self.shell.note.clone());
             };
             let limits = &limits::get().tools;
             let secs = args
@@ -73,13 +77,8 @@ impl Tool for Bash {
                 &cx.cancel,
                 &mut |chunk| sink.take(chunk),
             )
-            .await;
-            let ended = match ended {
-                Ok(ended) => ended,
-                Err(e) => {
-                    return Output::error(format!("Could not start {}: {e}", self.shell.name));
-                }
-            };
+            .await
+            .map_err(|e| format!("Could not start {}: {e}", self.shell.name))?;
             let text = controls::as_printed(&String::from_utf8_lossy(&sink.held));
             let cut = truncate::cut(
                 &text,
@@ -135,9 +134,9 @@ impl Tool for Bash {
             } else {
                 Output::ok(content)
             };
-            out.with_details(
+            Ok(out.with_details(
                 json!({"exit_code": code, "full_output": spill, "shell": self.shell.name}),
-            )
+            ))
         })
     }
 }

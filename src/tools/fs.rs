@@ -64,7 +64,7 @@ impl Tool for Fs {
     }
 
     fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let steps = plan(cx, args).map_err(Refusal::Refused)?;
+        let steps = plan(cx, args)?;
         let mut asks = Vec::new();
         let mut preview = String::new();
         for step in &steps {
@@ -82,13 +82,14 @@ impl Tool for Fs {
         Ok(Check::new(asks).with_preview(preview.trim_end().to_owned()))
     }
 
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
             // Planned again: the files may have changed while the user was asked.
-            let steps = match plan(cx, &args) {
-                Ok(steps) => steps,
-                Err(why) => return Output::error(why),
-            };
+            let steps = plan(cx, &args)?;
             let (verb, done_verb) = args.action.verbs();
             let mut lines = Vec::new();
             let mut done = 0;
@@ -104,9 +105,9 @@ impl Tool for Fs {
             }
             let content = lines.join("\n");
             if done == 0 {
-                return Output::error(content);
+                return Err(content);
             }
-            Output::ok(content).with_details(json!({ "paths": done }))
+            Ok(Output::ok(content).with_details(json!({ "paths": done })))
         })
     }
 }

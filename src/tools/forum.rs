@@ -44,18 +44,18 @@ fn host_for(cx: &ToolCx<'_>, key: &str) -> String {
 }
 
 /// Find the forum `key` names, or an error the model can act on.
-fn resolve(cx: &ToolCx<'_>, key: &str) -> Result<Forum, Output> {
+fn resolve(cx: &ToolCx<'_>, key: &str) -> Result<Forum, String> {
     match store::get(&cx.app.paths, key) {
         Ok(Some(forum)) => Ok(forum),
         Ok(None) => {
             let list = store::load(&cx.app.paths).unwrap_or_default();
-            Err(Output::error(if list.is_empty() {
+            Err(if list.is_empty() {
                 TEXT.no_forums.clone()
             } else {
                 fill(&TEXT.unknown, &[("forum", key)])
-            }))
+            })
         }
-        Err(e) => Err(Output::error(format!("{e:#}"))),
+        Err(e) => Err(format!("{e:#}")),
     }
 }
 
@@ -249,26 +249,25 @@ impl Tool for Sections {
         )]))
     }
 
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
             if args.forum.is_empty() {
                 let list = store::load(&cx.app.paths).unwrap_or_default();
-                return finish(render_forums(&list));
+                return Ok(finish(render_forums(&list)));
             }
-            let forum = match resolve(cx, &args.forum) {
-                Ok(f) => f,
-                Err(out) => return out,
-            };
-            match mobiquo::sections(&cx.app.fetch, &forum).await {
-                Ok(sections) => {
-                    let mut text = render_sections(&sections);
-                    if !forum.hint.is_empty() {
-                        text = format!("{} — {}\n\n{text}", forum.name, forum.hint);
-                    }
-                    finish(text)
-                }
-                Err(e) => Output::error(format!("{e:#}")),
+            let forum = resolve(cx, &args.forum)?;
+            let sections = mobiquo::sections(&cx.app.fetch, &forum)
+                .await
+                .map_err(|e| format!("{e:#}"))?;
+            let mut text = render_sections(&sections);
+            if !forum.hint.is_empty() {
+                text = format!("{} — {}\n\n{text}", forum.name, forum.hint);
             }
+            Ok(finish(text))
         })
     }
 }
@@ -301,12 +300,13 @@ impl Tool for Topics {
         )]))
     }
 
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let forum = match resolve(cx, &args.forum) {
-                Ok(f) => f,
-                Err(out) => return out,
-            };
+            let forum = resolve(cx, &args.forum)?;
             let page = page_of(&args.page);
             let (fetch, forum) = (&cx.app.fetch, &forum);
             let text = batch(
@@ -318,7 +318,7 @@ impl Tool for Topics {
                 },
             )
             .await;
-            finish(text)
+            Ok(finish(text))
         })
     }
 }
@@ -351,12 +351,13 @@ impl Tool for ThreadTool {
         )]))
     }
 
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let forum = match resolve(cx, &args.forum) {
-                Ok(f) => f,
-                Err(out) => return out,
-            };
+            let forum = resolve(cx, &args.forum)?;
             let want = page_pref(&args.page);
             let (fetch, forum) = (&cx.app.fetch, &forum);
             let text = batch(
@@ -368,7 +369,7 @@ impl Tool for ThreadTool {
                 },
             )
             .await;
-            finish(text)
+            Ok(finish(text))
         })
     }
 }
@@ -401,12 +402,13 @@ impl Tool for Search {
         )]))
     }
 
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let forum = match resolve(cx, &args.forum) {
-                Ok(f) => f,
-                Err(out) => return out,
-            };
+            let forum = resolve(cx, &args.forum)?;
             let page = page_of(&args.page);
             let (fetch, forum) = (&cx.app.fetch, &forum);
             let text = batch(
@@ -418,7 +420,7 @@ impl Tool for Search {
                 },
             )
             .await;
-            finish(text)
+            Ok(finish(text))
         })
     }
 }
@@ -472,21 +474,21 @@ impl Tool for Post {
         if args.topic.is_none() && args.subject.as_deref().unwrap_or("").trim().is_empty() {
             return Err(Refusal::InvalidArgs(TEXT.no_subject.clone()));
         }
-        let forum = resolve(cx, &args.forum).map_err(|out| Refusal::Refused(out.content))?;
+        let forum = resolve(cx, &args.forum)?;
         let ask = Ask::new(catalog::FORUM_POST.name, forum.host());
         Ok(Check::new(vec![ask])
             .with_preview(Self::preview(&forum, args))
             .confirmed())
     }
 
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let forum = match resolve(cx, &args.forum) {
-                Ok(f) => f,
-                Err(out) => return out,
-            };
-
-            let result = match &args.topic {
+            let forum = resolve(cx, &args.forum)?;
+            let posted = match &args.topic {
                 Some(topic) => {
                     mobiquo::reply(&cx.app.fetch, &forum, &args.section, topic, &args.body).await
                 }
@@ -495,21 +497,17 @@ impl Tool for Post {
                     mobiquo::new_topic(&cx.app.fetch, &forum, &args.section, subject, &args.body)
                         .await
                 }
-            };
-            match result {
-                Ok(posted) => {
-                    let extra = posted
-                        .url
-                        .map(|u| format!(" {u}"))
-                        .or_else(|| posted.id.map(|id| format!(" (post {id})")))
-                        .unwrap_or_default();
-                    Output::ok(fill(
-                        &TEXT.posted,
-                        &[("forum", &forum.name), ("extra", &extra)],
-                    ))
-                }
-                Err(e) => Output::error(format!("{e:#}")),
             }
+            .map_err(|e| format!("{e:#}"))?;
+            let extra = posted
+                .url
+                .map(|u| format!(" {u}"))
+                .or_else(|| posted.id.map(|id| format!(" (post {id})")))
+                .unwrap_or_default();
+            Ok(Output::ok(fill(
+                &TEXT.posted,
+                &[("forum", &forum.name), ("extra", &extra)],
+            )))
         })
     }
 }

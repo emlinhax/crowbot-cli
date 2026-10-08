@@ -41,12 +41,16 @@ impl Tool for PlanExit {
 
     fn check(&self, _args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         if !cx.shared.mode().plan_exit {
-            return Err(Refusal::Refused(model_text::get().plan_only.clone()));
+            return Err(model_text::get().plan_only.clone().into());
         }
         Ok(Check::new(vec![Ask::new(catalog::PLAN_EXIT.name, "*")]))
     }
 
-    fn run<'a>(&'a self, _args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        _args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
             let text = model_text::get();
             let plan = io::fs::read_string(std::path::Path::new(cx.plan_file))
@@ -54,17 +58,17 @@ impl Tool for PlanExit {
                 .flatten()
                 .filter(|p| !p.trim().is_empty());
             let Some(plan) = plan else {
-                return Output::error(fill(&text.plan_missing, &[("plan_file", cx.plan_file)]));
+                return Err(fill(&text.plan_missing, &[("plan_file", cx.plan_file)]));
             };
             let prompt = Prompt::PlanExit {
                 plan,
                 choices: CHOICES.iter().map(|c| c.label.clone()).collect(),
             };
-            match cx.ask(prompt).await {
+            Ok(match cx.ask(prompt).await {
                 Some(Reply::Choice(i)) => match CHOICES.get(i).and_then(|c| c.mode.as_deref()) {
                     Some(id) => {
                         let Some(next) = mode::get(id) else {
-                            return Output::error(format!("unknown mode `{id}`"));
+                            return Err(format!("unknown mode `{id}`"));
                         };
                         cx.shared.set_mode(next);
                         Output::ok(fill(&text.plan_approved, &[("mode", &next.label)]))
@@ -80,7 +84,7 @@ impl Tool for PlanExit {
                 Some(Reply::Unavailable) => Output::ok(text.plan_unavailable.clone()),
                 Some(_) => Output::ok(text.plan_keep.clone()),
                 None => Output::error(text.cancelled.clone()),
-            }
+            })
         })
     }
 }

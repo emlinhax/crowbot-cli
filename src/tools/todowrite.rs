@@ -43,7 +43,11 @@ impl Tool for TodoWrite {
         Ok(Check::new(vec![Ask::new(catalog::TODO.name, "*")]))
     }
 
-    fn run<'a>(&'a self, args: Self::Args, _cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        _cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
             let lines: Vec<String> = args
                 .todos
@@ -62,8 +66,8 @@ impl Tool for TodoWrite {
                 .iter()
                 .filter(|t| t.status != Status::Completed)
                 .count();
-            Output::ok(format!("{}\n\n{open} open.", lines.join("\n")))
-                .with_details(json!({"todos": args.todos}))
+            Ok(Output::ok(format!("{}\n\n{open} open.", lines.join("\n")))
+                .with_details(json!({"todos": args.todos})))
         })
     }
 }

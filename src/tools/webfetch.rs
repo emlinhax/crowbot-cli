@@ -40,8 +40,8 @@ pub struct Args {
 pub struct WebFetch;
 
 /// Parsed as the client will parse it, so the host that is asked for is the host fetched.
-fn parse_url(raw: &str) -> Result<Url, Refusal> {
-    let invalid = || Refusal::Refused(fill(&TEXT.invalid, &[("url", raw.trim())]));
+fn parse_url(raw: &str) -> Result<Url, String> {
+    let invalid = || fill(&TEXT.invalid, &[("url", raw.trim())]);
     let url = Url::parse(raw.trim()).map_err(|_| invalid())?;
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
         return Err(invalid());
@@ -111,23 +111,26 @@ impl Tool for WebFetch {
         )
     }
 
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
             let limits = &limits::get().tools;
-            let parsed = match parse_url(&args.url) {
-                Ok(url) => url,
-                Err(why) => return Output::error(why.to_string()),
-            };
+            let parsed = parse_url(&args.url)?;
             let url = parsed.as_str().to_owned();
-            let page = match cx.app.fetch.get(&url).await {
-                Ok(page) => page,
-                Err(e) => return Output::error(failure(&url, &e)),
-            };
+            let page = cx
+                .app
+                .fetch
+                .get(&url)
+                .await
+                .map_err(|e| failure(&url, &e))?;
             if let Some(moved) = redirect(&parsed, page.status, page.location.as_deref()) {
-                return Output::ok(moved);
+                return Ok(Output::ok(moved));
             }
             if let Some(why) = refusal(&url, page.status, page.firewall) {
-                return Output::error(why);
+                return Err(why);
             }
             let mut body = page.body;
             body.truncate(limits.webfetch_max_bytes.value);
@@ -150,12 +153,12 @@ impl Tool for WebFetch {
                 content.push_str("\n\n");
                 content.push_str(&fill(&TEXT.cut, &[("kept", &kept), ("total", &total)]));
             }
-            Output::ok(content).with_details(json!({
+            Ok(Output::ok(content).with_details(json!({
                 "url": url,
                 "final_url": page.url,
                 "status": page.status,
                 "fingerprint": page.fingerprint,
-            }))
+            })))
         })
     }
 }

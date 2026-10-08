@@ -105,6 +105,12 @@ pub enum Refusal {
     Refused(String),
 }
 
+impl From<String> for Refusal {
+    fn from(why: String) -> Self {
+        Self::Refused(why)
+    }
+}
+
 pub struct Output {
     pub content: String,
     pub is_error: bool,
@@ -163,7 +169,12 @@ pub trait Tool: Send + Sync {
     fn spec(&self) -> &Spec;
     /// Validates the call and says what it needs permission for; runs before any prompt.
     fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal>;
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output>;
+    /// An `Err` reaches the model as an error output.
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>>;
 }
 
 /// A `Tool` that takes the model's JSON, so tools with different arguments share one registry.
@@ -184,11 +195,14 @@ impl<T: Tool> AnyTool for T {
     }
 
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
-        // `check` has vetted the arguments, so this only fails when a caller skipped it.
-        match serde_json::from_value(args) {
-            Ok(args) => Tool::run(self, args, cx),
-            Err(e) => Box::pin(std::future::ready(Output::error(e.to_string()))),
-        }
+        Box::pin(async move {
+            // `check` has vetted the arguments, so this only fails when a caller skipped it.
+            let done = match serde_json::from_value(args) {
+                Ok(args) => Tool::run(self, args, cx).await,
+                Err(e) => Err(e.to_string()),
+            };
+            done.unwrap_or_else(Output::error)
+        })
     }
 }
 

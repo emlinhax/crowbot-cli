@@ -84,17 +84,15 @@ impl Tool for Edit {
     }
 
     fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let target = target::resolve(&cx.app.paths, &args.path).map_err(Refusal::Refused)?;
+        let target = target::resolve(&cx.app.paths, &args.path)?;
         if args.edits.is_empty() {
             return Err(Refusal::InvalidArgs("`edits` is empty".into()));
         }
         // A call that will fail is refused now, before anyone is asked to approve it.
-        let before = load(&target).map_err(Refusal::Refused)?;
-        cx.files()
-            .check_fresh(&target.path, &target.shown)
-            .map_err(Refusal::Refused)?;
-        let applied = apply(&before, &args.edits)
-            .map_err(|why| Refusal::Refused(format!("{why} ({})", target.shown)))?;
+        let before = load(&target)?;
+        cx.files().check_fresh(&target.path, &target.shown)?;
+        let applied =
+            apply(&before, &args.edits).map_err(|why| format!("{why} ({})", target.shown))?;
         Ok(
             Check::new(target::asks(catalog::EDIT.name, &target)).with_preview(diff::unified(
                 &before,
@@ -104,29 +102,20 @@ impl Tool for Edit {
         )
     }
 
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let target = match target::resolve(&cx.app.paths, &args.path) {
-                Ok(target) => target,
-                Err(why) => return Output::error(why),
-            };
+            let target = target::resolve(&cx.app.paths, &args.path)?;
             let _guard = cx.files().lock(&target.path).await;
-            if let Err(why) = cx.files().check_fresh(&target.path, &target.shown) {
-                return Output::error(why);
-            }
-            let before = match load(&target) {
-                Ok(text) => text,
-                Err(why) => return Output::error(why),
-            };
-            let applied = match apply(&before, &args.edits) {
-                Ok(applied) => applied,
-                Err(why) => return Output::error(format!("{} ({})", why, target.shown)),
-            };
-            if let Err(e) =
-                io::fs::write_atomic(&target.path, applied.text.as_bytes(), Access::Shared)
-            {
-                return Output::error(format!("Could not write {}: {e}", target.shown));
-            }
+            cx.files().check_fresh(&target.path, &target.shown)?;
+            let before = load(&target)?;
+            let applied =
+                apply(&before, &args.edits).map_err(|why| format!("{why} ({})", target.shown))?;
+            io::fs::write_atomic(&target.path, applied.text.as_bytes(), Access::Shared)
+                .map_err(|e| format!("Could not write {}: {e}", target.shown))?;
             cx.files().saw(&target.path);
             let diff = diff::unified(&before, &applied.text, &target.shown);
             let loose = if applied.loose.is_empty() {
@@ -134,13 +123,13 @@ impl Tool for Edit {
             } else {
                 format!(" (loose match: {})", applied.loose.join("; "))
             };
-            Output::ok(format!(
+            Ok(Output::ok(format!(
                 "Edited {}: {} replacement{}{loose}.",
                 target.shown,
                 applied.replacements,
                 if applied.replacements == 1 { "" } else { "s" }
             ))
-            .with_details(json!({"diff": diff}))
+            .with_details(json!({"diff": diff})))
         })
     }
 }

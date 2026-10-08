@@ -63,7 +63,11 @@ impl Tool for CodeSearch {
         )]))
     }
 
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
             let mut body = args.filters;
             body.insert("query".to_owned(), args.query.into());
@@ -77,15 +81,12 @@ impl Tool for CodeSearch {
                         ..Call::default()
                     },
                 )
-                .await;
-            let reply = match reply {
-                Ok(reply) => reply,
-                Err(e) => {
-                    return Output::error(format!("{}: {}", Entry::of(&e.info).title, e.info));
-                }
-            };
+                .await
+                .map_err(|e| format!("{}: {}", Entry::of(&e.info).title, e.info))?;
             if reply.results.is_empty() {
-                return Output::ok("No results. Drop the repo filter or a term and search again.");
+                return Ok(Output::ok(
+                    "No results. Drop the repo filter or a term and search again.",
+                ));
             }
             let width = limits::get().tools.grep_line_chars.value;
             let mut out = String::new();
@@ -99,7 +100,7 @@ impl Tool for CodeSearch {
             if reply.truncated {
                 out.push_str("[More results exist; narrow the query.]");
             }
-            Output::ok(out.trim_end().to_owned())
+            Ok(Output::ok(out.trim_end().to_owned()))
         })
     }
 }

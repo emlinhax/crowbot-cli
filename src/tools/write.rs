@@ -27,41 +27,34 @@ impl Tool for Write {
     }
 
     fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let target = target::resolve(&cx.app.paths, &args.path).map_err(Refusal::Refused)?;
-        if target.kind().map_err(Refusal::Refused)? == Kind::Dir {
-            return Err(Refusal::Refused(format!(
-                "{} is a directory.",
-                target.shown
-            )));
+        let target = target::resolve(&cx.app.paths, &args.path)?;
+        if target.kind()? == Kind::Dir {
+            return Err(format!("{} is a directory.", target.shown).into());
         }
-        cx.files()
-            .check_fresh(&target.path, &target.shown)
-            .map_err(Refusal::Refused)?;
+        cx.files().check_fresh(&target.path, &target.shown)?;
         let preview = diff::added(&args.content);
         Ok(Check::new(target::asks(catalog::EDIT.name, &target)).with_preview(preview))
     }
 
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let target = match target::resolve(&cx.app.paths, &args.path) {
-                Ok(target) => target,
-                Err(why) => return Output::error(why),
-            };
+            let target = target::resolve(&cx.app.paths, &args.path)?;
             let _guard = cx.files().lock(&target.path).await;
-            if let Err(why) = cx.files().check_fresh(&target.path, &target.shown) {
-                return Output::error(why);
-            }
+            cx.files().check_fresh(&target.path, &target.shown)?;
             let created = target.kind() == Ok(Kind::Missing);
-            if let Err(e) =
-                io::fs::write_atomic(&target.path, args.content.as_bytes(), Access::Shared)
-            {
-                return Output::error(format!("Could not write {}: {e}", target.shown));
-            }
+            io::fs::write_atomic(&target.path, args.content.as_bytes(), Access::Shared)
+                .map_err(|e| format!("Could not write {}: {e}", target.shown))?;
             cx.files().saw(&target.path);
             let lines = args.content.lines().count();
             let verb = if created { "Created" } else { "Replaced" };
-            Output::ok(format!("{verb} {} ({lines} lines).", target.shown))
-                .with_details(json!({"created": created, "lines": lines}))
+            Ok(
+                Output::ok(format!("{verb} {} ({lines} lines).", target.shown))
+                    .with_details(json!({"created": created, "lines": lines})),
+            )
         })
     }
 }

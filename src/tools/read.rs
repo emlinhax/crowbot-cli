@@ -61,13 +61,17 @@ impl Tool for Read {
         let (paths, _) = args.paths();
         let mut asks = Vec::new();
         for path in paths {
-            let target = target::resolve(&cx.app.paths, path).map_err(Refusal::Refused)?;
+            let target = target::resolve(&cx.app.paths, path)?;
             asks.extend(target::asks(catalog::READ.name, &target));
         }
         Ok(Check::new(asks))
     }
 
-    fn run<'a>(&'a self, args: Self::Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
             let (paths, page) = args.paths();
             if let [path] = paths {
@@ -79,7 +83,7 @@ impl Tool for Read {
             for path in paths {
                 // A soft cap: the file that crosses it stays whole, and the rest are only named.
                 let out = if used < budget {
-                    one(cx, path, page)
+                    one(cx, path, page).unwrap_or_else(Output::error)
                 } else {
                     Output::error(format!(
                         "Not read: this batch already holds {budget} bytes. Read it on its own."
@@ -91,29 +95,23 @@ impl Tool for Read {
             }
             let content = many::join(parts);
             if read == 0 {
-                return Output::error(content);
+                return Err(content);
             }
-            Output::ok(content).with_details(json!({ "files": read }))
+            Ok(Output::ok(content).with_details(json!({ "files": read })))
         })
     }
 }
 
 /// One path: a file's numbered lines, or a directory's entries.
-fn one(cx: &ToolCx<'_>, path: &str, page: Page) -> Output {
-    let target = match target::resolve(&cx.app.paths, path) {
-        Ok(target) => target,
-        Err(why) => return Output::error(why),
-    };
-    match target.kind() {
-        Err(why) => Output::error(why),
-        Ok(Kind::Missing) => Output::error(format!("{} does not exist.", target.shown)),
-        Ok(Kind::Dir) => list(&target.path, &target.shown, page.depth.unwrap_or(1)),
-        Ok(Kind::File) => {
-            let out = file(&target.path, &target.shown, page.offset, page.limit);
-            if !out.is_error {
-                cx.files().saw(&target.path);
-            }
-            out
+fn one(cx: &ToolCx<'_>, path: &str, page: Page) -> Result<Output, String> {
+    let target = target::resolve(&cx.app.paths, path)?;
+    match target.kind()? {
+        Kind::Missing => Err(format!("{} does not exist.", target.shown)),
+        Kind::Dir => list(&target.path, &target.shown, page.depth.unwrap_or(1)),
+        Kind::File => {
+            let out = file(&target.path, &target.shown, page.offset, page.limit)?;
+            cx.files().saw(&target.path);
+            Ok(out)
         }
     }
 }
@@ -123,15 +121,12 @@ fn file(
     shown: &str,
     offset: Option<usize>,
     limit: Option<usize>,
-) -> Output {
+) -> Result<Output, String> {
     let limits = &limits::get().tools;
-    let bytes = match io::fs::read_bytes(path) {
-        Ok(bytes) => bytes,
-        Err(e) => return Output::error(format!("Could not read {shown}: {e}")),
-    };
+    let bytes = io::fs::read_bytes(path).map_err(|e| format!("Could not read {shown}: {e}"))?;
     let sniff = &bytes[..bytes.len().min(limits.binary_sniff_bytes.value)];
     if sniff.contains(&0) {
-        return Output::error(format!(
+        return Err(format!(
             "{shown} is a binary file; it cannot be shown as text."
         ));
     }
@@ -139,11 +134,11 @@ fn file(
     let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
     let lines: Vec<&str> = text.lines().collect();
     if lines.is_empty() {
-        return Output::ok(format!("{shown} is empty."));
+        return Ok(Output::ok(format!("{shown} is empty.")));
     }
     let start = offset.unwrap_or(1).max(1);
     if start > lines.len() {
-        return Output::error(format!(
+        return Err(format!(
             "{shown} has {} lines; offset {start} is past the end.",
             lines.len()
         ));
@@ -176,18 +171,19 @@ fn file(
             last + 1
         );
     }
-    Output::ok(content).with_details(json!({"lines": [start, last], "total": lines.len()}))
+    Ok(Output::ok(content).with_details(json!({"lines": [start, last], "total": lines.len()})))
 }
 
 /// One level is everything in the directory; deeper levels leave out what .gitignore ignores.
-fn list(path: &std::path::Path, shown: &str, depth: usize) -> Output {
+fn list(path: &std::path::Path, shown: &str, depth: usize) -> Result<Output, String> {
     let limits = &limits::get().tools;
     let max = limits.list_entries.value;
     let entries: Vec<(usize, String, bool)> = if depth <= 1 {
-        match io::fs::list_dir(path) {
-            Ok(entries) => entries.into_iter().map(|e| (1, e.name, e.is_dir)).collect(),
-            Err(e) => return Output::error(format!("Could not list {shown}: {e}")),
-        }
+        io::fs::list_dir(path)
+            .map_err(|e| format!("Could not list {shown}: {e}"))?
+            .into_iter()
+            .map(|e| (1, e.name, e.is_dir))
+            .collect()
     } else {
         io::search::tree(path, depth.min(limits.list_depth_max.value))
             .into_iter()
@@ -211,7 +207,7 @@ fn list(path: &std::path::Path, shown: &str, depth: usize) -> Output {
             entries.len() - max
         );
     }
-    Output::ok(out.trim_end().to_owned()).with_details(json!({ "entries": entries.len() }))
+    Ok(Output::ok(out.trim_end().to_owned()).with_details(json!({ "entries": entries.len() })))
 }
 
 #[cfg(test)]

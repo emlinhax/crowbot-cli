@@ -52,7 +52,8 @@ pub enum SearchError {
 impl fmt::Display for SearchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::BadPattern(why) | Self::Failed(why) => f.write_str(why),
+            Self::BadPattern(why) => write!(f, "Bad pattern: {why}"),
+            Self::Failed(why) => f.write_str(why),
         }
     }
 }
