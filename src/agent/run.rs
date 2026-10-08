@@ -279,11 +279,6 @@ mod tests {
             (outcome, transcript, events.into_inner().unwrap())
         }
 
-        /// The plan file of the unsaved session every harness run uses.
-        fn plan_file(&self) -> String {
-            crate::tools::plan_file(&self.app.paths, &Transcript::new(None).id())
-        }
-
         fn requests(&self) -> Vec<Value> {
             self.script.lock().unwrap().1.clone()
         }
@@ -478,7 +473,8 @@ mod tests {
         ])
         .await;
         crate::io::fs::write_atomic(
-            std::path::Path::new(&h.plan_file()),
+            // Every harness run is the unsaved session.
+            &h.app.paths.plan_file(&Transcript::new(None).id()),
             b"1. do it",
             crate::io::fs::Access::Shared,
         )

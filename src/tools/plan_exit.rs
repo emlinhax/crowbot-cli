@@ -7,7 +7,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde::de::IgnoredAny;
 
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx, target};
 use crate::data;
 use crate::io;
 use crate::live::prompt::{Prompt, Reply};
@@ -64,9 +64,11 @@ impl Tool for PlanExit {
         cx: &'a ToolCx<'a>,
     ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let plan = io::fs::read_string(std::path::Path::new(cx.plan_file))
+            // Read where the write tool wrote it: the spelling is project-relative when the
+            // plan lives inside the project.
+            let plan = target::resolve(&cx.app.paths, cx.plan_file)
                 .ok()
-                .flatten()
+                .and_then(|t| io::fs::read_string(&t.path).ok().flatten())
                 .filter(|p| !p.trim().is_empty());
             let Some(plan) = plan else {
                 return Err(fill(&TEXT.missing, &[("plan_file", cx.plan_file)]));
