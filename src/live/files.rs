@@ -1,5 +1,5 @@
-//! What the model has seen of each file, so it cannot overwrite a file it never read or that
-//! changed underneath it, plus one lock per file so parallel edits land one at a time.
+//! Files the model has read, so it cannot overwrite one it never read or that changed since; and a
+//! lock per file so parallel edits land in turn.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

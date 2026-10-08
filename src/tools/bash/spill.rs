@@ -6,8 +6,8 @@ use std::sync::Once;
 use crate::config::limits;
 use crate::io::{self, fs::Access};
 
-/// What a command printed, within bounds: all of it while small, then only the latest part in
-/// memory and the whole, up to a cap, in a spill file the model can read.
+/// Command output: in memory while small; past `bash_memory_bytes`, the tail in memory and the
+/// whole (capped) in a spill file.
 pub struct Sink {
     pub held: Vec<u8>,
     pub spill: Option<Spill>,

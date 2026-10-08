@@ -97,8 +97,8 @@ pub fn search_root(paths: &Paths, raw: Option<&str>) -> Result<Target, String> {
     }
 }
 
-/// Where PLAN writes this session's plan, spelled as the tools resolve it, so the lock that lets
-/// PLAN write there matches what the write tool asks for.
+/// This session's plan file, spelled as `target::resolve` spells it, so PLAN's lock matches the
+/// write tool's ask.
 pub fn plan_file(paths: &Paths, session: &str) -> String {
     let file = paths.plan_file(session);
     resolve(paths, &file.to_string_lossy()).map_or_else(|_| io::fs::slashed(&file), |t| t.shown)

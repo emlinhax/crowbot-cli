@@ -1,5 +1,5 @@
-//! One value or a list of them, so a tool takes a single target or a batch in one call, and how a
-//! batch's items are run and their results joined into one reply.
+//! One value or a list, so a tool takes one target or a batch; and how a batch is run and its
+//! results joined.
 
 use serde::Deserialize;
 
@@ -44,8 +44,8 @@ impl Id {
     }
 }
 
-/// Run `each` over the items at once and stitch the results, labelling and inlining per-item
-/// errors so one bad item does not sink the batch.
+/// Runs `each` over all items at once; a failed item is reported inline, so one bad item does not
+/// sink the batch.
 pub async fn batch<F, Fut>(items: Vec<String>, label: impl Fn(&str) -> String, each: F) -> String
 where
     F: Fn(String) -> Fut,

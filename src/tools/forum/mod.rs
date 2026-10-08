@@ -1,7 +1,6 @@
-//! The forum tools the model can call: browse sections, topics and threads, search, and post. All
-//! read-only ones are allowed by default; the posting one shows the user the exact text and waits
-//! for a yes every time, even in AUTO. Forum content is untrusted — the descriptions tell the model
-//! so, and nothing here acts on it automatically.
+//! Forum tools: browse sections, topics and threads, search, post. Reading is allowed by default;
+//! posting shows the exact text and waits for a yes every time, even in AUTO. Forum content is
+//! untrusted; nothing here acts on it.
 
 mod browse;
 mod post;
