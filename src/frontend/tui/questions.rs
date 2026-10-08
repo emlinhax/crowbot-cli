@@ -9,6 +9,7 @@ use crate::frontend::tui::boxed::boxed;
 use crate::frontend::tui::card::{Card, Step};
 use crate::frontend::tui::editor::Editor;
 use crate::frontend::tui::keymap::Action;
+use crate::frontend::tui::rows;
 use crate::frontend::tui::ui;
 use crate::io::term::{KeyCode, KeyEvent};
 use crate::live::prompt::{Answer, Question, Reply};
@@ -210,12 +211,6 @@ impl Questions {
         let mut lines = Vec::new();
         let indent = Line::plain("       ");
         for row in 0..=question.options.len() {
-            let chosen = row == draft.cursor;
-            let (mark, style) = if chosen {
-                ("›", Style::fg("accent").bold())
-            } else {
-                (" ", Style::default())
-            };
             let other = row == question.options.len();
             let tick = match (
                 question.multiple,
@@ -233,7 +228,7 @@ impl Questions {
             } else {
                 question.options[row].label.clone()
             };
-            let line = Line::styled(format!(" {mark} {} {tick}{label}", row + 1), style);
+            let line = rows::option(row + 1, &label, tick, row == draft.cursor);
             lines.push(line.truncate(width));
             if let Some(description) = question
                 .options
@@ -272,29 +267,25 @@ impl Card for Questions {
             }
             return Step::Stay;
         }
-        let digit = match key.code {
-            KeyCode::Char(c) => c.to_digit(10).map(|n| n as usize),
-            _ => None,
-        };
         match action {
             Some(Action::Escape) => return Step::Answer(Reply::No { feedback: None }),
             Some(Action::Left) => self.at = self.at.saturating_sub(1),
             Some(Action::Right | Action::Tab) => self.at = (self.at + 1).min(self.last_tab()),
-            _ if self.reviewing() => match (action, digit) {
-                (Some(Action::Submit), _) => return self.send(),
-                (Some(Action::Up), _) => self.at = self.questions.len() - 1,
+            _ if self.reviewing() => match action {
+                Some(Action::Submit) => return self.send(),
+                Some(Action::Up) => self.at = self.questions.len() - 1,
                 // A digit on the review goes back to that question.
-                (None, Some(n)) if (1..=self.questions.len()).contains(&n) => self.at = n - 1,
+                None => {
+                    if let Some(q) = rows::digit(key, self.questions.len()) {
+                        self.at = q;
+                    }
+                }
                 _ => {}
             },
-            Some(Action::Up) => {
+            Some(step @ (Action::Up | Action::Down)) => {
+                let len = self.other(self.at) + 1;
                 let draft = &mut self.drafts[self.at];
-                draft.cursor = draft.cursor.saturating_sub(1);
-            }
-            Some(Action::Down) => {
-                let last = self.other(self.at);
-                let draft = &mut self.drafts[self.at];
-                draft.cursor = (draft.cursor + 1).min(last);
+                draft.cursor = rows::step(draft.cursor, step, len, false);
             }
             Some(Action::Submit) if self.questions[self.at].multiple => return self.confirm(),
             Some(Action::Submit) => return self.choose(self.drafts[self.at].cursor),
@@ -302,8 +293,8 @@ impl Card for Questions {
                 return self.choose(self.drafts[self.at].cursor);
             }
             None => {
-                if let Some(n) = digit.filter(|&n| (1..=self.other(self.at) + 1).contains(&n)) {
-                    return self.choose(n - 1);
+                if let Some(row) = rows::digit(key, self.other(self.at) + 1) {
+                    return self.choose(row);
                 }
             }
             _ => {}

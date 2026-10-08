@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::config::limits;
 use crate::conversation::message::ToolResult;
 use crate::frontend::tool_card::{self, Body, Summary, at, spec};
-use crate::frontend::tui::boxed::capped;
+use crate::frontend::tui::rows::capped;
 use crate::text::diff;
 use crate::text::styled::{Line, Style};
 use crate::text::template;

@@ -3,12 +3,13 @@
 
 use crate::auth;
 use crate::config::limits;
-use crate::frontend::tui::boxed::{boxed, capped};
+use crate::frontend::tui::boxed::boxed;
 use crate::frontend::tui::card::{Card, Step};
 use crate::frontend::tui::editor::Editor;
 use crate::frontend::tui::keymap::Action;
+use crate::frontend::tui::rows::{self, capped};
 use crate::frontend::tui::ui::{self, PermissionReply};
-use crate::io::term::{KeyCode, KeyEvent};
+use crate::io::term::KeyEvent;
 use crate::live::prompt::Reply;
 use crate::permission::gate;
 use crate::text::diff;
@@ -187,17 +188,15 @@ impl Card for Choice {
             return Step::Stay;
         }
         match action {
-            Some(Action::Up) => self.selected = self.selected.saturating_sub(1),
-            Some(Action::Down) => self.selected = (self.selected + 1).min(self.options.len() - 1),
+            Some(step @ (Action::Up | Action::Down)) => {
+                self.selected = rows::step(self.selected, step, self.options.len(), false);
+            }
             Some(Action::Submit) => return self.pick(self.selected),
             Some(Action::Escape) => return Step::Answer(Reply::No { feedback: None }),
             _ => {
-                if let KeyCode::Char(c) = key.code
-                    && let Some(n) = c.to_digit(10)
-                    && (1..=self.options.len()).contains(&(n as usize))
-                {
-                    self.selected = n as usize - 1;
-                    return self.pick(self.selected);
+                if let Some(i) = rows::digit(key, self.options.len()) {
+                    self.selected = i;
+                    return self.pick(i);
                 }
             }
         }
@@ -217,13 +216,7 @@ impl Card for Choice {
         let title = Line::styled(&self.title, Style::default().bold());
         let mut lines = boxed(title, &self.body, width);
         for (i, opt) in self.options.iter().enumerate() {
-            let chosen = i == self.selected;
-            let (mark, style) = if chosen {
-                ("›", Style::fg("accent").bold())
-            } else {
-                (" ", Style::default())
-            };
-            let line = Line::styled(format!(" {mark} {} {}", i + 1, opt.label), style);
+            let line = rows::option(i + 1, &opt.label, "", i == self.selected);
             lines.push(line.truncate(width));
         }
         let hint = match &self.input {
@@ -242,7 +235,7 @@ impl Card for Choice {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::term::{KeyEventKind, KeyModifiers};
+    use crate::io::term::{KeyCode, KeyEventKind, KeyModifiers};
     use crate::permission::gate::Ask;
 
     fn press(code: KeyCode) -> KeyEvent {

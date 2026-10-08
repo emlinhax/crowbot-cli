@@ -2,9 +2,9 @@
 //! so arguments can follow, Enter runs the pick, Esc hides it until the text changes.
 
 use crate::commands::{self, Scope, Spec};
-use crate::config::limits;
 use crate::frontend::tui::boxed::boxed;
 use crate::frontend::tui::keymap::Action;
+use crate::frontend::tui::rows;
 use crate::frontend::tui::ui;
 use crate::text::styled::{Line, Style};
 use crate::text::table::{self, Align, GAP};
@@ -63,17 +63,12 @@ impl Palette {
 
     pub fn key(&mut self, action: Action, text: &str) -> Step {
         let found = self.open(text);
-        let Some(last) = found.len().checked_sub(1) else {
+        if found.is_empty() {
             return Step::Ignored;
-        };
+        }
         match action {
-            Action::Up => self.selected = self.selected.checked_sub(1).unwrap_or(last),
-            Action::Down => {
-                self.selected = if self.selected == last {
-                    0
-                } else {
-                    self.selected + 1
-                }
+            Action::Up | Action::Down => {
+                self.selected = rows::step(self.selected, action, found.len(), true);
             }
             Action::Tab => {
                 return Step::Complete(
@@ -88,38 +83,19 @@ impl Palette {
     }
 
     pub fn render(&self, found: &[&Spec], width: usize) -> Vec<Line> {
-        let rows = limits::get().tui.palette_rows.value.get();
-        let start = (self.selected + 1).saturating_sub(rows);
-        let shown: Vec<(usize, &&Spec)> = found.iter().enumerate().skip(start).take(rows).collect();
-        let style = |i: usize| {
-            if i == self.selected {
-                Style::fg("accent").bold()
-            } else {
-                Style::default()
-            }
-        };
-        let cells: Vec<Vec<Line>> = shown
+        let cells: Vec<Vec<Line>> = found
             .iter()
-            .map(|&(i, spec)| {
+            .map(|spec| {
                 vec![
-                    Line::styled(Scope::Session.invoke(&spec.name), style(i)),
+                    Line::plain(Scope::Session.invoke(&spec.name)),
                     Line::styled(&spec.summary, Style::fg("muted")),
                 ]
             })
             .collect();
         // The box's borders take four cells, the selection mark two.
-        let inner = width.saturating_sub(4 + 2);
+        let inner = width.saturating_sub(4 + rows::MARK);
         let table = table::plain(&cells, &[Align::Left; 2], &[], inner, GAP);
-        let body: Vec<Line> = shown
-            .iter()
-            .zip(table)
-            .map(|(&(i, _), row)| {
-                let mark = if i == self.selected { "› " } else { "  " };
-                let mut line = Line::styled(mark, style(i));
-                line.extend(row);
-                line
-            })
-            .collect();
+        let body = rows::marked(table, self.selected);
         let title = Line::styled(&ui::get().palette.title, Style::fg("muted").bold());
         boxed(title, &body, width)
     }
@@ -192,7 +168,7 @@ mod tests {
         assert!(text[2].starts_with("│ › /models  "), "{text:?}");
         assert!(text.iter().all(|l| width(l) == 60));
 
-        let rows = limits::get().tui.palette_rows.value.get();
+        let rows = crate::config::limits::get().tui.palette_rows.value.get();
         let found = p.open("/");
         for _ in 0..found.len() - 1 {
             p.key(Action::Down, "/");

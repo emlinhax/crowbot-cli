@@ -1,17 +1,14 @@
 //! `/models` inside a session: the catalog as an aligned list in a card in place of the editor.
 //! ↑↓ move, → or Enter picks the model for the rest of the session, Esc or ← closes.
 
-use crate::config::limits;
 use crate::frontend::tui::boxed::boxed;
 use crate::frontend::tui::keymap::Action;
+use crate::frontend::tui::rows;
 use crate::frontend::tui::ui;
 use crate::models::Catalog;
 use crate::models::table as models;
 use crate::text::styled::{Line, Style};
 use crate::text::table::{self, GAP};
-
-/// The selection marker before each row: `› ` or two spaces.
-pub const MARKER: usize = 2;
 
 pub struct Picker {
     ids: Vec<String>,
@@ -44,10 +41,10 @@ impl Picker {
     }
 
     pub fn key(&mut self, action: Option<Action>) -> Step {
-        let last = self.ids.len().saturating_sub(1);
         match action {
-            Some(Action::Up) => self.selected = self.selected.saturating_sub(1),
-            Some(Action::Down) => self.selected = (self.selected + 1).min(last),
+            Some(step @ (Action::Up | Action::Down)) => {
+                self.selected = rows::step(self.selected, step, self.ids.len(), false);
+            }
             Some(Action::Right | Action::Submit) => {
                 return self
                     .ids
@@ -63,7 +60,7 @@ impl Picker {
     pub fn render(&self, width: usize) -> Vec<Line> {
         let words = &ui::get().picker;
         // The box's borders take four cells.
-        let inner = width.saturating_sub(4 + MARKER);
+        let inner = width.saturating_sub(4 + rows::MARK);
         let mut lines = table::plain(
             &self.rows,
             &models::aligns(),
@@ -74,11 +71,11 @@ impl Picker {
         .into_iter();
         let mut body = Vec::new();
         if let Some(header) = lines.next() {
-            let mut line = Line::plain(" ".repeat(MARKER));
+            let mut line = Line::plain(" ".repeat(rows::MARK));
             line.extend(header);
             body.push(line);
         }
-        body.extend(marked(lines, self.selected));
+        body.extend(rows::marked(lines, self.selected));
         body.push(Line::default());
         body.push(Line::styled(&self.note, Style::fg("muted")));
         let title = Line::styled(&words.title, Style::default().bold());
@@ -88,29 +85,6 @@ impl Picker {
         out.push(Line::styled(format!(" {}", words.hint), Style::fg("muted")).truncate(width));
         out
     }
-}
-
-/// `rows` behind the selection marker, scrolled to keep the selected one in view.
-pub fn marked(rows: impl IntoIterator<Item = Line>, selected: usize) -> Vec<Line> {
-    let visible = limits::get().tui.palette_rows.value.get();
-    let start = (selected + 1).saturating_sub(visible);
-    rows.into_iter()
-        .enumerate()
-        .skip(start)
-        .take(visible)
-        .map(|(i, row)| {
-            if i == selected {
-                let chosen = Style::fg("accent").bold();
-                let mut line = Line::styled("› ", chosen.clone());
-                line.push(row.text(), chosen);
-                line
-            } else {
-                let mut line = Line::plain(" ".repeat(MARKER));
-                line.extend(row);
-                line
-            }
-        })
-        .collect()
 }
 
 #[cfg(test)]

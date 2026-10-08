@@ -15,7 +15,7 @@ use crate::frontend::tui::card::{Card, Step};
 use crate::frontend::tui::choice::{Choice, Opt};
 use crate::frontend::tui::editor::Editor;
 use crate::frontend::tui::keymap::Action;
-use crate::frontend::tui::picker::{self, MARKER};
+use crate::frontend::tui::rows;
 use crate::frontend::tui::ui;
 use crate::io::term::KeyEvent;
 use crate::live::prompt::Reply;
@@ -193,8 +193,9 @@ impl Forums {
             Stage::Found {
                 results, selected, ..
             } => match action {
-                Some(Action::Up) => *selected = selected.saturating_sub(1),
-                Some(Action::Down) => *selected = (*selected + 1).min(results.len() - 1),
+                Some(step @ (Action::Up | Action::Down)) => {
+                    *selected = rows::step(*selected, step, results.len(), false);
+                }
                 Some(Action::Right | Action::Submit) => {
                     let forum = results[*selected].clone();
                     let doing = fill(&ui::get().forums.adding, &[("name", &forum.name)]);
@@ -262,8 +263,10 @@ impl Forums {
 
     fn list_key(&mut self, action: Option<Action>) -> Next {
         match action {
-            Some(Action::Up) => self.selected = self.selected.saturating_sub(1),
-            Some(Action::Down) => self.selected = (self.selected + 1).min(self.forums.len()),
+            // The last row adds a forum.
+            Some(step @ (Action::Up | Action::Down)) => {
+                self.selected = rows::step(self.selected, step, self.forums.len() + 1, false);
+            }
             Some(Action::Right | Action::Submit) => {
                 self.stage = match self.forums.get(self.selected) {
                     Some(forum) => menu(forum),
@@ -363,7 +366,7 @@ impl Forums {
             Stage::List => {
                 let mut rows: Vec<Line> = rows(&self.forums, width);
                 rows.push(Line::styled(&text.add, Style::fg("accent")));
-                let mut body = picker::marked(rows, self.selected);
+                let mut body = rows::marked(rows, self.selected);
                 body.extend(hint_of(self.forums.get(self.selected)));
                 (text.title.clone(), body, &text.hint)
             }
@@ -372,7 +375,7 @@ impl Forums {
                 results,
                 selected,
             } => {
-                let mut body = picker::marked(rows(results, width), *selected);
+                let mut body = rows::marked(rows(results, width), *selected);
                 body.extend(hint_of(results.get(*selected)));
                 let title = fill(&text.found_title, &[("query", query)]);
                 (title, body, &text.found_hint)
@@ -457,7 +460,7 @@ fn rows(forums: &[Forum], width: usize) -> Vec<Line> {
         })
         .collect();
     // The host goes first when the row does not fit; the box's borders take four cells.
-    let inner = width.saturating_sub(4 + MARKER);
+    let inner = width.saturating_sub(4 + rows::MARK);
     table::plain(&cells, &[Align::Left; 3], &[1], inner, GAP)
 }
 
