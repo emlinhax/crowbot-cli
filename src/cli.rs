@@ -154,7 +154,7 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
     }
 
     let prompt = words.join(" ");
-    // A person at a terminal gets the session, with any words already typed in for review.
+    // At a terminal: the session, with the words typed in for review.
     if session {
         let initial = (!prompt.trim().is_empty()).then_some(prompt);
         return tui::run(&app, initial).await;
@@ -164,8 +164,7 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
     print::run(&app, prompt, format).await
 }
 
-/// One of crowbot's own flags after the words, where it would silently become prompt text (or
-/// a command's argument) instead of taking effect.
+/// A crowbot flag after the words, which would otherwise become prompt text or a command argument.
 fn misplaced_flag(words: &[String]) -> Option<&str> {
     let command = command();
     let ours = |word: &str| {
