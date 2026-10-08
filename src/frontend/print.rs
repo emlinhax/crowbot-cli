@@ -138,19 +138,27 @@ impl Printer<'_> {
                 *delay_ms as f64 / 1000.0
             )),
             AgentEvent::Unsaved { path, error } => {
-                self.note(&format!(
-                    "crowbot: no longer saving this session to {path}: {error}"
-                ));
+                self.warn(&format!("no longer saving this session to {path}: {error}"));
             }
             _ => {}
         }
     }
 
     fn note(&self, line: &str) {
+        self.break_line();
+        term::err(&format!("{line}\n"));
+    }
+
+    fn warn(&self, line: &str) {
+        self.break_line();
+        term::warn(line);
+    }
+
+    /// Ends a reply's half-written line, so what goes to stderr starts on its own.
+    fn break_line(&self) {
         if !self.at_line_start.swap(true, Ordering::Relaxed) {
             term::out("\n");
         }
-        term::err(&format!("{line}\n"));
     }
 
     fn finish(&self, Ended { outcome, turns }: Ended) -> ExitCode {
@@ -160,13 +168,13 @@ impl Printer<'_> {
         let last = self.last.lock().unwrap().take();
         match outcome {
             Outcome::Aborted => {
-                term::err("crowbot: cancelled\n");
+                term::warn("cancelled");
                 ExitCode::from(130)
             }
             Outcome::Failed => {
                 if let Some(error) = last.and_then(|m| m.error) {
                     let entry = Entry::of(&error);
-                    term::err(&format!("crowbot: {}: {error}\n", entry.title));
+                    term::warn(&format!("{}: {error}", entry.title));
                     if let Some(hint) = entry.hint() {
                         term::err(&format!("  {hint}\n"));
                     }
@@ -174,15 +182,13 @@ impl Printer<'_> {
                 ExitCode::FAILURE
             }
             Outcome::TurnLimit => {
-                term::err(&format!("crowbot: stopped after {turns} turns\n"));
+                term::warn(&format!("stopped after {turns} turns"));
                 ExitCode::FAILURE
             }
             Outcome::Rejected => ExitCode::FAILURE,
             Outcome::Done => {
                 if last.is_some_and(|m| m.finish == Finish::Length) {
-                    term::err(
-                        "crowbot: the reply hit its output limit (a low balance lowers that limit)\n",
-                    );
+                    term::warn("the reply hit its output limit (a low balance lowers that limit)");
                 }
                 ExitCode::SUCCESS
             }

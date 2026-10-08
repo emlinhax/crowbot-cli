@@ -123,7 +123,7 @@ pub fn trust(paths: &Paths) -> anyhow::Result<()> {
 /// a yes is remembered. `true` when the folder is now trusted.
 pub fn settle(paths: &Paths, untrusted: &Untrusted, can_ask: bool) -> anyhow::Result<bool> {
     if !can_ask {
-        io::term::err(&format!("crowbot: {}\n", ignored(untrusted)));
+        io::term::warn(&ignored(untrusted));
         return Ok(false);
     }
     io::term::out(&warning(untrusted));

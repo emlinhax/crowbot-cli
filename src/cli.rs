@@ -93,7 +93,7 @@ pub async fn run() -> ExitCode {
     match dispatch(cli).await {
         Ok(code) => code,
         Err(e) => {
-            term::err(&format!("crowbot: {e:#}\n"));
+            term::warn(&format!("{e:#}"));
             ExitCode::FAILURE
         }
     }

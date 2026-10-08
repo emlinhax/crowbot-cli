@@ -21,6 +21,11 @@ pub fn err(text: &str) {
     write_to(io::stderr().lock(), text);
 }
 
+/// One line on stderr under the program's name: `crowbot: {text}`.
+pub fn warn(text: &str) {
+    err(&format!("{}: {text}\n", env!("CARGO_PKG_NAME")));
+}
+
 fn write_to(mut to: impl Write, text: &str) {
     let _ = to.write_all(text.as_bytes());
     let _ = to.flush();
