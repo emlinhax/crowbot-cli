@@ -1,6 +1,5 @@
-//! crowbot installed for this user: the program in a folder of its own, that folder on PATH, and
-//! on Windows an Apps & Features entry whose uninstall runs `crowbot uninstall`. `~/.crowbot`
-//! (keys, sessions) is never touched.
+//! Per-user install: the program in its own folder, on PATH, and on Windows in Apps & Features
+//! (uninstall runs `crowbot uninstall`). `~/.crowbot` is never touched.
 
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -157,14 +156,14 @@ fn remove_program(place: &Place, _exe: &Path) -> anyhow::Result<()> {
 
 #[derive(Default, Serialize, Deserialize)]
 struct State {
-    /// The user said no to installing when asked; they are not asked again.
+    /// Declined; not asked again.
     #[serde(default)]
     declined: bool,
 }
 
-/// At an interactive start on Windows, a released crowbot run from anywhere but its install
-/// folder (a double-clicked download) offers to install itself, once. A development build never
-/// asks, so test sessions are never held up by it.
+/// Windows, release build, interactive start: a copy that is not installed (a double-clicked
+/// download) offers to install itself until declined. Dev builds never ask, so tests never wait on
+/// it.
 pub fn offer(paths: &Paths) -> anyhow::Result<()> {
     if !cfg!(windows) || release::tag().is_none() {
         return Ok(());
