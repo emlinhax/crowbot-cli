@@ -98,9 +98,9 @@ impl Progress {
             color,
         ));
         let tokens = fill(&words.tokens, &[("n", &units::tokens(self.tokens()))]);
-        let text = &ui::get().text;
+        let secs = (elapsed / 1000).to_string();
         line.push(
-            format!("  {}s · {tokens} · {}", elapsed / 1000, text.interrupt),
+            fill(&words.working, &[("secs", &secs), ("tokens", &tokens)]),
             Style::fg("muted"),
         );
         line.truncate(width)
@@ -119,11 +119,16 @@ fn steps(elapsed_ms: u128, step_ms: u64) -> usize {
 }
 
 fn retrying(secs: u64, why: &str, width: usize) -> Line {
-    let text = &ui::get().text;
-    let muted = Style::fg("muted");
+    let template = &ui::get().status.retry;
+    let said = fill(
+        template,
+        &[
+            ("retrying", &words::get().retrying),
+            ("secs", &secs.to_string()),
+        ],
+    );
     let mut line = Line::styled(format!("{why} · "), Style::fg("warn"));
-    line.push(format!("{} {secs}s", words::get().retrying), muted.clone());
-    line.push(format!(" · {}", text.interrupt), muted);
+    line.push(said, Style::fg("muted"));
     line.truncate(width)
 }
 

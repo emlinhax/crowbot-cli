@@ -189,7 +189,7 @@ impl Questions {
             };
             line.push(self.tab_name(q), style);
             if self.drafts[q].done {
-                line.push(" ✓", Style::fg("done"));
+                line.push(format!(" {}", ui::get().marks.answered), Style::fg("done"));
             }
         }
         line.push("   ", Style::default());
@@ -211,13 +211,14 @@ impl Questions {
         let indent = Line::plain("       ");
         for row in 0..=question.options.len() {
             let other = row == question.options.len();
+            let marks = &ui::get().marks;
             let tick = match (
                 question.multiple,
                 draft.picked.contains(&row) || other && draft.text.is_some(),
             ) {
-                (false, _) => "",
-                (true, true) => "[x] ",
-                (true, false) => "[ ] ",
+                (false, _) => String::new(),
+                (true, true) => format!("{} ", marks.ticked),
+                (true, false) => format!("{} ", marks.unticked),
             };
             let label = if other {
                 match &draft.text {
@@ -227,7 +228,7 @@ impl Questions {
             } else {
                 question.options[row].label.clone()
             };
-            let line = rows::option(row + 1, &label, tick, row == draft.cursor);
+            let line = rows::option(row + 1, &label, &tick, row == draft.cursor);
             lines.push(line.truncate(width));
             if let Some(description) = question
                 .options

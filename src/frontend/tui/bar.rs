@@ -6,9 +6,9 @@ use crate::effort;
 use crate::frontend::tui::ui;
 use crate::mode::Mode;
 use crate::text::styled::{Line, Style};
+use crate::text::template::fill;
 use crate::text::units;
 
-const RULE: &str = "─";
 /// Dashes kept at each end of the bottom rule so it still reads as a rule.
 const LEAD: usize = 2;
 const TAIL: usize = 2;
@@ -22,7 +22,7 @@ pub struct Info<'a> {
 }
 
 pub fn top(mode: &Mode, width: usize) -> Line {
-    Line::styled(RULE.repeat(width), Style::fg(&mode.color))
+    Line::styled(rule().repeat(width), Style::fg(&mode.color))
 }
 
 pub fn bottom(mode: &Mode, info: &Info<'_>, width: usize) -> Line {
@@ -31,20 +31,28 @@ pub fn bottom(mode: &Mode, info: &Info<'_>, width: usize) -> Line {
     let room = width.saturating_sub(LEAD + TAIL + 2);
     let items = items(mode, info);
     if room == 0 || items.spans.is_empty() {
-        return Line::styled(RULE.repeat(width), style);
+        return Line::styled(rule().repeat(width), style);
     }
     let items = items.truncate(room);
     let mut line = Line::styled(
-        RULE.repeat(width - items.width() - TAIL - 2) + " ",
+        rule().repeat(width - items.width() - TAIL - 2) + " ",
         style.clone(),
     );
     line.extend(items);
-    line.push(format!(" {}", RULE.repeat(TAIL)), style);
+    line.push(format!(" {}", rule().repeat(TAIL)), style);
     line
 }
 
+fn rule() -> &'static str {
+    &ui::get().marks.rule
+}
+
+fn footer() -> &'static ui::Footer {
+    &ui::get().footer
+}
+
 fn items(mode: &Mode, info: &Info<'_>) -> Line {
-    let footer = &ui::get().footer;
+    let footer = footer();
     let mut line = Line::default();
     for item in &footer.items {
         let Some(part) = item_line(mode, info, item) else {
@@ -70,15 +78,14 @@ fn item_line(mode: &Mode, info: &Info<'_>, item: &str) -> Option<Line> {
             }
             line
         }
-        "context" => Line::styled(format!("ctx {}%", info.context_pct?), muted),
-        "cost" => Line::styled(
-            format!(
-                "{} {}",
-                units::usd_micros(info.cost_micros),
-                ui::get().text.cost_estimate
-            ),
-            muted,
-        ),
+        "context" => {
+            let pct = info.context_pct?.to_string();
+            Line::styled(fill(&footer().context, &[("pct", &pct)]), muted)
+        }
+        "cost" => {
+            let cost = units::usd_micros(info.cost_micros);
+            Line::styled(fill(&footer().cost, &[("cost", &cost)]), muted)
+        }
         other => {
             debug_assert!(false, "unknown footer item `{other}` in data/ui.toml");
             return None;

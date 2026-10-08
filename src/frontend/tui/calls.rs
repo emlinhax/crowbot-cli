@@ -7,6 +7,7 @@ use crate::config::limits;
 use crate::conversation::message::ToolResult;
 use crate::frontend::tool_card::{self, Body, Summary, at, spec};
 use crate::frontend::tui::rows::capped;
+use crate::frontend::tui::ui;
 use crate::text::diff;
 use crate::text::styled::{Line, Style};
 use crate::text::template;
@@ -21,10 +22,11 @@ pub enum State<'a> {
 }
 
 pub fn header(tool: &str, arguments: &str, state: State<'_>) -> Line {
+    let done = &ui::get().marks.done;
     let (mark, role) = match state {
         State::Running(frame) => (frame, "running"),
-        State::Done => ("●", "done"),
-        State::Failed => ("●", "error"),
+        State::Done => (done.as_str(), "done"),
+        State::Failed => (done.as_str(), "error"),
     };
     let mut line = Line::styled(format!("{mark} "), Style::fg(role));
     line.push(tool, Style::default().bold());

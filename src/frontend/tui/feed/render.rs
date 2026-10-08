@@ -90,7 +90,7 @@ pub fn reply_lines(md: &str, first: bool, width: usize) -> Vec<Line> {
 fn error_lines(error: &ErrorInfo, width: usize) -> Vec<Line> {
     let entry = ErrorEntry::of(error);
     let mut lines = vec![Line::styled(
-        format!("● {}", entry.title),
+        format!("{} {}", ui::get().marks.done, entry.title),
         Style::fg("error").bold(),
     )];
     let indent = Line::plain("  ");
@@ -104,7 +104,10 @@ fn error_lines(error: &ErrorInfo, width: usize) -> Vec<Line> {
     }
     if let Some(id) = &error.request_id {
         let mut line = indent.clone();
-        line.push(format!("request {id}"), Style::fg("muted"));
+        line.push(
+            fill(&ui::get().text.request, &[("id", id)]),
+            Style::fg("muted"),
+        );
         lines.push(line);
     }
     lines

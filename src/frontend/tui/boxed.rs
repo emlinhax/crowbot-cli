@@ -1,5 +1,6 @@
 //! The one rounded box every floating card is drawn in: prompt cards and the command popup.
 
+use crate::frontend::tui::ui;
 use crate::text::styled::{Line, Style};
 
 /// A box's borders and the space inside them take this many cells across.
@@ -22,24 +23,29 @@ pub fn hint(text: &str, width: usize) -> Line {
 
 /// `title` on the top edge, `body` padded to the inner width, all within `width` cells.
 pub fn boxed(title: Line, body: &[Line], width: usize) -> Vec<Line> {
+    let marks = &ui::get().marks;
     let border = Style::fg("muted");
     let inner = inner(width);
     let mut lines = Vec::with_capacity(body.len() + 2);
-    let mut top = Line::styled("╭ ", border.clone());
+    let mut top = Line::styled(format!("{} ", marks.top_left), border.clone());
     top.extend(title);
     top = top.truncate(width.saturating_sub(2));
     top.push(" ", border.clone());
     let fill = width.saturating_sub(top.width() + 1);
-    top.push(format!("{}╮", "─".repeat(fill)), border.clone());
+    top.push(
+        format!("{}{}", marks.rule.repeat(fill), marks.top_right),
+        border.clone(),
+    );
     lines.push(top);
     for row in body {
-        let mut line = Line::styled("│ ", border.clone());
+        let mut line = Line::styled(format!("{} ", marks.side), border.clone());
         line.extend(row.truncate(inner).padded(inner, &Style::default()));
-        line.push(" │", border.clone());
+        line.push(format!(" {}", marks.side), border.clone());
         lines.push(line);
     }
+    let bottom = marks.rule.repeat(width.saturating_sub(2));
     lines.push(Line::styled(
-        format!("╰{}╯", "─".repeat(width.saturating_sub(2))),
+        format!("{}{bottom}{}", marks.bottom_left, marks.bottom_right),
         border,
     ));
     lines

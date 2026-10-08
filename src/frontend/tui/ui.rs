@@ -22,7 +22,9 @@ pub struct Ui {
     pub reply_mark: String,
     pub placeholder: String,
     pub tips: Vec<String>,
+    pub marks: Marks,
     pub footer: Footer,
+    pub welcome: WelcomeText,
     pub text: Text,
     pub outcome: OutcomeText,
     pub card: CardText,
@@ -32,6 +34,34 @@ pub struct Ui {
     pub picker: PickerText,
     pub login: LoginText,
     pub forums: ForumsText,
+}
+
+/// Marks drawn across the session; each is one cell wide.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Marks {
+    pub done: String,
+    pub selected: String,
+    pub field: String,
+    pub answered: String,
+    pub ticked: String,
+    pub unticked: String,
+    pub queued: String,
+    pub mask: String,
+    pub rule: String,
+    pub side: String,
+    pub top_left: String,
+    pub top_right: String,
+    pub bottom_left: String,
+    pub bottom_right: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WelcomeText {
+    pub version: String,
+    pub separator: String,
+    pub modes: String,
 }
 
 /// How a run that ended early is told.
@@ -103,6 +133,8 @@ pub struct StatusText {
     pub plain: Vec<String>,
     pub verbs: Vec<String>,
     pub tokens: String,
+    pub working: String,
+    pub retry: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -162,15 +194,16 @@ pub enum PermissionReply {
 pub struct Footer {
     pub items: Vec<String>,
     pub separator: String,
+    pub context: String,
+    pub cost: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Text {
-    pub interrupt: String,
     pub queued: String,
     pub steering: String,
-    pub cost_estimate: String,
+    pub request: String,
     pub not_logged_in: String,
     pub declined: String,
     pub ctrl_c_again: String,

@@ -15,17 +15,49 @@ tips = [
   "Right-click copies a message",
 ]
 
+# Marks drawn across the session; each is one cell wide.
+[marks]
+# A finished or failed tool call, and an error card.
+done = "●"
+# The selected row of a card's list.
+selected = "›"
+# A card's own-words field.
+field = "✎"
+# A question already answered, on its tab.
+answered = "✓"
+ticked = "[x]"
+unticked = "[ ]"
+# A message waiting under the bar.
+queued = "↳"
+# Each hidden character of a secret.
+mask = "•"
+# The rules round the bar and the edges of a card's box.
+rule = "─"
+side = "│"
+top_left = "╭"
+top_right = "╮"
+bottom_left = "╰"
+bottom_right = "╯"
+
 [footer]
 # All the status, right-aligned on the rule under the message bar, in this order; effort rides
 # with the model. The rule above the bar is plain, in the mode's colour.
 items = ["mode", "model", "context", "cost"]
 separator = " · "
+context = "ctx {pct}%"
+cost = "{cost} est"
+
+# The welcome card's lines: the version after the name, then model, effort and mode.
+[welcome]
+version = " v{version}"
+separator = " · "
+# Joins the modes in the Shift+Tab tip.
+modes = " → "
 
 [text]
-interrupt = "esc to interrupt"
 queued = "queued"
 steering = "steering"
-cost_estimate = "est"
+request = "request {id}"
 not_logged_in = "Not logged in: type /login"
 declined = "Stopped: you declined a call."
 ctrl_c_again = "Press Ctrl+C again to quit"
@@ -53,6 +85,9 @@ plain = ["'._-'", "-_.'-", "._-'.", "_.'-_", "_-'._", ".'-_.", "-'._-", "'-_.'"]
 # One per turn, never the same twice running.
 verbs = ["Gooning", "Tweaking", "Cooking", "Pasting", "Maffing", "Napping", "Trapping", "Crowing", "Bypassing", "Caw-cawing"]
 tokens = "↓ {n} tok"
+working = "  {secs}s · {tokens} · esc to interrupt"
+# {retrying} is the shared word (data/frontend.toml).
+retry = "{retrying} {secs}s · esc to interrupt"
 
 # Thinking blocks: a click opens or closes one, Ctrl+T all of them.
 [thinking]

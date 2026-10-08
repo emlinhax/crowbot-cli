@@ -4,12 +4,16 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use super::Editor;
 use crate::config::limits;
+use crate::frontend::tui::ui;
 use crate::text::styled::{Line, Style, hang, width};
 
 impl Editor {
     /// A card's own-words field, under its options behind the ✎ mark.
     pub fn field_lines(&self, width: usize) -> Vec<Line> {
-        let prompt = Line::styled("   ✎ ", Style::fg("accent"));
+        let prompt = Line::styled(
+            format!("   {} ", ui::get().marks.field),
+            Style::fg("accent"),
+        );
         self.render(width, limits::get().tui.field_rows.value, &prompt, "")
     }
 
@@ -54,9 +58,10 @@ impl Editor {
     }
 }
 
-/// `text` with every non-space character but the last `shown` as `•`, and the cursor's byte
-/// offset moved to match.
+/// `text` with every non-space character but the last `shown` as the mask mark, and the
+/// cursor's byte offset moved to match.
 fn mask(text: &str, cursor: Option<usize>, shown: usize) -> (String, Option<usize>) {
+    let hidden = &ui::get().marks.mask;
     let total = text.chars().filter(|c| !c.is_whitespace()).count();
     let mut out = String::with_capacity(text.len());
     let mut at = None;
@@ -70,7 +75,11 @@ fn mask(text: &str, cursor: Option<usize>, shown: usize) -> (String, Option<usiz
             continue;
         }
         seen += 1;
-        out.push(if seen + shown > total { c } else { '•' });
+        if seen + shown > total {
+            out.push(c);
+        } else {
+            out.push_str(hidden);
+        }
     }
     if cursor == Some(text.len()) {
         at = Some(out.len());

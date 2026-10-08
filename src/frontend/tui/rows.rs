@@ -22,7 +22,8 @@ pub fn marked(rows: impl IntoIterator<Item = Line>, selected: usize) -> Vec<Line
         .map(|(i, row)| {
             if i == selected {
                 let chosen = chosen();
-                let mut line = Line::styled("› ", chosen.clone());
+                let mark = format!("{} ", ui::get().marks.selected);
+                let mut line = Line::styled(mark, chosen.clone());
                 line.push(row.text(), chosen);
                 line
             } else {
@@ -37,7 +38,7 @@ pub fn marked(rows: impl IntoIterator<Item = Line>, selected: usize) -> Vec<Line
 /// A numbered option, ` › 1 [x] label`: the mark when `chosen`, and `tick` for a multiple choice.
 pub fn option(n: usize, label: &str, tick: &str, chosen: bool) -> Line {
     let (mark, style) = if chosen {
-        ("›", self::chosen())
+        (ui::get().marks.selected.as_str(), self::chosen())
     } else {
         (" ", Style::default())
     };

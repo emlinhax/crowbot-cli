@@ -64,14 +64,18 @@ pub fn render(info: &Info, width: usize) -> Vec<Line> {
 
 fn text(info: &Info) -> Vec<Line> {
     let ui = ui::get();
+    let words = &ui.welcome;
     let mut name = Line::styled("crowbot", Style::fg("accent").bold());
-    name.push(format!(" v{}", info.version), Style::fg("muted"));
+    name.push(
+        fill(&words.version, &[("version", info.version)]),
+        Style::fg("muted"),
+    );
 
     let mut model = Line::plain(&info.model);
     if let Some(effort) = &info.effort {
-        model.push(format!(" · {effort}"), Style::fg("muted"));
+        model.push(format!("{}{effort}", words.separator), Style::fg("muted"));
     }
-    model.push(" · ", Style::fg("muted"));
+    model.push(&words.separator, Style::fg("muted"));
     model.push(&info.mode_label, Style::fg(&info.mode_color).bold());
 
     let mut lines = vec![
@@ -84,7 +88,7 @@ fn text(info: &Info) -> Vec<Line> {
         lines.push(Line::styled(&ui.text.not_logged_in, Style::fg("warn")));
     }
     let modes: Vec<&str> = mode::all().iter().map(|m| m.label.as_str()).collect();
-    let modes = modes.join(" → ");
+    let modes = modes.join(&words.modes);
     lines.extend(
         ui.tips
             .iter()

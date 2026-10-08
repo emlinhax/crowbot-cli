@@ -21,7 +21,8 @@ pub fn render(entries: &[(Kind, String)], width: usize) -> Vec<Line> {
                 Kind::Steering => &text.steering,
             };
             let first = message.lines().next().unwrap_or_default();
-            let mut line = Line::styled(format!("↳ {label}: "), Style::fg("muted"));
+            let mark = &ui::get().marks.queued;
+            let mut line = Line::styled(format!("{mark} {label}: "), Style::fg("muted"));
             line.push(first, Style::default().dim());
             line.truncate(width)
         })
