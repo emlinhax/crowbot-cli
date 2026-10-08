@@ -10,7 +10,7 @@ use crate::api::assemble::{Assembler, Delta};
 use crate::api::error::ApiError;
 use crate::api::models::Model;
 use crate::api::sse;
-use crate::api::wire::{self, Replay, StreamOptions, WireMessage, WireUsage};
+use crate::api::wire::{self, WireUsage};
 use crate::api::{Api, Call, retry};
 use crate::config::limits;
 use crate::conversation::error::ErrorInfo;
@@ -47,7 +47,7 @@ pub async fn stream(
     cancel: &CancellationToken,
     on: &mut (dyn FnMut(Event<'_>) + Send),
 ) -> Assistant {
-    let body = serde_json::to_value(request(turn)).expect("chat requests serialize");
+    let body = serde_json::to_value(wire::Request::from(turn)).expect("chat requests serialize");
     let mut attempt = 1;
     loop {
         let outcome = attempt_once(api, turn, &body, cancel, on).await;
@@ -164,31 +164,6 @@ async fn attempt_once(
     }
 }
 
-fn request(turn: &Turn<'_>) -> wire::Request {
-    let replay = Replay {
-        model: &turn.model.id,
-        reasoning: turn.model.capabilities.reasoning,
-    };
-    let mut messages = vec![WireMessage::System {
-        content: turn.system.to_owned(),
-    }];
-    messages.extend(
-        turn.messages
-            .iter()
-            .map(|m| WireMessage::from_message(m, &replay)),
-    );
-    wire::Request {
-        model: turn.model.id.clone(),
-        messages,
-        tools: turn.tools.to_vec(),
-        stream: true,
-        stream_options: StreamOptions {
-            include_usage: true,
-        },
-        reasoning_effort: turn.effort().map(str::to_owned),
-    }
-}
-
 fn cost(model: &Model, usage: &WireUsage) -> Usage {
     let cached = usage.cached().min(usage.prompt_tokens);
     let uncached = usage.prompt_tokens - cached;
@@ -269,7 +244,7 @@ mod tests {
     }
 
     #[test]
-    fn effort_is_sent_only_to_reasoning_models() {
+    fn effort_is_sent_and_recorded_only_for_reasoning_models() {
         let m = model(false);
         let turn = Turn {
             model: &m,
@@ -279,11 +254,11 @@ mod tests {
             tools: &[],
         };
         let recorded = |turn: &Turn<'_>| reply(turn, Finish::Done).effort;
-        assert!(request(&turn).reasoning_effort.is_none());
-        assert_eq!(recorded(&turn), None);
+        let sent = |turn: &Turn<'_>| wire::Request::from(turn).reasoning_effort;
+        assert_eq!((sent(&turn), recorded(&turn)), (None, None));
         let m = model(true);
         let turn = Turn { model: &m, ..turn };
-        assert_eq!(request(&turn).reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(sent(&turn).as_deref(), Some("high"));
         assert_eq!(recorded(&turn).as_deref(), Some("high"));
     }
 }

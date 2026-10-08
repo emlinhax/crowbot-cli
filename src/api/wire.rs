@@ -4,6 +4,7 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
+use crate::api::chat::Turn;
 use crate::conversation::error::ErrorInfo;
 use crate::conversation::message::{Message, Part};
 
@@ -82,6 +83,35 @@ fn defang(text: &str) -> Cow<'_, str> {
         bytes[at + "system".len()] = b'_';
     }
     Cow::Owned(String::from_utf8(bytes).expect("one ASCII byte swapped for another"))
+}
+
+/// A turn as the request crowbot sends: the system prompt first, every message mapped,
+/// streaming with usage.
+impl From<&Turn<'_>> for Request {
+    fn from(turn: &Turn<'_>) -> Self {
+        let replay = Replay {
+            model: &turn.model.id,
+            reasoning: turn.model.capabilities.reasoning,
+        };
+        let mut messages = vec![WireMessage::System {
+            content: turn.system.to_owned(),
+        }];
+        messages.extend(
+            turn.messages
+                .iter()
+                .map(|m| WireMessage::from_message(m, &replay)),
+        );
+        Self {
+            model: turn.model.id.clone(),
+            messages,
+            tools: turn.tools.to_vec(),
+            stream: true,
+            stream_options: StreamOptions {
+                include_usage: true,
+            },
+            reasoning_effort: turn.effort().map(str::to_owned),
+        }
+    }
 }
 
 impl WireMessage {
