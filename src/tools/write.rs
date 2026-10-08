@@ -4,7 +4,8 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, target};
+use super::target::{self, Target};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::data;
 use crate::io::{self, fs::Access, fs::Kind};
 use crate::permission::catalog;
@@ -54,18 +55,9 @@ impl Tool for Write {
     ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
             let target = target::resolve(&cx.app.paths, &args.path)?;
-            let _guard = cx.files().lock(&target.path).await;
-            cx.files().check_fresh(&target.path, &target.shown)?;
+            let _guard = cx.files().claim(&target.path, &target.shown).await?;
             let created = target.kind() == Ok(Kind::Missing);
-            io::fs::write_atomic(&target.path, args.content.as_bytes(), Access::Shared).map_err(
-                |e| {
-                    fill(
-                        &target::TEXT.write_failed,
-                        &[("path", &target.shown), ("error", &e.to_string())],
-                    )
-                },
-            )?;
-            cx.files().saw(&target.path);
+            save(cx, &target, &args.content)?;
             let lines = args.content.lines().count();
             let said = if created {
                 &TEXT.created
@@ -79,6 +71,18 @@ impl Tool for Write {
             .with_details(json!({"created": created, "lines": lines})))
         })
     }
+}
+
+/// Writes `text` over the target and marks it read, so the model may change it again.
+pub fn save(cx: &ToolCx<'_>, target: &Target, text: &str) -> Result<(), String> {
+    io::fs::write_atomic(&target.path, text.as_bytes(), Access::Shared).map_err(|e| {
+        fill(
+            &target::TEXT.write_failed,
+            &[("path", &target.shown), ("error", &e.to_string())],
+        )
+    })?;
+    cx.files().saw(&target.path);
+    Ok(())
 }
 
 #[cfg(test)]

@@ -51,6 +51,17 @@ impl Files {
         }
     }
 
+    /// The file's lock, once it is held and the file may be changed; held until the guard drops.
+    pub async fn claim(
+        &self,
+        path: &Path,
+        shown: &str,
+    ) -> Result<tokio::sync::OwnedMutexGuard<()>, String> {
+        let guard = self.lock(path).await;
+        self.check_fresh(path, shown)?;
+        Ok(guard)
+    }
+
     pub async fn lock(&self, path: &Path) -> tokio::sync::OwnedMutexGuard<()> {
         let lock = self
             .locks

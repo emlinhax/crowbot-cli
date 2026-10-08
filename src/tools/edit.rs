@@ -6,9 +6,10 @@ use serde_json::json;
 
 use super::edit_match::{self, Fit, Miss};
 use super::target::{self, Target};
+use super::write::save;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::data;
-use crate::io::{self, fs::Access, fs::Kind};
+use crate::io::{self, fs::Kind};
 use crate::permission::catalog;
 use crate::text::diff;
 use crate::text::template::fill;
@@ -134,20 +135,11 @@ impl Tool for Edit {
     ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
             let target = target::resolve(&cx.app.paths, &args.path)?;
-            let _guard = cx.files().lock(&target.path).await;
-            cx.files().check_fresh(&target.path, &target.shown)?;
+            let _guard = cx.files().claim(&target.path, &target.shown).await?;
             let before = load(&target)?;
             let applied =
                 apply(&before, &args.edits).map_err(|why| format!("{why} ({})", target.shown))?;
-            io::fs::write_atomic(&target.path, applied.text.as_bytes(), Access::Shared).map_err(
-                |e| {
-                    fill(
-                        &target::TEXT.write_failed,
-                        &[("path", &target.shown), ("error", &e.to_string())],
-                    )
-                },
-            )?;
-            cx.files().saw(&target.path);
+            save(cx, &target, &applied.text)?;
             let diff = diff::unified(&before, &applied.text, &target.shown);
             let loose = if applied.loose.is_empty() {
                 String::new()
@@ -411,7 +403,7 @@ mod tests {
         crate::io::fs::write_atomic(
             &project.app.paths.project.join("latin1.txt"),
             b"caf\xe9\n",
-            Access::Shared,
+            crate::io::fs::Access::Shared,
         )
         .unwrap();
         project.write("d/x.txt", "x");
