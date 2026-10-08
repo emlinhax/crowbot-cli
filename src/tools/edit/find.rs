@@ -67,8 +67,15 @@ const STRATEGIES: &[Strategy] = &[
 pub struct Found {
     pub spans: Vec<Span>,
     pub fit: Fit,
-    /// Which strategy matched; "exact" unless the model's text had drifted.
+    /// Which strategy matched.
     pub strategy: &'static str,
+}
+
+impl Found {
+    /// Matched by a strategy looser than the exact one: the model's text had drifted.
+    pub fn loose(&self) -> bool {
+        self.strategy != STRATEGIES[0].name
+    }
 }
 
 /// Where `needle` occurs in `content`: every occurrence when `all`, else exactly one. Without

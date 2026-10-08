@@ -3,7 +3,6 @@
 mod bash;
 mod codesearch;
 mod edit;
-mod edit_match;
 pub mod forum;
 mod fs;
 mod glob;
