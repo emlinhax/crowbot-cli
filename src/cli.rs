@@ -44,14 +44,8 @@ struct Text {
     subcommand_value_name = "COMMAND|PROMPT"
 )]
 struct Cli {
-    #[arg(long, global = true)]
-    model: Option<String>,
-
-    #[arg(long, global = true)]
-    effort: Option<String>,
-
-    #[arg(long, global = true)]
-    mode: Option<String>,
+    #[command(flatten)]
+    flags: Overrides,
 
     #[arg(short, long)]
     print: bool,
@@ -116,11 +110,7 @@ pub async fn run() -> ExitCode {
 }
 
 async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
-    let flags = Overrides {
-        model: cli.model,
-        effort: cli.effort,
-        mode: cli.mode,
-    };
+    let flags = cli.flags;
     let mut app = App::load(&flags)?;
     let words = match cli.command {
         Some(Sub::Words(words)) => words,
