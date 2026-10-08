@@ -1,11 +1,15 @@
 //! Everything that waits on the user has one shape: a `Prompt` goes out as an event, and a `Reply`
-//! comes back through `Shared::answer`. Headless runs answer `Unavailable` to all of them.
+//! comes back through `Prompts::answer`. Headless runs answer `Unavailable` to all of them.
+
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 use crate::live::event::AgentEvent;
-use crate::live::state::Shared;
 use crate::permission::gate::Ask;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -94,15 +98,72 @@ pub enum Reply {
     Unavailable,
 }
 
+/// The prompts waiting on the user, each marked whether it asks permission.
+pub struct Prompts {
+    waiting: Mutex<HashMap<u64, (bool, oneshot::Sender<Reply>)>>,
+    next: AtomicU64,
+}
+
+impl Default for Prompts {
+    fn default() -> Self {
+        Self {
+            waiting: Mutex::default(),
+            next: AtomicU64::new(1),
+        }
+    }
+}
+
+impl Prompts {
+    fn register(&self, permission: bool) -> (u64, oneshot::Receiver<Reply>) {
+        let id = self.next.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+        self.waiting.lock().unwrap().insert(id, (permission, tx));
+        (id, rx)
+    }
+
+    /// Drops a prompt nobody will answer now (the run was interrupted).
+    fn forget(&self, id: u64) {
+        self.waiting.lock().unwrap().remove(&id);
+    }
+
+    /// Whether prompt `id` is still waiting for an answer.
+    pub fn waiting(&self, id: u64) -> bool {
+        self.waiting.lock().unwrap().contains_key(&id)
+    }
+
+    /// `false` when that prompt is no longer waiting.
+    pub fn answer(&self, id: u64, reply: Reply) -> bool {
+        match self.waiting.lock().unwrap().remove(&id) {
+            Some((_, waiting)) => waiting.send(reply).is_ok(),
+            None => false,
+        }
+    }
+
+    /// Says yes to every waiting permission prompt; questions still wait for their answer.
+    pub fn approve_permissions(&self) {
+        let mut waiting = self.waiting.lock().unwrap();
+        let permissions: Vec<u64> = waiting
+            .iter()
+            .filter(|(_, (permission, _))| *permission)
+            .map(|(id, _)| *id)
+            .collect();
+        for id in permissions {
+            if let Some((_, prompt)) = waiting.remove(&id) {
+                let _ = prompt.send(Reply::Yes);
+            }
+        }
+    }
+}
+
 /// Asks and waits; `None` when the run was interrupted first.
 pub async fn ask(
-    shared: &Shared,
+    prompts: &Prompts,
     emit: &(dyn Fn(AgentEvent) + Send + Sync),
     call_id: &str,
     prompt: Prompt,
     cancel: &CancellationToken,
 ) -> Option<Reply> {
-    let (id, reply) = shared.register_ask(matches!(prompt, Prompt::Permission { .. }));
+    let (id, reply) = prompts.register(matches!(prompt, Prompt::Permission { .. }));
     emit(AgentEvent::Prompt {
         id,
         call_id: call_id.to_owned(),
@@ -111,7 +172,7 @@ pub async fn ask(
     tokio::select! {
         reply = reply => Some(reply.unwrap_or(Reply::Unavailable)),
         () = cancel.cancelled() => {
-            shared.forget(id);
+            prompts.forget(id);
             None
         }
     }

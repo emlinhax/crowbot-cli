@@ -390,7 +390,7 @@ mod tests {
         let (ended, transcript, _) = h
             .run(&shared("manual"), |event, shared| {
                 if let AgentEvent::Prompt { id, .. } = event {
-                    shared.answer(*id, Reply::No { feedback: None });
+                    shared.prompts.answer(*id, Reply::No { feedback: None });
                 }
             })
             .await;
@@ -412,7 +412,7 @@ mod tests {
         .await;
         h.run(&shared("manual"), |event, shared| {
             if let AgentEvent::Prompt { id, .. } = event {
-                shared.answer(
+                shared.prompts.answer(
                     *id,
                     Reply::No {
                         feedback: Some("use trash instead".into()),
@@ -461,7 +461,7 @@ mod tests {
                             text: None,
                         },
                     ];
-                    shared.answer(*id, Reply::Answers(answers));
+                    shared.prompts.answer(*id, Reply::Answers(answers));
                 }
             })
             .await;
@@ -489,7 +489,7 @@ mod tests {
         let state = shared("plan");
         h.run(&state, |event, shared| {
             if let AgentEvent::Prompt { id, .. } = event {
-                shared.answer(*id, Reply::Choice(0));
+                shared.prompts.answer(*id, Reply::Choice(0));
             }
         })
         .await;
@@ -565,7 +565,7 @@ mod tests {
         let (_, _, events) = h
             .run(&shared("auto"), |event, shared| {
                 if let AgentEvent::Prompt { id, .. } = event {
-                    shared.answer(*id, Reply::Yes);
+                    shared.prompts.answer(*id, Reply::Yes);
                 }
             })
             .await;
@@ -578,7 +578,7 @@ mod tests {
         let (_, transcript, _) = h
             .run(&shared("auto"), |event, shared| {
                 if let AgentEvent::Prompt { id, .. } = event {
-                    shared.answer(*id, Reply::Unavailable);
+                    shared.prompts.answer(*id, Reply::Unavailable);
                 }
             })
             .await;

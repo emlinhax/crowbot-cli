@@ -1,16 +1,14 @@
 //! Session state a run shares with whoever drives it: queued messages, pending prompts, the
 //! mode, and the interrupt. Frontends change it while a run is live.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
 
-use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 use crate::conversation::message::Part;
 use crate::live::files::Files;
-use crate::live::prompt::Reply;
+use crate::live::prompt::Prompts;
 use crate::mode::Mode;
 use crate::permission::rule::Action;
 
@@ -26,9 +24,7 @@ pub struct Shared {
     cancel: Mutex<CancellationToken>,
     steer: Mutex<VecDeque<Vec<Part>>>,
     follow: Mutex<VecDeque<Vec<Part>>>,
-    /// Waiting prompts, and whether each is a permission prompt.
-    asks: Mutex<HashMap<u64, (bool, oneshot::Sender<Reply>)>>,
-    next_ask: AtomicU64,
+    pub prompts: Prompts,
     mode: Mutex<&'static Mode>,
     /// The mode the model was last told about.
     reminded: Mutex<Option<&'static Mode>>,
@@ -41,8 +37,7 @@ impl Shared {
             cancel: Mutex::new(CancellationToken::new()),
             steer: Mutex::default(),
             follow: Mutex::default(),
-            asks: Mutex::default(),
-            next_ask: AtomicU64::new(1),
+            prompts: Prompts::default(),
             mode: Mutex::new(mode),
             reminded: Mutex::default(),
             files: Files::default(),
@@ -69,28 +64,8 @@ impl Shared {
     pub fn set_mode(&self, mode: &'static Mode) {
         *self.mode.lock().unwrap() = mode;
         if mode.verdicts.ask == Action::Allow {
-            let mut asks = self.asks.lock().unwrap();
-            let permissions: Vec<u64> = asks
-                .iter()
-                .filter(|(_, (permission, _))| *permission)
-                .map(|(id, _)| *id)
-                .collect();
-            for id in permissions {
-                if let Some((_, waiting)) = asks.remove(&id) {
-                    let _ = waiting.send(Reply::Yes);
-                }
-            }
+            self.prompts.approve_permissions();
         }
-    }
-
-    /// Drops a prompt nobody will answer now (the run was interrupted).
-    pub fn forget(&self, id: u64) {
-        self.asks.lock().unwrap().remove(&id);
-    }
-
-    /// Whether prompt `id` is still waiting for an answer.
-    pub fn waiting(&self, id: u64) -> bool {
-        self.asks.lock().unwrap().contains_key(&id)
     }
 
     /// What to tell the model about the mode now, if it changed since the model was last told.
@@ -134,20 +109,5 @@ impl Shared {
 
     pub fn drain_follow(&self) -> Vec<Vec<Part>> {
         self.follow.lock().unwrap().drain(..).collect()
-    }
-
-    pub fn register_ask(&self, permission: bool) -> (u64, oneshot::Receiver<Reply>) {
-        let id = self.next_ask.fetch_add(1, Ordering::Relaxed);
-        let (tx, rx) = oneshot::channel();
-        self.asks.lock().unwrap().insert(id, (permission, tx));
-        (id, rx)
-    }
-
-    /// `false` when that prompt is no longer waiting.
-    pub fn answer(&self, id: u64, reply: Reply) -> bool {
-        match self.asks.lock().unwrap().remove(&id) {
-            Some((_, waiting)) => waiting.send(reply).is_ok(),
-            None => false,
-        }
     }
 }

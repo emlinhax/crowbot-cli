@@ -205,7 +205,14 @@ impl ToolCx<'_> {
 
     /// Puts a question to the user and waits; `None` when the run was interrupted.
     pub async fn ask(&self, prompt: Prompt) -> Option<Reply> {
-        prompt::ask(self.shared, self.emit, self.call_id, prompt, &self.cancel).await
+        prompt::ask(
+            &self.shared.prompts,
+            self.emit,
+            self.call_id,
+            prompt,
+            &self.cancel,
+        )
+        .await
     }
 }
 

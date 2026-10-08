@@ -90,7 +90,7 @@ impl Printer<'_> {
     fn event(&self, event: AgentEvent) {
         // Nobody can answer a prompt here; decline it so the model hears why and carries on.
         if let AgentEvent::Prompt { id, .. } = &event {
-            self.shared.answer(*id, Reply::Unavailable);
+            self.shared.prompts.answer(*id, Reply::Unavailable);
         }
         if let AgentEvent::MessageEnd { message } = &event {
             *self.last.lock().unwrap() = Some(message.clone());

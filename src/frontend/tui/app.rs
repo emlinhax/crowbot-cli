@@ -511,7 +511,7 @@ impl<'a> Tui<'a> {
             return;
         };
         if let card::Step::Answer(reply) = card.key(action, key) {
-            self.shared.answer(card.id(), reply);
+            self.shared.prompts.answer(card.id(), reply);
             self.cards.pop_front();
         }
     }
@@ -893,7 +893,7 @@ impl<'a> Tui<'a> {
         }
         // Prompts answered elsewhere (AUTO approved them, the run was interrupted) go away.
         let shared = self.shared;
-        self.cards.retain(|card| shared.waiting(card.id()));
+        self.cards.retain(|card| shared.prompts.waiting(card.id()));
         // The command popup floats over the conversation instead of growing the bar.
         let mut floating = Vec::new();
         let card = if let Some(login) = &self.login {
