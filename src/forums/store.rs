@@ -1,6 +1,5 @@
-//! The forums on this machine: `~/.crowbot/forums.json`. The whole file is sealed (DPAPI on
-//! Windows, 0600 elsewhere) because a logged-in entry holds session cookies. With no file yet, the
-//! list starts from the seed in `data/forums.toml`, so there is something to browse on first run.
+//! `~/.crowbot/forums.json`, sealed whole (DPAPI on Windows, 0600 elsewhere) because logged-in
+//! entries hold session cookies. Without the file, the list is the seed from `data/forums.toml`.
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -36,8 +35,7 @@ pub fn load(paths: &Paths) -> Result<Vec<Forum>> {
     Ok(forums)
 }
 
-/// Fill a stored forum's empty hint from a matching seed, so a forum added before hints existed
-/// still describes itself without being re-added (and losing its login).
+/// Fills an empty hint from the matching seed, e.g. for a forum stored before hints existed.
 fn enrich_hints(forums: &mut [Forum]) {
     for forum in forums.iter_mut().filter(|f| f.hint.is_empty()) {
         if let Some(seed) = forums::data().seed.iter().find(|s| {
@@ -89,7 +87,7 @@ pub fn get(paths: &Paths, key: &str) -> Result<Option<Forum>> {
 pub fn add(paths: &Paths, forum: Forum) -> Result<()> {
     if forum.kind != mobiquo::KIND {
         bail!(
-            "crowbot can only talk to Tapatalk (mobiquo) forums for now, not {:?}",
+            "only Tapatalk (mobiquo) forums are supported, not {:?}",
             forum.kind
         );
     }

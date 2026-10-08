@@ -1,6 +1,5 @@
-//! Tapatalk's directory: turn a search term into forums to pick from, or a forum URL into the
-//! endpoint crowbot talks to. A forum entry gives its base URL, the (possibly renamed) mobiquo dir
-//! and extension; the rest of crowbot builds the XML-RPC endpoint from those.
+//! Tapatalk's directory: a search term or forum URL → forum entries (base URL, possibly renamed
+//! mobiquo dir, extension).
 
 use anyhow::{Context, Result};
 use serde::Deserialize;

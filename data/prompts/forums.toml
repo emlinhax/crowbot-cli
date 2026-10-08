@@ -1,5 +1,5 @@
-# The forums on this machine, named in the system prompt so the model knows to look there; left out
-# when there are none. {forums} is the forum tools' list (data/tools/forum.toml).
+# System-prompt section naming each stored forum; omitted when there are none. {forums} is the
+# forum tools' list (data/tools/forum.toml).
 frame = """
 <forums>
 These forums are set up for you to browse with the forum_* tools:

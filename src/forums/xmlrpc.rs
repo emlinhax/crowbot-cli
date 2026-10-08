@@ -8,8 +8,7 @@ use quick_xml::Reader;
 use quick_xml::escape::partial_escape;
 use quick_xml::events::Event;
 
-/// A parameter we send. Usernames, passwords and search words go as `<base64>` (the plugin's
-/// convention), so `Bytes` is a first-class arm beside `Str`.
+/// A parameter we send; `Bytes` goes as `<base64>`.
 pub enum Arg {
     Str(String),
     Bytes(Vec<u8>),

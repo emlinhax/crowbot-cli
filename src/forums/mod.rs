@@ -1,11 +1,8 @@
-//! Web forums: discover and add one, log in with the user's own account, and let the agent read
-//! sections, topics and threads, search, and post. One backend today — `mobiquo`, the Tapatalk
-//! plugin's XML-RPC — chosen per forum by its `kind`.
+//! Web forums: discover, log in, read and post. A forum's `kind` names its backend; only `mobiquo`
+//! (Tapatalk's XML-RPC) exists.
 //!
-//! CEILING: with a single backend the typed calls live in `mobiquo` and callers use them directly;
-//! `store::add` keeps every stored forum `kind = "mobiquo"`. When a second kind arrives (Discourse's
-//! JSON API, a plain-HTML reader), route the calls through a `match forum.kind` here and that stays
-//! the one place that knows backend names.
+//! CEILING: one backend, called directly (tools/forum/, commands/forums.rs). A second adds a
+//! `match forum.kind` here and moves `mobiquo_dir`/`ext` under its kind.
 
 use std::sync::LazyLock;
 
@@ -73,15 +70,13 @@ pub(crate) async fn post(fetch: &Fetch, who: &str, request: fetch::Post<'_>) -> 
     Ok(resp)
 }
 
-/// A forum crowbot knows how to reach. A list of these is the store; every field past the endpoint
-/// is optional so older files load. The password is never here — only the session cookies a login
-/// returned.
+/// A stored forum. Fields past the endpoint are optional so older files load. Holds session
+/// cookies, never the password.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Forum {
     pub id: String,
     pub name: String,
-    /// What this forum is about and the kind of thing found there, so the agent can pick wisely;
-    /// shown when it lists forums. From the seed or the directory's description.
+    /// What the forum covers, so the agent knows when to use it. From the seed or the directory.
     #[serde(default)]
     pub hint: String,
     pub base_url: String,
@@ -101,7 +96,7 @@ pub struct Forum {
 }
 
 impl Forum {
-    /// The host it lives on, for display; its name when the URL has none.
+    /// Its host, for display and permission rules; its lowercased name when the URL has none.
     pub fn host(&self) -> String {
         host(&self.base_url).unwrap_or_else(|| self.name.to_lowercase())
     }

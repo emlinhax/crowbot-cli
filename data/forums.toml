@@ -1,5 +1,5 @@
-# Forums crowbot can browse. One backend today — `mobiquo`, the Tapatalk plugin's XML-RPC — picked
-# by a forum's `kind`. Discovery and endpoint resolution both go through Tapatalk's directory.
+# Tapatalk's directory, the seeded forums and the add-flow suggestions. `kind` picks a forum's
+# backend; only `mobiquo` exists.
 
 [directory]
 url = "https://apis.tapatalk.com"
@@ -16,8 +16,8 @@ rejected = "the forum rejected the post"
 login_failed = "login failed"
 unreadable = "reading {method} from {forum}"
 
-# Enabled on first run, so there is something to browse right away. A mobiquo dir can be rotated by
-# the forum; if a call starts 404ing, re-resolve through the directory to refresh it.
+# The list until forums.json exists. A forum can rotate its mobiquo dir; on 404s,
+# `crowbot forums add <name>` re-resolves it and keeps the login.
 [[seed]]
 id = "79565"
 name = "UnknownCheats"
@@ -27,8 +27,8 @@ mobiquo_dir = "euehhp13n8dqw77"
 ext = "php"
 kind = "mobiquo"
 
-# Offered first in the discovery picker (coding/hacking leaning). Each is a search term, not an
-# endpoint; picking one resolves it live, so a forum that has since dropped Tapatalk just won't add.
+# Searches offered first when adding a forum. Each resolves live, so a forum that left Tapatalk just
+# won't add.
 [[suggest]]
 query = "unknowncheats"
 [[suggest]]
