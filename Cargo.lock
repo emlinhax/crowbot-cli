@@ -633,7 +633,6 @@ dependencies = [
  "fastrand",
  "futures-util",
  "globset",
- "grep-matcher",
  "grep-regex",
  "grep-searcher",
  "htmd",
