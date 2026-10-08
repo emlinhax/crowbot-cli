@@ -1,5 +1,5 @@
-//! Project folders whose own .crowbot/config.toml may loosen crowbot's settings. The list lives in
-//! crowbot's home, where a repository cannot write itself into it.
+//! Folders whose .crowbot/config.toml may loosen settings. The list lives in crowbot's home, out of
+//! a repository's reach.
 
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
