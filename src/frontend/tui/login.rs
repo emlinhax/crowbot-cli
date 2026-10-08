@@ -8,7 +8,7 @@ use crate::api::pair::{self, Started};
 use crate::app::App;
 use crate::auth::{self, KeyKind};
 use crate::commands::login::logged_in;
-use crate::frontend::tui::boxed::boxed;
+use crate::frontend::tui::boxed::{self, boxed};
 use crate::frontend::tui::card::{Card, Step};
 use crate::frontend::tui::choice::{Choice, Opt};
 use crate::frontend::tui::keymap::Action;
@@ -169,7 +169,7 @@ impl Login {
             &body,
             width,
         );
-        lines.push(Line::styled(format!(" {}", text.hint), muted).truncate(width));
+        lines.push(boxed::hint(&text.hint, width));
         lines
     }
 }

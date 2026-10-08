@@ -1,7 +1,7 @@
 //! `/models` inside a session: the catalog as an aligned list in a card in place of the editor.
 //! ↑↓ move, → or Enter picks the model for the rest of the session, Esc or ← closes.
 
-use crate::frontend::tui::boxed::boxed;
+use crate::frontend::tui::boxed::{self, boxed};
 use crate::frontend::tui::keymap::Action;
 use crate::frontend::tui::rows;
 use crate::frontend::tui::ui;
@@ -59,8 +59,7 @@ impl Picker {
 
     pub fn render(&self, width: usize) -> Vec<Line> {
         let words = &ui::get().picker;
-        // The box's borders take four cells.
-        let inner = width.saturating_sub(4 + rows::MARK);
+        let inner = boxed::inner(width).saturating_sub(rows::MARK);
         let mut lines = table::plain(
             &self.rows,
             &models::aligns(),
@@ -80,9 +79,9 @@ impl Picker {
         body.push(Line::styled(&self.note, Style::fg("muted")));
         let title = Line::styled(&words.title, Style::default().bold());
         // As wide as the list needs, not the whole terminal.
-        let needed = body.iter().map(Line::width).max().unwrap_or(0) + 4;
+        let needed = boxed::outer(body.iter().map(Line::width).max().unwrap_or(0));
         let mut out = boxed(title, &body, needed.min(width));
-        out.push(Line::styled(format!(" {}", words.hint), Style::fg("muted")).truncate(width));
+        out.push(boxed::hint(&words.hint, width));
         out
     }
 }

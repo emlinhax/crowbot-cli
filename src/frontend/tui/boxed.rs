@@ -2,10 +2,28 @@
 
 use crate::text::styled::{Line, Style};
 
+/// A box's borders and the space inside them take this many cells across.
+const EDGES: usize = 4;
+
+/// The cells inside a box `width` wide.
+pub fn inner(width: usize) -> usize {
+    width.saturating_sub(EDGES)
+}
+
+/// How wide a box must be to hold `inner` cells.
+pub fn outer(inner: usize) -> usize {
+    inner + EDGES
+}
+
+/// The muted hint row under a card.
+pub fn hint(text: &str, width: usize) -> Line {
+    Line::styled(format!(" {text}"), Style::fg("muted")).truncate(width)
+}
+
 /// `title` on the top edge, `body` padded to the inner width, all within `width` cells.
 pub fn boxed(title: Line, body: &[Line], width: usize) -> Vec<Line> {
     let border = Style::fg("muted");
-    let inner = width.saturating_sub(4);
+    let inner = inner(width);
     let mut lines = Vec::with_capacity(body.len() + 2);
     let mut top = Line::styled("╭ ", border.clone());
     top.extend(title);

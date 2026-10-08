@@ -2,7 +2,7 @@
 //! so arguments can follow, Enter runs the pick, Esc hides it until the text changes.
 
 use crate::commands::{self, Scope, Spec};
-use crate::frontend::tui::boxed::boxed;
+use crate::frontend::tui::boxed::{self, boxed};
 use crate::frontend::tui::keymap::Action;
 use crate::frontend::tui::rows;
 use crate::frontend::tui::ui;
@@ -92,8 +92,7 @@ impl Palette {
                 ]
             })
             .collect();
-        // The box's borders take four cells, the selection mark two.
-        let inner = width.saturating_sub(4 + rows::MARK);
+        let inner = boxed::inner(width).saturating_sub(rows::MARK);
         let table = table::plain(&cells, &[Align::Left; 2], &[], inner, GAP);
         let body = rows::marked(table, self.selected);
         let title = Line::styled(&ui::get().palette.title, Style::fg("muted").bold());

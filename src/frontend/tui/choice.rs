@@ -3,7 +3,7 @@
 
 use crate::auth;
 use crate::config::limits;
-use crate::frontend::tui::boxed::boxed;
+use crate::frontend::tui::boxed::{self, boxed};
 use crate::frontend::tui::card::{Card, Step};
 use crate::frontend::tui::editor::Editor;
 use crate::frontend::tui::keymap::Action;
@@ -101,7 +101,7 @@ impl Choice {
         width: usize,
     ) -> Self {
         let text = &ui::get().card;
-        let inner = width.saturating_sub(4).max(1);
+        let inner = boxed::inner(width).max(1);
         let max = limits::get().tui.prompt_body_lines.value;
         let title = match asks {
             [only] if only.permission == tool => format!("{tool} {}", only.patterns.join(", ")),
@@ -124,7 +124,7 @@ impl Choice {
     /// PLAN mode's finished plan, and what to do with it.
     pub fn plan(id: u64, plan: &str, choices: &[String], width: usize) -> Self {
         let text = &ui::get().card;
-        let inner = width.saturating_sub(4).max(1);
+        let inner = boxed::inner(width).max(1);
         let max = limits::get().tui.prompt_body_lines.value;
         let body = capped(markdown::render(plan, inner), max);
         let mut options: Vec<Opt> = choices
@@ -212,7 +212,6 @@ impl Card for Choice {
 
     fn render(&self, width: usize) -> Vec<Line> {
         let text = &ui::get().card;
-        let border = Style::fg("muted");
         let title = Line::styled(&self.title, Style::default().bold());
         let mut lines = boxed(title, &self.body, width);
         for (i, opt) in self.options.iter().enumerate() {
@@ -227,7 +226,7 @@ impl Card for Choice {
             }
             None => self.hint.as_ref().unwrap_or(&text.hint),
         };
-        lines.push(Line::styled(format!(" {hint}"), border).truncate(width));
+        lines.push(boxed::hint(hint, width));
         lines
     }
 }

@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use crate::config::limits;
-use crate::frontend::tui::boxed::boxed;
+use crate::frontend::tui::boxed::{self, boxed};
 use crate::frontend::tui::card::{Card, Step};
 use crate::frontend::tui::editor::Editor;
 use crate::frontend::tui::keymap::Action;
@@ -310,7 +310,7 @@ impl Card for Questions {
 
     fn render(&self, width: usize) -> Vec<Line> {
         let text = &ui::get().card;
-        let inner = width.saturating_sub(4).max(1);
+        let inner = boxed::inner(width).max(1);
         let bold = Style::default().bold();
         let mut body = Vec::new();
         if self.questions.len() > 1 {
@@ -344,7 +344,7 @@ impl Card for Questions {
                 lines.extend(input.render(width, limits::get().tui.field_rows.value, &prompt, ""));
             }
         }
-        lines.push(Line::styled(format!(" {hint}"), Style::fg("muted")).truncate(width));
+        lines.push(boxed::hint(hint, width));
         lines
     }
 }

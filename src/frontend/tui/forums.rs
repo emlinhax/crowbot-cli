@@ -10,7 +10,7 @@ use crate::commands::Scope;
 use crate::commands::forums::{self as said, added, logged_in, logged_out, removed};
 use crate::config::limits;
 use crate::forums::{Forum, account, directory, store};
-use crate::frontend::tui::boxed::boxed;
+use crate::frontend::tui::boxed::{self, boxed};
 use crate::frontend::tui::card::{Card, Step};
 use crate::frontend::tui::choice::{Choice, Opt};
 use crate::frontend::tui::editor::Editor;
@@ -393,7 +393,7 @@ impl Forums {
             ),
         };
         let mut lines = boxed(Line::styled(title, Style::default().bold()), &body, width);
-        lines.push(Line::styled(format!(" {hint}"), muted).truncate(width));
+        lines.push(boxed::hint(hint, width));
         lines
     }
 }
@@ -459,8 +459,8 @@ fn rows(forums: &[Forum], width: usize) -> Vec<Line> {
             ]
         })
         .collect();
-    // The host goes first when the row does not fit; the box's borders take four cells.
-    let inner = width.saturating_sub(4 + rows::MARK);
+    // The host goes first when the row does not fit.
+    let inner = boxed::inner(width).saturating_sub(rows::MARK);
     table::plain(&cells, &[Align::Left; 3], &[1], inner, GAP)
 }
 
@@ -486,7 +486,7 @@ fn hint_of(forum: Option<&Forum>) -> Vec<Line> {
 /// The login steps: the username once given, then the line being typed.
 fn login(user: Option<&str>, input: &Editor, width: usize) -> Vec<Line> {
     let text = &ui::get().forums;
-    let inner = width.saturating_sub(4);
+    let inner = boxed::inner(width);
     let mut body = vec![
         Line::styled(&text.login_note, Style::fg("muted")),
         Line::default(),
