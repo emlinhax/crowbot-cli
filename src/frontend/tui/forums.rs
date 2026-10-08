@@ -1,7 +1,6 @@
-//! `/forums` inside a session: the forums the agent can browse, as a list in a card in place of
-//! the editor. A forum opens a menu to log in (a username, then a hidden password), log out or
-//! remove it; the last row adds one from Tapatalk's directory. Network and store work is a `Job`
-//! the session loop runs beside input, as the login card's is, so closing the card drops it.
+//! `/forums` card: the forums the agent can browse. Each opens a menu (log in, log out, remove);
+//! the last row adds one from Tapatalk's directory. Its jobs run beside input; closing the card
+//! drops them.
 
 use futures_util::future::BoxFuture;
 

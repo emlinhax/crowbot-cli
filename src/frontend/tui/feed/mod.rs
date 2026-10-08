@@ -204,8 +204,7 @@ impl Feed {
                     DeltaKind::Text => {
                         self.finish_reasoning(now);
                         self.text.push_str(text);
-                        // Replies often open with blank lines; committed alone they would be an
-                        // empty block, a second blank row and the stretch's mark spent on nothing.
+                        // A reply's leading blank lines would commit as an empty, marked block.
                         if self.committed == 0 {
                             self.text.drain(..stream::blank_lead(&self.text));
                         }

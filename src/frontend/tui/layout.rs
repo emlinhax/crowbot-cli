@@ -1,7 +1,6 @@
-//! One frame of the whole screen: the transcript in the rows the bar leaves, one blank row that
-//! keeps it off the bar (or says how much is hidden below), then the bar stack on the bottom. A
-//! floating card is drawn over the rows just above the bar instead of taking room from the
-//! transcript, so opening one moves nothing. The whole frame sits between blank side margins.
+//! One screen frame: the transcript, a spacer row (or how much is hidden below), then the bar. A
+//! floating card covers the rows above the bar, so opening one moves nothing. Side margins frame it
+//! all.
 
 use std::time::Instant;
 

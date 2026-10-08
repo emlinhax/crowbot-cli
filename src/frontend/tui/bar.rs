@@ -1,6 +1,5 @@
-//! The two rules framing the message bar, in the mode's colour. The bottom one carries all the
-//! status, right-aligned: the mode, model and effort, context use and cost (order in
-//! data/ui.toml). When the terminal is narrow the dashes shrink before any item is cut.
+//! The rules above and below the message bar, in the mode's colour. The bottom one carries the
+//! footer items (data/ui.toml), right-aligned; dashes shrink before items are cut.
 
 use crate::effort;
 use crate::frontend::tui::ui::{self, FooterItem};

@@ -40,8 +40,7 @@ bottom_left = "╰"
 bottom_right = "╯"
 
 [footer]
-# All the status, right-aligned on the rule under the message bar, in this order; effort rides
-# with the model. The rule above the bar is plain, in the mode's colour.
+# Items on the rule under the bar, right-aligned, in this order (effort follows the model).
 items = ["mode", "model", "context", "cost"]
 separator = " · "
 context = "ctx {pct}%"
@@ -74,11 +73,9 @@ effort_unsent = " {model} does not reason, so it sends none."
 new_conversation = "A new conversation."
 new_saved = "A new conversation. The last one is saved in {path}."
 
-# The line above the bar while crowbot works: a murmuration of crows, a verb with a glint running
-# along it, then elapsed time and tokens.
+# The working line: a flock, a verb with a glint, time and tokens.
 [status]
-# A murmuration: a ribbon of crows rising and falling, drawn in braille dots two to a cell, a
-# frame per `tui.status_frame_ms`. Every frame is the same width, so the verb never moves.
+# One frame per `tui.status_frame_ms`; all frames one width, so the verb stays put.
 frames = ["⠑⢄⡠⠊⠑", "⠢⣀⠔⠉⠢", "⢄⡠⠊⠑⢄", "⣀⠔⠉⠢⣀", "⡠⠊⠑⢄⡠", "⠔⠉⠢⣀⠔", "⠊⠑⢄⡠⠊", "⠉⠢⣀⠔⠉"]
 # For terminals without braille (legacy Windows conhost).
 plain = ["'._-'", "-_.'-", "._-'.", "_.'-_", "_-'._", ".'-_.", "-'._-", "'-_.'"]
@@ -132,7 +129,7 @@ log_in_again = "Log in as someone else"
 log_out = "Log out"
 remove = "Remove"
 add_title = "Add a forum"
-add_note = "Searches Tapatalk's directory; only forums running the Tapatalk plugin can be added."
+add_note = "Searches Tapatalk's directory; only Tapatalk forums can be added."
 search = "Search by name or URL…"
 found_title = "Forums matching “{query}”"
 found_hint = "↑↓ move · → or enter add · esc back"

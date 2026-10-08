@@ -1,6 +1,5 @@
-//! Tells pasted text from typing. Terminals with bracketed paste send a paste whole; on Windows
-//! it arrives as a burst of key presses (`crowbot keytest`: 13 keys, no gap between them), and an
-//! Enter inside that burst must add a line, not send the message.
+//! Tells a paste from typing. Without bracketed paste (Windows) a paste arrives as a key burst
+//! (`crowbot keytest`); Enter inside it adds a line instead of sending.
 //! CEILING: a timing heuristic; a very busy frame could make fast typing look like a paste.
 
 use std::time::{Duration, Instant};

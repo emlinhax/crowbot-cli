@@ -82,8 +82,6 @@ pub fn title(tool: &str, arguments: &str) -> Option<String> {
         .into_iter()
         .filter_map(|key| arg_text(at(Some(&args), &key)?, items))
         .collect();
-    // With `title_join` several present args fold onto one line (a forum and its section or search
-    // term); otherwise the first present one titles the call, as every other tool does.
     let title = match spec.title_join {
         Some(sep) => (!present.is_empty()).then(|| present.join(&sep)),
         None => present.into_iter().next(),

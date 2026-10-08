@@ -1,10 +1,9 @@
-# How each tool call looks in the transcript. `title` lists argument names; the first one present
-# titles the card. `body` is one of: none, diff (details.diff), head, tail, summary.
-# `summary` fills {placeholders} from the result's details, or counts one of them:
-# `{ count = "<key>", one = "…{n}…", many = "…{n}…" }` picks the form for that number. A list of
-# summaries shows the first whose details are all there. `max_lines` caps a head, tail or diff
-# body; a list title arg shows `title_items` items, past that one fewer and "+N".
-# Tools without a section use [default], and every section falls back to it key by key.
+# How each tool call looks in the transcript; tools without a section use [default], key by key.
+# `title`: argument names, the first present one titles the card (`title_join` joins all present);
+# a list arg shows `title_items` items, past that one fewer and "+N". `body`: none, diff
+# (details.diff), head, tail or summary, cut to `max_lines`. `summary`: a template over the
+# result's details, `{ count, one, many }` for a counted form, or a list whose first complete
+# entry shows.
 
 [default]
 title = ["path", "command", "pattern", "url", "query"]
