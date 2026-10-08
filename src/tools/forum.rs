@@ -31,32 +31,26 @@ struct Text {
     cut: String,
 }
 
-/// The host that a permission rule matches, found from the stored forum when possible.
-fn host_for(cx: &ToolCx<'_>, key: &str) -> String {
-    if key.is_empty() {
-        return "*".to_owned();
+/// Find the forum `key` names, or an error the model can act on, from one read of the store.
+fn find(cx: &ToolCx<'_>, key: &str) -> Result<Forum, String> {
+    let list = store::load(&cx.app.paths).map_err(|e| format!("{e:#}"))?;
+    if list.is_empty() {
+        return Err(TEXT.no_forums.clone());
     }
-    store::get(&cx.app.paths, key)
-        .ok()
-        .flatten()
-        .map(|f| f.host())
-        .unwrap_or_else(|| key.to_lowercase())
+    list.into_iter()
+        .find(|f| store::matches(f, key))
+        .ok_or_else(|| fill(&TEXT.unknown, &[("forum", key)]))
 }
 
-/// Find the forum `key` names, or an error the model can act on.
-fn resolve(cx: &ToolCx<'_>, key: &str) -> Result<Forum, String> {
-    match store::get(&cx.app.paths, key) {
-        Ok(Some(forum)) => Ok(forum),
-        Ok(None) => {
-            let list = store::load(&cx.app.paths).unwrap_or_default();
-            Err(if list.is_empty() {
-                TEXT.no_forums.clone()
-            } else {
-                fill(&TEXT.unknown, &[("forum", key)])
-            })
-        }
-        Err(e) => Err(format!("{e:#}")),
-    }
+/// What a read-only call asks for: the stored forum's host when known, so rules match the host
+/// that is reached.
+fn browse_check(cx: &ToolCx<'_>, key: &str) -> Check {
+    let host = if key.is_empty() {
+        "*".to_owned()
+    } else {
+        find(cx, key).map_or_else(|_| key.to_lowercase(), |f| f.host())
+    };
+    Check::new(vec![Ask::new(catalog::FORUM.name, host)])
 }
 
 fn page_of(page: &Value) -> i64 {
@@ -243,10 +237,7 @@ impl Tool for Sections {
     }
 
     fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        Ok(Check::new(vec![Ask::new(
-            catalog::FORUM.name,
-            host_for(cx, &args.forum),
-        )]))
+        Ok(browse_check(cx, &args.forum))
     }
 
     fn run<'a>(
@@ -259,7 +250,7 @@ impl Tool for Sections {
                 let list = store::load(&cx.app.paths).unwrap_or_default();
                 return Ok(finish(render_forums(&list)));
             }
-            let forum = resolve(cx, &args.forum)?;
+            let forum = find(cx, &args.forum)?;
             let sections = mobiquo::sections(&cx.app.fetch, &forum)
                 .await
                 .map_err(|e| format!("{e:#}"))?;
@@ -294,10 +285,7 @@ impl Tool for Topics {
     }
 
     fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        Ok(Check::new(vec![Ask::new(
-            catalog::FORUM.name,
-            host_for(cx, &args.forum),
-        )]))
+        Ok(browse_check(cx, &args.forum))
     }
 
     fn run<'a>(
@@ -306,7 +294,7 @@ impl Tool for Topics {
         cx: &'a ToolCx<'a>,
     ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let forum = resolve(cx, &args.forum)?;
+            let forum = find(cx, &args.forum)?;
             let page = page_of(&args.page);
             let (fetch, forum) = (&cx.app.fetch, &forum);
             let text = batch(
@@ -345,10 +333,7 @@ impl Tool for ThreadTool {
     }
 
     fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        Ok(Check::new(vec![Ask::new(
-            catalog::FORUM.name,
-            host_for(cx, &args.forum),
-        )]))
+        Ok(browse_check(cx, &args.forum))
     }
 
     fn run<'a>(
@@ -357,7 +342,7 @@ impl Tool for ThreadTool {
         cx: &'a ToolCx<'a>,
     ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let forum = resolve(cx, &args.forum)?;
+            let forum = find(cx, &args.forum)?;
             let want = page_pref(&args.page);
             let (fetch, forum) = (&cx.app.fetch, &forum);
             let text = batch(
@@ -396,10 +381,7 @@ impl Tool for Search {
     }
 
     fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        Ok(Check::new(vec![Ask::new(
-            catalog::FORUM.name,
-            host_for(cx, &args.forum),
-        )]))
+        Ok(browse_check(cx, &args.forum))
     }
 
     fn run<'a>(
@@ -408,7 +390,7 @@ impl Tool for Search {
         cx: &'a ToolCx<'a>,
     ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let forum = resolve(cx, &args.forum)?;
+            let forum = find(cx, &args.forum)?;
             let page = page_of(&args.page);
             let (fetch, forum) = (&cx.app.fetch, &forum);
             let text = batch(
@@ -474,7 +456,7 @@ impl Tool for Post {
         if args.topic.is_none() && args.subject.as_deref().unwrap_or("").trim().is_empty() {
             return Err(Refusal::InvalidArgs(TEXT.no_subject.clone()));
         }
-        let forum = resolve(cx, &args.forum)?;
+        let forum = find(cx, &args.forum)?;
         let ask = Ask::new(catalog::FORUM_POST.name, forum.host());
         Ok(Check::new(vec![ask])
             .with_preview(Self::preview(&forum, args))
@@ -487,7 +469,7 @@ impl Tool for Post {
         cx: &'a ToolCx<'a>,
     ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let forum = resolve(cx, &args.forum)?;
+            let forum = find(cx, &args.forum)?;
             let posted = match &args.topic {
                 Some(topic) => {
                     mobiquo::reply(&cx.app.fetch, &forum, &args.section, topic, &args.body).await
