@@ -44,7 +44,6 @@ use crate::live::state::Shared;
 use crate::mode;
 use crate::models::{self, Catalog};
 use crate::release::{self, update};
-use crate::session::store::Store;
 use crate::session::transcript::Transcript;
 use crate::text::styled::{Line, Style, TAB};
 use crate::text::template;
@@ -91,9 +90,8 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
     })?;
     let mode = mode::get(&app.settings.mode).ok_or_else(|| anyhow!("mode was validated"))?;
     let registry = Registry::builtin(app.settings.shell.as_deref());
-    let store = Store::create(&app.paths);
-    let session_file = store.path.display().to_string();
-    let transcript = Transcript::new(Some(store));
+    let transcript = Transcript::create(&app.paths);
+    let session_file = transcript.file().display().to_string();
     let shared = Shared::new(mode);
     let (tx, rx) = mpsc::unbounded_channel();
     let emit = move |event: AgentEvent| {
@@ -270,8 +268,11 @@ impl<'a> Tui<'a> {
 
     /// A new conversation: a new session file, a clean screen, nothing the model was told.
     fn fresh(&mut self, old: Transcript) -> Transcript {
-        let store = Store::create(&self.app.paths);
-        let put_away = std::mem::replace(&mut self.session_file, store.path.display().to_string());
+        let transcript = Transcript::create(&self.app.paths);
+        let put_away = std::mem::replace(
+            &mut self.session_file,
+            transcript.file().display().to_string(),
+        );
         self.shared.start_over();
         // AGENTS.md may have changed (/init writes it), and the prompt is read at a start.
         self.next.reload(&self.app.paths);
@@ -292,7 +293,7 @@ impl<'a> Tui<'a> {
             }
             None => self.feed.notice(&text.new_conversation, "muted"),
         }
-        Transcript::new(Some(store))
+        transcript
     }
 
     /// Runs until the user quits; returns what the session spent, in micro-dollars, and the

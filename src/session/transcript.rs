@@ -1,12 +1,13 @@
 use std::path::{Path, PathBuf};
 
+use crate::config::paths::Paths;
 use crate::conversation::message::Message;
 use crate::session::store::Store;
 
-/// The conversation in memory, mirrored to its session file when it has one.
+/// The conversation in memory, mirrored to its session file.
 pub struct Transcript {
     pub messages: Vec<Message>,
-    store: Option<Store>,
+    store: Store,
     /// A write failed; the file stopped being written and no longer holds everything.
     unsaved: bool,
 }
@@ -18,38 +19,40 @@ pub struct Unsaved {
 }
 
 impl Transcript {
-    pub fn new(store: Option<Store>) -> Self {
+    /// A new conversation, with a session file that is written from its first message.
+    pub fn create(paths: &Paths) -> Self {
         Self {
             messages: Vec::new(),
-            store,
+            store: Store::create(paths),
             unsaved: false,
         }
     }
 
     /// The session file, once it exists and while it holds the whole conversation.
     pub fn path(&self) -> Option<&Path> {
-        self.store
-            .as_ref()
-            .filter(|s| s.written() && !self.unsaved)
-            .map(|s| s.path.as_path())
+        (self.store.written() && !self.unsaved).then(|| self.store.path())
     }
 
-    /// Identifies the session in file names (plans); stable for a stored session.
-    pub fn id(&self) -> String {
-        self.store
-            .as_ref()
-            .map_or_else(|| "unsaved".to_owned(), Store::stem)
+    /// Where the session file goes, written or not.
+    pub fn file(&self) -> &Path {
+        self.store.path()
+    }
+
+    /// Identifies the session in file names (plans).
+    pub fn id(&self) -> &str {
+        self.store.name()
     }
 
     /// Keeps `message`, then writes it. The first failed write is returned and ends saving:
     /// later messages stay in memory only, so a full disk costs the file, not the conversation.
     pub fn push(&mut self, message: Message) -> Result<(), Unsaved> {
-        let written = match &mut self.store {
-            Some(store) if !self.unsaved => store.append(&message).map_err(|e| Unsaved {
-                path: store.path.clone(),
+        let written = if self.unsaved {
+            Ok(())
+        } else {
+            self.store.append(&message).map_err(|e| Unsaved {
+                path: self.store.path().to_path_buf(),
                 error: format!("{e:#}"),
-            }),
-            _ => Ok(()),
+            })
         };
         self.unsaved |= written.is_err();
         self.messages.push(message);
@@ -60,7 +63,6 @@ impl Transcript {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::paths::Paths;
     use crate::conversation::message::Part;
     use crate::io;
 
@@ -74,7 +76,7 @@ mod tests {
     fn there_is_no_file_to_name_until_something_is_said() {
         let root = tempfile::tempdir().unwrap();
         let paths = Paths::at(root.path().join("home"), root.path().into());
-        let mut transcript = Transcript::new(Some(Store::create(&paths)));
+        let mut transcript = Transcript::create(&paths);
         assert!(transcript.path().is_none());
         assert!(transcript.push(user("one")).is_ok());
         assert!(
@@ -87,16 +89,14 @@ mod tests {
     #[test]
     fn a_failed_write_keeps_the_message_and_is_reported_once() {
         let root = tempfile::tempdir().unwrap();
-        let paths = Paths::at(root.path().join("home"), root.path().into());
-        let mut store = Store::create(&paths);
-        // A file where its directory should be: every later append fails.
+        // A file where the home directory should be: every append fails.
         let blocker = root.path().join("blocker");
         io::fs::write_atomic(&blocker, b"", io::fs::Access::Shared).unwrap();
-        store.path = blocker.join("session.jsonl");
-        let mut transcript = Transcript::new(Some(store));
+        let paths = Paths::at(blocker.join("home"), root.path().into());
+        let mut transcript = Transcript::create(&paths);
 
         let first = transcript.push(user("one"));
-        assert!(first.is_err_and(|u| u.path.ends_with("session.jsonl")));
+        assert!(first.is_err_and(|u| u.path.starts_with(&blocker)));
         assert!(transcript.push(user("two")).is_ok());
         assert_eq!(transcript.messages.len(), 2);
         assert!(transcript.path().is_none());

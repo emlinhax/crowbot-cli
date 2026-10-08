@@ -20,7 +20,6 @@ use crate::live::state::Shared;
 use crate::mode;
 use crate::models;
 use crate::permission::gate;
-use crate::session::store::Store;
 use crate::session::transcript::Transcript;
 use crate::text::shorten;
 use crate::tools::Registry;
@@ -43,7 +42,7 @@ pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<Ex
     let mode = mode::get(&app.settings.mode).ok_or_else(|| anyhow!("mode was validated"))?;
     let system = system_prompt::build(&app.paths, &model.id);
     let registry = Registry::builtin(app.settings.shell.as_deref());
-    let mut transcript = Transcript::new(Some(Store::create(&app.paths)));
+    let mut transcript = Transcript::create(&app.paths);
     let shared = Shared::new(mode);
 
     let out = Printer {

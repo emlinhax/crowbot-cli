@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::config::paths::Paths;
 use crate::conversation::message::Message;
@@ -9,7 +9,9 @@ use crate::session::entry::{self, Entry, FORMAT_VERSION};
 /// An append-only JSONL session file; the only writer of its file. Nothing is written until
 /// the first message, so a session that never says anything leaves no file.
 pub struct Store {
-    pub path: PathBuf,
+    /// `{stamp}_{id}`: the file's name without its extension, unique per session.
+    name: String,
+    path: PathBuf,
     header: Entry,
     written: bool,
     last: Option<String>,
@@ -19,9 +21,10 @@ impl Store {
     pub fn create(paths: &Paths) -> Self {
         let id = entry::new_id();
         let created = io::clock::now();
-        let stamp = created.strftime("%Y%m%dT%H%M%S");
+        let name = format!("{}_{id}", created.strftime("%Y%m%dT%H%M%S"));
         Self {
-            path: paths.sessions_dir().join(format!("{stamp}_{id}.jsonl")),
+            path: paths.sessions_dir().join(format!("{name}.jsonl")),
+            name,
             header: Entry::Session {
                 v: FORMAT_VERSION,
                 id,
@@ -39,12 +42,13 @@ impl Store {
         self.written
     }
 
-    /// The file name without extension, unique per session.
-    pub fn stem(&self) -> String {
-        self.path
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default()
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Where the file is, or will be once something is said.
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 
     pub fn append(&mut self, message: &Message) -> anyhow::Result<()> {
@@ -81,12 +85,12 @@ mod tests {
         let paths = Paths::at(home.path().into(), home.path().join("proj"));
         let mut store = Store::create(&paths);
         assert!(
-            !io::fs::exists(&store.path),
+            !io::fs::exists(store.path()),
             "a session that has said nothing has no file"
         );
         store.append(&Message::user_text("one")).unwrap();
         store.append(&Message::user_text("two")).unwrap();
-        let text = io::fs::read_string(&store.path).unwrap().unwrap();
+        let text = io::fs::read_string(store.path()).unwrap().unwrap();
         let entries: Vec<Entry> = text
             .lines()
             .map(|l| serde_json::from_str(l).unwrap())

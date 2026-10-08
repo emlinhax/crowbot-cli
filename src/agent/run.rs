@@ -24,7 +24,7 @@ pub async fn run(
         cx,
         shared,
         cancel: shared.begin_run(),
-        plan_file: tools::plan_file(&cx.app.paths, &transcript.id()),
+        plan_file: tools::plan_file(&cx.app.paths, transcript.id()),
     };
     let cancel = &run.cancel;
     say(&run, transcript, prompt);
@@ -254,9 +254,21 @@ mod tests {
             .unwrap();
         }
 
-        /// Runs one prompt; `on` sees every event and may drive `shared` like a frontend does.
+        /// Runs one prompt in a new conversation; `on` sees every event and may drive `shared`
+        /// like a frontend does.
         async fn run(
             &self,
+            shared: &Shared,
+            on: impl Fn(&AgentEvent, &Shared) + Send + Sync,
+        ) -> (Ended, Transcript, Vec<String>) {
+            self.run_in(Transcript::create(&self.app.paths), shared, on)
+                .await
+        }
+
+        /// `run`, in a conversation the test has made.
+        async fn run_in(
+            &self,
+            mut transcript: Transcript,
             shared: &Shared,
             on: impl Fn(&AgentEvent, &Shared) + Send + Sync,
         ) -> (Ended, Transcript, Vec<String>) {
@@ -278,7 +290,6 @@ mod tests {
                 tools: &registry,
                 emit: &emit,
             };
-            let mut transcript = Transcript::new(None);
             let prompt = vec![Part::Text { text: "go".into() }];
             let ended = run(&cx, &mut transcript, shared, prompt).await;
             (ended, transcript, events.into_inner().unwrap())
@@ -479,15 +490,15 @@ mod tests {
             text("implementing"),
         ])
         .await;
+        let transcript = Transcript::create(&h.app.paths);
         crate::io::fs::write_atomic(
-            // Every harness run is the unsaved session.
-            &h.app.paths.plan_file(&Transcript::new(None).id()),
+            &h.app.paths.plan_file(transcript.id()),
             b"1. do it",
             crate::io::fs::Access::Shared,
         )
         .unwrap();
         let state = shared("plan");
-        h.run(&state, |event, shared| {
+        h.run_in(transcript, &state, |event, shared| {
             if let AgentEvent::Prompt { id, .. } = event {
                 shared.prompts.answer(*id, Reply::Choice(0));
             }
