@@ -42,8 +42,7 @@ pub enum Reply {
 
 #[derive(Default)]
 struct Inner {
-    /// The fake's own address, filled into scripted replies as `{base}` so a scripted model
-    /// can point webfetch at this server.
+    /// This server's address, filled in for `{base}` so a scripted model can fetch from it.
     base: String,
     /// The sandbox's crowbot home, filled in as `{home}`, with `/` separators.
     home: String,

@@ -11,10 +11,9 @@ use std::time::Duration;
 /// run takes a few seconds; a full retry ladder without Retry-After is about 30 s.
 pub const RUN_LIMIT: Duration = Duration::from_secs(60);
 
-/// What the developer's shell must not bring into a test: their key and API addresses, and what
-/// picks colour depth, glyphs, the clock or the clipboard (io/term.rs, io/clock.rs,
-/// io/clipboard.rs), so local and CI runs see the same. The terminals' own variables come from
-/// data/terminals.toml, so a terminal added there is cleared here too.
+/// Developer env a test must not inherit: the key and API addresses, what picks colour, glyphs or
+/// the clock (io/term.rs, io/clock.rs), and the clipboard (io/clipboard.rs). Terminals' own
+/// variables come from data/terminals.toml, so a terminal added there is cleared too.
 pub fn cleared() -> Vec<String> {
     let mut names: Vec<String> = [
         "CROWBOT_API_KEY",

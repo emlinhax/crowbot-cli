@@ -1,4 +1,5 @@
-//! Copying to the clipboard, which here goes out as OSC 52.
+//! Copying to the clipboard. Linux only: DISPLAY is cleared, so a copy goes out as OSC 52, which
+//! the test reads. Elsewhere it would hit the developer's clipboard.
 
 use super::harness::{ESC, Session, WAIT, in_session};
 use crate::Sandbox;

@@ -228,8 +228,6 @@ impl Session {
         self.press(row, 0);
     }
 
-    // Only the Linux copy tests right-click (see them for why).
-
     pub fn press(&mut self, row: usize, button: u8) {
         self.send(&format!(
             "\x1b[<{button};3;{0}M\x1b[<{button};3;{0}m",
@@ -249,8 +247,7 @@ impl Session {
     }
 }
 
-/// What a session left behind: `body`'s answer, the screen before and after quitting (the
-/// session's own screen is gone once it exits), and the sandbox, for the files it wrote.
+/// After a session: `body`'s result, the screen before and after quitting, and the sandbox.
 pub struct Ended<T> {
     pub out: T,
     pub screen: String,
