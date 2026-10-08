@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::api::error::ApiError;
+use crate::api::error::{self, ApiError};
 use crate::api::{Api, Call};
 use crate::api::{endpoints, retry};
 use crate::config::limits;
@@ -34,17 +34,15 @@ struct Ready {
 /// Asks for a code under this machine's name, which the key list shows once it is approved.
 pub async fn start(api: &Api) -> Result<Started, ApiError> {
     let body = serde_json::json!({ "hostname": io::proc::hostname() });
-    let resp = api
-        .call(
-            "pair_start",
-            Call {
-                body: Some(&body),
-                ..Call::default()
-            },
-            limits::get().http.request_timeout_ms.ms(),
-        )
-        .await?;
-    serde_json::from_slice(&resp.body).map_err(|e| unreadable(&e))
+    api.call_json(
+        "pair_start",
+        Call {
+            body: Some(&body),
+            ..Call::default()
+        },
+        limits::get().http.request_timeout_ms.ms(),
+    )
+    .await
 }
 
 pub async fn poll(api: &Api, device_code: &str) -> Result<Poll, ApiError> {
@@ -61,7 +59,7 @@ pub async fn poll(api: &Api, device_code: &str) -> Result<Poll, ApiError> {
     if resp.head.status == 202 {
         return Ok(Poll::Pending);
     }
-    let ready: Ready = serde_json::from_slice(&resp.body).map_err(|e| unreadable(&e))?;
+    let ready: Ready = error::json(&resp.body)?;
     Ok(Poll::Ready(ready.api_key))
 }
 
@@ -90,8 +88,4 @@ pub async fn wait(api: &Api, started: &Started) -> Result<String, ApiError> {
 /// Where a signed-in person approves the code.
 pub fn page() -> String {
     endpoints::url(endpoints::get("pair_page"), &[])
-}
-
-fn unreadable(e: &serde_json::Error) -> ApiError {
-    crate::conversation::error::ErrorInfo::local("bad_response", e.to_string()).into()
 }

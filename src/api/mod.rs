@@ -90,6 +90,17 @@ impl Api {
         Ok(resp)
     }
 
+    /// `call`, with the reply read as JSON.
+    pub async fn call_json<T: serde::de::DeserializeOwned>(
+        &self,
+        id: &str,
+        call: Call<'_>,
+        timeout: Duration,
+    ) -> Result<T, ApiError> {
+        let resp = self.call(id, call, timeout).await?;
+        error::json(&resp.body)
+    }
+
     /// Like `call`, but hands back the body as it streams. An error's body is read first, as far
     /// as it comes within the error bounds in data/limits.toml.
     pub async fn open(

@@ -65,12 +65,10 @@ pub struct Listing {
 /// The live list; `Err` says why it could not be had, an empty list included.
 pub async fn fetch(api: &Api) -> Result<Vec<Model>, String> {
     let timeout = limits::get().models.fetch_timeout_ms.ms();
-    let resp = api
-        .call("models", Call::default(), timeout)
+    let listing: Listing = api
+        .call_json("models", Call::default(), timeout)
         .await
         .map_err(|e| e.to_string())?;
-    let listing: Listing =
-        serde_json::from_slice(&resp.body).map_err(|e| format!("unreadable model list: {e}"))?;
     if listing.data.is_empty() {
         return Err("crowbot returned an empty model list".into());
     }

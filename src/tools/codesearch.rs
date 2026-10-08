@@ -65,10 +65,10 @@ impl Tool for CodeSearch {
                 return out;
             }
             // The schema is crowbot's, so the arguments go through untouched.
-            let resp = cx
+            let reply = cx
                 .app
                 .api
-                .call(
+                .call_json::<Reply>(
                     "codesearch",
                     Call {
                         body: Some(&args),
@@ -77,15 +77,11 @@ impl Tool for CodeSearch {
                     limits::get().http.request_timeout_ms.ms(),
                 )
                 .await;
-            let resp = match resp {
-                Ok(resp) => resp,
+            let reply = match reply {
+                Ok(reply) => reply,
                 Err(e) => {
                     return Output::error(format!("{}: {}", Entry::of(&e.info).title, e.info));
                 }
-            };
-            let reply: Reply = match serde_json::from_slice(&resp.body) {
-                Ok(reply) => reply,
-                Err(e) => return Output::error(format!("Unreadable search results: {e}")),
             };
             if reply.results.is_empty() {
                 return Output::ok("No results. Drop the repo filter or a term and search again.");

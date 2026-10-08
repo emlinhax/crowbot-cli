@@ -32,6 +32,11 @@ impl Entry {
     }
 }
 
+/// A reply's body read as JSON; one that is not what was expected is a `bad_response`.
+pub fn json<T: serde::de::DeserializeOwned>(body: &[u8]) -> Result<T, ApiError> {
+    serde_json::from_slice(body).map_err(|e| ErrorInfo::local("bad_response", e.to_string()).into())
+}
+
 #[derive(Debug, thiserror::Error)]
 #[error("{info}")]
 pub struct ApiError {

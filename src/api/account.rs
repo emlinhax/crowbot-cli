@@ -5,7 +5,6 @@ use serde::Deserialize;
 use crate::api::error::ApiError;
 use crate::api::{Api, Call};
 use crate::config::limits;
-use crate::conversation::error::ErrorInfo;
 
 #[derive(Debug, Deserialize)]
 pub struct Me {
@@ -16,13 +15,10 @@ pub struct Me {
 }
 
 pub async fn me(api: &Api) -> Result<Me, ApiError> {
-    let resp = api
-        .call(
-            "me",
-            Call::default(),
-            limits::get().http.request_timeout_ms.ms(),
-        )
-        .await?;
-    serde_json::from_slice(&resp.body)
-        .map_err(|e| ErrorInfo::local("bad_response", e.to_string()).into())
+    api.call_json(
+        "me",
+        Call::default(),
+        limits::get().http.request_timeout_ms.ms(),
+    )
+    .await
 }

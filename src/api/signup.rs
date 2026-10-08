@@ -59,32 +59,28 @@ fn within_bound(challenge: &Challenge) -> Result<(), ApiError> {
 }
 
 async fn challenge(api: &Api) -> Result<Challenge, ApiError> {
-    let resp = api
-        .call(
-            "pow",
-            Call {
-                args: &[("kind", "signup")],
-                ..Call::default()
-            },
-            limits::get().http.request_timeout_ms.ms(),
-        )
-        .await?;
-    parse(&resp.body)
+    api.call_json(
+        "pow",
+        Call {
+            args: &[("kind", "signup")],
+            ..Call::default()
+        },
+        limits::get().http.request_timeout_ms.ms(),
+    )
+    .await
 }
 
 async fn create(api: &Api, challenge: &str, nonce: &str) -> Result<Account, ApiError> {
     let proof = format!("{challenge}.{nonce}");
-    let resp = api
-        .call(
-            "signup",
-            Call {
-                headers: &[("X-Pow", &proof)],
-                ..Call::default()
-            },
-            limits::get().http.request_timeout_ms.ms(),
-        )
-        .await?;
-    parse(&resp.body)
+    api.call_json(
+        "signup",
+        Call {
+            headers: &[("X-Pow", &proof)],
+            ..Call::default()
+        },
+        limits::get().http.request_timeout_ms.ms(),
+    )
+    .await
 }
 
 /// Searches nonces on every core; blocking, so run it off the async threads.
@@ -143,10 +139,6 @@ fn base36(mut n: u64) -> String {
     }
     out.reverse();
     String::from_utf8(out).expect("ASCII digits")
-}
-
-fn parse<T: serde::de::DeserializeOwned>(body: &[u8]) -> Result<T, ApiError> {
-    serde_json::from_slice(body).map_err(|e| ErrorInfo::local("bad_response", e.to_string()).into())
 }
 
 #[cfg(test)]
