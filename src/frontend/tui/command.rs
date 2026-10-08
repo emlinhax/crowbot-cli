@@ -24,11 +24,10 @@ pub struct Started<'a> {
 /// Starts `line` (what followed the `/`); `Err` is the notice for a command that does not run
 /// here.
 pub fn start<'a>(app: &'a App, line: &str, session: Session) -> Result<Started<'a>, String> {
-    let words: Vec<String> = line.split_whitespace().map(str::to_owned).collect();
-    let (name, args) = words.split_first().ok_or_else(String::new)?;
-    let command = commands::lookup(name, Scope::Session).map_err(|missing| {
+    let (name, args) = commands::split(line).ok_or_else(String::new)?;
+    let command = commands::lookup(&name, Scope::Session).map_err(|missing| {
         let text = &ui::get().text;
-        let typed = Scope::Session.invoke(name);
+        let typed = Scope::Session.invoke(&name);
         match missing {
             Missing::Unknown => template::fill(
                 &text.unknown_command,
@@ -43,7 +42,6 @@ pub fn start<'a>(app: &'a App, line: &str, session: Session) -> Result<Started<'
             ),
         }
     })?;
-    let args = args.to_vec();
     Ok(Started {
         echo: Scope::Session.invoke(&commands::redact_line(line)),
         run: Box::pin(async move {

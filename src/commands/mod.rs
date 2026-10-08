@@ -173,12 +173,18 @@ pub fn lookup(name: &str, scope: Scope) -> Result<&'static dyn Command, Missing>
     }
 }
 
+/// A typed command line, `name args…`, as its name and arguments; `None` when it is blank.
+pub fn split(line: &str) -> Option<(String, Vec<String>)> {
+    let mut words = line.split_whitespace().map(str::to_owned);
+    let name = words.next()?;
+    Some((name, words.collect()))
+}
+
 /// A typed command line, `name args…`, with its secret values replaced by hints.
 pub fn redact_line(line: &str) -> String {
-    let words: Vec<String> = line.split_whitespace().map(str::to_owned).collect();
-    match words.split_first() {
-        Some((name, args)) if !args.is_empty() => match find(name) {
-            Some(command) => format!("{name} {}", command.spec().redact(args)),
+    match split(line) {
+        Some((name, args)) if !args.is_empty() => match find(&name) {
+            Some(command) => format!("{name} {}", command.spec().redact(&args)),
             None => line.trim().to_owned(),
         },
         _ => line.trim().to_owned(),
