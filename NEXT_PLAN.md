@@ -192,16 +192,14 @@ interstitial passed off as the article. The API stays on reqwest.
   (read, default-allow) and `forum_post` (reply or new topic, confirmed every time even in AUTO,
   refused headless). `/forums` and `crowbot forums` add, log in (hidden password, never stored),
   list, logout and remove.
-- 2026-10-04: in a session `/forums` is a card (`src/tui/forums.rs`): the list, a menu per forum
-  (log in / log out / remove), login as a username then a dots-only password, and an add flow that
-  offers the `[[suggest]]` searches not yet added, or the user's own words, and picks from what
-  the directory found. Its network and store work shares the login card's job slot, so closing
-  either card drops what it waited on. e2e: a pty test logs in to a fake forum seeded into a plain
-  sealed store, wrong password first, and checks that no file holds the password.
-- Verified by unit tests at every layer against in-process fakes (transport POST/cookies, codec
-  incl. malformed XML and faults, backend against a fake mobiquo, directory against a fake
-  directory, store round-trip, tool rendering, command parsing). Protocol facts came from a live
-  capture (local notes) but have not yet been re-run live from this build.
+- 2026-10-04: `/forums` is a card (`src/frontend/tui/forums.rs`): list, per-forum menu, username +
+  masked password login, and an add flow (unadded `[[suggest]]` searches or free text → directory
+  results). Its work runs in the one card job slot, so closing the card drops what it waited on.
+  e2e: a pty test logs in to a fake forum, wrong password first, and checks no file holds the
+  password.
+- Unit-tested at every layer against in-process fakes (transport, codec incl. malformed XML,
+  backend, directory, store, tools, commands). Protocol facts come from a live capture; not yet
+  re-run live.
 - Open:
   - a live smoke run against UnknownCheats: confirm `search`/`reply_post`/`new_topic` param shapes
     and that cffetch clears the WAF (the mobiquo dir can rotate — re-resolve on a 404);

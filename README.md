@@ -12,17 +12,15 @@ Read `AGENTS.md` before changing anything; `NEXT_PLAN.md` tracks the phases.
 | macOS (Apple silicon) | `curl -fsSL -o crowbot https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-aarch64-apple-darwin && chmod +x crowbot && ./crowbot install` |
 | Linux (x86_64) | `curl -fsSL -o crowbot https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-x86_64-unknown-linux-musl && chmod +x crowbot && ./crowbot install` |
 
-`crowbot install` copies the program to a folder of your own (`%LOCALAPPDATA%\Programs\crowbot`
-on Windows, `~/.local/bin` elsewhere) and puts it on your PATH: on Windows itself, with an
-Apps & Features entry; elsewhere it tells you the line for your shell's profile. `crowbot
-uninstall` takes it away again and leaves `~/.crowbot` (keys, sessions) alone. The binaries are
-unsigned: on Windows the first start asks for "More info → Run anyway"; on macOS a copy saved by a
-browser (not by `curl`) is blocked until System Settings → Privacy & Security → Open Anyway.
+`crowbot install` copies the program to `%LOCALAPPDATA%\Programs\crowbot` (Windows) or
+`~/.local/bin` and puts it on PATH: on Windows directly, with an Apps & Features entry; elsewhere
+it prints the line for your shell profile. `crowbot uninstall` undoes it and keeps `~/.crowbot`.
+Binaries are unsigned: Windows asks for "More info → Run anyway"; macOS blocks a browser download
+until Privacy & Security → Open Anyway (`curl` downloads are not flagged).
 
-Once a day, an interactive session checks for a newer release in the background, checks the
-download against the release's SHA256SUMS and swaps it in; the next start says it updated.
-`crowbot update` does it on demand. `auto_update = false` in `~/.crowbot/config.toml`, or
-`CROWBOT_NO_UPDATE=1`, turns that off; development builds never update themselves.
+Sessions check for a new release daily, verify it against `SHA256SUMS` and swap it in; the next
+start says so. `crowbot update` does it now. `auto_update = false` or `CROWBOT_NO_UPDATE=1` turns
+it off; development builds never update.
 
 ## Commands
 
@@ -60,28 +58,25 @@ password), log out or remove it, or add one from Tapatalk's directory through th
 `/forums login <forum>` opens it straight at that forum's login. Only the resulting session cookie
 is kept, sealed in `~/.crowbot/forums.json` (DPAPI on Windows, 0600 elsewhere) — never the password.
 
-The system prompt names each added forum with its hint (what it covers, from
-`data/forums.toml` for the seeded ones), so the agent goes to the forum first for those topics
-without being told; the wording is `data/prompts/forums.toml`. It gets read tools
-(`forum_sections`, `forum_topics`, `forum_thread`, `forum_search`) that are allowed without asking, and a `forum_post` tool that shows you the exact text and waits for a
-yes every time, even in AUTO; a headless run never posts. Guests can read; most forums only allow
-search once you are logged in. Forum content is treated as untrusted information, never as
-instructions to the agent. Lock either down with a rule, e.g. `permission = "forum_post",
-pattern = "*", action = "deny"`.
+The system prompt names each added forum and its hint (seeded ones from `data/forums.toml`;
+wording in `data/prompts/forums.toml`), so the agent checks there first. Read tools
+(`forum_sections`, `forum_topics`, `forum_thread`, `forum_search`) run unasked; `forum_post` shows
+the exact text and asks every time, even in AUTO, and never runs headless. Guests can read; most
+forums need a login to search. Forum content is untrusted data, never instructions. Deny with a
+rule, e.g. `permission = "forum_post", pattern = "*", action = "deny"`.
 
-`--model <id>`, `--effort <level>` and `--mode <mode>` go before the prompt or command;
-`crowbot --help` lists their values. A first word that names a command runs it, except with `-p`
-or `--json`, where every word is prompt text. Otherwise the session opens when stdin and stdout
-are both terminals, and the prompt runs headless when they are not. Piped stdin is read to its
-end and appended to the words (`< /dev/null` when stdin is an open pipe with nothing coming). Exit codes: `0` done, `1` error, rejection or turn limit, `2` bad usage, `130`
+Flags (`--model`, `--effort`, `--mode`; values in `crowbot --help`) go before the prompt or
+command. A first word naming a command runs it, except after `-p`/`--json`, where every word is
+prompt. Otherwise a session opens when stdin and stdout are terminals, else the prompt runs
+headless. Piped stdin is read to its end and appended to the words (`< /dev/null` if the pipe
+never closes). Exit codes: `0` done, `1` error, rejection or turn limit, `2` bad usage, `130`
 interrupted.
 
 MANUAL asks before edits, commands and fetches; AUTO allows everything, deny rules included.
-PLAN locks out edits outside its plan file and runs, unasked, only the commands its allowlist
-names (`data/modes/plan.toml`): git's read commands, listings, and builds, tests and linters,
-which run the project's own code. It fetches without asking, and a filter at the end of a pipe
-(`| tail -30`, `data/filters.toml`) needs nothing of its own. The allowlist is not a sandbox. It
-ends by handing the plan over.
+PLAN edits only its plan file, fetches freely, and runs unasked only the commands in
+`data/modes/plan.toml` (git reads, listings, builds, tests, linters; these run project code, so it
+is not a sandbox) plus trailing pipe filters (`data/filters.toml`). It ends by handing over the
+plan.
 A headless run declines every prompt: allow what it needs with `[[permission]]` rules, or use
 `--mode auto`. The key comes from `CROWBOT_API_KEY`, else
 `~/.crowbot/auth.json` (DPAPI-sealed on Windows, 0600 elsewhere).
@@ -91,10 +86,11 @@ A headless run declines every prompt: allow what it needs with `[[permission]]` 
 The session takes over the whole terminal (the alternate screen) and gives it back on exit. The
 conversation scrolls above; the message bar is pinned to the bottom, between two rules in the
 mode's colour, and the bottom one carries the status on its right: the mode, the model and effort,
-context use and cost. While crowbot works, a murmuration of crows ripples above the bar beside the time and tokens so far.
-Right-click copies a message whole (yours, a reply, a tool's output, the pairing code), with a
-"Copied" note at the top right; Shift+drag selects any text, since the mouse otherwise belongs to
-crowbot. The session file under `~/.crowbot/sessions/` keeps the whole conversation.
+context use and cost. While crowbot works, a murmuration of crows ripples above the bar beside the
+time and tokens so far. Right-click copies a message whole (yours, a reply, a tool's output, the
+pairing code), with a "Copied" note at the top right; Shift+drag selects any text, since the mouse
+otherwise belongs to crowbot. The session file under `~/.crowbot/sessions/` keeps the whole
+conversation.
 
 | Key | Does |
 |---|---|
@@ -126,11 +122,9 @@ session, `/help` lists the commands:
 | `/forums` | the forums the agent can browse: log in, log out, remove, add |
 | `/quit` (or `/exit`) | leave |
 
-`/models` lists the models to pick from (↑↓, then → or Enter); `/login` takes effect without a
-restart. The project's `AGENTS.md` (or else `CLAUDE.md`) joins the system prompt when a
-conversation starts, up to `agent.instructions_bytes`. Pasting works everywhere; on Windows,
-where a paste arrives as keystrokes, a burst of keys is recognised as a paste so its Enters add
-lines instead of sending.
+`/login` takes effect without a restart. The project's `AGENTS.md` (else `CLAUDE.md`) joins the
+system prompt at conversation start, up to `agent.instructions_bytes`. On Windows a paste arrives
+as keystrokes; a key burst counts as a paste, so its Enters add lines.
 
 ## Environment
 
@@ -165,31 +159,28 @@ lines instead of sending.
 | `src/config/` | Layered settings, locations, limits and the trusted-folder list. |
 | `src/release/` | Release identity, install and self-update. |
 | `src/*.rs` | Startup (`app`), routing (`cli`), the key (`auth`), data loading, efforts and modes. |
-| `crates/cffetch/` | The user's Cloudflare-aware HTTP client, vendored unchanged (why it is outside the workspace: `Cargo.toml`). Re-sync by copying `src/`, `tests/`, `examples/` and `Cargo.toml` over; its own suite runs from that directory (it hits the network). |
+| `crates/cffetch/` | The user's Cloudflare-aware HTTP client, vendored unchanged (outside the workspace: see `Cargo.toml`). Re-sync: copy `src/`, `tests/`, `examples/`, `Cargo.toml`. Its networked suite runs from that directory. |
 | `tests/e2e/` | The real binary against an in-process fake crowbot; `pty/` drives real sessions. |
 | `tests/fixtures/` | What the fake serves (`sse/`, `api/`), sample `projects/`, `scenarios/*.toml`, frozen `session/` files. |
 | `tests/golden/` | Edit-matcher cases (`edit/`) and the `--json` stream (`json/`). |
 | `tests/smoke.rs` | The only tests that touch the real API (`make smoke`). |
 | `reference/` | Clones of opencode and pi plus crowbot's docs; local only, see AGENTS.md. |
 
-Settings layer in this order, later wins: `data/defaults.toml`, `~/.crowbot/config.toml`,
-`.crowbot/config.toml` in the start directory, then flags; `[[permission]]` rules append instead.
-Permanent allowances go in `~/.crowbot/config.toml`, e.g. `permission = "bash"`,
-`pattern = "cargo *"`, `action = "allow"`. A folder's own `.crowbot/config.toml` may set `model`,
-`effort` and deny rules; anything else (mode, shell, allow or ask rules) needs the folder trusted.
-A session started there shows what the file asks for and asks first, and remembers a yes in
-`~/.crowbot/trusted.json`; a headless run ignores those settings and says so on stderr.
-`CROWBOT_HOME` moves `~/.crowbot`.
+Settings layer, later wins: `data/defaults.toml`, `~/.crowbot/config.toml`,
+`./.crowbot/config.toml`, flags; `[[permission]]` rules append. A project config may set `model`,
+`effort` and deny rules; anything else needs the folder trusted (a session shows what it asks for
+and remembers a yes in `~/.crowbot/trusted.json`; a headless run ignores those settings, with a
+note on stderr). Permanent allowances go in `~/.crowbot/config.toml`, e.g. `permission = "bash"`,
+`pattern = "cargo *"`, `action = "allow"`.
 
 ## Checks
 
 GNU make (see the Makefile's first line).
 
-webfetch fetches through cffetch, whose BoringSSL is built from source, so a build also needs
-CMake and libclang (`LIBCLANG_PATH` pointing at LLVM's `bin` when it is not found on its own),
-plus NASM on Windows (`winget install Kitware.CMake LLVM.LLVM NASM.NASM`). CI installs them
-through `.github/actions/setup`. The binary carries two TLS stacks: rustls for crowbot's API,
-BoringSSL for the web.
+webfetch goes through cffetch, which builds BoringSSL from source: a build needs CMake and
+libclang (`LIBCLANG_PATH` = LLVM's `bin` if not found), plus NASM on Windows
+(`winget install Kitware.CMake LLVM.LLVM NASM.NASM`); CI installs them in `.github/actions/setup`.
+TLS: rustls for crowbot's API, BoringSSL for the web.
 
 | Target | Runs |
 |---|---|
@@ -204,11 +195,11 @@ When to run each: AGENTS.md.
 
 ## Releases
 
-Pushing `prod` runs `.github/workflows/release.yml`: the full CI checks,
-then a GitHub release tagged `v<version>-<run>` holding one binary per target and `SHA256SUMS`.
-The binaries are built with that tag (`CROWBOT_RELEASE`), which `--version` and the updater read.
-Asset names never change, so the Install links always serve the newest release. Adding a
-target: see `data/release.toml`'s header.
+Pushing `prod` runs `.github/workflows/release.yml`: the CI checks, then a release tagged
+`v<version>-<run>` with one binary per target and `SHA256SUMS`, built with that tag
+(`CROWBOT_RELEASE`) for `--version` and the updater. Asset names are fixed, so
+`releases/latest/download/<asset>` (the Install links) always serves the newest. Adding a target:
+see `data/release.toml`'s header.
 
 ## Licence
 
