@@ -105,8 +105,17 @@ pub fn due(state: &State, now: Timestamp, enabled: bool) -> bool {
             .is_none_or(|at| !io::clock::fresh(at, now, interval))
 }
 
+/// Who tells the user about an update `now` installs.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Tell {
+    /// The caller, as it finishes; any news still pending is old by then and is cleared.
+    Here,
+    /// The next start, from the news this run keeps.
+    NextStart,
+}
+
 /// Checks and updates this binary now, recording the look and its result.
-pub async fn now(http: &Http, paths: &Paths) -> anyhow::Result<Outcome> {
+pub async fn now(http: &Http, paths: &Paths, tell: Tell) -> anyhow::Result<Outcome> {
     let current = release::tag().ok_or_else(|| anyhow!(TEXT.development.clone()))?;
     let exe = io::exe::current()?;
     io::exe::sweep(&exe);
@@ -114,13 +123,18 @@ pub async fn now(http: &Http, paths: &Paths) -> anyhow::Result<Outcome> {
     let mut state = load(paths);
     state.checked_at = Some(io::clock::now());
     let result = run(http, &latest, current, &exe).await;
-    match &result {
-        Ok(Outcome::Updated(change)) => {
-            state.updated = Some(change.clone());
+    match (&result, tell) {
+        (Ok(_), Tell::Here) => {
+            state.updated = None;
             state.last_error = None;
         }
-        Ok(Outcome::UpToDate(_)) => state.last_error = None,
-        Err(e) => state.last_error = Some(format!("{e:#}")),
+        (Ok(outcome), Tell::NextStart) => {
+            if let Outcome::Updated(change) = outcome {
+                state.updated = Some(change.clone());
+            }
+            state.last_error = None;
+        }
+        (Err(e), _) => state.last_error = Some(format!("{e:#}")),
     }
     save(paths, &state);
     result

@@ -114,7 +114,7 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
     ) {
         let (http, paths) = (app.http.clone(), app.paths.clone());
         tokio::spawn(async move {
-            let _ = update::now(&http, &paths).await;
+            let _ = update::now(&http, &paths, update::Tell::NextStart).await;
         });
     }
     let (spent, transcript) = tui.run(turns, transcript, rx).await;
