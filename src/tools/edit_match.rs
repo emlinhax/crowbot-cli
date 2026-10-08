@@ -127,21 +127,38 @@ impl<'a> Doc<'a> {
         Span { start, end }
     }
 
-    /// Every window of `lines.len()` lines where `same` holds line by line.
+    /// Every window of `n` lines that `fits`.
     fn windows(
+        &self,
+        n: usize,
+        fits: impl Fn(&[(usize, &str)]) -> bool,
+        newline: bool,
+    ) -> Vec<Span> {
+        if n == 0 || n > self.lines.len() {
+            return Vec::new();
+        }
+        self.lines
+            .windows(n)
+            .enumerate()
+            .filter(|(_, window)| fits(window))
+            .map(|(i, _)| self.span(i, n, newline))
+            .collect()
+    }
+
+    /// Every window of `lines.len()` lines where `same` holds line by line.
+    fn line_windows(
         &self,
         lines: &[&str],
         same: impl Fn(&str, &str) -> bool,
         newline: bool,
     ) -> Vec<Span> {
-        let n = lines.len();
-        if n == 0 || n > self.lines.len() {
-            return Vec::new();
-        }
-        (0..=self.lines.len() - n)
-            .filter(|&i| (0..n).all(|k| same(self.lines[i + k].1, lines[k])))
-            .map(|i| self.span(i, n, newline))
-            .collect()
+        let fits = |window: &[(usize, &str)]| {
+            window
+                .iter()
+                .zip(lines)
+                .all(|((_, line), want)| same(line, want))
+        };
+        self.windows(lines.len(), fits, newline)
     }
 }
 
@@ -180,21 +197,17 @@ fn trimmed_boundary(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
 
 fn line_trimmed(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
     let (lines, newline) = needle_lines(needle);
-    doc.windows(&lines, |a, b| a.trim() == b.trim(), newline)
+    doc.line_windows(&lines, |a, b| a.trim() == b.trim(), newline)
 }
 
 fn whitespace_normalized(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
     let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
     let (lines, newline) = needle_lines(needle);
-    doc.windows(&lines, |a, b| squash(a) == squash(b), newline)
+    doc.line_windows(&lines, |a, b| squash(a) == squash(b), newline)
 }
 
 fn indentation_flexible(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
     let (lines, newline) = needle_lines(needle);
-    let n = lines.len();
-    if n == 0 || n > doc.lines.len() {
-        return Vec::new();
-    }
     let dedent = |ls: &[&str]| -> Vec<String> {
         let indent = ls
             .iter()
@@ -207,13 +220,11 @@ fn indentation_flexible(doc: &Doc<'_>, needle: &str) -> Vec<Span> {
             .collect()
     };
     let wanted = dedent(&lines);
-    (0..=doc.lines.len() - n)
-        .filter(|&i| {
-            let window: Vec<&str> = doc.lines[i..i + n].iter().map(|(_, l)| *l).collect();
-            dedent(&window) == wanted
-        })
-        .map(|i| doc.span(i, n, newline))
-        .collect()
+    let fits = |window: &[(usize, &str)]| {
+        let window: Vec<&str> = window.iter().map(|(_, l)| *l).collect();
+        dedent(&window) == wanted
+    };
+    doc.windows(lines.len(), fits, newline)
 }
 
 /// Models sometimes send `\n` and `\"` as literal backslash sequences.

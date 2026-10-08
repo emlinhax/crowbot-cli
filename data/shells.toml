@@ -30,8 +30,11 @@ candidates = ["/bin/sh"]
 args = ["-c"]
 note = "Commands run in POSIX sh."
 
-# What the model is told when no entry above applies; `{shell}` is the configured one.
+# What the model is told when no entry above applies; `{shell}` is the configured one. A
+# configured shell like no entry gets `args`; `name` stands for no shell at all.
 [fallback]
+name = "none"
+args = ["-c"]
 configured = "Commands run in {shell}."
 missing = "The configured shell {shell} was not found; commands cannot run."
 none = "No shell was found on this machine; commands cannot run."

@@ -23,6 +23,8 @@ struct Catalog {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Fallback {
+    name: String,
+    args: Vec<String>,
     configured: String,
     missing: String,
     none: String,
@@ -67,17 +69,9 @@ pub fn resolve(configured: Option<&str>) -> Shell {
 
     if let Some(configured) = configured {
         // A configured shell borrows the arguments of the catalog entry it resembles.
-        let stem = std::path::Path::new(configured)
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_lowercase())
-            .unwrap_or_default();
-        let like = entries.iter().find(|e| {
-            e.candidates.iter().any(|c| {
-                std::path::Path::new(c)
-                    .file_stem()
-                    .is_some_and(|s| s.to_string_lossy().to_lowercase() == stem)
-            })
-        });
+        let like = entries
+            .iter()
+            .find(|e| e.candidates.iter().any(|c| stem(c) == stem(configured)));
         let program = io::proc::which(configured);
         let note = match (&program, like) {
             (None, _) => &fallback.missing,
@@ -87,7 +81,7 @@ pub fn resolve(configured: Option<&str>) -> Shell {
         return Shell {
             name: configured.to_owned(),
             program,
-            args: like.map_or_else(|| vec!["-c".to_owned()], |e| e.args.clone()),
+            args: like.map_or_else(|| fallback.args.clone(), |e| e.args.clone()),
             note: template::fill(note, &[("shell", configured)]),
             env,
         };
@@ -111,12 +105,20 @@ pub fn resolve(configured: Option<&str>) -> Shell {
         }
     }
     Shell {
-        name: "none".into(),
+        name: fallback.name.clone(),
         program: None,
         args: Vec::new(),
         note: fallback.none.clone(),
         env,
     }
+}
+
+/// A program's name without its folder or extension, lowercased: `C:/x/Bash.EXE` is `bash`.
+fn stem(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_lowercase())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
