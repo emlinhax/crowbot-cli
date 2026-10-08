@@ -14,7 +14,6 @@ use futures_util::stream::FuturesUnordered;
 use futures_util::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 
-use crate::agent::system_prompt;
 use crate::agent::{RunCtx, run};
 use crate::api::models::Model;
 use crate::app::App;
@@ -28,6 +27,7 @@ use crate::frontend::tui::feed::{Block, Feed};
 use crate::frontend::tui::forums::{self, Forums};
 use crate::frontend::tui::keymap::{self, Action};
 use crate::frontend::tui::login::{self, Login};
+use crate::frontend::tui::next_turn::NextTurn;
 use crate::frontend::tui::palette::{self, Palette};
 use crate::frontend::tui::paste::Burst;
 use crate::frontend::tui::picker::{self, Picker};
@@ -153,11 +153,7 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
 struct Tui<'a> {
     app: &'a App,
     catalog: Catalog,
-    /// The model for the next turn, and the system prompt written for it.
-    model: Model,
-    /// The effort asked for: the setting until `/effort` changes it.
-    effort: Option<String>,
-    system: String,
+    next: NextTurn,
     shared: &'a Shared,
     screen: Screen,
     feed: Feed,
@@ -210,9 +206,7 @@ impl<'a> Tui<'a> {
         let mut tui = Self {
             app,
             catalog,
-            system: system_prompt::build(&app.paths, &model.id),
-            model,
-            effort: app.settings.effort.clone(),
+            next: NextTurn::new(&app.paths, model, app.settings.effort.clone()),
             shared,
             screen: Screen::new(width, height, theme::get(), term::color_depth()),
             feed: Feed::new(),
@@ -245,14 +239,14 @@ impl<'a> Tui<'a> {
     /// Share of the current model's window the last request used.
     fn context_pct(&self) -> Option<u64> {
         self.context_tokens
-            .map(|tokens| tokens * 100 / self.model.context_window.max(1))
+            .map(|tokens| tokens * 100 / self.next.model.context_window.max(1))
     }
 
     /// What this session reports about itself to a command.
     fn session(&self) -> Session {
         Session {
-            model: self.model.id.clone(),
-            effort: self.model.effort(self.effort.as_deref()).map(str::to_owned),
+            model: self.next.model.id.clone(),
+            effort: self.next.effort().map(str::to_owned),
             mode: self.shared.mode().label.clone(),
             context_pct: self.context_pct(),
             cost_micros: self.cost_micros,
@@ -265,8 +259,8 @@ impl<'a> Tui<'a> {
         welcome::Info {
             version: release::shown(),
             cwd: self.app.paths.project.display().to_string(),
-            model: self.model.id.clone(),
-            effort: self.model.effort(self.effort.as_deref()).map(str::to_owned),
+            model: self.next.model.id.clone(),
+            effort: self.next.effort().map(str::to_owned),
             mode_label: mode.label.clone(),
             mode_color: mode.color.clone(),
             logged_in: self.app.api.has_key(),
@@ -280,7 +274,7 @@ impl<'a> Tui<'a> {
         let put_away = std::mem::replace(&mut self.session_file, store.path.display().to_string());
         self.shared.start_over();
         // AGENTS.md may have changed (/init writes it), and the prompt is read at a start.
-        self.system = system_prompt::build(&self.app.paths, &self.model.id);
+        self.next.reload(&self.app.paths);
         self.feed = Feed::new();
         let welcome = self.welcome();
         self.feed.push(Block::Welcome(welcome));
@@ -364,14 +358,13 @@ impl<'a> Tui<'a> {
                     self.progress = Some(progress);
                     let parts = vec![Part::Text { text }];
                     let (app, tools, emit) = (self.app, turns.tools, turns.emit);
-                    let (model, system) = (self.model.clone(), self.system.clone());
-                    let effort = self.effort.clone();
+                    let next = self.next.clone();
                     turn = Some(Box::pin(async move {
                         let cx = RunCtx {
                             app,
-                            model: &model,
-                            effort: effort.as_deref(),
-                            system: &system,
+                            model: &next.model,
+                            effort: next.asked.as_deref(),
+                            system: &next.system,
                             tools,
                             emit,
                         };
@@ -580,7 +573,7 @@ impl<'a> Tui<'a> {
             Done::Forums(done) => {
                 // The prompt names the forums to browse; an added or removed one changes it.
                 if matches!(done, forums::Done::Changed { .. }) {
-                    self.system = system_prompt::build(&self.app.paths, &self.model.id);
+                    self.next.reload(&self.app.paths);
                 }
                 match self.forums.as_mut().map(|card| card.finished(done)) {
                     Some(next) => self.forums_next(next),
@@ -618,13 +611,13 @@ impl<'a> Tui<'a> {
     fn set_effort(&mut self, effort: String) {
         let text = &ui::get().text;
         let mut note = template::fill(&text.effort_set, &[("effort", &effort)]);
-        if self.model.effort(Some(&effort)).is_none() {
+        if self.next.model.effort(Some(&effort)).is_none() {
             note.push_str(&template::fill(
                 &text.effort_unsent,
-                &[("model", &self.model.id)],
+                &[("model", &self.next.model.id)],
             ));
         }
-        self.effort = Some(effort);
+        self.next.asked = Some(effort);
         self.feed.notice(&note, "done");
     }
 
@@ -633,8 +626,7 @@ impl<'a> Tui<'a> {
         let Some(model) = self.catalog.get(id).cloned() else {
             return;
         };
-        self.system = system_prompt::build(&self.app.paths, &model.id);
-        self.model = model;
+        self.next.switch(&self.app.paths, model);
         let text = template::fill(&ui::get().picker.switched, &[("model", id)]);
         self.feed.notice(&text, "done");
     }
@@ -803,7 +795,7 @@ impl<'a> Tui<'a> {
         let outcome: CommandOutcome = match done {
             Work::Catalog(catalog) => {
                 self.catalog = catalog;
-                self.picker = Some(Picker::new(&self.catalog, &self.model.id));
+                self.picker = Some(Picker::new(&self.catalog, &self.next.model.id));
                 return Step::Continue;
             }
             Work::Command(Err(e)) => {
@@ -835,7 +827,7 @@ impl<'a> Tui<'a> {
                     return Step::Work(command::refresh_catalog(self.app));
                 }
                 Effect::PickModel { refresh: false } => {
-                    self.picker = Some(Picker::new(&self.catalog, &self.model.id));
+                    self.picker = Some(Picker::new(&self.catalog, &self.next.model.id));
                 }
                 Effect::Forums { login } => match crate::forums::store::load(&self.app.paths) {
                     Ok(list) => self.forums = Some(Forums::new(list, login.as_deref())),
@@ -933,8 +925,8 @@ impl<'a> Tui<'a> {
         live.push(frame::bottom(
             mode,
             &frame::Info {
-                model: &self.model.id,
-                effort: self.model.effort(self.effort.as_deref()),
+                model: &self.next.model.id,
+                effort: self.next.effort(),
                 context_pct: self.context_pct(),
                 cost_micros: self.cost_micros,
             },
