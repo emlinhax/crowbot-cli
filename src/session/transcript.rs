@@ -63,14 +63,7 @@ impl Transcript {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::conversation::message::Part;
     use crate::io;
-
-    fn user(text: &str) -> Message {
-        Message::User {
-            parts: vec![Part::Text { text: text.into() }],
-        }
-    }
 
     #[test]
     fn there_is_no_file_to_name_until_something_is_said() {
@@ -78,7 +71,7 @@ mod tests {
         let paths = Paths::at(root.path().join("home"), root.path().into());
         let mut transcript = Transcript::create(&paths);
         assert!(transcript.path().is_none());
-        assert!(transcript.push(user("one")).is_ok());
+        assert!(transcript.push(Message::user_text("one")).is_ok());
         assert!(
             transcript
                 .path()
@@ -95,9 +88,9 @@ mod tests {
         let paths = Paths::at(blocker.join("home"), root.path().into());
         let mut transcript = Transcript::create(&paths);
 
-        let first = transcript.push(user("one"));
+        let first = transcript.push(Message::user_text("one"));
         assert!(first.is_err_and(|u| u.path.starts_with(&blocker)));
-        assert!(transcript.push(user("two")).is_ok());
+        assert!(transcript.push(Message::user_text("two")).is_ok());
         assert_eq!(transcript.messages.len(), 2);
         assert!(transcript.path().is_none());
     }

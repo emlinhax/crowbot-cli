@@ -42,6 +42,15 @@ pub fn new_id() -> String {
     format!("{:08x}", fastrand::u32(..))
 }
 
+/// Every line of a session file's `text`, naming the line that does not parse.
+#[cfg(test)]
+pub fn parse(text: &str) -> Vec<Entry> {
+    text.lines()
+        .enumerate()
+        .map(|(i, l)| serde_json::from_str(l).unwrap_or_else(|e| panic!("line {}: {e}", i + 1)))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -52,11 +61,7 @@ mod tests {
 
     #[test]
     fn every_v1_line_still_loads() {
-        let entries: Vec<Entry> = V1
-            .lines()
-            .enumerate()
-            .map(|(i, l)| serde_json::from_str(l).unwrap_or_else(|e| panic!("line {}: {e}", i + 1)))
-            .collect();
+        let entries = parse(V1);
         assert!(matches!(&entries[0], Entry::Session { v: 1, crowbot, .. } if crowbot == "0.1.0"));
         let Entry::Message {
             message: Message::Assistant(a),

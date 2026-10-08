@@ -91,10 +91,7 @@ mod tests {
         store.append(&Message::user_text("one")).unwrap();
         store.append(&Message::user_text("two")).unwrap();
         let text = io::fs::read_string(store.path()).unwrap().unwrap();
-        let entries: Vec<Entry> = text
-            .lines()
-            .map(|l| serde_json::from_str(l).unwrap())
-            .collect();
+        let entries = entry::parse(&text);
         assert!(matches!(entries[0], Entry::Session { .. }));
         let (Entry::Message { id: first, .. }, Entry::Message { parent, .. }) =
             (&entries[1], &entries[2])
