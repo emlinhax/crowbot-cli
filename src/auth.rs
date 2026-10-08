@@ -133,7 +133,7 @@ pub fn hint(secret: &str) -> String {
 }
 
 /// Account numbers are shown grouped with spaces; people paste them that way.
-pub fn normalize(secret: &str) -> String {
+fn normalize(secret: &str) -> String {
     secret.split_whitespace().collect()
 }
 
