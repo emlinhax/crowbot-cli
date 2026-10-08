@@ -2,9 +2,10 @@
 //! their source so any width can redraw them and thinking can be opened and closed; whatever is
 //! still in flight is drawn fresh after them.
 
+mod render;
+
 use std::time::Instant;
 
-use crate::api::error::Entry as ErrorEntry;
 use crate::config::limits;
 use crate::conversation::error::ErrorInfo;
 use crate::conversation::message::{Assistant, Finish, ToolResult};
@@ -12,9 +13,10 @@ use crate::frontend::tui::calls::{self, State};
 use crate::frontend::tui::{progress, ui, welcome};
 use crate::frontend::words;
 use crate::live::event::{AgentEvent, DeltaKind, Ended, Outcome};
-use crate::text::styled::{Line, Style};
+use crate::text::stream;
+use crate::text::styled::Line;
 use crate::text::template::fill;
-use crate::text::{markdown, stream};
+use render::{render, reply_lines, thinking_lines};
 
 pub enum Block {
     Welcome(welcome::Info),
@@ -315,9 +317,7 @@ impl Feed {
     fn live_lines(&self, width: usize, now: Instant) -> Vec<Line> {
         let mut groups: Vec<Vec<Line>> = Vec::new();
         if !self.reasoning.is_empty() {
-            let secs = self
-                .reasoning_since
-                .map_or(0, |since| now.duration_since(since).as_secs());
+            let secs = self.reasoning_secs(now);
             let text = &ui::get().thinking;
             let header = fill(&text.live, &[("secs", &secs.to_string())]);
             let mut lines = thinking_lines(&text.open, &header, &self.reasoning, width);
@@ -382,12 +382,16 @@ impl Feed {
         if self.reasoning.is_empty() {
             return;
         }
-        let secs = self
-            .reasoning_since
-            .map_or(0, |since| now.duration_since(since).as_secs());
+        let secs = self.reasoning_secs(now);
         let text = std::mem::take(&mut self.reasoning);
         self.reasoning_since = None;
         self.push(Block::Thinking { text, secs });
+    }
+
+    /// How long the reasoning in flight has run.
+    fn reasoning_secs(&self, now: Instant) -> u64 {
+        self.reasoning_since
+            .map_or(0, |since| now.duration_since(since).as_secs())
     }
 
     fn outcome_of(&mut self, message: &Assistant) {
@@ -398,107 +402,6 @@ impl Feed {
             self.notice(text, "warn");
         }
     }
-}
-
-fn render(block: &Block, open: bool, width: usize) -> Vec<Line> {
-    match block {
-        Block::Welcome(info) => welcome::render(info, width),
-        Block::User(text) => user_lines(text, width),
-        Block::Reply { md, first } => reply_lines(md, *first, width),
-        Block::Markdown(md) => markdown::render(md, width),
-        Block::Notice { text, role } => {
-            Line::styled(text, Style::fg(role)).wrap(width, &Line::default())
-        }
-        Block::Tool { arguments, result } => {
-            calls::finished(&result.name, arguments, result, width)
-        }
-        Block::Thinking { text, secs } => {
-            let words = &ui::get().thinking;
-            let header = fill(&words.done, &[("secs", &secs.to_string())]);
-            let mark = if open { &words.open } else { &words.closed };
-            let mut lines = thinking_lines(mark, &header, text, width);
-            if !open {
-                lines.truncate(1);
-            }
-            lines
-        }
-        Block::Error(error) => error_lines(error, width),
-    }
-}
-
-/// A thinking header, then the text under a gutter.
-fn thinking_lines(mark: &str, header: &str, text: &str, width: usize) -> Vec<Line> {
-    let words = &ui::get().thinking;
-    let muted = Style::fg("muted");
-    let mut lines = vec![Line::styled(format!("{mark} {header}"), muted.clone()).truncate(width)];
-    let gutter = Line::styled(&words.gutter, muted);
-    let style = Style::fg("reasoning").italic();
-    for raw in text.trim().lines() {
-        let mut line = gutter.clone();
-        line.push(raw, style.clone());
-        lines.extend(line.wrap(width, &gutter));
-    }
-    lines
-}
-
-/// The user's message on a full-width band, a blank band row above and below it, and the mark
-/// down its left edge.
-fn user_lines(text: &str, width: usize) -> Vec<Line> {
-    let band = Style::fg("user_text").on("user_band");
-    let mark = Line::styled(&ui::get().user_mark, Style::fg("user").on("user_band"));
-    let mut lines = vec![mark.clone()];
-    for raw in text.lines() {
-        let mut line = mark.clone();
-        line.push(raw, band.clone());
-        lines.extend(line.wrap(width, &mark));
-    }
-    lines.push(mark);
-    lines.into_iter().map(|l| l.padded(width, &band)).collect()
-}
-
-/// The model's prose under a hanging indent, marked where a stretch of it starts.
-fn reply_lines(md: &str, first: bool, width: usize) -> Vec<Line> {
-    let mark = Line::styled(&ui::get().reply_mark, Style::fg("reply").bold());
-    let indent = Line::plain(" ".repeat(mark.width()));
-    let mut unmarked = first;
-    markdown::render(md, width.saturating_sub(indent.width()))
-        .into_iter()
-        .map(|line| {
-            if line.spans.is_empty() {
-                return line;
-            }
-            let mut out = if std::mem::take(&mut unmarked) {
-                mark.clone()
-            } else {
-                indent.clone()
-            };
-            out.extend(line);
-            out
-        })
-        .collect()
-}
-
-fn error_lines(error: &ErrorInfo, width: usize) -> Vec<Line> {
-    let entry = ErrorEntry::of(error);
-    let mut lines = vec![Line::styled(
-        format!("● {}", entry.title),
-        Style::fg("error").bold(),
-    )];
-    let indent = Line::plain("  ");
-    let mut detail = indent.clone();
-    detail.push(&error.message, Style::default().dim());
-    lines.extend(detail.wrap(width, &indent));
-    if let Some(hint) = entry.hint() {
-        let mut line = indent.clone();
-        line.push(hint, Style::fg("muted"));
-        lines.extend(line.wrap(width, &indent));
-    }
-    if let Some(id) = &error.request_id {
-        let mut line = indent.clone();
-        line.push(format!("request {id}"), Style::fg("muted"));
-        lines.push(line);
-    }
-    lines
 }
 
 #[cfg(test)]
