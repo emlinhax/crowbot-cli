@@ -13,7 +13,7 @@ Record what each phase taught us under **Learned**.
 - [x] `crowbot models` (fresh cache → live → stale cache → bundled snapshot), `crowbot help`
 - [x] Fake crowbot (axum) + first e2e suite
 - [x] `crowbot keytest` on Windows Terminal: Shift+Tab, Shift+Enter, multi-line paste, key release
-- [ ] CI green on all three OSes (needs the GitHub remote)
+- [x] CI green on all three OSes
 
 **Learned**
 - reqwest is 0.13: TLS features are `rustls` (aws-lc-rs provider, builds fine on MSVC without
@@ -153,8 +153,8 @@ interstitial passed off as the article. The API stays on reqwest.
 - [x] webfetch on `Fetch`; its messages in `data/tools/webfetch.toml`; the model told not to retry
 - [x] e2e: the real binary and client against a readable page and a Cloudflare-style challenge
 - [x] CI: `.github/actions/boringssl` on every job; glibc is the required Linux release target
-- [ ] First CI run (needs the GitHub remote): proves the toolchain on all three OSes, and
-      `release-musl` decides whether Linux ships fully static (it may fail until then)
+- [x] First CI run: the toolchain builds on all three OSes and `release-musl` passes, so Linux
+      ships fully static
 - [ ] Manual: webfetch on a normal docs page and on a known protected page in a session
 
 **Learned**
@@ -167,14 +167,16 @@ interstitial passed off as the article. The API stays on reqwest.
   reach it.
 - cffetch over plain HTTP against the fake exercises the whole path (binary, tool, client,
   detection) with no real Cloudflare, so the challenge case is a hermetic e2e test.
+- BoringSSL builds against musl too, so the Linux release is the static musl binary and glibc
+  stays the CI check target.
 
 ## M4 — Account UX in the TUI
 ## M5 — Context + sessions (compaction, shadow-git /undo)
 ## M6 — Subagents + MCP
 ## M7 — Release (`prod` → GitHub Releases, installers)
-- Added 2026-10-02, untried until the first `prod` push: every push to `prod` runs `ci.yml`
-  through `release.yml` and publishes `crowbot-<target>` for musl Linux, Apple-silicon macOS and
-  Windows, plus `SHA256SUMS`.
+- Added 2026-10-02: every push to `prod` runs `ci.yml` through `release.yml` and publishes
+  `crowbot-<target>` for musl Linux, Apple-silicon macOS and Windows, plus `SHA256SUMS`. Proven
+  2026-10-06 by `v0.2.0-2` through `v0.2.0-4`.
 - Added 2026-10-03: the repository is public (MIT OR Apache-2.0, history rewritten to a noreply
   author and without cffetch's live-site probes); release builds carry their tag; `crowbot update`
   and a daily background update for interactive release builds (SHA256SUMS-checked, the program
