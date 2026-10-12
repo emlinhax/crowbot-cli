@@ -1,0 +1,24 @@
+diff --git a/AGENTS.md b/AGENTS.md
+new file mode 100644
+index 0000000..12c3ace
+--- /dev/null
++++ b/AGENTS.md
+@@ -0,0 +1,5 @@
++# Working on semver
++
++- Run `cargo test --quiet` before saying a change is done, and say what it printed.
++- Never edit `Cargo.toml` or add dependencies.
++- Keep a fix to the lines that cause the bug; no drive-by refactors.
+diff --git a/src/parse.rs b/src/parse.rs
+index 12e8840..746d4d9 100644
+--- a/src/parse.rs
++++ b/src/parse.rs
+@@ -161,7 +161,7 @@ fn numeric_identifier(input: &str, pos: Position) -> Result<(u64, &str), Error>
+         if digit < b'0' || digit > b'9' {
+             break;
+         }
+-        if value == 0 && len > 0 {
++        if value == 0 && len > 1 {
+             return Err(Error::new(ErrorKind::LeadingZero(pos)));
+         }
+         match value

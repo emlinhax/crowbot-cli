@@ -1,0 +1,5 @@
+prompt = "How does `hasProtocol` decide what counts as a protocol, and which options change that?"
+repo = "ufo"
+mode = "auto"
+turns = 25
+check = "grep -q acceptRelative {reply} && grep -q strict {reply}"

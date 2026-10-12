@@ -37,7 +37,6 @@ pub const WEBFETCH: Permission = permission("webfetch", Effect::Other);
 pub const FORUM: Permission = permission("forum", Effect::Other);
 /// Posting to a forum; the posting tool also confirms the content with the user every time.
 pub const FORUM_POST: Permission = permission("forum_post", Effect::Other);
-pub const CODESEARCH: Permission = permission("codesearch", Effect::Other);
 pub const TODO: Permission = permission("todo", Effect::Other);
 pub const QUESTION: Permission = permission("question", Effect::Other);
 pub const PLAN_EXIT: Permission = permission("plan_exit", Effect::Other);
@@ -57,7 +56,6 @@ const ALL: &[Permission] = &[
     WEBFETCH,
     FORUM,
     FORUM_POST,
-    CODESEARCH,
     TODO,
     QUESTION,
     PLAN_EXIT,

@@ -1,0 +1,13 @@
+diff --git a/src/eval.rs b/src/eval.rs
+index a3cedd8..e1e7226 100644
+--- a/src/eval.rs
++++ b/src/eval.rs
+@@ -124,7 +124,7 @@ fn matches_tilde(cmp: &Comparator, ver: &Version) -> bool {
+ 
+     if let Some(patch) = cmp.patch {
+         if ver.patch != patch {
+-            return ver.patch > patch;
++            return ver.patch < patch;
+         }
+     }
+ 

@@ -1,0 +1,5 @@
+prompt = "Add a public method `Version::bump_patch(&mut self)` that increments the patch number and clears the pre-release and build metadata. Add a test for it."
+repo = "semver"
+mode = "auto"
+turns = 40
+check = "cp {checks}/semver_bump.rs tests/battery_bump.rs && cargo test --quiet --test battery_bump"

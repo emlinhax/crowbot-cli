@@ -4,6 +4,7 @@ use anyhow::{Context, anyhow};
 use serde::Deserialize;
 
 use crate::paths::Paths;
+use crate::permission::lists;
 use crate::permission::rule::Rule;
 use crate::{effort, io, mode, trust};
 
@@ -48,7 +49,7 @@ pub struct Overrides {
 }
 
 pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
-    let mut merged: toml::Table = toml::from_str(DEFAULTS).context("data/defaults.toml")?;
+    let mut merged = defaults()?;
     let user = paths.user_config();
     if let Some(layer) = read_layer(&user)? {
         merge(&mut merged, layer);
@@ -171,10 +172,37 @@ fn merge(base: &mut toml::Table, layer: toml::Table) {
     }
 }
 
-/// The built-in rules alone, for tests that need a realistic rule stack.
-#[cfg(test)]
+/// The built-in rules alone: a realistic stack for tests, and what a battery run had.
 pub fn default_rules() -> Vec<Rule> {
-    toml::from_str::<Settings>(DEFAULTS).unwrap().permission
+    toml::Value::Table(defaults().unwrap())
+        .try_into::<Settings>()
+        .unwrap()
+        .permission
+}
+
+/// data/defaults.toml with each `list = "<name>"` rule spelled out as one rule per pattern
+/// (data/command_lists.toml). Only the built-in rules name lists; a user's rules are plain.
+fn defaults() -> anyhow::Result<toml::Table> {
+    let mut table: toml::Table = toml::from_str(DEFAULTS).context("data/defaults.toml")?;
+    if let Some(toml::Value::Array(rules)) = table.get_mut("permission") {
+        let mut spelled = Vec::new();
+        for rule in rules.drain(..) {
+            let Some(name) = rule.get("list").and_then(toml::Value::as_str) else {
+                spelled.push(rule);
+                continue;
+            };
+            let patterns = lists::patterns(name)
+                .ok_or_else(|| anyhow!("data/defaults.toml names no list {name}"))?;
+            for pattern in patterns {
+                let mut one = rule.as_table().cloned().unwrap_or_default();
+                one.remove("list");
+                one.insert("pattern".into(), pattern.into());
+                spelled.push(one.into());
+            }
+        }
+        *rules = spelled;
+    }
+    Ok(table)
 }
 
 /// The one place the process environment is read; empty variables count as unset.
@@ -189,7 +217,7 @@ mod tests {
 
     #[test]
     fn defaults_parse() {
-        let settings: Settings = toml::from_str(DEFAULTS).unwrap();
+        let settings: Settings = toml::Value::Table(defaults().unwrap()).try_into().unwrap();
         let bundled = crate::api::models::snapshot();
         assert!(
             bundled.iter().any(|m| m.id == settings.model),

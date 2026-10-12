@@ -1,0 +1,5 @@
+prompt = "Rename the private function `matches_impl` in src/eval.rs to `matches_op` and update every caller."
+repo = "semver"
+mode = "auto"
+turns = 40
+check = "! grep -rqw matches_impl src && grep -qw 'fn matches_op' src/eval.rs && cargo test --quiet"

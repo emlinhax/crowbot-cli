@@ -13,7 +13,7 @@ Record what each phase taught us under **Learned**.
 - [x] `crowbot models` (fresh cache → live → stale cache → bundled snapshot), `crowbot help`
 - [x] Fake crowbot (axum) + first e2e suite
 - [x] `crowbot keytest` on Windows Terminal: Shift+Tab, Shift+Enter, multi-line paste, key release
-- [ ] CI green on all three OSes (needs the GitHub remote)
+- [x] CI green on all three OSes
 
 **Learned**
 - reqwest is 0.13: TLS features are `rustls` (aws-lc-rs provider, builds fine on MSVC without
@@ -153,8 +153,8 @@ interstitial passed off as the article. The API stays on reqwest.
 - [x] webfetch on `Fetch`; its messages in `data/tools/webfetch.toml`; the model told not to retry
 - [x] e2e: the real binary and client against a readable page and a Cloudflare-style challenge
 - [x] CI: `.github/actions/boringssl` on every job; glibc is the required Linux release target
-- [ ] First CI run (needs the GitHub remote): proves the toolchain on all three OSes, and
-      `release-musl` decides whether Linux ships fully static (it may fail until then)
+- [x] First CI run: the toolchain builds on all three OSes and `release-musl` passes, so Linux
+      ships fully static
 - [ ] Manual: webfetch on a normal docs page and on a known protected page in a session
 
 **Learned**
@@ -167,14 +167,16 @@ interstitial passed off as the article. The API stays on reqwest.
   reach it.
 - cffetch over plain HTTP against the fake exercises the whole path (binary, tool, client,
   detection) with no real Cloudflare, so the challenge case is a hermetic e2e test.
+- BoringSSL builds against musl too, so the Linux release is the static musl binary and glibc
+  stays the CI check target.
 
 ## M4 — Account UX in the TUI
 ## M5 — Context + sessions (compaction, shadow-git /undo)
 ## M6 — Subagents + MCP
 ## M7 — Release (`prod` → GitHub Releases, installers)
-- Added 2026-10-02, untried until the first `prod` push: every push to `prod` runs `ci.yml`
-  through `release.yml` and publishes `crowbot-<target>` for musl Linux, Apple-silicon macOS and
-  Windows, plus `SHA256SUMS`.
+- Added 2026-10-02: every push to `prod` runs `ci.yml` through `release.yml` and publishes
+  `crowbot-<target>` for musl Linux, Apple-silicon macOS and Windows, plus `SHA256SUMS`. Proven
+  2026-10-06 by `v0.2.0-2` through `v0.2.0-4`.
 - Added 2026-10-03: the repository is public (MIT OR Apache-2.0, history rewritten to a noreply
   author and without cffetch's live-site probes); release builds carry their tag; `crowbot update`
   and a daily background update for interactive release builds (SHA256SUMS-checked, the program
@@ -211,27 +213,82 @@ interstitial passed off as the article. The API stays on reqwest.
   - prompt-injection hardening of forum content, cookie-expiry refresh, per-forum rate limiting,
     and more backends (Discourse's JSON API, a plain-HTML reader) behind the same `kind` switch.
 
-## M9 — Tool-use battery (planned 2026-10-05, not started)
+## M9 — Tool-use battery (planned 2026-10-05, started 2026-10-12)
 - Why: the basic tools (grep context/files/count, multi-path read, read depth, `fs`) and PLAN's
   allowlist were chosen from habit, not data. Run a large set of realistic sessions against the
   real model, record every tool call, and let the counts say which patterns to make faster or
   easier: shell commands the model keeps writing, scripts it writes for basics, calls refused or
   repeated, steps that always come in the same order.
-- Shape, each a verified step:
-  1. A task corpus as data (`bench/tasks/*.toml`): the prompt, a fixture repo (the existing
-     `tests/fixtures/projects/*`, plus a few small open-source repos pinned by commit), the mode
-     (AUTO for doing, PLAN for planning), a turn limit, and a check command that says whether the
-     task was done.
-  2. A runner (`make battery`, never in CI, like `make smoke`): each task headless
-     (`crowbot --json -p`) in a fresh copy of its repo, N at a time, with a spend cap in
-     `data/limits.toml` that stops the run. The session JSONL each run leaves is the record.
-  3. An analyzer over those JSONL files, unit-tested on the session fixtures: calls per tool;
-     bash by first word, first two words and flags; pipe filters; `python -c`, heredocs, awk and
-     sed programs (the scripts-for-basics smell); refused and declined calls, retries and doom
-     loops; the most common call sequences (n-grams); turns, tokens, cost and time per task;
-     task success from the check.
-  4. A report: each candidate change (a tool, a flag, an allowlist entry, a prompt line) with the
-     count behind it, and the battery re-run after a change to show it moved the numbers.
-- Open, for the user: which model(s) and effort, how many tasks and repeats per task (that sets
-  the spend), which outside repos, and whether to add a headless "approve and record" policy so
-  MANUAL's prompts can be measured too.
+- Decided 2026-10-12: `glm-5.3-flash-crow` at its default effort (~$0.085 a task); 30 tasks × 3
+  repeats under a $60 cap; `dtolnay/semver`, `more-itertools` and `unjs/ufo` pinned by commit plus
+  the `calc` fixture; MANUAL measured by replaying the gate on recorded asks, not by a headless
+  approve policy. The caps live in `bench/battery.toml`, not `data/limits.toml`: the binary never
+  reads them.
+- [x] Commands the model runs no longer inherit `CROWBOT_API_KEY` (`data/shells.toml` `unset`),
+      so neither a battery run nor a user's session can leak the key into a session file.
+- [x] Tool results record `asks` and `refused` in the session file (never sent to the model).
+- [x] Corpus: `bench/repos.toml`, 30 `bench/tasks/*.toml` (6 PLAN), 7 planted-bug patches, two
+      hidden checks.
+- [x] Runner: `tests/battery/` (`make battery`, `make battery-setup`), tested against the fake.
+- [x] `make battery-setup`: every repo's suite passes untouched, every planted bug fails (96 s).
+- [x] Analyzer: a hidden `crowbot battery report <dir> [--against <dir>]` over the session
+      files and results: calls per tool; bash by first word, first two words and flags; pipe filters; `python -c`,
+      heredocs, awk and sed programs (the scripts-for-basics smell); refused and declined calls,
+      retries and doom loops; the most common call sequences (n-grams); turns, tokens, cost and
+      time per task; task success from the check; MANUAL and PLAN verdicts replayed on the asks.
+- [x] Pilot (`make battery TASKS=… REPEATS=1`, 3 runs, $0.04), then the full run and a report:
+      `bench/runs/20261012T105806` (local only), 90 runs in 81 min, $1.89, 69 done, 14 ended on
+      a server error. The candidates are below, each with the count behind it.
+- [ ] Re-run to show the applied candidates moved the numbers. The baseline's sessions stay on the
+      machine that ran it, so its `report.md` and `results.jsonl` are kept in `bench/baseline/`
+      and the new report is compared with that one by hand. On a fresh machine (Linux or macOS:
+      the runner stops runs with SIGINT, and ufo's setup links with `ln -s`):
+      1. Rust from `rust-toolchain.toml` plus libclang, git, python3, and node with corepack.
+      2. The key in `~/.config/crowbot-smoke.key` (mode 600), never in the repo.
+      3. `make battery-setup` (about 2 min, free).
+      4. `CROWBOT_SMOKE_KEY=$(cat ~/.config/crowbot-smoke.key) make battery` (about 80 min, ~$2).
+      5. `cargo run -q -- battery report bench/runs/<stamp>`, then diff its `report.md` with
+         `bench/baseline/report.md`.
+
+**Learned**
+- A run costs about 2¢ with this model, not the 8.5¢ estimated: the whole battery is under $2.
+- 14 of 90 runs ended on crowbot's errors, not the model's: 7 × HTTP 502 that outlasted crowbot's
+  retries, 4 × `upstream_error: incomplete response` and 2 × `error decoding response body`
+  mid-stream (not retried: output had already streamed), 1 × 503 "no ready backend". The report
+  now counts them apart (`## Ended on an error`). Without them AUTO finished 63 of 65; PLAN
+  finished 6 of 18, with 5 stopped by the 15-minute wall and 7 ended on an error.
+- One stream stopped mid tool call for 891 s and the 120 s idle timeout never fired; crowbot's
+  keepalives probably kept arriving after upstream had stopped.
+- codesearch timed out at 30 s on 14 of its 21 calls. It uses `http.request_timeout_ms`, meant
+  for small account calls; a search that succeeded took up to 16 s.
+- The model looks answers up: 15 runs over 9 tasks called codesearch or webfetch on the upstream
+  repos, e.g. webfetching the pinned `src/eval.rs`. AUTO allows every call, so fix-task success
+  overstates what the model works out alone; private fixtures would close that.
+- `shell_split` read a heredoc's body as commands, so MANUAL listed `for x in y:` and `}` as
+  patterns to approve, and a quote in the body could hide the commands after it. The body is now
+  skipped; `bash_complex` still asks about the whole line. This battery's asks predate the fix, so
+  its replay tables still list body lines (`for`, `}`, `if`, `#`).
+- The prompts already say what the model ignores: 54 `cd <project>` although `<env>` names the
+  working directory, 33 `ls` and 29 `grep` in bash against bash's own description, and in PLAN
+  11 of 27 refused calls are file readers the PLAN reminder says are refused. More prompt text is
+  unlikely to move these; the gate and the tools have to meet the model where it is.
+- Setup: the cached repos must be excluded from crowbot's Cargo workspace, and pnpm through
+  corepack stops to ask unless `COREPACK_ENABLE_DOWNLOAD_PROMPT=0`.
+
+**Candidates** (counts across the 90 runs; all five applied 2026-10-12, re-run still to come)
+- [x] codesearch timed out on 14 of 21 calls at 30 s, and the rest were upstream lookups: removed
+      rather than given its own timeout; webfetch covers what it was for.
+- [x] `cd <project> &&` and `git -C <project>` run where commands run anyway
+      (`data/workdir.toml`): 54 `cd`s asked about under MANUAL, and 11 of PLAN's 27 refused bash
+      calls were `git -C <project> log/status`, which PLAN allows without the `-C`.
+- [x] MANUAL allows PLAN's inspection by default, both from `data/command_lists.toml`: `cd` 54,
+      `ls` 33, `git log` 19, `echo` 16 and `git status` 7 of its asks. Tests (`python -m pytest`
+      58, `cargo test` 48, `npx vitest` 21) run project code and stay asks.
+- [x] `cat`, `head`, `tail`, `wc` and `grep` on named files ask as reads of those files, so PLAN
+      runs them when the read rules allow: 11 of its 27 refused calls. `sed` and `awk` stay out,
+      since both can write or run commands.
+- [x] Each reply event must come within `chat.stall_timeout_secs` (300 s), keepalives or not:
+      one run lost 15 minutes.
+- Later: PLAN allows `npx vitest` and `python3 -m unittest`; edit's "read it first" refusal fired
+  6 times after grep had shown the lines; read takes `path:line` (once). read→read→read (54) is
+  mostly reads that depend on the one before, so it is not a batching candidate yet.

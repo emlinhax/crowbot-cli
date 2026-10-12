@@ -1,0 +1,5 @@
+prompt = "Where are query strings parsed, and where are they turned back into strings? Name the functions and files."
+repo = "ufo"
+mode = "auto"
+turns = 25
+check = "grep -q parseQuery {reply} && grep -q stringifyQuery {reply}"

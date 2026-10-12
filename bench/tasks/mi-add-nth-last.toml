@@ -1,0 +1,5 @@
+prompt = "Add a function `nth_last(iterable, n, default=...)` that returns the item n places from the end (n=0 is the last item), or default when there are too few items, raising ValueError if no default is given. Export it, add its type stub, a docstring example and a unit test."
+repo = "more-itertools"
+mode = "auto"
+turns = 40
+check = "python3 -c 'from more_itertools import nth_last as f; assert f(range(10), 0) == 9; assert f(iter(range(10)), 2) == 7; assert f([], 1, \"x\") == \"x\"' && grep -q nth_last more_itertools/more.pyi"

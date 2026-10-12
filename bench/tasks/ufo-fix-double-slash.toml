@@ -1,0 +1,6 @@
+prompt = "`cleanDoubleSlashes(\"//foo//bar\")` leaves the double slashes in. Fix it."
+repo = "ufo"
+mode = "auto"
+turns = 40
+check = "npx vitest run"
+patch = "ufo-fix-double-slash.diff"

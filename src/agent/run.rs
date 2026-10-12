@@ -409,7 +409,7 @@ mod tests {
     async fn a_plain_rejection_stops_the_run() {
         let h = Harness::new(vec![reply(
             "",
-            &[("c1", "bash", json!({"command": "echo hi"}))],
+            &[("c1", "bash", json!({"command": "printf hi"}))],
             "tool_calls",
         )])
         .await;
@@ -528,7 +528,7 @@ mod tests {
         let h = Harness::new(vec![
             reply(
                 "",
-                &[("c1", "bash", json!({"command": "echo hi"}))],
+                &[("c1", "bash", json!({"command": "printf hi"}))],
                 "tool_calls",
             ),
             text("done"),
@@ -569,6 +569,49 @@ mod tests {
         let result = last_message(&h.requests()[1]);
         assert_eq!(result["role"], "tool");
         assert!(result["content"].as_str().unwrap().contains("output limit"));
+    }
+
+    #[tokio::test]
+    async fn results_record_what_was_asked_and_why_a_call_was_refused() {
+        let h = Harness::new(vec![
+            reply(
+                "",
+                &[
+                    ("c1", "read", json!({"path": "a.txt"})),
+                    ("c2", "nope", json!({})),
+                    ("c3", "bash", json!({"command": "printf hi"})),
+                ],
+                "tool_calls",
+            ),
+            text("ok"),
+        ])
+        .await;
+        h.write("a.txt", "x");
+        let (_, transcript, _) = h
+            .run(&shared("manual"), |event, shared| {
+                if let AgentEvent::Prompt { id, .. } = event {
+                    shared.answer(*id, Reply::Unavailable);
+                }
+            })
+            .await;
+        let results: Vec<_> = transcript
+            .messages
+            .iter()
+            .filter_map(|m| match m {
+                Message::Tool(r) => Some((r.asks.clone(), r.refused.as_deref())),
+                _ => None,
+            })
+            .collect();
+        let read = crate::permission::gate::Ask::new("read", "a.txt");
+        let bash = crate::permission::gate::Ask::new("bash", "printf hi");
+        assert_eq!(
+            results,
+            [
+                (vec![read], None),
+                (vec![], Some("unknown_tool")),
+                (vec![bash], Some("non_interactive")),
+            ]
+        );
     }
 
     #[tokio::test]

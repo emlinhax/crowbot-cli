@@ -1,0 +1,5 @@
+prompt = "Plan adding a JSDoc @example to every exported function in src/query.ts that lacks one."
+repo = "ufo"
+mode = "plan"
+turns = 30
+check = "grep -q query.ts {plan}"

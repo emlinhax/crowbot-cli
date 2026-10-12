@@ -18,6 +18,8 @@ pub struct ShellCommand<'a> {
     pub command: &'a str,
     pub cwd: &'a Path,
     pub env: &'a [(String, String)],
+    /// Inherited variables the command must not see.
+    pub unset: &'a [String],
     pub timeout: Duration,
     /// How long output may keep arriving after the shell itself exits.
     pub drain: Duration,
@@ -47,6 +49,9 @@ pub async fn run(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    for name in cmd.unset {
+        command.env_remove(name);
+    }
     #[cfg(windows)]
     {
         use windows_sys::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW};
@@ -216,6 +221,15 @@ mod tests {
         timeout: Duration,
         cancel: &CancellationToken,
     ) -> (Vec<u8>, Ended) {
+        run_line_unset(line, timeout, cancel, &[]).await
+    }
+
+    async fn run_line_unset(
+        line: &str,
+        timeout: Duration,
+        cancel: &CancellationToken,
+        unset: &[String],
+    ) -> (Vec<u8>, Ended) {
         let (program, args) = shell();
         let cwd = std::env::temp_dir();
         let mut output = Vec::new();
@@ -226,6 +240,7 @@ mod tests {
                 command: line,
                 cwd: &cwd,
                 env: &[],
+                unset,
                 timeout,
                 drain: Duration::from_millis(200),
             },
@@ -247,6 +262,28 @@ mod tests {
         .await;
         assert!(String::from_utf8_lossy(&output).contains("hello"));
         assert_eq!(ended, Ended::Exited(Some(3)));
+    }
+
+    #[tokio::test]
+    async fn an_unset_variable_is_not_inherited() {
+        // One every test process inherits on its OS, standing in for crowbot's key.
+        let (name, line) = if cfg!(windows) {
+            (
+                "USERPROFILE",
+                "if ($env:USERPROFILE) { 'inherited' } else { 'gone' }",
+            )
+        } else {
+            ("HOME", "echo \"${HOME-gone}\"")
+        };
+        assert!(std::env::var_os(name).is_some(), "{name} is set here");
+        let (output, _) = run_line_unset(
+            line,
+            Duration::from_secs(20),
+            &CancellationToken::new(),
+            &[name.to_owned()],
+        )
+        .await;
+        assert_eq!(String::from_utf8_lossy(&output).trim(), "gone");
     }
 
     #[tokio::test]

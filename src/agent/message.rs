@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::api::error::ErrorInfo;
+use crate::permission::gate::Ask;
 
 // Messages are few and rarely moved; boxing the big variant would only add noise.
 #[allow(clippy::large_enum_variant)]
@@ -51,6 +52,13 @@ pub struct ToolResult {
     /// For display only (diffs, exit codes, spill paths); never sent to the model.
     #[serde(default)]
     pub details: Option<serde_json::Value>,
+    /// What the call needed permission for, as the gate saw it; recorded, never sent.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asks: Vec<Ask>,
+    /// Why the call did not run: the data/model_text.toml key of what the model was told, or
+    /// `check` when the tool's own check refused it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refused: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

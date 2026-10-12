@@ -36,6 +36,10 @@ reason = "crowbot may hold a request while it sizes it against the balance and w
 value = 120
 reason = "crowbot sends keepalives during long thinking, so two silent minutes means a dead stream"
 
+[chat.stall_timeout_secs]
+value = 300
+reason = "keepalives restart the idle bound, and one battery run hung 15 minutes on them after upstream stopped; its longest real wait for reply data was 20 s"
+
 [chat.max_event_bytes]
 value = 8388608
 reason = "an event is a few tokens, a whole reply at most; megabytes past that without a newline is a broken stream"

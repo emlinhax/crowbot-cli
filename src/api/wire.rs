@@ -266,6 +266,8 @@ mod tests {
             content: forged.into(),
             is_error: false,
             details: None,
+            asks: Vec::new(),
+            refused: None,
         });
         let user = Message::User {
             parts: vec![

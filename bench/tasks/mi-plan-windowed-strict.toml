@@ -1,0 +1,5 @@
+prompt = "Plan adding a `strict=False` flag to `windowed` that raises ValueError when the input is shorter than n."
+repo = "more-itertools"
+mode = "plan"
+turns = 30
+check = "grep -q more.py {plan}"

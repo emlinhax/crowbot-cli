@@ -2,7 +2,7 @@ id = "manual"
 label = "MANUAL"
 color = "mode_manual"
 order = 0
-summary = "Asks before edits, commands and fetches"
+summary = "Asks before edits, fetches and commands that do more than look"
 
 # What a rule's verdict turns into in this mode.
 [verdicts]

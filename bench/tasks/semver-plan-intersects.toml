@@ -1,0 +1,5 @@
+prompt = "Plan a method `VersionReq::intersects(&self, other: &VersionReq) -> bool` that says whether any version satisfies both requirements."
+repo = "semver"
+mode = "plan"
+turns = 30
+check = "grep -qE 'eval\\.rs|lib\\.rs' {plan}"

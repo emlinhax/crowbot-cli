@@ -1,0 +1,5 @@
+prompt = "Rename the constant `JOIN_LEADING_SLASH_RE` to `LEADING_SLASH_RE` everywhere it is used."
+repo = "ufo"
+mode = "auto"
+turns = 40
+check = "! grep -rq JOIN_LEADING_SLASH_RE src && grep -rq LEADING_SLASH_RE src && npx vitest run"

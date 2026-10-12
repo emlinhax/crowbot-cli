@@ -1,0 +1,12 @@
+diff --git a/more_itertools/more.py b/more_itertools/more.py
+index 9c56ab3..43151f4 100755
+--- a/more_itertools/more.py
++++ b/more_itertools/more.py
+@@ -2652,7 +2652,6 @@ def rstrip(iterable, pred):
+             cache_append(x)
+         else:
+             yield from cache
+-            cache_clear()
+             yield x
+ 
+ 

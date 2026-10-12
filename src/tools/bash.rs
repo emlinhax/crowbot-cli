@@ -8,13 +8,14 @@ use serde_json::{Value, json};
 
 use super::permissions;
 use super::shell::Shell;
+use super::target;
 use super::truncate::{self, Keep};
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
 use crate::io::shell::{self, Ended, ShellCommand};
 use crate::io::{self, fs::Access};
 use crate::limits;
 use crate::permission::gate::Ask;
-use crate::permission::{filter, shell_split};
+use crate::permission::{filter, shell_split, workdir};
 use crate::text::controls;
 
 static SPEC: LazyLock<Spec> = LazyLock::new(|| {
@@ -42,30 +43,64 @@ impl Bash {
     }
 }
 
+/// What reading `files` asks for, or `None` when one of them cannot be resolved.
+fn read_asks(files: &[String], cx: &ToolCx<'_>) -> Option<Vec<Ask>> {
+    let mut asks = Vec::new();
+    for file in files {
+        let target = target::resolve(&cx.app.paths, file).ok()?;
+        asks.extend(target::asks(permissions::READ.name, &target));
+    }
+    Some(asks)
+}
+
 impl Tool for Bash {
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: Args = parse(args)?;
         if args.command.trim().is_empty() {
             return Err(Refusal::InvalidArgs("`command` is empty".into()));
         }
         let split = shell_split::split(&args.command);
+        // A reader (`grep -n x src/a.rs`) asks as the read tool would of each file it names, so
+        // the read rules, secrets included, hold for it; past a `cd` its files are elsewhere.
+        let mut reads = Vec::new();
+        let mut commands = Vec::new();
+        let mut moved = false;
+        for command in &split.commands {
+            let Some(command) = workdir::strip(command, &cx.app.paths.project) else {
+                continue;
+            };
+            moved |= workdir::moves(&command);
+            let read = filter::reads_files(&command)
+                .filter(|_| !moved)
+                .and_then(|files| read_asks(&files, cx));
+            match read {
+                Some(asks) => reads.extend(asks),
+                None => commands.push(command),
+            }
+        }
         // A filter at the end of a pipe (`| tail -30`) reads only what the command before it
         // writes, so it asks for nothing of its own while something feeds it.
-        let fed: Vec<String> = split
-            .commands
+        let fed: Vec<String> = commands
             .iter()
             .filter(|c| !filter::reads_only_input(c))
             .cloned()
             .collect();
-        let patterns = if fed.is_empty() { split.commands } else { fed };
-        let mut asks = vec![Ask {
-            permission: permissions::BASH.name.into(),
-            patterns,
-        }];
+        let patterns = if fed.is_empty() && reads.is_empty() {
+            commands
+        } else {
+            fed
+        };
+        let mut asks = reads;
+        if !patterns.is_empty() {
+            asks.push(Ask {
+                permission: permissions::BASH.name.into(),
+                patterns,
+            });
+        }
         // What runs cannot be read off a substitution, and a redirect writes files: both get
         // their own permission so read-only allowances never cover them.
         if split.complex {
@@ -102,6 +137,7 @@ impl Tool for Bash {
                     command: &args.command,
                     cwd: &cx.app.paths.project,
                     env: &self.shell.env,
+                    unset: &self.shell.unset,
                     timeout: Duration::from_secs(secs),
                     drain: limits.bash_drain_ms.ms(),
                 },
@@ -333,10 +369,54 @@ mod tests {
             ["cargo test 2>&1"]
         );
         assert_eq!(
-            patterns("cargo test | tail .env"),
-            ["cargo test", "tail .env"]
+            asks("cargo test | tail .env"),
+            [Ask::new("read", ".env"), Ask::new("bash", "cargo test")]
         );
         assert_eq!(patterns("tail -5"), ["tail -5"]);
+    }
+
+    #[test]
+    fn naming_the_project_as_the_directory_asks_nothing_of_its_own() {
+        let project = Project::new();
+        let dir = project.cx().app.paths.project.display().to_string();
+        let check = |command: &str| {
+            Bash::new(shell::resolve(None))
+                .check(&json!({ "command": command }), &project.cx())
+                .unwrap()
+                .asks
+        };
+        let asks = check(&format!(
+            "cd '{dir}' && git -C '{dir}' log -3 && cargo test"
+        ));
+        assert_eq!(asks[0].patterns, ["git log -3", "cargo test"]);
+        assert!(check(&format!("cd '{dir}'")).is_empty());
+    }
+
+    #[test]
+    fn a_reader_asks_as_a_read_of_each_file_it_names() {
+        let project = Project::new();
+        let check = |command: &str| {
+            Bash::new(shell::resolve(None))
+                .check(&json!({ "command": command }), &project.cx())
+                .unwrap()
+                .asks
+        };
+        assert_eq!(
+            check("grep -n exactly_n more.py | head -5"),
+            [Ask::new("read", "more.py")]
+        );
+        assert_eq!(
+            check("cat .env && cargo test"),
+            [Ask::new("read", ".env"), Ask::new("bash", "cargo test")]
+        );
+        let outside = check("cat /etc/hosts");
+        assert_eq!(outside[0].permission, "read");
+        assert_eq!(outside[1].permission, "external_directory");
+        assert_eq!(
+            check("cd src && cat a.rs")[0].patterns,
+            ["cd src", "cat a.rs"],
+            "past a cd, a.rs is not the project's"
+        );
     }
 
     #[test]

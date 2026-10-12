@@ -1,11 +1,11 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::mode::Mode;
 use crate::permission::rule::{self, Action, Rule};
 use crate::text::template;
 
 /// One thing a tool call needs cleared: a permission and the targets it applies to.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ask {
     pub permission: String,
     pub patterns: Vec<String>,
@@ -122,6 +122,19 @@ mod tests {
             ("manual", Ask::new("search", "src"), Decision::Allow),
             ("manual", Ask::new("edit", "src/a.rs"), Decision::Ask),
             ("manual", Ask::new("bash", "cargo test"), Decision::Ask),
+            (
+                "manual",
+                Ask::new("bash", "git log --oneline -5"),
+                Decision::Allow,
+            ),
+            ("manual", Ask::new("bash", "ls src"), Decision::Allow),
+            ("manual", Ask::new("bash", "find . -delete"), Decision::Ask),
+            (
+                "manual",
+                Ask::new("bash", "git diff --output=x"),
+                Decision::Ask,
+            ),
+            ("manual", Ask::new("bash", "rm -rf target"), Decision::Ask),
             ("auto", Ask::new("edit", "src/a.rs"), Decision::Allow),
             ("auto", Ask::new("bash", "rm -rf target"), Decision::Allow),
             ("plan", Ask::new("read", "src/a.rs"), Decision::Allow),

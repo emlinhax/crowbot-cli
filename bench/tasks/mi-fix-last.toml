@@ -1,0 +1,6 @@
+prompt = "`last()` returns the wrong item for generators. Find and fix the bug; the test suite should pass."
+repo = "more-itertools"
+mode = "auto"
+turns = 40
+check = "python3 -m unittest -q"
+patch = "mi-fix-last.diff"

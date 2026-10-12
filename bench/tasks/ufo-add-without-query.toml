@@ -1,0 +1,5 @@
+prompt = "Add an exported function `withoutQuery(input)` to src/utils.ts that removes the query string but keeps the hash, with tests."
+repo = "ufo"
+mode = "auto"
+turns = 40
+check = "cp {checks}/ufo_without_query.test.ts test/battery.test.ts && npx vitest run test/battery.test.ts"
