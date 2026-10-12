@@ -239,7 +239,7 @@ interstitial passed off as the article. The API stays on reqwest.
 - [x] Pilot (`make battery TASKS=… REPEATS=1`, 3 runs, $0.04), then the full run and a report:
       `bench/runs/20261012T105806` (local only), 90 runs in 81 min, $1.89, 69 done, 14 ended on
       a server error. The candidates are below, each with the count behind it.
-- [ ] Apply a candidate and re-run with `--against 20261012T105806` to show it moved the numbers.
+- [ ] Re-run with `--against 20261012T105806` to show the applied candidates moved the numbers.
 
 **Learned**
 - A run costs about 2¢ with this model, not the 8.5¢ estimated: the whole battery is under $2.
@@ -266,17 +266,20 @@ interstitial passed off as the article. The API stays on reqwest.
 - Setup: the cached repos must be excluded from crowbot's Cargo workspace, and pnpm through
   corepack stops to ask unless `COREPACK_ENABLE_DOWNLOAD_PROMPT=0`.
 
-**Candidates** (counts across the 90 runs)
-1. codesearch gets its own timeout in `data/limits.toml`: 14 of 21 calls timed out at 30 s.
-2. The gate reads `cd <project> &&` and `git -C <project>` as running in place: 54 `cd`s asked
-   about under MANUAL, and 11 of PLAN's 27 refused bash calls were `git -C <project> log/status`,
-   which PLAN allows without the `-C`.
-3. MANUAL allows PLAN's inspection list by default: `cd` 54, `ls` 33, `git log` 19, `echo` 16
-   and `git status` 7 of its asks. Tests (`python -m pytest` 58, `cargo test` 48, `npx vitest`
-   21) run project code and stay asks.
-4. PLAN runs `grep`, `head` and `awk` on project files the read tool's secret rules allow,
-   instead of refusing them: 11 refused calls. PLAN refused 27 of its 41 bash calls.
-5. A stall timeout that counts content, not keepalives: one run lost 15 minutes.
+**Candidates** (counts across the 90 runs; all five applied 2026-10-12, re-run still to come)
+- [x] codesearch timed out on 14 of 21 calls at 30 s, and the rest were upstream lookups: removed
+      rather than given its own timeout; webfetch covers what it was for.
+- [x] `cd <project> &&` and `git -C <project>` run where commands run anyway
+      (`data/workdir.toml`): 54 `cd`s asked about under MANUAL, and 11 of PLAN's 27 refused bash
+      calls were `git -C <project> log/status`, which PLAN allows without the `-C`.
+- [x] MANUAL allows PLAN's inspection by default, both from `data/command_lists.toml`: `cd` 54,
+      `ls` 33, `git log` 19, `echo` 16 and `git status` 7 of its asks. Tests (`python -m pytest`
+      58, `cargo test` 48, `npx vitest` 21) run project code and stay asks.
+- [x] `cat`, `head`, `tail`, `wc` and `grep` on named files ask as reads of those files, so PLAN
+      runs them when the read rules allow: 11 of its 27 refused calls. `sed` and `awk` stay out,
+      since both can write or run commands.
+- [x] Each reply event must come within `chat.stall_timeout_secs` (300 s), keepalives or not:
+      one run lost 15 minutes.
 - Later: PLAN allows `npx vitest` and `python3 -m unittest`; edit's "read it first" refusal fired
   6 times after grep had shown the lines; read takes `path:line` (once). read→read→read (54) is
   mostly reads that depend on the one before, so it is not a batching candidate yet.
