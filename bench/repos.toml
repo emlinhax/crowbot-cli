@@ -22,6 +22,8 @@ id = "ufo"
 url = "https://github.com/unjs/ufo"
 commit = "f06c800d0c59f2a4a1b9ba65eb6cb61a84419be6"
 setup = "corepack pnpm install --frozen-lockfile"
+# Corepack would stop to ask before fetching pnpm, and nobody is there to answer.
+env = { COREPACK_ENABLE_DOWNLOAD_PROMPT = "0" }
 # The installed dependencies, never the project itself: tests must import the run's own copy.
 prepare = "ln -s {cache}/node_modules node_modules"
 test = "npx vitest run"
