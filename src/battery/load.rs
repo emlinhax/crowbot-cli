@@ -9,7 +9,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::record::Record;
-use crate::agent::message::{Message, ToolResult, Usage};
+use crate::agent::message::{Finish, Message, ToolResult, Usage};
+use crate::api::error::ErrorInfo;
 use crate::io;
 use crate::session::reader;
 
@@ -34,6 +35,8 @@ pub struct Run {
     /// In the order the model made them.
     pub calls: Vec<Call>,
     pub usage: Usage,
+    /// Why the last reply failed (a server error, a dropped stream), when it did.
+    pub failed: Option<ErrorInfo>,
 }
 
 pub struct Call {
@@ -83,6 +86,7 @@ pub fn load(dir: &Path) -> anyhow::Result<Battery> {
 impl Run {
     pub fn new(record: Record, messages: &[Message]) -> Self {
         let mut usage = Usage::default();
+        let mut failed = None;
         let mut calls: Vec<Call> = Vec::new();
         // Results follow their reply's calls; ids are matched among the calls still open, since
         // some models reuse an id from one reply to the next.
@@ -90,6 +94,15 @@ impl Run {
         for message in messages {
             match message {
                 Message::Assistant(reply) => {
+                    failed = match reply.finish {
+                        Finish::Error => Some(
+                            reply
+                                .error
+                                .clone()
+                                .unwrap_or_else(|| ErrorInfo::local("unknown", "")),
+                        ),
+                        _ => None,
+                    };
                     if let Some(u) = reply.usage {
                         usage.input += u.input;
                         usage.cached += u.cached;
@@ -120,6 +133,7 @@ impl Run {
             record,
             calls,
             usage,
+            failed,
         }
     }
 }
@@ -137,7 +151,7 @@ mod tests {
             .iter()
             .map(|r| r.record.task.as_str())
             .collect();
-        assert_eq!(tasks, ["broken", "fix-it", "plan-it"]);
+        assert_eq!(tasks, ["broken", "fix-it", "flaky", "plan-it"]);
         let fix = &battery.runs[1];
         let names: Vec<&str> = fix.calls.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, ["bash", "grep", "bash", "bash", "edit"]);
@@ -149,5 +163,11 @@ mod tests {
         assert_eq!(contents[2..4], ["test failed", "ok"]);
         assert_eq!((fix.usage.input, fix.usage.cost_micros), (4000, 3500));
         assert!(battery.runs[0].calls.is_empty());
+        let failed = battery.runs[2].failed.as_ref().unwrap();
+        assert_eq!(
+            (failed.kind.as_str(), failed.status),
+            ("http_error", Some(502))
+        );
+        assert!(battery.runs[1].failed.is_none());
     }
 }

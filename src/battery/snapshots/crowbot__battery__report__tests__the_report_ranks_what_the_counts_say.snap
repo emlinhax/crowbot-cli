@@ -4,25 +4,32 @@ expression: text
 ---
 # Battery battery
 
-m · 2 runs of 2 tasks · 1/2 done · $0.0045 · 6300 tokens · crowbot 0123456
+m · 3 runs of 3 tasks · 1/3 done · 1 ended on an error · $0.0045 · 6300 tokens · crowbot 0123456
 
 Runs that never started: broken #1 (r is not set up)
 
 ## Tasks
 
-| task | mode | done | turns | calls | cost | time | stopped |
+| task | mode | done | turns | calls | cost | time | ended early |
 |---|---|---|---|---|---|---|---|
 | fix-it | auto | 1/1 | 4.0 | 5.0 | 0.0035 | 12s |  |
+| flaky | auto | 0/1 | 1.0 | 0.0 | 0.0000 | 30s | http_error 502×1 |
 | plan-it | plan | 0/1 | 2.0 | 2.0 | 0.0010 | 4s | turns×1 |
+
+## Ended on an error
+
+| what | count | example |
+|---|---|---|
+| http_error 502: error code: 502 | 1 | `flaky #1` |
 
 ## Tools
 
 | tool | calls | per run | failed | refused |
 |---|---|---|---|---|
-| bash | 4 | 2.0 | 1 | 1 |
-| edit | 1 | 0.5 | 0 | 0 |
-| grep | 1 | 0.5 | 0 | 0 |
-| nope | 1 | 0.5 | 0 | 1 |
+| bash | 4 | 1.3 | 1 | 1 |
+| edit | 1 | 0.3 | 0 | 0 |
+| grep | 1 | 0.3 | 0 | 0 |
+| nope | 1 | 0.3 | 0 | 1 |
 
 ## Refused before running
 
@@ -133,9 +140,9 @@ Runs that never started: broken #1 (r is not set up)
 
 | per run | this | that | change |
 |---|---|---|---|
-| done | 0.5 | 0.5 | +0.0 |
-| turns | 3.0 | 3.0 | +0.0 |
-| calls | 3.5 | 3.5 | +0.0 |
-| bash calls | 2.0 | 2.0 | +0.0 |
-| stand-ins | 0.5 | 0.5 | +0.0 |
-| cost (µ$) | 2250.0 | 2250.0 | +0.0 |
+| done | 0.3 | 0.3 | +0.0 |
+| turns | 2.3 | 2.3 | +0.0 |
+| calls | 2.3 | 2.3 | +0.0 |
+| bash calls | 1.3 | 1.3 | +0.0 |
+| stand-ins | 0.3 | 0.3 | +0.0 |
+| cost (µ$) | 1500.0 | 1500.0 | +0.0 |

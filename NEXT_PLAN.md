@@ -230,12 +230,53 @@ interstitial passed off as the article. The API stays on reqwest.
 - [x] Corpus: `bench/repos.toml`, 30 `bench/tasks/*.toml` (6 PLAN), 7 planted-bug patches, two
       hidden checks.
 - [x] Runner: `tests/battery/` (`make battery`, `make battery-setup`), tested against the fake.
-- [ ] `make battery-setup`: every repo's suite passes untouched, every planted bug fails.
+- [x] `make battery-setup`: every repo's suite passes untouched, every planted bug fails (96 s).
 - [x] Analyzer: a hidden `crowbot battery report <dir> [--against <dir>]` over the session
       files and results: calls per tool; bash by first word, first two words and flags; pipe filters; `python -c`,
       heredocs, awk and sed programs (the scripts-for-basics smell); refused and declined calls,
       retries and doom loops; the most common call sequences (n-grams); turns, tokens, cost and
       time per task; task success from the check; MANUAL and PLAN verdicts replayed on the asks.
-- [ ] Pilot (`make battery TASKS=… REPEATS=1`), then the full run and a report: each candidate
-      change (a tool, a flag, an allowlist entry, a prompt line) with the count behind it, and the
-      battery re-run after a change to show it moved the numbers.
+- [x] Pilot (`make battery TASKS=… REPEATS=1`, 3 runs, $0.04), then the full run and a report:
+      `bench/runs/20261012T105806` (local only), 90 runs in 81 min, $1.89, 69 done, 14 ended on
+      a server error. The candidates are below, each with the count behind it.
+- [ ] Apply a candidate and re-run with `--against 20261012T105806` to show it moved the numbers.
+
+**Learned**
+- A run costs about 2¢ with this model, not the 8.5¢ estimated: the whole battery is under $2.
+- 14 of 90 runs ended on crowbot's errors, not the model's: 7 × HTTP 502 that outlasted crowbot's
+  retries, 4 × `upstream_error: incomplete response` and 2 × `error decoding response body`
+  mid-stream (not retried: output had already streamed), 1 × 503 "no ready backend". The report
+  now counts them apart (`## Ended on an error`). Without them AUTO finished 63 of 65; PLAN
+  finished 6 of 18, with 5 stopped by the 15-minute wall and 7 ended on an error.
+- One stream stopped mid tool call for 891 s and the 120 s idle timeout never fired; crowbot's
+  keepalives probably kept arriving after upstream had stopped.
+- codesearch timed out at 30 s on 14 of its 21 calls. It uses `http.request_timeout_ms`, meant
+  for small account calls; a search that succeeded took up to 16 s.
+- The model looks answers up: 15 runs over 9 tasks called codesearch or webfetch on the upstream
+  repos, e.g. webfetching the pinned `src/eval.rs`. AUTO allows every call, so fix-task success
+  overstates what the model works out alone; private fixtures would close that.
+- `shell_split` read a heredoc's body as commands, so MANUAL listed `for x in y:` and `}` as
+  patterns to approve, and a quote in the body could hide the commands after it. The body is now
+  skipped; `bash_complex` still asks about the whole line. This battery's asks predate the fix, so
+  its replay tables still list body lines (`for`, `}`, `if`, `#`).
+- The prompts already say what the model ignores: 54 `cd <project>` although `<env>` names the
+  working directory, 33 `ls` and 29 `grep` in bash against bash's own description, and in PLAN
+  11 of 27 refused calls are file readers the PLAN reminder says are refused. More prompt text is
+  unlikely to move these; the gate and the tools have to meet the model where it is.
+- Setup: the cached repos must be excluded from crowbot's Cargo workspace, and pnpm through
+  corepack stops to ask unless `COREPACK_ENABLE_DOWNLOAD_PROMPT=0`.
+
+**Candidates** (counts across the 90 runs)
+1. codesearch gets its own timeout in `data/limits.toml`: 14 of 21 calls timed out at 30 s.
+2. The gate reads `cd <project> &&` and `git -C <project>` as running in place: 54 `cd`s asked
+   about under MANUAL, and 11 of PLAN's 27 refused bash calls were `git -C <project> log/status`,
+   which PLAN allows without the `-C`.
+3. MANUAL allows PLAN's inspection list by default: `cd` 54, `ls` 33, `git log` 19, `echo` 16
+   and `git status` 7 of its asks. Tests (`python -m pytest` 58, `cargo test` 48, `npx vitest`
+   21) run project code and stay asks.
+4. PLAN runs `grep`, `head` and `awk` on project files the read tool's secret rules allow,
+   instead of refusing them: 11 refused calls. PLAN refused 27 of its 41 bash calls.
+5. A stall timeout that counts content, not keepalives: one run lost 15 minutes.
+- Later: PLAN allows `npx vitest` and `python3 -m unittest`; edit's "read it first" refusal fired
+  6 times after grep had shown the lines; read takes `path:line` (once). read→read→read (54) is
+  mostly reads that depend on the one before, so it is not a batching candidate yet.

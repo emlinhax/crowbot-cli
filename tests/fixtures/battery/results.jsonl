@@ -1,3 +1,4 @@
 {"task": "fix-it", "repo": "r", "mode": "auto", "model": "m", "rep": 1, "exit": 0, "stopped_by": null, "check": true, "turns": 4, "cost_micros": 3500, "wall_ms": 12000, "plan_file": "/h/plans/a.md", "dir": "fix-it/1", "error": null}
 {"task": "plan-it", "repo": "r", "mode": "plan", "model": "m", "rep": 1, "exit": 0, "stopped_by": "turns", "check": false, "turns": 2, "cost_micros": 1000, "wall_ms": 4000, "plan_file": "/h/plans/b.md", "dir": "plan-it/1", "error": null}
+{"task": "flaky", "repo": "r", "mode": "auto", "model": "m", "rep": 1, "exit": 1, "stopped_by": null, "check": false, "turns": 1, "cost_micros": 0, "wall_ms": 30000, "plan_file": "/h/plans/c.md", "dir": "flaky/1", "error": null}
 {"task": "broken", "rep": 1, "error": "r is not set up"}

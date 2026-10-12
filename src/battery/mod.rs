@@ -51,8 +51,8 @@ impl Counts {
 #[cfg(test)]
 pub mod fixture {
     //! tests/fixtures/battery/: an AUTO run that reads, retries a failed test and edits, a PLAN
-    //! run refused a command PLAN does not allow and a tool that does not exist, and a run that
-    //! never started.
+    //! run refused a command PLAN does not allow and a tool that does not exist, a run whose only
+    //! reply was a 502, and a run that never started.
 
     use super::load::{self, Battery};
     use super::report::Words;

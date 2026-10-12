@@ -7,8 +7,8 @@ use super::Counts;
 use super::load::Run;
 use crate::permission::{filter, shell_split};
 
-/// A shell command that does what a tool does. It matches a command that starts with `words`,
-/// or whose call contains `contains`; the first smell that matches wins.
+/// A shell command that does what a tool does. It matches a command that starts with `words` and
+/// contains `contains`, of those it gives; the first smell that matches wins.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Smell {
@@ -68,7 +68,7 @@ pub fn tally(runs: &[Run], smells: &[Smell], subcommands: &[String]) -> Shell {
                 out.flags.add(format!("{lead} {flag}"), command);
             }
             out.first_two.add(lead, command);
-            if let Some(smell) = smells.iter().find(|s| matches(s, &words, line)) {
+            if let Some(smell) = smells.iter().find(|s| matches(s, &words, command)) {
                 out.smells.add(&smell.label, command);
             }
         }
@@ -102,15 +102,14 @@ pub fn lead(command: &str, subcommands: &[String]) -> String {
     }
 }
 
-fn matches(smell: &Smell, words: &[&str], line: &str) -> bool {
-    let by_words = !smell.words.is_empty()
-        && smell.words.len() <= words.len()
+fn matches(smell: &Smell, words: &[&str], command: &str) -> bool {
+    let by_words = smell.words.len() <= words.len()
         && smell.words.iter().zip(words).all(|(want, got)| want == got);
     let by_text = smell
         .contains
         .as_ref()
-        .is_some_and(|c| line.contains(c.as_str()));
-    by_words || by_text
+        .is_none_or(|c| command.contains(c.as_str()));
+    (!smell.words.is_empty() || smell.contains.is_some()) && by_words && by_text
 }
 
 #[cfg(test)]
@@ -135,6 +134,22 @@ mod tests {
         assert_eq!(shell.flags.get("sed -n"), 1);
         assert_eq!(shell.smells.get("sed -n"), 1);
         assert_eq!(shell.smells.total(), 1);
+    }
+
+    #[test]
+    fn a_heredoc_is_one_stand_in_and_cat_into_a_file_is_a_write() {
+        let data = fixture::words();
+        let smell = |command: &str| {
+            let words = words(command);
+            data.smell
+                .iter()
+                .find(|s| matches(s, &words, command))
+                .map(|s| s.label.as_str())
+        };
+        assert_eq!(smell("cat > /tmp/a.rs <<'EOF'"), Some("cat <<"));
+        assert_eq!(smell("cat src/a.rs"), Some("cat"));
+        assert_eq!(smell("python3 - <<'EOF'"), Some("heredoc"));
+        assert_eq!(smell("cargo test"), None);
     }
 
     #[test]

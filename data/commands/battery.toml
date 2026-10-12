@@ -18,8 +18,8 @@ replay = ["manual"]
 # reported, but never proposed for an allowlist.
 never_propose = ["edit", "bash_write", "external_directory"]
 
-# Shell commands that do what a tool does. A command matches when it starts with `words`, or when
-# its call contains `contains`; the first match wins, and pipe filters never match.
+# Shell commands that do what a tool does. A command matches when it starts with `words` and
+# contains `contains`, of those a smell gives; the first match wins, and pipe filters never match.
 [[smell]]
 label = "sed -n"
 words = ["sed", "-n"]
@@ -29,6 +29,12 @@ instead = "read with offset and limit"
 label = "sed -i"
 words = ["sed", "-i"]
 instead = "edit"
+
+[[smell]]
+label = "cat <<"
+words = ["cat"]
+contains = "<<"
+instead = "write"
 
 [[smell]]
 label = "cat"
@@ -103,7 +109,7 @@ instead = "read, grep or edit"
 [[smell]]
 label = "heredoc"
 contains = "<<"
-instead = "write"
+instead = "a tool, not a script for a basic step"
 
 [[smell]]
 label = "mv"
@@ -128,10 +134,11 @@ instead = "fs"
 # The report's words. `{…}` are filled in.
 [text]
 title = "# Battery {name}"
-summary = "{model} · {runs} runs of {tasks} tasks · {done} done · ${cost} · {tokens} tokens · crowbot {crowbot}"
+summary = "{model} · {runs} runs of {tasks} tasks · {done} done · {failed} ended on an error · ${cost} · {tokens} tokens · crowbot {crowbot}"
 missing = "Runs that never started: {list}"
 tasks = "## Tasks"
-tasks_columns = ["task", "mode", "done", "turns", "calls", "cost", "time", "stopped"]
+tasks_columns = ["task", "mode", "done", "turns", "calls", "cost", "time", "ended early"]
+failed = "## Ended on an error"
 tools = "## Tools"
 tools_columns = ["tool", "calls", "per run", "failed", "refused"]
 refusals = "## Refused before running"

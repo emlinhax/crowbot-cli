@@ -11,6 +11,7 @@ use super::sequences;
 use super::shell::{self, Shell, Smell};
 use super::tools::{self, Tools};
 use super::{Count, Counts};
+use crate::api::error::ErrorInfo;
 use crate::mode;
 use crate::permission::rule::Rule;
 use crate::text::shorten;
@@ -39,6 +40,7 @@ pub struct Text {
     missing: String,
     tasks: String,
     tasks_columns: Vec<String>,
+    failed: String,
     tools: String,
     tools_columns: Vec<String>,
     refusals: String,
@@ -122,6 +124,14 @@ pub fn render(this: &Battery, that: Option<&Battery>, words: &Words, rules: &[Ru
             ("runs", &started.len().to_string()),
             ("tasks", &tasks.len().to_string()),
             ("done", &done(&started)),
+            (
+                "failed",
+                &started
+                    .iter()
+                    .filter(|r| r.failed.is_some())
+                    .count()
+                    .to_string(),
+            ),
             ("cost", &dollars(cost)),
             ("tokens", &tokens.to_string()),
             ("crowbot", short_rev(&this.meta.crowbot)),
@@ -156,6 +166,9 @@ pub fn render(this: &Battery, that: Option<&Battery>, words: &Words, rules: &[Ru
                     if let Some(s) = &r.record.stopped_by {
                         stops.add(s.as_str(), "");
                     }
+                    if let Some(e) = &r.failed {
+                        stops.add(failure(e), "");
+                    }
                 }
                 vec![
                     (*task).to_owned(),
@@ -180,6 +193,18 @@ pub fn render(this: &Battery, that: Option<&Battery>, words: &Words, rules: &[Ru
             })
             .collect(),
     ));
+
+    let mut failures = Counts::default();
+    for r in &started {
+        if let Some(e) = &r.failed {
+            let what = format!("{}: {}", failure(e), e.message.trim());
+            failures.add(what, &format!("{} #{}", r.record.task, r.record.rep));
+        }
+    }
+    if failures.total() > 0 {
+        out.push(t.failed.clone());
+        out.push(counts(&t.count_columns, &failures, words.top));
+    }
 
     let per_run = |n: usize| one_place(n as f64 / started.len().max(1) as f64);
     out.push(t.tools.clone());
@@ -446,6 +471,14 @@ fn instead<'a>(smells: &'a [Smell], label: &str) -> &'a str {
         .iter()
         .find(|s| s.label == label)
         .map_or("", |s| s.instead.as_str())
+}
+
+/// A failed reply by its kind, and its HTTP status when it had one.
+fn failure(e: &ErrorInfo) -> String {
+    match e.status {
+        Some(status) => format!("{} {status}", e.kind),
+        None => e.kind.clone(),
+    }
 }
 
 fn mode_label(id: &str) -> &str {
