@@ -102,6 +102,7 @@ impl Tool for Bash {
                     command: &args.command,
                     cwd: &cx.app.paths.project,
                     env: &self.shell.env,
+                    unset: &self.shell.unset,
                     timeout: Duration::from_secs(secs),
                     drain: limits.bash_drain_ms.ms(),
                 },

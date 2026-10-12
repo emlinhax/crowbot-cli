@@ -1,0 +1,13 @@
+description = "A command the model runs does not inherit crowbot's key from the environment"
+args = ["--mode", "auto", "-p", "print the key"]
+replies = ["scenarios/key_hidden/1.sse", "scenarios/key_hidden/2.sse"]
+
+[expect]
+exit = 0
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "key=none"
+lacks = "test-key"
