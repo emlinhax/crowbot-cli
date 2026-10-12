@@ -682,6 +682,8 @@ mod tests {
                     content: "a.txt".into(),
                     is_error: false,
                     details: None,
+                    asks: Vec::new(),
+                    refused: None,
                 },
             },
             now,

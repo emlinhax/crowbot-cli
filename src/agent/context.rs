@@ -55,6 +55,8 @@ fn answer_open(out: &mut Vec<Message>, open: &mut Vec<(String, String)>) {
             content: model_text::get().no_result.clone(),
             is_error: true,
             details: None,
+            asks: Vec::new(),
+            refused: None,
         }));
     }
 }
@@ -120,6 +122,8 @@ mod tests {
             content: "ok".into(),
             is_error: false,
             details: None,
+            asks: Vec::new(),
+            refused: None,
         })
     }
 

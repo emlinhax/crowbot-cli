@@ -26,15 +26,35 @@ pub struct Batch {
     pub stop: bool,
 }
 
+/// A call that may run, and what it was cleared for.
+struct Cleared {
+    tool: Arc<dyn Tool>,
+    args: Value,
+    asks: Vec<Ask>,
+}
+
 /// Why a call does not run: what the model is told, and whether the run stops there.
 struct Refused {
     why: String,
+    /// Recorded with the result; see `ToolResult::refused`.
+    kind: &'static str,
+    /// What it needed permission for, when it got as far as asking.
+    asks: Vec<Ask>,
     stop: bool,
 }
 
-impl From<String> for Refused {
-    fn from(why: String) -> Self {
-        Self { why, stop: false }
+impl Refused {
+    fn new(kind: &'static str, why: String) -> Self {
+        Self {
+            why,
+            kind,
+            asks: Vec::new(),
+            stop: false,
+        }
+    }
+
+    fn asked(self, asks: Vec<Ask>) -> Self {
+        Self { asks, ..self }
     }
 }
 
@@ -51,7 +71,7 @@ pub async fn run<'a>(
     let mut stop = false;
     for (i, call) in calls.iter().enumerate() {
         let slot = if stop {
-            Err(Refused::from(model_text::get().rejected.clone()))
+            Err(Refused::new("rejected", model_text::get().rejected.clone()))
         } else {
             let repeats = doom_loop::repeats(history, calls, i);
             clear(cx, shared, cancel, mode, repeats, call).await
@@ -70,17 +90,24 @@ pub async fn run<'a>(
             name: call.name.clone(),
             arguments: call.arguments.clone(),
         });
-        let out = match slot {
-            Err(refused) => Output::error(refused.why),
-            Ok((tool, args)) => {
+        let done = match slot {
+            Err(refused) => ToolResult {
+                asks: refused.asks,
+                refused: Some(refused.kind.to_owned()),
+                ..result(call, Output::error(refused.why))
+            },
+            Ok(cleared) => {
                 let tcx = tool_cx(cx, shared, cancel, &call.id);
-                tokio::select! {
-                    out = tool.run(args, &tcx) => out,
+                let out = tokio::select! {
+                    out = cleared.tool.run(cleared.args, &tcx) => out,
                     () = cancel.cancelled() => Output::error(model_text::get().cancelled.clone()),
+                };
+                ToolResult {
+                    asks: cleared.asks,
+                    ..result(call, out)
                 }
             }
         };
-        let done = result(call, out);
         (cx.emit)(AgentEvent::ToolEnd {
             result: done.clone(),
         });
@@ -99,25 +126,35 @@ async fn clear<'a>(
     mode: &Mode,
     repeats: usize,
     call: &'a ToolCall,
-) -> Result<(Arc<dyn Tool>, Value), Refused> {
+) -> Result<Cleared, Refused> {
     let text = model_text::get();
     if cancel.is_cancelled() {
-        return Err(text.cancelled.clone().into());
+        return Err(Refused::new("cancelled", text.cancelled.clone()));
     }
     let tool = cx.tools.get(&call.name).ok_or_else(|| {
-        fill(
-            &text.unknown_tool,
-            &[("name", &call.name), ("available", &cx.tools.names())],
+        Refused::new(
+            "unknown_tool",
+            fill(
+                &text.unknown_tool,
+                &[("name", &call.name), ("available", &cx.tools.names())],
+            ),
         )
     })?;
-    let args: Value = serde_json::from_str(&call.arguments)
-        .map_err(|e| fill(&text.bad_json, &[("error", &e.to_string())]))?;
+    let args: Value = serde_json::from_str(&call.arguments).map_err(|e| {
+        Refused::new(
+            "bad_json",
+            fill(&text.bad_json, &[("error", &e.to_string())]),
+        )
+    })?;
 
     let mut asks = Vec::new();
     if repeats >= limits::get().agent.doom_loop_repeats.value {
         match mode.verdicts.doom_loop {
             DoomLoop::TellModel => {
-                return Err(fill(&text.doom_loop, &[("count", &repeats.to_string())]).into());
+                return Err(Refused::new(
+                    "doom_loop",
+                    fill(&text.doom_loop, &[("count", &repeats.to_string())]),
+                ));
             }
             DoomLoop::Ask => asks.push(Ask::new(permissions::DOOM_LOOP.name, call.name.clone())),
         }
@@ -125,11 +162,14 @@ async fn clear<'a>(
     let check = tool
         .check(&args, &tool_cx(cx, shared, cancel, &call.id))
         .map_err(|refusal| match refusal {
-            Refusal::InvalidArgs(error) => fill(
-                &text.invalid_arguments,
-                &[("name", &call.name), ("error", &error)],
+            Refusal::InvalidArgs(error) => Refused::new(
+                "invalid_arguments",
+                fill(
+                    &text.invalid_arguments,
+                    &[("name", &call.name), ("error", &error)],
+                ),
             ),
-            Refusal::Refused(why) => why,
+            Refusal::Refused(why) => Refused::new("check", why),
         })?;
     asks.extend(check.asks);
 
@@ -138,31 +178,42 @@ async fn clear<'a>(
         mode,
         plan_file: &cx.plan_file,
     };
+    let cleared = |asks| Cleared {
+        tool: tool.clone(),
+        args,
+        asks,
+    };
     match policy.decide(&asks) {
-        Decision::Allow => Ok((tool.clone(), args)),
-        Decision::Deny(what) => Err(fill(&text.denied, &[("what", &what)]).into()),
+        Decision::Allow => Ok(cleared(asks)),
+        Decision::Deny(what) => {
+            Err(Refused::new("denied", fill(&text.denied, &[("what", &what)])).asked(asks))
+        }
         Decision::Ask => {
             let prompt = Prompt::Permission {
                 tool: call.name.clone(),
                 asks: asks.clone(),
                 preview: check.preview,
             };
-            match prompt::ask(shared, cx.emit, &call.id, prompt, cancel).await {
-                Some(Reply::Yes) => Ok((tool.clone(), args)),
-                Some(Reply::No { feedback: Some(f) } | Reply::Text(f)) => {
-                    Err(fill(&text.rejected_with_feedback, &[("feedback", &f)]).into())
-                }
+            let reply = prompt::ask(shared, cx.emit, &call.id, prompt, cancel).await;
+            let refused = match reply {
+                Some(Reply::Yes) => return Ok(cleared(asks)),
+                Some(Reply::No { feedback: Some(f) } | Reply::Text(f)) => Refused::new(
+                    "rejected_with_feedback",
+                    fill(&text.rejected_with_feedback, &[("feedback", &f)]),
+                ),
                 Some(Reply::No { feedback: None } | Reply::Choice(_) | Reply::Answers(_)) => {
-                    Err(Refused {
-                        why: text.rejected.clone(),
+                    Refused {
                         stop: true,
-                    })
+                        ..Refused::new("rejected", text.rejected.clone())
+                    }
                 }
-                Some(Reply::Unavailable) => {
-                    Err(fill(&text.non_interactive, &[("what", &gate::describe(&asks))]).into())
-                }
-                None => Err(text.cancelled.clone().into()),
-            }
+                Some(Reply::Unavailable) => Refused::new(
+                    "non_interactive",
+                    fill(&text.non_interactive, &[("what", &gate::describe(&asks))]),
+                ),
+                None => Refused::new("cancelled", text.cancelled.clone()),
+            };
+            Err(refused.asked(asks))
         }
     }
 }
@@ -201,5 +252,7 @@ fn result(call: &ToolCall, out: Output) -> ToolResult {
         content: out.content,
         is_error: out.is_error,
         details: out.details,
+        asks: Vec::new(),
+        refused: None,
     }
 }

@@ -1,11 +1,11 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::mode::Mode;
 use crate::permission::rule::{self, Action, Rule};
 use crate::text::template;
 
 /// One thing a tool call needs cleared: a permission and the targets it applies to.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ask {
     pub permission: String,
     pub patterns: Vec<String>,
