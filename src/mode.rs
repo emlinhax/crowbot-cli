@@ -5,6 +5,7 @@ use std::sync::LazyLock;
 
 use serde::{Deserialize, Deserializer};
 
+use crate::permission::lists;
 use crate::permission::rule::{Action, Rule};
 
 const SOURCES: &[&str] = &[
@@ -41,9 +42,9 @@ pub struct Mode {
     pub lock: Vec<Rule>,
 }
 
-/// A lock as written: one pattern, a list of them, or commands that each match alone or followed
-/// by arguments (`git log` and `git log -5`, never `git logx`). Expanded in file order, so the
-/// last match still wins as it reads.
+/// A lock as written: one pattern, a list of them, commands that each match alone or followed by
+/// arguments (`git log` and `git log -5`, never `git logx`), or a named list of those
+/// (data/command_lists.toml). Expanded in file order, so the last match still wins as it reads.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Lock {
@@ -55,24 +56,29 @@ struct Lock {
     patterns: Vec<String>,
     #[serde(default)]
     commands: Vec<String>,
+    #[serde(default)]
+    list: Option<String>,
 }
 
 fn locks<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<Rule>, D::Error> {
     let mut rules = Vec::new();
     for lock in Vec::<Lock>::deserialize(d)? {
-        let commands = lock
-            .commands
-            .iter()
-            .flat_map(|c| [c.clone(), format!("{c} *")]);
+        let listed = match &lock.list {
+            Some(name) => lists::patterns(name).ok_or_else(|| {
+                serde::de::Error::custom(format!("a {} lock names no list {name}", lock.permission))
+            })?,
+            None => Vec::new(),
+        };
         let patterns: Vec<String> = lock
             .pattern
             .into_iter()
             .chain(lock.patterns)
-            .chain(commands)
+            .chain(lists::commands(&lock.commands))
+            .chain(listed)
             .collect();
         if patterns.is_empty() {
             return Err(serde::de::Error::custom(format!(
-                "a {} lock needs a pattern, patterns or commands",
+                "a {} lock needs a pattern, patterns, commands or a list",
                 lock.permission
             )));
         }

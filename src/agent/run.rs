@@ -409,7 +409,7 @@ mod tests {
     async fn a_plain_rejection_stops_the_run() {
         let h = Harness::new(vec![reply(
             "",
-            &[("c1", "bash", json!({"command": "echo hi"}))],
+            &[("c1", "bash", json!({"command": "printf hi"}))],
             "tool_calls",
         )])
         .await;
@@ -528,7 +528,7 @@ mod tests {
         let h = Harness::new(vec![
             reply(
                 "",
-                &[("c1", "bash", json!({"command": "echo hi"}))],
+                &[("c1", "bash", json!({"command": "printf hi"}))],
                 "tool_calls",
             ),
             text("done"),
@@ -579,7 +579,7 @@ mod tests {
                 &[
                     ("c1", "read", json!({"path": "a.txt"})),
                     ("c2", "nope", json!({})),
-                    ("c3", "bash", json!({"command": "echo hi"})),
+                    ("c3", "bash", json!({"command": "printf hi"})),
                 ],
                 "tool_calls",
             ),
@@ -603,7 +603,7 @@ mod tests {
             })
             .collect();
         let read = crate::permission::gate::Ask::new("read", "a.txt");
-        let bash = crate::permission::gate::Ask::new("bash", "echo hi");
+        let bash = crate::permission::gate::Ask::new("bash", "printf hi");
         assert_eq!(
             results,
             [

@@ -43,6 +43,18 @@ permission = "search"
 pattern = "*.env.*"
 action = "ask"
 
+# Inspection runs without asking (data/command_lists.toml, the list PLAN locks open too); a flag
+# that makes it write or run another program asks again.
+[[permission]]
+permission = "bash"
+action = "allow"
+list = "inspect"
+
+[[permission]]
+permission = "bash"
+action = "ask"
+list = "unsafe_flags"
+
 # Reading forums is allowed; the agent browses added forums without asking. Posting is allowed to
 # reach the tool, which then confirms the exact content with the user every time, even in AUTO. Deny
 # either per host to lock it down, e.g. permission = "forum_post", pattern = "*", action = "deny".
