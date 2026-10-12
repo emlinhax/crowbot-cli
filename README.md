@@ -167,7 +167,7 @@ lines instead of sending.
 | `tests/golden/edit/` | Edit-matcher cases: `before.txt` + `args.json` → `after.txt` or `error.txt`. |
 | `tests/smoke.rs` | A real API round trip (`make smoke`). |
 | `tests/battery/` | The tool-use battery's runner: each task headless in a fresh one-commit copy of its repo, stopped by its turn limit or the caps, then checked and recorded. Its own tests drive it against the fake. |
-| `bench/` | The battery's corpus: `battery.toml` (model, repeats, caps), `repos.toml` (repos pinned by commit), `tasks/*.toml` (prompt, mode, turn limit, check), `patches/` (planted bugs), `checks/` (tests the model never sees). `cache/` and `runs/` are gitignored. |
+| `bench/` | The battery's corpus: `battery.toml` (model, repeats, caps), `repos.toml` (repos pinned by commit), `tasks/*.toml` (prompt, mode, turn limit, check), `patches/` (planted bugs), `checks/` (tests the model never sees), `baseline/` (the first full run's report and results, to compare a re-run with). `cache/` and `runs/` are gitignored. |
 | `reference/` | Gitignored clones of opencode and pi plus crowbot's docs; designs are ported from here. |
 
 Settings layer in this order, later wins: `data/defaults.toml`, `~/.crowbot/config.toml`,

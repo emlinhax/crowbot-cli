@@ -239,7 +239,16 @@ interstitial passed off as the article. The API stays on reqwest.
 - [x] Pilot (`make battery TASKS=… REPEATS=1`, 3 runs, $0.04), then the full run and a report:
       `bench/runs/20261012T105806` (local only), 90 runs in 81 min, $1.89, 69 done, 14 ended on
       a server error. The candidates are below, each with the count behind it.
-- [ ] Re-run with `--against 20261012T105806` to show the applied candidates moved the numbers.
+- [ ] Re-run to show the applied candidates moved the numbers. The baseline's sessions stay on the
+      machine that ran it, so its `report.md` and `results.jsonl` are kept in `bench/baseline/`
+      and the new report is compared with that one by hand. On a fresh machine (Linux or macOS:
+      the runner stops runs with SIGINT, and ufo's setup links with `ln -s`):
+      1. Rust from `rust-toolchain.toml` plus libclang, git, python3, and node with corepack.
+      2. The key in `~/.config/crowbot-smoke.key` (mode 600), never in the repo.
+      3. `make battery-setup` (about 2 min, free).
+      4. `CROWBOT_SMOKE_KEY=$(cat ~/.config/crowbot-smoke.key) make battery` (about 80 min, ~$2).
+      5. `cargo run -q -- battery report bench/runs/<stamp>`, then diff its `report.md` with
+         `bench/baseline/report.md`.
 
 **Learned**
 - A run costs about 2¢ with this model, not the 8.5¢ estimated: the whole battery is under $2.
