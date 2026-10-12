@@ -283,7 +283,16 @@ async fn live_models(target: &Target, model: &str) -> Vec<u8> {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let cache = std::fs::read(home.path().join("cache/models.json")).unwrap();
+    // crowbot falls back to its bundled list when the live one is out of reach, and caches nothing.
+    let cache = std::fs::read(home.path().join("cache/models.json")).unwrap_or_else(|_| {
+        panic!(
+            "crowbot could not fetch the live models list, so nothing can run:\n{}",
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .last()
+                .unwrap_or_default()
+        )
+    });
     assert!(
         String::from_utf8_lossy(&cache).contains(&format!("\"{model}\"")),
         "the live list has no {model}"
