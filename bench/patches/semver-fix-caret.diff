@@ -1,0 +1,13 @@
+diff --git a/src/eval.rs b/src/eval.rs
+index a3cedd8..7ff1265 100644
+--- a/src/eval.rs
++++ b/src/eval.rs
+@@ -154,7 +154,7 @@ fn matches_caret(cmp: &Comparator, ver: &Version) -> bool {
+         } else if ver.patch != patch {
+             return ver.patch > patch;
+         }
+-    } else if minor > 0 {
++    } else if minor > 1 {
+         if ver.minor != minor {
+             return false;
+         } else if ver.patch != patch {

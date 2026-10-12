@@ -1,0 +1,6 @@
+prompt = "`Version::parse(\"01.2.3\")` should fail with a leading-zero error, but it succeeds. Fix it."
+repo = "semver"
+mode = "auto"
+turns = 40
+check = "cargo test --quiet && git diff --quiet HEAD -- Cargo.toml"
+patch = "semver-agents-leading-zero.diff"

@@ -1,0 +1,5 @@
+prompt = "Run the test suite and tell me how many tests ran and whether any failed."
+repo = "more-itertools"
+mode = "auto"
+turns = 25
+check = "grep -qE '[0-9]{3,}' {reply}"

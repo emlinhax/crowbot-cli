@@ -1,0 +1,5 @@
+prompt = "How does this crate decide whether a pre-release version like 1.2.3-alpha.1 may satisfy a version requirement? Point me to the function that decides it."
+repo = "semver"
+mode = "auto"
+turns = 25
+check = "grep -q pre_is_compatible {reply}"

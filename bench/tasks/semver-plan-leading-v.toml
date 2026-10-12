@@ -1,0 +1,5 @@
+prompt = "Plan how to let `Version::parse` accept a leading `v`, as in `v1.2.3`. Name the files to change and the tests to add."
+repo = "semver"
+mode = "plan"
+turns = 30
+check = "grep -q parse.rs {plan}"

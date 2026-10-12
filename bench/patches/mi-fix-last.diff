@@ -1,0 +1,13 @@
+diff --git a/more_itertools/more.py b/more_itertools/more.py
+index 9c56ab3..98d158c 100755
+--- a/more_itertools/more.py
++++ b/more_itertools/more.py
+@@ -292,7 +292,7 @@ def last(iterable, default=_marker):
+     try:
+         if getattr(iterable, '__reversed__', None):
+             return next(reversed(iterable))
+-        return deque(iterable, maxlen=1)[-1]
++        return deque(iterable, maxlen=2)[0]
+     except (IndexError, StopIteration):
+         if default is _marker:
+             raise ValueError(

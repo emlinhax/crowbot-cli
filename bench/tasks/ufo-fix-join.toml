@@ -1,0 +1,6 @@
+prompt = "`joinURL(\"/a/\", \"b\")` returns \"/a//b\". Fix it without breaking the other tests."
+repo = "ufo"
+mode = "auto"
+turns = 40
+check = "npx vitest run"
+patch = "ufo-fix-join.diff"

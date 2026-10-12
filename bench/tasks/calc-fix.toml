@@ -1,0 +1,5 @@
+prompt = "fix the sum in src/calc.txt"
+repo = "calc"
+mode = "auto"
+turns = 15
+check = "grep -qx '2 + 2 = 4' src/calc.txt"

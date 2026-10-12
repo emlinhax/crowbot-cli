@@ -1,0 +1,5 @@
+prompt = "What is in this project?"
+repo = "calc"
+mode = "auto"
+turns = 15
+check = "grep -q calc {reply}"

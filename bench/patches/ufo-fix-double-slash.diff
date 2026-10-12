@@ -1,0 +1,13 @@
+diff --git a/src/utils.ts b/src/utils.ts
+index ea98aba..035e900 100644
+--- a/src/utils.ts
++++ b/src/utils.ts
+@@ -268,7 +268,7 @@ export function withLeadingSlash(input = ""): string {
+ export function cleanDoubleSlashes(input = ""): string {
+   return input
+     .split("://")
+-    .map((string_) => string_.replace(/\/{2,}/g, "/"))
++    .map((string_) => string_.replace(/\/{3,}/g, "/"))
+     .join("://");
+ }
+ 

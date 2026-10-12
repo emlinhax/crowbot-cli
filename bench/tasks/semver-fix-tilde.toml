@@ -1,0 +1,6 @@
+prompt = "The requirement `~1.2.2` matches version 1.2.1, but it should not. Fix it and make sure the tests pass."
+repo = "semver"
+mode = "auto"
+turns = 40
+check = "cargo test --quiet"
+patch = "semver-fix-tilde.diff"

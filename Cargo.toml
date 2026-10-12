@@ -63,6 +63,10 @@ path = "tests/e2e/main.rs"
 name = "smoke"
 path = "tests/smoke.rs"
 
+[[test]]
+name = "battery"
+path = "tests/battery/main.rs"
+
 [profile.release]
 lto = "fat"
 codegen-units = 1

@@ -1,0 +1,5 @@
+prompt = "Move src/punycode.ts to src/vendor/punycode.ts and fix every import of it."
+repo = "ufo"
+mode = "auto"
+turns = 40
+check = "test -f src/vendor/punycode.ts && ! test -e src/punycode.ts && npx vitest run"

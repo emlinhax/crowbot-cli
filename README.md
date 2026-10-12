@@ -143,7 +143,7 @@ lines instead of sending.
 | `data/modes/` | One file per permission mode (MANUAL, PLAN, AUTO): colour, verdicts, locked rules. |
 | `data/tools/` | Each tool's description (`.md`) and argument schema (`.schema.json`). |
 | `data/model_text.toml` | Everything crowbot tells the model on the user's behalf (declines, answers, errors). |
-| `data/shells.toml` | Which shell runs commands, per OS, and its environment. |
+| `data/shells.toml` | Which shell runs commands, per OS, and its environment (what is set, and what is never inherited: crowbot's key). |
 | `data/filters.toml` | Pipe filters (`tail -30`, `grep -c ok`): which flags keep a command reading only its input. |
 | `data/theme.toml` | Colours by role, and syntax scopes mapped to roles. |
 | `data/keybinds.toml`, `data/ui.toml` | Keys; the session's words, spinner, bottom-rule items, prompt choices, login card. |
@@ -164,7 +164,9 @@ lines instead of sending.
 | `tests/e2e/` | The real binary against an in-process fake crowbot; `pty.rs` drives real sessions. |
 | `tests/fixtures/` | Data the fake serves (`sse/*.sse`, `api/*.json`), sample `projects/`, `scenarios/*.toml`. |
 | `tests/golden/edit/` | Edit-matcher cases: `before.txt` + `args.json` → `after.txt` or `error.txt`. |
-| `tests/smoke.rs` | The only tests that touch the real API (`make smoke`). |
+| `tests/smoke.rs` | A real API round trip (`make smoke`). |
+| `tests/battery/` | The tool-use battery's runner: each task headless in a fresh one-commit copy of its repo, stopped by its turn limit or the caps, then checked and recorded. Its own tests drive it against the fake. |
+| `bench/` | The battery's corpus: `battery.toml` (model, repeats, caps), `repos.toml` (repos pinned by commit), `tasks/*.toml` (prompt, mode, turn limit, check), `patches/` (planted bugs), `checks/` (tests the model never sees). `cache/` and `runs/` are gitignored. |
 | `reference/` | Gitignored clones of opencode and pi plus crowbot's docs; designs are ported from here. |
 
 Settings layer in this order, later wins: `data/defaults.toml`, `~/.crowbot/config.toml`,
@@ -190,9 +192,11 @@ BoringSSL for the web.
 |---|---|---|
 | `make lint` | `cargo fmt --check`, `clippy -D warnings` (includes the io-wrapper rule) | before every push |
 | `make test` | unit, snapshot, renderer and data-integrity tests | before every push |
-| `make e2e` | binary vs fake crowbot, including PTY sessions | CI on every push to `main`; locally only for critical changes |
+| `make e2e` | binary vs fake crowbot, including PTY sessions and the battery's runner | CI on every push to `main`; locally only for critical changes |
 | `make golden` | rewrite failing goldens and snapshots | only for a deliberate change |
 | `make smoke` | real API round trip, needs `CROWBOT_SMOKE_KEY` (costs a fraction of a cent) | by hand, never in CI |
+| `make battery-setup` | clone the battery's repos into `bench/cache/`, install their dependencies, and check every planted bug fails its check (runs the repos' code) | once, and after `bench/repos.toml` changes |
+| `make battery` | every task × repeats against the real model, records in `bench/runs/<stamp>/`; needs `CROWBOT_SMOKE_KEY`, stops at `cap_micros`. `TASKS=a,b REPEATS=1` runs a pilot | by hand, never in CI |
 | `make build` | static release binary | as needed |
 
 ## Releases

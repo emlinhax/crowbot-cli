@@ -1,0 +1,5 @@
+prompt = "In `exactly_n`, rename the `predicate` parameter to `pred` to match the rest of the library, in the code, the type stub, the docstring and the tests."
+repo = "more-itertools"
+mode = "auto"
+turns = 40
+check = "grep -q 'def exactly_n(iterable, n, pred=bool)' more_itertools/more.py && grep -A4 'def exactly_n' more_itertools/more.pyi | grep -qw pred && python3 -m unittest -q tests.test_more"

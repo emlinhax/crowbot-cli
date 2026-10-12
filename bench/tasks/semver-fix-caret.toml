@@ -1,0 +1,6 @@
+prompt = "`cargo test` fails in tests/test_version_req.rs. Find the bug in the library and fix it."
+repo = "semver"
+mode = "auto"
+turns = 40
+check = "cargo test --quiet"
+patch = "semver-fix-caret.diff"
