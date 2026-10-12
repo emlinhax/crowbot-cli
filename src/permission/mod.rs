@@ -5,3 +5,4 @@ pub mod gate;
 pub mod lists;
 pub mod rule;
 pub mod shell_split;
+pub mod workdir;

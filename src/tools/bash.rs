@@ -14,7 +14,7 @@ use crate::io::shell::{self, Ended, ShellCommand};
 use crate::io::{self, fs::Access};
 use crate::limits;
 use crate::permission::gate::Ask;
-use crate::permission::{filter, shell_split};
+use crate::permission::{filter, shell_split, workdir};
 use crate::text::controls;
 
 static SPEC: LazyLock<Spec> = LazyLock::new(|| {
@@ -47,25 +47,32 @@ impl Tool for Bash {
         &SPEC
     }
 
-    fn check(&self, args: &Value, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let args: Args = parse(args)?;
         if args.command.trim().is_empty() {
             return Err(Refusal::InvalidArgs("`command` is empty".into()));
         }
         let split = shell_split::split(&args.command);
+        let commands: Vec<String> = split
+            .commands
+            .iter()
+            .filter_map(|c| workdir::strip(c, &cx.app.paths.project))
+            .collect();
         // A filter at the end of a pipe (`| tail -30`) reads only what the command before it
         // writes, so it asks for nothing of its own while something feeds it.
-        let fed: Vec<String> = split
-            .commands
+        let fed: Vec<String> = commands
             .iter()
             .filter(|c| !filter::reads_only_input(c))
             .cloned()
             .collect();
-        let patterns = if fed.is_empty() { split.commands } else { fed };
-        let mut asks = vec![Ask {
-            permission: permissions::BASH.name.into(),
-            patterns,
-        }];
+        let patterns = if fed.is_empty() { commands } else { fed };
+        let mut asks = Vec::new();
+        if !patterns.is_empty() {
+            asks.push(Ask {
+                permission: permissions::BASH.name.into(),
+                patterns,
+            });
+        }
         // What runs cannot be read off a substitution, and a redirect writes files: both get
         // their own permission so read-only allowances never cover them.
         if split.complex {
@@ -338,6 +345,23 @@ mod tests {
             ["cargo test", "tail .env"]
         );
         assert_eq!(patterns("tail -5"), ["tail -5"]);
+    }
+
+    #[test]
+    fn naming_the_project_as_the_directory_asks_nothing_of_its_own() {
+        let project = Project::new();
+        let dir = project.cx().app.paths.project.display().to_string();
+        let check = |command: &str| {
+            Bash::new(shell::resolve(None))
+                .check(&json!({ "command": command }), &project.cx())
+                .unwrap()
+                .asks
+        };
+        let asks = check(&format!(
+            "cd '{dir}' && git -C '{dir}' log -3 && cargo test"
+        ));
+        assert_eq!(asks[0].patterns, ["git log -3", "cargo test"]);
+        assert!(check(&format!("cd '{dir}'")).is_empty());
     }
 
     #[test]
