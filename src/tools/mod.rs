@@ -1,7 +1,6 @@
 //! Tools the model can call. Each is one file implementing `Tool`, registered once below.
 
 mod bash;
-mod codesearch;
 mod edit;
 mod edit_match;
 pub mod files;
@@ -201,7 +200,6 @@ impl Registry {
             Arc::new(forum::ThreadTool),
             Arc::new(forum::Search),
             Arc::new(forum::Post),
-            Arc::new(codesearch::CodeSearch),
             Arc::new(todowrite::TodoWrite),
             Arc::new(question::Question),
             Arc::new(plan_exit::PlanExit),
