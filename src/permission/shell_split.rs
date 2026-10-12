@@ -16,6 +16,8 @@ pub fn split(line: &str) -> Split {
     let mut out = Split::default();
     let mut current = String::new();
     let mut quote: Option<char> = None;
+    // Heredocs opened on the current line: each delimiter, and whether `<<-` strips its tabs.
+    let mut heredocs: Vec<(String, bool)> = Vec::new();
     let mut chars = line.chars().peekable();
     while let Some(c) = chars.next() {
         match (quote, c) {
@@ -57,10 +59,52 @@ pub fn split(line: &str) -> Split {
                     chars.next();
                 }
                 push(&mut out.commands, &mut current);
+                // A heredoc's body is the command's input, not commands; it ends at a line that
+                // is just its delimiter.
+                if c == '\n' {
+                    for (word, strip_tabs) in heredocs.drain(..) {
+                        loop {
+                            let body: String = chars.by_ref().take_while(|&b| b != '\n').collect();
+                            let body = if strip_tabs {
+                                body.trim_start_matches('\t')
+                            } else {
+                                &body
+                            };
+                            if body == word || chars.peek().is_none() {
+                                break;
+                            }
+                        }
+                    }
+                }
             }
             (None, '<') if chars.peek() == Some(&'<') => {
                 out.complex = true;
                 current.push(c);
+                current.extend(chars.next());
+                // `<<<` is a here-string: its word is on this line.
+                if let Some(third) = chars.next_if_eq(&'<') {
+                    current.push(third);
+                    continue;
+                }
+                let strip_tabs = chars
+                    .next_if_eq(&'-')
+                    .inspect(|&d| current.push(d))
+                    .is_some();
+                while let Some(space) = chars.next_if(|&s| s == ' ' || s == '\t') {
+                    current.push(space);
+                }
+                let mut word = String::new();
+                while let Some(w) = chars.next_if(|&w| {
+                    !w.is_whitespace() && !matches!(w, ';' | '|' | '&' | '<' | '>' | '(' | ')')
+                }) {
+                    current.push(w);
+                    if !matches!(w, '\'' | '"' | '\\') {
+                        word.push(w);
+                    }
+                }
+                if !word.is_empty() {
+                    heredocs.push((word, strip_tabs));
+                }
             }
             // Process substitution runs its own command wherever it appears.
             (None, '<' | '>') if chars.peek() == Some(&'(') => {
@@ -124,6 +168,24 @@ mod tests {
         assert!(split("echo `whoami`").complex);
         assert!(split("cat <<EOF\nx\nEOF").complex);
         assert!(!split("echo '$(literal)'").complex);
+    }
+
+    #[test]
+    fn a_heredoc_body_is_input_not_commands() {
+        let s = split("python3 - <<'EOF'\nfor x in y:\n    print(x)  # don't\nEOF\necho done");
+        assert_eq!(s.commands, vec!["python3 - <<'EOF'", "echo done"]);
+        assert!(s.complex && !s.writes);
+        let s = split("cat <<-END > out.txt && wc -l out.txt\n\tline > x\n\tEND\nls");
+        assert_eq!(
+            s.commands,
+            vec!["cat <<-END > out.txt", "wc -l out.txt", "ls"]
+        );
+        assert!(s.writes);
+        assert_eq!(
+            split("grep x <<< \"$v\"\nls").commands,
+            vec!["grep x <<< \"$v\"", "ls"]
+        );
+        assert_eq!(split("cat <<EOF\nnever closed").commands, vec!["cat <<EOF"]);
     }
 
     #[test]
