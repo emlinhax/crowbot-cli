@@ -8,15 +8,15 @@ use serde::Deserialize;
 
 const SRC: &str = include_str!("../../data/workdir.toml");
 
-static FORMS: LazyLock<Vec<Strip>> = LazyLock::new(|| {
-    #[derive(Deserialize)]
-    struct File {
-        strip: Vec<Strip>,
-    }
-    toml::from_str::<File>(SRC)
-        .expect("data/workdir.toml is checked by tests")
-        .strip
-});
+static FILE: LazyLock<File> =
+    LazyLock::new(|| toml::from_str(SRC).expect("data/workdir.toml is checked by tests"));
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct File {
+    moves: Vec<String>,
+    strip: Vec<Strip>,
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -29,7 +29,7 @@ struct Strip {
 /// project was all it did.
 pub fn strip(command: &str, project: &Path) -> Option<String> {
     let words = words(command);
-    let form = FORMS.iter().find(|form| {
+    let form = FILE.strip.iter().find(|form| {
         form.words.len() <= words.len()
             && form
                 .words
@@ -47,6 +47,13 @@ pub fn strip(command: &str, project: &Path) -> Option<String> {
     let kept = words[..form.keep].iter().map(|(w, _)| w.as_str());
     let left: Vec<&str> = kept.chain([rest]).filter(|w| !w.is_empty()).collect();
     (!left.is_empty()).then(|| left.join(" "))
+}
+
+/// Whether the commands after `command` run somewhere else.
+pub fn moves(command: &str) -> bool {
+    words(command)
+        .first()
+        .is_some_and(|(first, _)| FILE.moves.contains(first))
 }
 
 fn is_project(dir: &str, project: &Path) -> bool {
@@ -107,5 +114,7 @@ mod tests {
         ] {
             assert_eq!(strip(elsewhere).as_deref(), Some(elsewhere));
         }
+        assert!(moves("cd src") && moves("pushd /tmp"));
+        assert!(!moves("cdx") && !moves("git -C x log"));
     }
 }
