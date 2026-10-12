@@ -2,6 +2,7 @@ mod agent;
 mod api;
 mod app;
 mod auth;
+mod battery;
 mod cli;
 mod commands;
 mod effort;

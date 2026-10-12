@@ -231,8 +231,8 @@ interstitial passed off as the article. The API stays on reqwest.
       hidden checks.
 - [x] Runner: `tests/battery/` (`make battery`, `make battery-setup`), tested against the fake.
 - [ ] `make battery-setup`: every repo's suite passes untouched, every planted bug fails.
-- [ ] Analyzer: a hidden `crowbot battery report <dir>` over the session files and results:
-      calls per tool; bash by first word, first two words and flags; pipe filters; `python -c`,
+- [x] Analyzer: a hidden `crowbot battery report <dir> [--against <dir>]` over the session
+      files and results: calls per tool; bash by first word, first two words and flags; pipe filters; `python -c`,
       heredocs, awk and sed programs (the scripts-for-basics smell); refused and declined calls,
       retries and doom loops; the most common call sequences (n-grams); turns, tokens, cost and
       time per task; task success from the check; MANUAL and PLAN verdicts replayed on the asks.

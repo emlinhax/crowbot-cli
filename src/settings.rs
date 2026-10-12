@@ -171,8 +171,7 @@ fn merge(base: &mut toml::Table, layer: toml::Table) {
     }
 }
 
-/// The built-in rules alone, for tests that need a realistic rule stack.
-#[cfg(test)]
+/// The built-in rules alone: a realistic stack for tests, and what a battery run had.
 pub fn default_rules() -> Vec<Rule> {
     toml::from_str::<Settings>(DEFAULTS).unwrap().permission
 }

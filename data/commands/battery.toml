@@ -1,0 +1,165 @@
+name = "battery"
+summary = "Report on a tool-use battery's runs (bench/runs/<stamp>): what the model called and what to make easier"
+usage = "battery report <dir> [--against <dir>]"
+hidden = true
+scope = ["cli"]
+
+# Rows each table shows, and candidate changes the report ranks.
+top = 12
+candidates = 20
+
+# Programs whose second word is a subcommand, so `cargo test` and `cargo build` count apart.
+subcommands = ["cargo", "git", "go", "npm", "npx", "pnpm", "yarn", "pip", "uv", "rustup", "docker", "make", "corepack"]
+
+# Modes the recorded asks are replayed under: what they would have asked about or refused.
+replay = ["manual"]
+
+# Permissions a mode asks about by design (changing files, leaving the project): their counts are
+# reported, but never proposed for an allowlist.
+never_propose = ["edit", "bash_write", "external_directory"]
+
+# Shell commands that do what a tool does. A command matches when it starts with `words`, or when
+# its call contains `contains`; the first match wins, and pipe filters never match.
+[[smell]]
+label = "sed -n"
+words = ["sed", "-n"]
+instead = "read with offset and limit"
+
+[[smell]]
+label = "sed -i"
+words = ["sed", "-i"]
+instead = "edit"
+
+[[smell]]
+label = "cat"
+words = ["cat"]
+instead = "read"
+
+[[smell]]
+label = "head"
+words = ["head"]
+instead = "read with a limit"
+
+[[smell]]
+label = "tail"
+words = ["tail"]
+instead = "read with an offset"
+
+[[smell]]
+label = "ls"
+words = ["ls"]
+instead = "read on a directory"
+
+[[smell]]
+label = "tree"
+words = ["tree"]
+instead = "read on a directory with a depth"
+
+[[smell]]
+label = "find"
+words = ["find"]
+instead = "glob"
+
+[[smell]]
+label = "grep"
+words = ["grep"]
+instead = "the grep tool"
+
+[[smell]]
+label = "rg"
+words = ["rg"]
+instead = "the grep tool"
+
+[[smell]]
+label = "wc -l"
+words = ["wc", "-l"]
+instead = "grep with a count"
+
+[[smell]]
+label = "python -c"
+words = ["python", "-c"]
+instead = "a tool, not a script for a basic step"
+
+[[smell]]
+label = "python3 -c"
+words = ["python3", "-c"]
+instead = "a tool, not a script for a basic step"
+
+[[smell]]
+label = "node -e"
+words = ["node", "-e"]
+instead = "a tool, not a script for a basic step"
+
+[[smell]]
+label = "awk"
+words = ["awk"]
+instead = "read, grep or edit"
+
+[[smell]]
+label = "perl"
+words = ["perl"]
+instead = "read, grep or edit"
+
+[[smell]]
+label = "heredoc"
+contains = "<<"
+instead = "write"
+
+[[smell]]
+label = "mv"
+words = ["mv"]
+instead = "fs"
+
+[[smell]]
+label = "cp"
+words = ["cp"]
+instead = "fs"
+
+[[smell]]
+label = "rm"
+words = ["rm"]
+instead = "fs"
+
+[[smell]]
+label = "mkdir"
+words = ["mkdir"]
+instead = "fs"
+
+# The report's words. `{…}` are filled in.
+[text]
+title = "# Battery {name}"
+summary = "{model} · {runs} runs of {tasks} tasks · {done} done · ${cost} · {tokens} tokens · crowbot {crowbot}"
+missing = "Runs that never started: {list}"
+tasks = "## Tasks"
+tasks_columns = ["task", "mode", "done", "turns", "calls", "cost", "time", "stopped"]
+tools = "## Tools"
+tools_columns = ["tool", "calls", "per run", "failed", "refused"]
+refusals = "## Refused before running"
+repeats = "## The same call again"
+repeats_columns = ["tool", "after it failed", "after it worked"]
+shell = "## Shell ({calls} bash calls, {complex} with substitutions or heredocs)"
+first = "### Commands"
+first_two = "### Commands with their subcommand"
+flags = "### Flags"
+filters = "### Pipe filters"
+smells = "### Commands that stand in for a tool"
+smells_columns = ["command", "instead", "count", "example"]
+sequences = "## Calls in a row"
+pairs = "### Pairs"
+triples = "### Triples"
+replay = "## Asked again under {mode}"
+replay_asks = "### Would ask"
+replay_denies = "### Would refuse"
+live = "## Refused in {mode} runs"
+count_columns = ["what", "count", "example"]
+candidates = "## Candidates"
+candidate_smell = "{n} × `{label}` in bash, where {instead} would do"
+candidate_ask = "{n} × {mode} would ask before {label}: a candidate for its default allowlist"
+candidate_live = "{n} × {mode} refused {label}: a candidate for that mode's allowlist"
+candidate_refusal = "{n} × {label}: the tool's description or schema may mislead"
+candidate_retry = "{n} × {label} called again unchanged after it failed"
+candidate_sequence = "{n} × {label} in a row: a candidate for one call"
+against = "## Against {name}"
+against_columns = ["per run", "this", "that", "change"]
+against_rows = ["done", "turns", "calls", "bash calls", "stand-ins", "cost (µ$)"]
+saved = "Saved to {path}"

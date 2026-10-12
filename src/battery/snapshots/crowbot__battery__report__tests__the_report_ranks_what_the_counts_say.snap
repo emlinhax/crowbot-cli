@@ -1,0 +1,141 @@
+---
+source: src/battery/report.rs
+expression: text
+---
+# Battery battery
+
+m · 2 runs of 2 tasks · 1/2 done · $0.0045 · 6300 tokens · crowbot 0123456
+
+Runs that never started: broken #1 (r is not set up)
+
+## Tasks
+
+| task | mode | done | turns | calls | cost | time | stopped |
+|---|---|---|---|---|---|---|---|
+| fix-it | auto | 1/1 | 4.0 | 5.0 | 0.0035 | 12s |  |
+| plan-it | plan | 0/1 | 2.0 | 2.0 | 0.0010 | 4s | turns×1 |
+
+## Tools
+
+| tool | calls | per run | failed | refused |
+|---|---|---|---|---|
+| bash | 4 | 2.0 | 1 | 1 |
+| edit | 1 | 0.5 | 0 | 0 |
+| grep | 1 | 0.5 | 0 | 0 |
+| nope | 1 | 0.5 | 0 | 1 |
+
+## Refused before running
+
+| what | count | example |
+|---|---|---|
+| denied · bash | 1 | `{"command": "python3 -m unittest -q"}` |
+| unknown_tool · nope | 1 | `{}` |
+
+## The same call again
+
+| tool | after it failed | after it worked |
+|---|---|---|
+| bash | 1 | 0 |
+
+## Shell (4 bash calls, 0 with substitutions or heredocs)
+
+### Commands
+
+| what | count | example |
+|---|---|---|
+| cargo | 2 | `cargo test 2>&1` |
+| python3 | 1 | `python3 -m unittest -q` |
+| sed | 1 | `sed -n '1,40p' src/lib.rs` |
+
+### Commands with their subcommand
+
+| what | count | example |
+|---|---|---|
+| cargo test | 2 | `cargo test 2>&1` |
+| python3 | 1 | `python3 -m unittest -q` |
+| sed | 1 | `sed -n '1,40p' src/lib.rs` |
+
+### Flags
+
+| what | count | example |
+|---|---|---|
+| python3 -m | 1 | `python3 -m unittest -q` |
+| python3 -q | 1 | `python3 -m unittest -q` |
+| sed -n | 1 | `sed -n '1,40p' src/lib.rs` |
+
+### Pipe filters
+
+| what | count | example |
+|---|---|---|
+| tail | 2 | `tail -5` |
+
+### Commands that stand in for a tool
+
+| command | instead | count | example |
+|---|---|---|---|
+| `sed -n` | read with offset and limit | 1 | `sed -n '1,40p' src/lib.rs` |
+
+## Calls in a row
+
+### Pairs
+
+| what | count | example |
+|---|---|---|
+| bash → bash | 1 | `fix-it` |
+| bash → edit | 1 | `fix-it` |
+| bash → grep | 1 | `fix-it` |
+| grep → bash | 1 | `fix-it` |
+| nope → bash | 1 | `plan-it` |
+
+### Triples
+
+| what | count | example |
+|---|---|---|
+| bash → bash → edit | 1 | `fix-it` |
+| bash → grep → bash | 1 | `fix-it` |
+| grep → bash → bash | 1 | `fix-it` |
+
+## Asked again under MANUAL
+
+### Would ask
+
+| what | count | example |
+|---|---|---|
+| bash `cargo test` | 2 | `cargo test 2>&1` |
+| bash `python3` | 1 | `python3 -m unittest -q` |
+| bash `sed` | 1 | `sed -n '1,40p' src/lib.rs` |
+| edit | 1 | `src/lib.rs` |
+
+### Would refuse
+
+—
+
+## Refused in PLAN runs
+
+| what | count | example |
+|---|---|---|
+| bash `python3` | 1 | `python3 -m unittest -q` |
+
+## Candidates
+
+1. 2 × MANUAL would ask before bash `cargo test`: a candidate for its default allowlist
+2. 1 × MANUAL would ask before bash `python3`: a candidate for its default allowlist
+3. 1 × MANUAL would ask before bash `sed`: a candidate for its default allowlist
+4. 1 × PLAN refused bash `python3`: a candidate for that mode's allowlist
+5. 1 × `sed -n` in bash, where read with offset and limit would do
+6. 1 × bash called again unchanged after it failed
+7. 1 × bash → bash → edit in a row: a candidate for one call
+8. 1 × bash → grep → bash in a row: a candidate for one call
+9. 1 × grep → bash → bash in a row: a candidate for one call
+10. 1 × unknown_tool · nope: the tool's description or schema may mislead
+
+## Against battery
+
+| per run | this | that | change |
+|---|---|---|---|
+| done | 0.5 | 0.5 | +0.0 |
+| turns | 3.0 | 3.0 | +0.0 |
+| calls | 3.5 | 3.5 | +0.0 |
+| bash calls | 2.0 | 2.0 | +0.0 |
+| stand-ins | 0.5 | 0.5 | +0.0 |
+| cost (µ$) | 2250.0 | 2250.0 | +0.0 |

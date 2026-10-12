@@ -157,7 +157,8 @@ lines instead of sending.
 | `src/permission/` | Rules (last match wins), the gate that layers them with the mode, shell splitting. |
 | `src/tui/` | The session: `app.rs` loop, `layout.rs` + `screen.rs` (frame, row diff), `feed.rs` transcript blocks, `view.rs` scrolling, `status.rs` working line, editor, `frame.rs` rules, `boxed.rs` cards, `choice.rs` prompts, `palette.rs` popup, `picker.rs` models, `login.rs`. |
 | `src/text/` | Styled lines, theme, markdown, tables, highlighting, diffs; shared by the TUI and the CLI. |
-| `src/session/` | Append-only JSONL session files under `~/.crowbot/sessions/<project>/`. |
+| `src/session/` | Append-only JSONL session files under `~/.crowbot/sessions/<project>/`, and their reader. |
+| `src/battery/` | The hidden `crowbot battery report <dir> [--against <dir>]`: a battery's runs counted by tool, shell command, stand-in, sequence and replayed gate verdict, then candidate changes ranked by count. Its smells and words are in `data/commands/battery.toml`. |
 | `src/frontend/` | Headless `-p` / `--json` output. |
 | `src/commands/` | One file per command, registered in `commands/mod.rs`. |
 | `src/{app,cli,settings,paths,limits,mode}.rs` | Startup, routing, layered settings, locations, limits, modes. |

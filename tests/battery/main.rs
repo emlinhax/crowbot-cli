@@ -14,7 +14,10 @@ mod fake_crowbot;
 mod project;
 mod record;
 mod run;
+// The results line, shared with the analyzer so writer and reader cannot drift.
 mod setup;
+#[path = "../../src/battery/record.rs"]
+mod shape;
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -138,6 +141,25 @@ async fn a_run_is_checked_and_recorded() {
     ] {
         assert!(!read(name).contains(fake_crowbot::ENV_KEY), "{name}");
     }
+
+    // The analyzer reads the record back: the runner and `crowbot battery report` agree.
+    let home = tempfile::tempdir().unwrap();
+    let report = std::process::Command::new(env!("CARGO_BIN_EXE_crowbot"))
+        .args(["battery", "report"])
+        .arg(out.path())
+        .env("CROWBOT_HOME", home.path())
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&report.stdout);
+    assert!(
+        report.status.success(),
+        "{}",
+        String::from_utf8_lossy(&report.stderr)
+    );
+    assert!(text.contains("| calc-fix | auto | 1/1 | 4.0 |"), "{text}");
+    assert!(text.contains("| edit | 1 |"), "{text}");
+    assert!(out.path().join("report.md").is_file());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -152,7 +174,7 @@ async fn a_run_past_its_turn_limit_is_stopped() {
     };
     let record = battery.run(&repo("calc"), &task, 1).await;
     assert_eq!(record.error, None);
-    assert_eq!(record.stopped_by, Some("turns"));
+    assert_eq!(record.stopped_by.as_deref(), Some("turns"));
     assert!(!record.check);
 }
 

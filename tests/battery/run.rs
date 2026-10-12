@@ -171,7 +171,7 @@ fn session_file(home: &Path) -> Option<PathBuf> {
 #[derive(Default)]
 struct Watched {
     exit: Option<i32>,
-    stopped_by: Option<&'static str>,
+    stopped_by: Option<String>,
     /// The last reply ended the run on its own, so a limit reached with it stops nothing.
     finished: bool,
     turns: u32,
@@ -225,7 +225,7 @@ async fn watch(
             _ = tick.tick() => {}
         }
         if w.stopped_by.is_none() {
-            w.stopped_by = limit_reached(&w, battery, task, started.elapsed());
+            w.stopped_by = limit_reached(&w, battery, task, started.elapsed()).map(str::to_owned);
             if w.stopped_by.is_some() {
                 interrupt(&mut child);
                 kill_at = Some(Instant::now() + settings.stop_grace_secs.secs());

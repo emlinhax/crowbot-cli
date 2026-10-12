@@ -9,9 +9,7 @@ use crate::agent::message::Message;
 /// Bump only for a change old files can't load under; additions don't bump it.
 pub const FORMAT_VERSION: u32 = 1;
 
-// CEILING: an older build fails on a new type, role, part or finish. Upgrade: the reader (M5)
-// skips lines it can't parse.
-// Written once and dropped; boxing the big variant would only add noise.
+// Built once per line, written or read; boxing the big variant would only add noise.
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
