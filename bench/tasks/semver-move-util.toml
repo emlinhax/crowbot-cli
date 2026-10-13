@@ -1,0 +1,5 @@
+prompt = "Move the shared test helpers in tests/util/ to tests/common/ and update every test that uses them."
+repo = "semver"
+mode = "auto"
+turns = 40
+check = "test -f tests/common/mod.rs && ! test -e tests/util && cargo test --quiet"

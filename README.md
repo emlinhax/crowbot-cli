@@ -155,7 +155,8 @@ as keystrokes; a key burst counts as a paste, so its Enters add lines.
 | `src/commands/` | One file per command (effect-only ones share `fixed.rs`), registered in `commands/mod.rs`. |
 | `src/frontend/` | What drives a run: `print` (headless) and `tui/` (the session), and the words and tool cards both share. |
 | `src/text/` | Styled lines, theme, markdown, tables, highlighting, diffs. |
-| `src/session/` | Append-only JSONL session files under `~/.crowbot/sessions/<project>/`. |
+| `src/session/` | Append-only JSONL session files under `~/.crowbot/sessions/<project>/`, and their reader. |
+| `src/battery/` | The hidden `crowbot battery report`: a battery's runs counted by tool, shell command, stand-in, sequence and replayed gate verdict, then candidate changes ranked by count. |
 | `src/config/` | Layered settings, locations, limits and the trusted-folder list. |
 | `src/release/` | Release identity, install and self-update. |
 | `src/*.rs` | Startup (`app`), routing (`cli`), the key (`auth`), data loading, efforts and modes. |
@@ -164,6 +165,8 @@ as keystrokes; a key burst counts as a paste, so its Enters add lines.
 | `tests/fixtures/` | What the fake serves (`sse/`, `api/`), sample `projects/`, `scenarios/*.toml`, frozen `session/` files. |
 | `tests/golden/` | Edit-matcher cases (`edit/`) and the `--json` stream (`json/`). |
 | `tests/smoke.rs` | The only tests that touch the real API (`make smoke`). |
+| `tests/battery/` | The tool-use battery's runner: each task headless in a fresh copy of its repo, then checked and recorded; its own tests drive it against the fake. |
+| `bench/` | The battery's corpus: pinned repos, tasks, planted bugs, hidden checks, and the baseline run to compare a re-run with. `cache/` and `runs/` are gitignored. |
 | `reference/` | Clones of opencode and pi plus crowbot's docs; local only, see AGENTS.md. |
 
 Settings layer, later wins: `data/defaults.toml`, `~/.crowbot/config.toml`,
@@ -186,9 +189,11 @@ TLS: rustls for crowbot's API, BoringSSL for the web.
 |---|---|
 | `make lint` | `cargo fmt --check`, `clippy -D warnings` (includes the io-wrapper rule) |
 | `make test` | unit, snapshot, renderer and data-integrity tests |
-| `make e2e` | binary vs fake crowbot, including PTY sessions |
+| `make e2e` | binary vs fake crowbot, including PTY sessions and the battery's runner |
 | `make golden` | rewrite failing goldens and snapshots |
 | `make smoke` | real API round trip, needs `CROWBOT_SMOKE_KEY` (costs a fraction of a cent) |
+| `make battery-setup` | clone the battery's repos into `bench/cache/`, install their dependencies, check every planted bug fails its check (runs the repos' code) |
+| `make battery` | every task against the real model into `bench/runs/<stamp>/`; needs `CROWBOT_SMOKE_KEY`, stops at `cap_micros`; `TASKS=a,b REPEATS=1` runs a pilot |
 | `make build` | static release binary |
 
 When to run each: AGENTS.md.

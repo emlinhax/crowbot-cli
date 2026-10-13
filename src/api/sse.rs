@@ -12,11 +12,12 @@ use crate::conversation::error::ErrorInfo;
 use crate::io;
 use crate::io::http::HttpError;
 
-/// Each event's data from `body`, until `[DONE]` or the end. Silence longer than `idle`, a failed
-/// read, and an event over `max_event_bytes` end the stream with an error.
+/// Each event's data from `body`, until `[DONE]` or the end. Silence longer than `idle`, no event
+/// for `stall`, a failed read, and an event over `max_event_bytes` end the stream with an error.
 pub fn events(
     body: BoxStream<'static, Result<Vec<u8>, HttpError>>,
     idle: Duration,
+    stall: Duration,
     max_event_bytes: usize,
 ) -> impl Stream<Item = Result<String, ErrorInfo>> {
     let state = State {
@@ -26,33 +27,49 @@ pub fn events(
         ended: false,
     };
     stream::unfold(state, move |mut st| async move {
-        loop {
-            if let Some(data) = st.ready.pop_front() {
-                return (data != "[DONE]").then_some((Ok(data), st));
-            }
-            if st.ended {
-                return None;
-            }
-            // Any bytes, keepalives included, restart the idle bound.
-            let failed = match io::clock::timeout(idle, st.body.next()).await {
-                Err(_) => Some(ErrorInfo::local(
-                    "idle_timeout",
-                    format!("no data for {}s", idle.as_secs()),
-                )),
-                Ok(Some(Err(e))) => Some(ApiError::from(e).info),
-                Ok(Some(Ok(bytes))) => st.parser.feed(&bytes).map(|e| st.ready.extend(e)).err(),
-                Ok(None) => {
-                    st.ended = true;
-                    st.ready.extend(st.parser.finish());
-                    None
-                }
-            };
-            if let Some(error) = failed {
+        // Keepalives restart the idle bound but not this one: crowbot can keep sending them after
+        // upstream has stopped.
+        match io::clock::timeout(stall, next(&mut st, idle)).await {
+            Ok(item) => item.map(|item| (item, st)),
+            Err(_) => {
                 st.ended = true;
-                return Some((Err(error), st));
+                let error = ErrorInfo::local(
+                    "idle_timeout",
+                    format!("no reply for {}s, only keepalives", stall.as_secs()),
+                );
+                Some((Err(error), st))
             }
         }
     })
+}
+
+async fn next(st: &mut State, idle: Duration) -> Option<Result<String, ErrorInfo>> {
+    loop {
+        if let Some(data) = st.ready.pop_front() {
+            return (data != "[DONE]").then_some(Ok(data));
+        }
+        if st.ended {
+            return None;
+        }
+        // Any bytes, keepalives included, restart the idle bound.
+        let failed = match io::clock::timeout(idle, st.body.next()).await {
+            Err(_) => Some(ErrorInfo::local(
+                "idle_timeout",
+                format!("no data for {}s", idle.as_secs()),
+            )),
+            Ok(Some(Err(e))) => Some(ApiError::from(e).info),
+            Ok(Some(Ok(bytes))) => st.parser.feed(&bytes).map(|e| st.ready.extend(e)).err(),
+            Ok(None) => {
+                st.ended = true;
+                st.ready.extend(st.parser.finish());
+                None
+            }
+        };
+        if let Some(error) = failed {
+            st.ended = true;
+            return Some(Err(error));
+        }
+    }
 }
 
 struct State {
@@ -227,18 +244,44 @@ mod tests {
 
     #[tokio::test]
     async fn events_end_at_done_or_with_the_reason_they_stopped() {
-        let idle = Duration::from_secs(5);
-        let got: Vec<_> = events(body(&["data: a\n\ndata: [DONE]\n\ndata: b\n\n"]), idle, 64)
-            .collect()
-            .await;
+        let (idle, stall) = (Duration::from_secs(5), Duration::from_secs(5));
+        let got: Vec<_> = events(
+            body(&["data: a\n\ndata: [DONE]\n\ndata: b\n\n"]),
+            idle,
+            stall,
+            64,
+        )
+        .collect()
+        .await;
         assert_eq!(got, [Ok("a".to_owned())]);
 
         let silent = body(&["data: a\n\n"]).chain(stream::pending()).boxed();
-        let got: Vec<_> = events(silent, Duration::from_millis(20), 64)
+        let got: Vec<_> = events(silent, Duration::from_millis(20), stall, 64)
             .collect()
             .await;
         assert_eq!(got[0], Ok("a".to_owned()));
         assert_eq!(got[1].as_ref().unwrap_err().kind, "idle_timeout");
+        assert_eq!(got.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn keepalives_alone_stall_the_stream() {
+        let keepalives = stream::unfold((), |()| async {
+            io::clock::sleep(Duration::from_millis(5)).await;
+            Some((Ok(b": keepalive\n\n".to_vec()), ()))
+        });
+        let body = body(&["data: a\n\n"]).chain(keepalives).boxed();
+        let got: Vec<_> = events(body, Duration::from_secs(5), Duration::from_millis(60), 64)
+            .collect()
+            .await;
+        assert_eq!(got[0], Ok("a".to_owned()));
+        let error = got[1].as_ref().unwrap_err();
+        assert_eq!(error.kind, "idle_timeout");
+        assert!(
+            error.message.contains("only keepalives"),
+            "{}",
+            error.message
+        );
         assert_eq!(got.len(), 2);
     }
 }

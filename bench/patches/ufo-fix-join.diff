@@ -1,0 +1,13 @@
+diff --git a/src/utils.ts b/src/utils.ts
+index ea98aba..c03453f 100644
+--- a/src/utils.ts
++++ b/src/utils.ts
+@@ -433,7 +433,7 @@ export function joinURL(base: string, ...input: string[]): string {
+     if (url) {
+       // TODO: Handle .. when joining
+       const _segment = segment.replace(JOIN_LEADING_SLASH_RE, "");
+-      url = withTrailingSlash(url) + _segment;
++      url = url + "/" + _segment;
+     } else {
+       url = segment;
+     }

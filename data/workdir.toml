@@ -1,0 +1,15 @@
+# Where a command line runs. Commands start in the project, so one that names the project as its
+# directory runs where it would anyway, and the gate reads it without that part: `cd <project>`
+# alone is nothing to ask about, and `git -C <project> log` asks as `git log`. `{dir}` is the
+# project as the model's environment names it, or `.`; `keep` is how many leading words stay.
+
+# Commands that move the rest of the line elsewhere: past one, a file a command names is no longer
+# the project's file of that name, so a shell reader asks as a command again.
+moves = ["cd", "pushd", "popd"]
+[[strip]]
+words = ["cd", "{dir}"]
+keep = 0
+
+[[strip]]
+words = ["git", "-C", "{dir}"]
+keep = 1

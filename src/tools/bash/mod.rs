@@ -14,7 +14,7 @@ use serde_json::json;
 use shell::Shell;
 use spill::{Sink, Spill};
 
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx, target};
 use crate::config::limits;
 use crate::data;
 use crate::io::proc::{self, Ended, ShellCommand};
@@ -66,11 +66,16 @@ impl Tool for Bash {
         &SPEC
     }
 
-    fn check(&self, args: &Self::Args, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         if args.command.trim().is_empty() {
             return Err(Refusal::InvalidArgs(TEXT.empty.clone()));
         }
-        let asks = permission::bash::asks(&args.command);
+        // A shell reader asks as the read tool does of each file it names.
+        let read = |file: &str| {
+            let target = target::resolve(&cx.app.paths, file).ok()?;
+            Some(target::asks(permission::catalog::READ.name, &target))
+        };
+        let asks = permission::bash::asks(&args.command, &cx.app.paths.project, &read);
         Ok(Check::new(asks).with_preview(format!("$ {}", args.command.trim())))
     }
 
@@ -96,6 +101,7 @@ impl Tool for Bash {
                     command: &args.command,
                     cwd: &cx.app.paths.project,
                     env: &self.shell.env,
+                    unset: &self.shell.unset,
                     timeout: Duration::from_secs(secs),
                     drain: limits.bash_drain_ms.ms(),
                 },
@@ -198,7 +204,51 @@ impl Bash {
 mod tests {
     use super::*;
     use crate::io;
+    use crate::permission::gate::Ask;
     use crate::tools::testing::Project;
+
+    fn asks(project: &Project, command: &str) -> Vec<Ask> {
+        project
+            .check(
+                &Bash::new(shell::resolve(None)),
+                &json!({ "command": command }),
+            )
+            .unwrap()
+            .asks
+    }
+
+    #[test]
+    fn naming_the_project_as_the_directory_asks_nothing_of_its_own() {
+        let project = Project::new();
+        let dir = project.app.paths.project.display().to_string();
+        let found = asks(
+            &project,
+            &format!("cd '{dir}' && git -C '{dir}' log -3 && cargo test"),
+        );
+        assert_eq!(found[0].patterns, ["git log -3", "cargo test"]);
+        assert!(asks(&project, &format!("cd '{dir}'")).is_empty());
+    }
+
+    #[test]
+    fn a_reader_asks_as_a_read_of_each_file_it_names() {
+        let project = Project::new();
+        assert_eq!(
+            asks(&project, "grep -n exactly_n more.py | head -5"),
+            [Ask::new("read", "more.py")]
+        );
+        assert_eq!(
+            asks(&project, "cat .env && cargo test"),
+            [Ask::new("read", ".env"), Ask::new("bash", "cargo test")]
+        );
+        let outside = asks(&project, "cat /etc/hosts");
+        assert_eq!(outside[0].permission, "read");
+        assert_eq!(outside[1].permission, "external_directory");
+        assert_eq!(
+            asks(&project, "cd src && cat a.rs")[0].patterns,
+            ["cd src", "cat a.rs"],
+            "past a cd, a.rs is not the project's"
+        );
+    }
 
     #[cfg(unix)]
     #[tokio::test]

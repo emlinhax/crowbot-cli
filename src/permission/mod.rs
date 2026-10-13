@@ -3,4 +3,5 @@
 pub mod bash;
 pub mod catalog;
 pub mod gate;
+pub mod lists;
 pub mod rule;

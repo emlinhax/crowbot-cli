@@ -1,0 +1,34 @@
+# Repositories the tasks run in. An outside repo is cloned once into the cache at its pinned
+# commit and set up there; each run starts from a fresh one-commit copy of its files, so its
+# history cannot give a planted bug away. In commands, `{cache}` is that repo's cache directory.
+
+[[repo]]
+id = "semver"
+url = "https://github.com/dtolnay/semver"
+commit = "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe"
+setup = "cargo fetch"
+# Shared, so a run builds only semver itself and not criterion's tree again.
+env = { CARGO_TARGET_DIR = "{cache}.target" }
+test = "cargo test --quiet"
+
+[[repo]]
+id = "more-itertools"
+url = "https://github.com/more-itertools/more-itertools"
+commit = "b21ec4ee8e139ebe297e2221980a694bebb69523"
+test = "python3 -m unittest -q"
+
+[[repo]]
+id = "ufo"
+url = "https://github.com/unjs/ufo"
+commit = "f06c800d0c59f2a4a1b9ba65eb6cb61a84419be6"
+setup = "corepack pnpm install --frozen-lockfile"
+# Corepack would stop to ask before fetching pnpm, and nobody is there to answer.
+env = { COREPACK_ENABLE_DOWNLOAD_PROMPT = "0" }
+# The installed dependencies, never the project itself: tests must import the run's own copy.
+prepare = "ln -s {cache}/node_modules node_modules"
+test = "npx vitest run"
+
+[[repo]]
+id = "calc"
+fixture = "tests/fixtures/projects/calc"
+test = "true"

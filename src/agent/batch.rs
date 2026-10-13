@@ -26,20 +26,40 @@ pub struct Batch {
     pub stop: bool,
 }
 
+/// A call that may run, and what it was cleared for.
+struct Cleared {
+    tool: Arc<dyn AnyTool>,
+    args: Value,
+    asks: Vec<Ask>,
+}
+
 /// Why a call does not run: what the model is told, and whether the run stops there.
 struct Refused {
     why: String,
+    /// Recorded with the result; see `ToolResult::refused`.
+    kind: &'static str,
+    /// What it needed permission for, when it got as far as asking.
+    asks: Vec<Ask>,
     stop: bool,
 }
 
-impl From<String> for Refused {
-    fn from(why: String) -> Self {
-        Self { why, stop: false }
+impl Refused {
+    fn new(kind: &'static str, why: String) -> Self {
+        Self {
+            why,
+            kind,
+            asks: Vec::new(),
+            stop: false,
+        }
+    }
+
+    fn asked(self, asks: Vec<Ask>) -> Self {
+        Self { asks, ..self }
     }
 }
 
 /// A call cleared to run, or why it does not.
-type Slot = Result<(Arc<dyn AnyTool>, Value), Refused>;
+type Slot = Result<Cleared, Refused>;
 
 /// Each mode's locks, filled once a batch for the mode in force at each call.
 type Locks = HashMap<&'static str, Vec<Rule>>;
@@ -50,7 +70,7 @@ pub(super) async fn run<'a>(run: &'a Run<'a>, history: &[Message], calls: &'a [T
     let mut stop = false;
     for (i, call) in calls.iter().enumerate() {
         let slot = if stop {
-            Err(Refused::from(model_text::get().rejected.clone()))
+            Err(Refused::new("rejected", model_text::get().rejected.clone()))
         } else {
             let looping = doom_loop::looping(history, calls, i);
             clear(run, &mut locks, looping, call).await
@@ -66,11 +86,17 @@ pub(super) async fn run<'a>(run: &'a Run<'a>, history: &[Message], calls: &'a [T
     }
 }
 
-/// None of the calls run, each refused with `why`; they still get their start and end.
-pub(super) async fn refuse_all<'a>(run: &'a Run<'a>, calls: &'a [ToolCall], why: &str) -> Batch {
+/// None of the calls run, each refused with `why`, recorded as `kind`; they still get their start
+/// and end.
+pub(super) async fn refuse_all<'a>(
+    run: &'a Run<'a>,
+    calls: &'a [ToolCall],
+    kind: &'static str,
+    why: &str,
+) -> Batch {
     let slots = calls
         .iter()
-        .map(|_| Err(Refused::from(why.to_owned())))
+        .map(|_| Err(Refused::new(kind, why.to_owned())))
         .collect();
     Batch {
         results: settle(run, calls, slots).await,
@@ -87,17 +113,24 @@ async fn settle<'a>(run: &'a Run<'a>, calls: &'a [ToolCall], slots: Vec<Slot>) -
             name: call.name.clone(),
             arguments: call.arguments.clone(),
         });
-        let out = match slot {
-            Err(refused) => Output::error(refused.why),
-            Ok((tool, args)) => {
+        let done = match slot {
+            Err(refused) => ToolResult {
+                asks: refused.asks,
+                refused: Some(refused.kind.to_owned()),
+                ..result(call, Output::error(refused.why))
+            },
+            Ok(cleared) => {
                 let tcx = tool_cx(run, &call.id);
-                tokio::select! {
-                    out = tool.run(args, &tcx) => out,
+                let out = tokio::select! {
+                    out = cleared.tool.run(cleared.args, &tcx) => out,
                     () = run.cancel.cancelled() => Output::cancelled(),
+                };
+                ToolResult {
+                    asks: cleared.asks,
+                    ..result(call, out)
                 }
             }
         };
-        let done = result(call, out);
         (run.cx.emit)(AgentEvent::ToolEnd {
             result: done.clone(),
         });
@@ -119,33 +152,46 @@ async fn clear<'a>(
     let mode = shared.mode();
     let text = model_text::get();
     if run.cancel.is_cancelled() {
-        return Err(tools::text().cancelled.clone().into());
+        return Err(Refused::new("cancelled", tools::text().cancelled.clone()));
     }
     let tool = cx.tools.get(&call.name).ok_or_else(|| {
-        fill(
-            &text.unknown_tool,
-            &[("name", &call.name), ("available", &cx.tools.names())],
+        Refused::new(
+            "unknown_tool",
+            fill(
+                &text.unknown_tool,
+                &[("name", &call.name), ("available", &cx.tools.names())],
+            ),
         )
     })?;
-    let args: Value = serde_json::from_str(&call.arguments)
-        .map_err(|e| fill(&text.bad_json, &[("error", &e.to_string())]))?;
+    let args: Value = serde_json::from_str(&call.arguments).map_err(|e| {
+        Refused::new(
+            "bad_json",
+            fill(&text.bad_json, &[("error", &e.to_string())]),
+        )
+    })?;
 
     let mut asks = Vec::new();
     if let Some(count) = looping {
         match mode.doom_loop {
             DoomLoop::TellModel => {
-                return Err(fill(&text.doom_loop, &[("count", &count.to_string())]).into());
+                return Err(Refused::new(
+                    "doom_loop",
+                    fill(&text.doom_loop, &[("count", &count.to_string())]),
+                ));
             }
             DoomLoop::Ask => asks.push(Ask::new(catalog::DOOM_LOOP.name, call.name.clone())),
         }
     }
     let tcx = tool_cx(run, &call.id);
     let check = tool.check(&args, &tcx).map_err(|refusal| match refusal {
-        Refusal::InvalidArgs(error) => fill(
-            &text.invalid_arguments,
-            &[("name", &call.name), ("error", &error)],
+        Refusal::InvalidArgs(error) => Refused::new(
+            "invalid_arguments",
+            fill(
+                &text.invalid_arguments,
+                &[("name", &call.name), ("error", &error)],
+            ),
         ),
-        Refusal::Refused(why) => why,
+        Refusal::Refused(why) => Refused::new("check", why),
     })?;
     asks.extend(check.asks);
 
@@ -157,9 +203,16 @@ async fn clear<'a>(
         Decision::Allow if check.confirm => Decision::Ask,
         decision => decision,
     };
+    let cleared = |asks| Cleared {
+        tool: tool.clone(),
+        args,
+        asks,
+    };
     match decision {
-        Decision::Allow => Ok((tool.clone(), args)),
-        Decision::Deny(what) => Err(fill(&text.denied, &[("what", &what)]).into()),
+        Decision::Allow => Ok(cleared(asks)),
+        Decision::Deny(what) => {
+            Err(Refused::new("denied", fill(&text.denied, &[("what", &what)])).asked(asks))
+        }
         Decision::Ask => {
             let prompt = Prompt::Permission {
                 tool: call.name.clone(),
@@ -167,28 +220,31 @@ async fn clear<'a>(
                 preview: check.preview,
                 confirm: check.confirm,
             };
-            match tcx.ask(prompt).await {
-                Some(Reply::Yes) => Ok((tool.clone(), args)),
-                Some(Reply::No { feedback: Some(f) } | Reply::Text(f)) => {
-                    Err(fill(&text.rejected_with_feedback, &[("feedback", &f)]).into())
-                }
+            let refused = match tcx.ask(prompt).await {
+                Some(Reply::Yes) => return Ok(cleared(asks)),
+                Some(Reply::No { feedback: Some(f) } | Reply::Text(f)) => Refused::new(
+                    "rejected_with_feedback",
+                    fill(&text.rejected_with_feedback, &[("feedback", &f)]),
+                ),
                 Some(Reply::No { feedback: None } | Reply::Choice(_) | Reply::Answers(_)) => {
-                    Err(Refused {
-                        why: text.rejected.clone(),
+                    Refused {
                         stop: true,
-                    })
+                        ..Refused::new("rejected", text.rejected.clone())
+                    }
                 }
                 Some(Reply::Unavailable) => {
-                    let why = if check.confirm {
-                        &text.unconfirmed
+                    let (kind, why) = if check.confirm {
+                        ("unconfirmed", &text.unconfirmed)
                     } else {
-                        &text.non_interactive
+                        ("non_interactive", &text.non_interactive)
                     };
                     let mode = &mode::unattended().id;
-                    Err(fill(why, &[("what", &gate::describe(&asks)), ("mode", mode)]).into())
+                    let what = gate::describe(&asks);
+                    Refused::new(kind, fill(why, &[("what", &what), ("mode", mode)]))
                 }
-                None => Err(tools::text().cancelled.clone().into()),
-            }
+                None => Refused::new("cancelled", tools::text().cancelled.clone()),
+            };
+            Err(refused.asked(asks))
         }
     }
 }
@@ -211,5 +267,7 @@ fn result(call: &ToolCall, out: Output) -> ToolResult {
         content: out.content,
         is_error: out.is_error,
         details: out.details,
+        asks: Vec::new(),
+        refused: None,
     }
 }

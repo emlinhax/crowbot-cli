@@ -1,0 +1,6 @@
+prompt = "`rstrip` repeats items when the predicate matches somewhere in the middle of the input. Fix it."
+repo = "more-itertools"
+mode = "auto"
+turns = 40
+check = "python3 -m unittest -q tests.test_more"
+patch = "mi-fix-rstrip.diff"

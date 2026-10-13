@@ -1,0 +1,5 @@
+prompt = "more_itertools/more.py is over 5,000 lines. Plan how to split it into smaller modules without breaking `from more_itertools import ...` for users."
+repo = "more-itertools"
+mode = "plan"
+turns = 30
+check = "grep -q __init__ {plan}"

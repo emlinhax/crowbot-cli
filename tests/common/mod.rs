@@ -3,7 +3,7 @@
 // Compiled into each test crate, which uses only its share.
 #![allow(dead_code)]
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Output;
 use std::time::Duration;
 
@@ -139,4 +139,11 @@ impl Run {
         assert!(stderr.contains(text), "stderr lacks {text:?}:\n{stderr}");
         self
     }
+}
+
+/// A file or folder under tests/.
+pub fn tests_path(rel: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join(rel)
 }

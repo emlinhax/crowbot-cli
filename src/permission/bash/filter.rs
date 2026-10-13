@@ -1,5 +1,6 @@
 //! Pipe filters: a command that, as written, reads only its standard input and writes only its
-//! output (`tail -30`, `grep -c ok`). Which commands and flags qualify is data/filters.toml.
+//! output (`tail -30`, `grep -c ok`), or else only the files it names (`grep -n ok src/a.rs`).
+//! Which commands and flags qualify is data/filters.toml.
 
 use std::sync::LazyLock;
 
@@ -23,32 +24,43 @@ struct Filter {
     positional: usize,
     #[serde(default)]
     replaces_positional: Vec<String>,
+    /// Plain words past the positional ones are files it only reads.
+    #[serde(default)]
+    files: bool,
 }
 
 /// Whether `command` (one command of a split line) reads nothing but what is piped into it.
 pub fn reads_only_input(command: &str) -> bool {
-    let Some(words) = words(command) else {
-        return false;
-    };
-    let Some((name, args)) = words.split_first() else {
-        return false;
-    };
-    FILTERS
-        .iter()
-        .find(|f| &f.name == name)
-        .is_some_and(|f| f.accepts(args))
+    parse(command).is_some_and(|(_, plain, allowed)| plain.len() <= allowed)
+}
+
+/// The files `command` names when, as written, it reads only those and writes only its output.
+pub fn reads_files(command: &str) -> Option<Vec<String>> {
+    let (filter, mut plain, allowed) = parse(command)?;
+    (filter.files && plain.len() > allowed).then(|| plain.split_off(allowed))
+}
+
+/// The filter, its plain words, and how many of those are arguments rather than files.
+fn parse(command: &str) -> Option<(&'static Filter, Vec<String>, usize)> {
+    let words = words(command)?;
+    let (name, args) = words.split_first()?;
+    let filter = FILTERS.iter().find(|f| &f.name == name)?;
+    let (plain, allowed) = filter.operands(args)?;
+    Some((filter, plain, allowed))
 }
 
 impl Filter {
-    fn accepts(&self, args: &[String]) -> bool {
+    fn operands(&self, args: &[String]) -> Option<(Vec<String>, usize)> {
         let has = |list: &[String], flag: &str| list.iter().any(|f| f == flag);
-        let mut plain = 0;
+        let mut plain = Vec::new();
         let mut replaced = false;
         let mut only_plain = false;
         let mut args = args.iter();
         while let Some(arg) = args.next() {
             if only_plain || arg == "-" || !arg.starts_with('-') {
-                plain += usize::from(arg != "-");
+                if arg != "-" {
+                    plain.push(arg.clone());
+                }
                 continue;
             }
             if arg == "--" {
@@ -60,10 +72,10 @@ impl Filter {
                 if has(&self.valued, &name) {
                     replaced |= has(&self.replaces_positional, &name);
                     if !long.contains('=') && args.next().is_none() {
-                        return false;
+                        return None;
                     }
                 } else if !has(&self.flags, &name) {
-                    return false;
+                    return None;
                 }
                 continue;
             }
@@ -77,12 +89,12 @@ impl Filter {
                     replaced |= has(&self.replaces_positional, &flag);
                     // The value is the rest of the word, or else the next one.
                     if i + c.len_utf8() == bundle.len() && args.next().is_none() {
-                        return false;
+                        return None;
                     }
                     break;
                 }
                 if !has(&self.flags, &flag) {
-                    return false;
+                    return None;
                 }
             }
         }
@@ -91,7 +103,7 @@ impl Filter {
         } else {
             self.positional
         };
-        plain <= allowed
+        Some((plain, allowed))
     }
 }
 
@@ -167,6 +179,36 @@ mod tests {
             "jq -r '.name'",
         ] {
             assert!(reads_only_input(command), "{command}");
+        }
+    }
+
+    #[test]
+    fn a_reader_names_only_the_files_it_reads() {
+        let files = |command: &str| reads_files(command);
+        assert_eq!(files("grep -n foo src/a.py"), Some(vec!["src/a.py".into()]));
+        assert_eq!(files("grep -e foo a b"), Some(vec!["a".into(), "b".into()]));
+        assert_eq!(files("head -30 more.pyi"), Some(vec!["more.pyi".into()]));
+        assert_eq!(files("cat -n 'my file'"), Some(vec!["my file".into()]));
+        assert_eq!(
+            files("jq .name package.json"),
+            Some(vec!["package.json".into()])
+        );
+        for not_a_reader in [
+            "grep foo",
+            "tail -5",
+            "grep -r foo .",
+            "grep -f patterns.txt x",
+            "tail -f log.txt",
+            "uniq a b",
+            "tr a b",
+            "sort -o out.txt in.txt",
+            "cat *.py",
+            "cat $FILE",
+            "cat a > b",
+            "sed -n 1p a",
+            "awk 'NR>100' a",
+        ] {
+            assert_eq!(files(not_a_reader), None, "{not_a_reader}");
         }
     }
 

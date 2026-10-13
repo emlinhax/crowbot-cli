@@ -33,7 +33,8 @@ The rest: `README.md` for the layout, the commands and the checks; `NEXT_PLAN.md
 ## Project notes
 
 - e2e here means the real `crowbot` binary driven against an in-process fake crowbot server
-  (`tests/e2e/`), never the live API. `make smoke` is the only thing that spends real money.
+  (`tests/e2e/`), never the live API. `make smoke` and `make battery` are the only things that
+  spend real money.
 - Only `src/io/` touches the network, filesystem, processes, terminal or clock; `clippy.toml` bans
   the raw calls elsewhere.
 - `reference/` (gitignored: local only, absent from a fresh clone) holds the opencode and pi clones

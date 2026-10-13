@@ -112,6 +112,7 @@ async fn attempt_once(
     let events = sse::events(
         resp.body,
         limits.idle_timeout_secs.secs(),
+        limits.stall_timeout_secs.secs(),
         limits.max_event_bytes.value,
     );
     let mut events = std::pin::pin!(events);

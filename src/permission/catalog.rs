@@ -48,7 +48,6 @@ permissions! {
     FORUM = "forum", Other;
     /// Posting to a forum; the user confirms every post, whatever the rules allow.
     FORUM_POST = "forum_post", Other;
-    CODESEARCH = "codesearch", Other;
     TODO = "todo", Other;
     QUESTION = "question", Other;
     PLAN_EXIT = "plan_exit", Other;

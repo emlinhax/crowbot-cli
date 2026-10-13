@@ -6,6 +6,7 @@ use serde::{Deserialize, Deserializer};
 
 use crate::data;
 use crate::permission::gate::{Policy, Verdicts};
+use crate::permission::lists;
 use crate::permission::rule::{Action, Rule};
 use crate::text::choices;
 use crate::text::template;
@@ -49,9 +50,9 @@ pub struct Mode {
     pub lock: Vec<Rule>,
 }
 
-/// A lock as written: `pattern`, `patterns`, or `commands` (each matches alone or with arguments:
-/// `git log`, `git log -5`, not `git logx`). Expanded in file order, so the last match wins as
-/// written.
+/// A lock as written: one pattern, a list of them, commands that each match alone or followed by
+/// arguments (`git log` and `git log -5`, never `git logx`), or a named list of those
+/// (data/command_lists.toml). Expanded in file order, so the last match still wins as it reads.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Lock {
@@ -63,24 +64,29 @@ struct Lock {
     patterns: Vec<String>,
     #[serde(default)]
     commands: Vec<String>,
+    #[serde(default)]
+    list: Option<String>,
 }
 
 fn locks<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<Rule>, D::Error> {
     let mut rules = Vec::new();
     for lock in Vec::<Lock>::deserialize(d)? {
-        let commands = lock
-            .commands
-            .iter()
-            .flat_map(|c| [c.clone(), format!("{c} *")]);
+        let listed = match &lock.list {
+            Some(name) => lists::patterns(name).ok_or_else(|| {
+                serde::de::Error::custom(format!("a {} lock names no list {name}", lock.permission))
+            })?,
+            None => Vec::new(),
+        };
         let patterns: Vec<String> = lock
             .pattern
             .into_iter()
             .chain(lock.patterns)
-            .chain(commands)
+            .chain(lists::commands(&lock.commands))
+            .chain(listed)
             .collect();
         if patterns.is_empty() {
             return Err(serde::de::Error::custom(format!(
-                "a {} lock needs a pattern, patterns or commands",
+                "a {} lock needs a pattern, patterns, commands or a list",
                 lock.permission
             )));
         }
@@ -233,6 +239,19 @@ mod tests {
             ("manual", Ask::new("search", "src"), Decision::Allow),
             ("manual", Ask::new("edit", "src/a.rs"), Decision::Ask),
             ("manual", Ask::new("bash", "cargo test"), Decision::Ask),
+            (
+                "manual",
+                Ask::new("bash", "git log --oneline -5"),
+                Decision::Allow,
+            ),
+            ("manual", Ask::new("bash", "ls src"), Decision::Allow),
+            ("manual", Ask::new("bash", "find . -delete"), Decision::Ask),
+            (
+                "manual",
+                Ask::new("bash", "git diff --output=x"),
+                Decision::Ask,
+            ),
+            ("manual", Ask::new("bash", "rm -rf target"), Decision::Ask),
             ("auto", Ask::new("edit", "src/a.rs"), Decision::Allow),
             ("auto", Ask::new("bash", "rm -rf target"), Decision::Allow),
             ("plan", Ask::new("read", "src/a.rs"), Decision::Allow),

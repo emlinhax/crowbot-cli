@@ -305,7 +305,7 @@ async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> 
             sse(stream(&reply, fill).expect("a templated reply"))
         }
         Some(Reply::Sse(name)) => {
-            let path = crate::tests_path("fixtures/sse").join(name);
+            let path = crate::common::tests_path("fixtures/sse").join(name);
             let text =
                 std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{}", path.display()));
             sse(fill(&text))

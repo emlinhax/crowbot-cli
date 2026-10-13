@@ -1,0 +1,5 @@
+prompt = "Explain how `ilen` counts the items of an iterable without a Python loop. Which itertools functions does it use?"
+repo = "more-itertools"
+mode = "auto"
+turns = 25
+check = "grep -q compress {reply}"

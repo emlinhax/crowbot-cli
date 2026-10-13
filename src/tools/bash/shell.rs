@@ -17,6 +17,7 @@ static CATALOG: LazyLock<Catalog> = data::load!("shells.toml");
 struct Catalog {
     shell: Vec<Entry>,
     fallback: Fallback,
+    unset: Vec<String>,
     env: std::collections::BTreeMap<String, String>,
 }
 
@@ -55,6 +56,8 @@ pub struct Shell {
     pub args: Vec<String>,
     pub note: String,
     pub env: Vec<(String, String)>,
+    /// Variables the command must not inherit.
+    pub unset: Vec<String>,
 }
 
 pub fn resolve(configured: Option<&str>) -> Shell {
@@ -65,6 +68,7 @@ pub fn resolve(configured: Option<&str>) -> Shell {
         .iter()
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
+    let unset = CATALOG.unset.clone();
     let entries: Vec<&Entry> = CATALOG.shell.iter().filter(|e| e.os == os).collect();
 
     if let Some(configured) = configured {
@@ -84,6 +88,7 @@ pub fn resolve(configured: Option<&str>) -> Shell {
             args: like.map_or_else(|| fallback.args.clone(), |e| e.args.clone()),
             note: template::fill(note, &[("shell", configured)]),
             env,
+            unset,
         };
     }
 
@@ -100,6 +105,7 @@ pub fn resolve(configured: Option<&str>) -> Shell {
                     args: entry.args.clone(),
                     note: entry.note.clone(),
                     env,
+                    unset,
                 };
             }
         }
@@ -110,6 +116,7 @@ pub fn resolve(configured: Option<&str>) -> Shell {
         args: Vec::new(),
         note: fallback.none.clone(),
         env,
+        unset,
     }
 }
 
@@ -130,6 +137,12 @@ mod tests {
         assert!(CATALOG.shell.iter().all(|e| !e.name.is_empty()));
         let shell = resolve(None);
         assert!(shell.program.is_some(), "{}", shell.note);
+    }
+
+    #[test]
+    fn commands_never_inherit_crowbots_key() {
+        assert!(CATALOG.unset.iter().any(|v| v == crate::auth::ENV_VAR));
+        assert_eq!(resolve(None).unset, CATALOG.unset);
     }
 
     #[test]

@@ -51,6 +51,9 @@ pub fn load(paths: &Paths) -> anyhow::Result<Option<Key>> {
     }
 }
 
+/// The variable a key in the environment comes from.
+pub const ENV_VAR: &str = "CROWBOT_API_KEY";
+
 /// Whether `CROWBOT_API_KEY` is set, and so used over any stored key.
 pub fn env_shadows() -> bool {
     from_env().is_some()
@@ -58,7 +61,7 @@ pub fn env_shadows() -> bool {
 
 /// `CROWBOT_API_KEY`, if set.
 fn from_env() -> Option<Key> {
-    io::env::var("CROWBOT_API_KEY").map(|secret| Key {
+    io::env::var(ENV_VAR).map(|secret| Key {
         secret: normalize(&secret),
         origin: Origin::Env,
     })

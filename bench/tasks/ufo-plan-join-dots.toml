@@ -1,0 +1,5 @@
+prompt = "`joinURL` has a TODO about handling `..` when joining. Plan how to make it resolve `..` segments."
+repo = "ufo"
+mode = "plan"
+turns = 30
+check = "grep -q utils.ts {plan}"

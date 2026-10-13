@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 
-pub use common::{Run, cleared, launch_env};
+pub use common::{Run, cleared, launch_env, tests_path};
 
 /// A throwaway `CROWBOT_HOME` and project directory for one test.
 pub struct Sandbox {
@@ -78,13 +78,6 @@ impl Sandbox {
         }
         found
     }
-}
-
-/// A file or folder under tests/.
-pub fn tests_path(rel: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join(rel)
 }
 
 /// Every file's text under `dir`, one after another, for what a run must not have written.

@@ -1,8 +1,9 @@
 # cffetch is the user's own crate, vendored unchanged so it can be re-synced from upstream. It is
 # excluded rather than a member: cargo then treats it as an outside crate, so crowbot's rustfmt,
 # clippy -D warnings and clippy.toml bans never touch it. Its own suite runs from its directory.
+# The battery's cloned repos are their own projects, never members.
 [workspace]
-exclude = ["crates/cffetch"]
+exclude = ["crates/cffetch", "bench/cache"]
 
 [package]
 name = "crowbot"
@@ -62,6 +63,10 @@ path = "tests/e2e/main.rs"
 [[test]]
 name = "smoke"
 path = "tests/smoke.rs"
+
+[[test]]
+name = "battery"
+path = "tests/battery/main.rs"
 
 [profile.release]
 lto = "fat"

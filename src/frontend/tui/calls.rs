@@ -151,6 +151,8 @@ mod tests {
             content: content.into(),
             is_error,
             details,
+            asks: Vec::new(),
+            refused: None,
         }
     }
 
