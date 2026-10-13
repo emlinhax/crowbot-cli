@@ -241,7 +241,8 @@ interstitial passed off as the article. The API stays on reqwest.
       machine that ran it, so its `report.md` and `results.jsonl` are kept in `bench/baseline/`
       and the new report is compared with that one by hand. On a fresh machine (Linux or macOS:
       the runner stops runs with SIGINT, and ufo's setup links with `ln -s`):
-      1. Rust from `rust-toolchain.toml` plus libclang, git, python3, and node with corepack.
+      1. Rust from `rust-toolchain.toml` plus libclang, git, python3, and node 18.12 or later with
+         corepack (ufo's pnpm refuses older).
       2. The key in `~/.config/crowbot-smoke.key` (mode 600), never in the repo.
       3. `make battery-setup` (about 2 min, free).
       4. `CROWBOT_SMOKE_KEY=$(cat ~/.config/crowbot-smoke.key) make battery` (about 80 min, ~$2).
