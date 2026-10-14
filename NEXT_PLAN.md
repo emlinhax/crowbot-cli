@@ -273,6 +273,11 @@ interstitial passed off as the article. The API stays on reqwest.
   unlikely to move these; the gate and the tools have to meet the model where it is.
 - Setup: the cached repos must be excluded from crowbot's Cargo workspace, and pnpm through
   corepack stops to ask unless `COREPACK_ENABLE_DOWNLOAD_PROMPT=0`.
+- semver's copies shared one `CARGO_TARGET_DIR`, and `git archive` stamps every file with the
+  commit's time, so cargo took another copy's later build as fresh: a second setup failed untouched
+  on the tilde bug's binary. Each copy now builds its own `target/`. In the baseline, a cargo check
+  or the model's own `cargo test` could have run a parallel run's binary, so its semver rows are
+  suspect, fix-caret's one failure most of all.
 
 **Candidates** (counts across the 90 runs; all five applied 2026-10-12, re-run still to come)
 - [x] codesearch timed out on 14 of 21 calls at 30 s, and the rest were upstream lookups: removed
