@@ -245,7 +245,8 @@ interstitial passed off as the article. The API stays on reqwest.
          corepack (ufo's pnpm refuses older).
       2. The key in `~/.config/crowbot-smoke.key` (mode 600), never in the repo.
       3. `make battery-setup` (about 2 min, free).
-      4. `CROWBOT_SMOKE_KEY=$(cat ~/.config/crowbot-smoke.key) make battery` (about 80 min, ~$2).
+      4. `CROWBOT_SMOKE_KEY=$(cat ~/.config/crowbot-smoke.key) make battery` (~$2; about 2.5 h at
+         `parallel = 2`, which must not exceed the requests the key's plan runs in flight).
       5. `cargo run -q -- battery report bench/runs/<stamp>`, then diff its `report.md` with
          `bench/baseline/report.md`.
 
@@ -278,6 +279,9 @@ interstitial passed off as the article. The API stays on reqwest.
   on the tilde bug's binary. Each copy now builds its own `target/`. In the baseline, a cargo check
   or the model's own `cargo test` could have run a parallel run's binary, so its semver rows are
   suspect, fix-caret's one failure most of all.
+- The first re-run (`20261014T090725`) is void: the smoke account's plan runs 2 requests in flight
+  and the battery ran 4, so 84 of 90 runs ended on a 429 after crowbot's four 2 s retries.
+  `parallel` is now 2.
 
 **Candidates** (counts across the 90 runs; all five applied 2026-10-12, re-run still to come)
 - [x] codesearch timed out on 14 of 21 calls at 30 s, and the rest were upstream lookups: removed
