@@ -320,7 +320,8 @@ mod tests {
         assert_eq!(read(&paths, "gone.txt").unwrap(), b"to be deleted");
         assert_eq!(read(&paths, "new.txt"), None);
         assert!(io::fs::exists(&paths.home.join("auth.json")));
-        let shadow_dir = paths.snapshots_dir(&paths.project);
+        // Keyed by the work tree as git names it, which a link or short name can differ from.
+        let shadow_dir = &shadow.git.as_ref().unwrap().dir;
         assert!(io::fs::exists(&shadow_dir.join("info/exclude")));
     }
 
