@@ -27,6 +27,7 @@ it off; development builds never update.
 ```sh
 crowbot                          # interactive session
 crowbot "fix the failing test"   # the same, with the prompt typed in for you to review
+crowbot --continue               # go on with this project's latest session (with -p too)
 crowbot login                    # pair this machine (or: login --key <account number>)
 crowbot logout                   # forget this machine's key
 crowbot signup                   # create an account: no email, no password, no recovery
@@ -92,7 +93,16 @@ every `tui.account_refresh_secs` mid-run; an idle session never asks. While crow
 time and tokens so far. Right-click copies a message whole (yours, a reply, a tool's output, the
 pairing code), with a "Copied" note at the top right; Shift+drag selects any text, since the mouse
 otherwise belongs to crowbot. The session file under `~/.crowbot/sessions/` keeps the whole
-conversation.
+conversation, branches taken back included; `--continue` and `/resume` go on with one, with the
+model, effort and mode it last used (a headless run keeps the mode it is given).
+
+In a git work tree, crowbot snapshots the files before a prompt's first change into a shadow git
+under `~/.crowbot/snapshots/` (the project's `.gitignore` applies; its own `.git` is never
+touched), so `/undo` and `/retry` put back what that prompt changed; a file edited since is left
+alone. Outside one, they take back the conversation only. When a request nears the model's window
+(`compaction.threshold_pct`), or crowbot refuses one as too long, earlier turns are summarised by
+the model and sent ahead of the last ones (`compaction.keep_tokens`), word for word; `/compact`
+does it by hand.
 
 | Key | Does |
 |---|---|
@@ -117,7 +127,10 @@ session, `/help` lists the commands:
 |---|---|
 | `/new` (or `/clear`) | a fresh conversation in a new session file; the last one stays saved |
 | `/models`, `/effort [level]`, `/mode [id]` | model, reasoning effort or permission mode for the rest of the session |
-| `/status` | account and balance, model, mode, context use, cost so far, session file |
+| `/resume` | go on with an earlier session in this project |
+| `/undo`, `/retry` | take back the last prompt and what followed it, files too; `/retry` then sends it again |
+| `/compact [focus]` | summarise earlier turns now, keeping `focus` in mind |
+| `/status` | account and balance, model, mode, context use, what `/undo` restores, cost so far, session file |
 | `/account` | balance and plan, the last `account.usage_days` of spend by model, balance fallback on or off, the account's keys (revoke any but this session's own) |
 | `/copy` | the last reply to the clipboard, as markdown |
 | `/init` | crowbot studies the project and writes its `AGENTS.md` |
@@ -161,7 +174,8 @@ as keystrokes; a key burst counts as a paste, so its Enters add lines.
 | `src/commands/` | One file per command (effect-only ones share `fixed.rs`), registered in `commands/mod.rs`. |
 | `src/frontend/` | What drives a run: `print` (headless) and `tui/` (the session), and the words and tool cards both share. |
 | `src/text/` | Styled lines, theme, markdown, tables, highlighting, diffs. |
-| `src/session/` | Append-only JSONL session files under `~/.crowbot/sessions/<project>/`, and their reader. |
+| `src/session/` | Append-only JSONL session files under `~/.crowbot/sessions/<project>/`: their entries, the tree reader that finds the current branch, the list `/resume` shows, undo. |
+| `src/snapshot/` | The shadow git `/undo` restores files from. |
 | `src/battery/` | The hidden `crowbot battery report`: a battery's runs counted by tool, shell command, stand-in, sequence and replayed gate verdict, then candidate changes ranked by count. |
 | `src/config/` | Layered settings, locations, limits and the trusted-folder list. |
 | `src/release/` | Release identity, install and self-update. |

@@ -241,8 +241,28 @@ only, and a running head decides the branch.
       sent as a reminder so the system prompt never changes
 - [x] 5.9 automatic compaction before any request past `compaction.threshold_pct`;
       `data/overflow.toml`; a refused request compacted and sent once more
-- [ ] 5.10 README and Learned
-- e2e (session format, file restore, requests): one local batch after 5.3, 5.7 and 5.9.
+- [x] 5.10 README and Learned
+- e2e (session format, file restore, requests): one local batch after 5.3 (54 passed), 5.7 (57)
+  and 5.9 (58); CI passed on the push after 5.7, Windows and macOS included.
+- [ ] Live: one real too-long request (or the gateway's own wording) to confirm
+      `data/overflow.toml`'s phrases; only crowbot's 413 is tested end to end
+- [ ] Manual on Windows: `/undo` in a real repository (CRLF, long paths, a file open elsewhere)
+
+**Learned**
+- A running head made branches free: a line without a known parent follows the head where it was
+  written, so every v1 file reads exactly as before and the format stayed v1. Three line types
+  (`rewind`, `snapshot`, `compaction`) and one optional field (`state`) were enough.
+- A summary is weighed only against replies made since it: the big reply just before a summary
+  would otherwise ask for another one at once.
+- The summary request keeps the session's system prompt and tools, so its prefix is the one the
+  vendor has cached; it is the conversation plus one instruction, not a new conversation.
+- git needs the shadow's folder to exist before `--git-dir` can init it, and a user's global
+  `core.hooksPath` would run their hooks on a restore; hooks point at the shadow's own empty
+  folder. Using the repository's top level as the work tree is what makes `.gitignore` apply.
+- The fake's errors say "fake {kind}", so overflow by wording is tested against the run harness,
+  and only the 413 crowbot answers itself goes end to end.
+- A pty test that leaves a prompt in the editor (undo puts it back) must clear it before Ctrl+D
+  can quit.
 ## M6 — Subagents + MCP
 ## M7 — Release (`prod` → GitHub Releases, installers)
 - Added 2026-10-02: every push to `prod` runs `ci.yml` through `release.yml` and publishes
