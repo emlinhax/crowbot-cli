@@ -28,6 +28,7 @@ pub struct Text {
     pub version: String,
     pub closed: String,
     pub said: String,
+    pub not_running: String,
 }
 
 /// What `initialize` asks with: the version crowbot speaks, no capabilities of its own.
@@ -45,11 +46,39 @@ pub struct Initialized {
     pub protocol_version: String,
 }
 
-/// One page of `tools/list`; each tool as the server describes it.
+/// One page of `tools/list`.
 #[derive(Deserialize)]
 pub struct ToolPage {
     #[serde(default)]
-    pub tools: Vec<Value>,
+    pub tools: Vec<ToolInfo>,
     #[serde(rename = "nextCursor", default)]
     pub next_cursor: Option<String>,
+}
+
+/// A tool as its server describes it.
+#[derive(Clone, Debug, Deserialize)]
+pub struct ToolInfo {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// A JSON Schema of its arguments.
+    #[serde(rename = "inputSchema", default)]
+    pub input_schema: Value,
+}
+
+/// What `tools/call` asks with.
+pub fn call(tool: &str, arguments: Value) -> Value {
+    json!({"name": tool, "arguments": arguments})
+}
+
+/// A tool's answer: its content, and whether the tool itself failed.
+#[derive(Debug, Deserialize)]
+pub struct CallResult {
+    #[serde(default)]
+    pub content: Vec<Value>,
+    /// The same answer as JSON, from a tool that declares an output schema.
+    #[serde(rename = "structuredContent", default)]
+    pub structured: Option<Value>,
+    #[serde(rename = "isError", default)]
+    pub is_error: bool,
 }

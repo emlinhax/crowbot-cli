@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::text::wildcard::wildcard;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
@@ -38,29 +40,6 @@ pub fn last_match<'a>(
         .map(|r| r.action)
 }
 
-/// `*` matches any run of characters (slashes included), `?` exactly one.
-fn wildcard(pattern: &str, text: &str) -> bool {
-    let (p, t): (Vec<char>, Vec<char>) = (pattern.chars().collect(), text.chars().collect());
-    let (mut pi, mut ti) = (0, 0);
-    let mut star: Option<(usize, usize)> = None;
-    while ti < t.len() {
-        if pi < p.len() && (p[pi] == '?' || p[pi] == t[ti]) {
-            pi += 1;
-            ti += 1;
-        } else if pi < p.len() && p[pi] == '*' {
-            star = Some((pi, ti));
-            pi += 1;
-        } else if let Some((sp, st)) = star {
-            pi = sp + 1;
-            ti = st + 1;
-            star = Some((sp, st + 1));
-        } else {
-            return false;
-        }
-    }
-    p[pi..].iter().all(|&c| c == '*')
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,17 +50,6 @@ mod tests {
             pattern: pattern.into(),
             action,
         }
-    }
-
-    #[test]
-    fn wildcards() {
-        assert!(wildcard("*", ""));
-        assert!(wildcard("git *", "git commit -m x"));
-        assert!(!wildcard("git *", "gitk"));
-        assert!(wildcard("src/*.rs", "src/a/b.rs"));
-        assert!(wildcard("?.env", "a.env"));
-        assert!(!wildcard("*.env", "a.env.example"));
-        assert!(wildcard("a*b*c", "aXbYc"));
     }
 
     #[test]

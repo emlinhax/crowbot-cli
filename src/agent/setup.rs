@@ -56,7 +56,7 @@ impl Setup {
     pub async fn load(app: &App, from: Option<Continue<'_>>) -> anyhow::Result<Self> {
         // CEILING: a slow server holds the first screen for up to `mcp.start_secs`. Upgrade:
         // start servers behind the welcome screen and hold only the first request for them.
-        let (catalog, shadow, mcp) = tokio::join!(
+        let (catalog, shadow, mut mcp) = tokio::join!(
             models::load(&app.api, &app.paths, false),
             Shadow::open(&app.paths),
             Servers::start(&app.settings, &app.paths),
@@ -71,11 +71,13 @@ impl Setup {
         let recorded = resumed.as_ref().and_then(|r| r.state.as_ref());
         let mode_too = from.as_ref().is_some_and(|f| f.mode);
         let going = going_on(app, &catalog, recorded, mode_too)?;
+        let mut tools = Registry::builtin(app.settings.shell.as_deref());
+        crate::tools::mcp::join(&mut mcp, &mut tools);
         Ok(Self {
             catalog,
             model: going.model,
             effort: going.effort,
-            tools: Registry::builtin(app.settings.shell.as_deref()),
+            tools,
             shared: Shared::new(going.mode),
             transcript,
             resumed,

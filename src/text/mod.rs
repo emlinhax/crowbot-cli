@@ -11,3 +11,4 @@ pub mod template;
 pub mod theme;
 pub mod truncate;
 pub mod units;
+pub mod wildcard;

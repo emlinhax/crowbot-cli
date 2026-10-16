@@ -88,3 +88,10 @@ action = "allow"
 permission = "task"
 pattern = "*"
 action = "allow"
+
+# An MCP tool asks as `mcp <server>__<tool>`, so `pattern = "github__*"` allows a server's tools.
+# Its `mcp_write` ask is for PLAN's lock and /undo, and is left to `mcp` here.
+[[permission]]
+permission = "mcp_write"
+pattern = "*"
+action = "allow"

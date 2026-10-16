@@ -75,7 +75,8 @@ pub enum AgentEvent {
         call_id: String,
         event: Box<AgentEvent>,
     },
-    /// An MCP server config.toml names is not running, and why; said once, at the start.
+    /// What is said once, at the start, of an MCP server config.toml names (it is not running,
+    /// a tool of its is left out): the server, and the whole sentence.
     Mcp {
         server: String,
         note: String,

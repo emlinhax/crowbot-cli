@@ -6,7 +6,9 @@ accepted = ["2024-11-05", "2025-03-26", "2025-06-18"]
 client = "crowbot"
 
 [text]
-# Why a server is not running; shown once when the session starts, and in /status.
+# Said once when the session starts, of a server that did not; {why} is one of those below.
+not_running = "MCP server {server} is not running: {why}."
+# Why a server is not running, as /status shows it too.
 not_found = "{command} was not found"
 no_start = "it did not start: {error}"
 timed_out = "it did not answer within {secs}s"

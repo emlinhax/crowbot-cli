@@ -55,6 +55,12 @@ permission = "bash_write"
 pattern = "*"
 action = "deny"
 
+# An MCP server's tool may change anything.
+[[lock]]
+permission = "mcp_write"
+pattern = "*"
+action = "deny"
+
 # Inspection (data/command_lists.toml). File readers (`cat`, `head`, `grep` on named files) are not
 # commands here: they ask as reads of their files (data/filters.toml), so the read rules, secrets
 # included, decide them as they decide the read tool.

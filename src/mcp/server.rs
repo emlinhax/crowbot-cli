@@ -1,9 +1,10 @@
 //! One MCP server: started as the program config.toml names, introduced (`initialize`), its tools
-//! listed, and stopped with the session.
+//! listed, called, and stopped with the session.
 
+use std::sync::Arc;
 use std::time::Duration;
 
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::auth;
 use crate::config::limits;
@@ -11,16 +12,25 @@ use crate::config::paths::Paths;
 use crate::io;
 use crate::io::proc::child::{self, Process, Service};
 use crate::mcp::config;
-use crate::mcp::protocol::{self, DATA, Initialized, ToolPage};
+use crate::mcp::protocol::{self, CallResult, DATA, Initialized, ToolInfo, ToolPage};
 use crate::mcp::rpc::{self, Rpc};
 use crate::text::template::fill;
+use crate::text::wildcard::wildcard;
 
 pub struct Server {
     pub name: String,
-    /// Its tools, as it described them.
-    pub tools: Vec<serde_json::Value>,
-    rpc: Rpc,
+    /// The tools it offers: those it listed that its `tools` setting lets through.
+    pub tools: Vec<ToolInfo>,
+    caller: Caller,
     process: Process,
+}
+
+/// The way to call a server's tools, which they all share.
+#[derive(Clone)]
+pub struct Caller {
+    rpc: Arc<Rpc>,
+    /// How long a call may take.
+    limit: Duration,
 }
 
 impl Server {
@@ -52,11 +62,17 @@ impl Server {
             let secs = limits.start_secs.value.to_string();
             Err(fill(&text.timed_out, &[("secs", &secs)]))
         });
+        let limit = cfg
+            .timeout_secs
+            .map_or(limits.call_secs.secs(), Duration::from_secs);
         match listed {
             Ok(tools) => Ok(Self {
                 name: name.to_owned(),
-                tools,
-                rpc,
+                tools: offered(tools, cfg.tools.as_deref()),
+                caller: Caller {
+                    rpc: Arc::new(rpc),
+                    limit,
+                },
                 process: running.process,
             }),
             Err(why) => {
@@ -67,11 +83,38 @@ impl Server {
         }
     }
 
+    pub fn caller(&self) -> Caller {
+        self.caller.clone()
+    }
+
     /// Closes its stdin, gives it `mcp.stop_ms` to finish, then ends it.
     pub async fn stop(self) {
-        drop(self.rpc);
         self.process.stop(limits::get().mcp.stop_ms.ms()).await;
     }
+}
+
+impl Caller {
+    /// Calls its tool `tool`, by the server's name for it; `Err` says why no answer came.
+    pub async fn call(&self, tool: &str, arguments: Value) -> Result<CallResult, String> {
+        let params = protocol::call(tool, arguments);
+        let answer = self
+            .rpc
+            .request("tools/call", params, self.limit)
+            .await
+            .map_err(|e| why(&e, self.limit))?;
+        serde_json::from_value(answer).map_err(|e| e.to_string())
+    }
+}
+
+/// The tools `allowed` names, by the server's names; all of them without it.
+fn offered(tools: Vec<ToolInfo>, allowed: Option<&[String]>) -> Vec<ToolInfo> {
+    let Some(allowed) = allowed else {
+        return tools;
+    };
+    tools
+        .into_iter()
+        .filter(|t| allowed.iter().any(|pattern| wildcard(pattern, &t.name)))
+        .collect()
 }
 
 /// `why`, with the end of what the server printed on stderr, if it printed anything.
@@ -84,7 +127,7 @@ fn said(why: &str, process: &Process) -> String {
 }
 
 /// Introduces crowbot, checks the version the server answers with, and lists its tools.
-pub async fn handshake(rpc: &Rpc) -> Result<Vec<serde_json::Value>, String> {
+pub async fn handshake(rpc: &Rpc) -> Result<Vec<ToolInfo>, String> {
     let wait = limits::get().mcp.start_secs.secs();
     let answer = rpc
         .request("initialize", protocol::initialize(), wait)
@@ -135,36 +178,44 @@ fn why(error: &rpc::Error, waited: Duration) -> String {
 
 /// A server's answer to `initialize`, for tests that play the server.
 #[cfg(test)]
-pub fn hello(version: &str) -> serde_json::Value {
+pub fn hello(version: &str) -> Value {
     json!({"protocolVersion": version, "capabilities": {"tools": {}}})
+}
+
+/// Plays a server over an `Rpc`'s channels: each request's method and params answered by
+/// `answer`, or left unanswered when it gives `None`.
+#[cfg(test)]
+fn serve(answer: impl Fn(&str, &Value) -> Option<Value> + Send + 'static) -> Rpc {
+    let (out_tx, mut out_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let (in_tx, in_rx) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        while let Some(line) = out_rx.recv().await {
+            let message: Value = serde_json::from_str(&line).unwrap();
+            let (Some(id), Some(method)) = (message.get("id"), message["method"].as_str()) else {
+                continue;
+            };
+            if let Some(result) = answer(method, &message["params"]) {
+                let reply = json!({"jsonrpc": "2.0", "id": id, "result": result});
+                let _ = in_tx.send(Ok(reply.to_string()));
+            }
+        }
+    });
+    Rpc::new(out_tx, in_rx, "it stopped".into())
+}
+
+/// A caller whose server is played by `answer`, as `serve` plays one; a call it leaves
+/// unanswered times out within a second.
+#[cfg(test)]
+pub fn playing(answer: impl Fn(&str, &Value) -> Option<Value> + Send + 'static) -> Caller {
+    Caller {
+        rpc: Arc::new(serve(answer)),
+        limit: Duration::from_secs(1),
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use serde_json::Value;
-    use tokio::sync::mpsc;
-
     use super::*;
-
-    /// Plays a server over `rpc`'s channels: each request's method answered by `answer`.
-    fn serve(answer: impl Fn(&str, &Value) -> Option<Value> + Send + 'static) -> Rpc {
-        let (out_tx, mut out_rx) = mpsc::unbounded_channel::<String>();
-        let (in_tx, in_rx) = mpsc::unbounded_channel();
-        tokio::spawn(async move {
-            while let Some(line) = out_rx.recv().await {
-                let message: Value = serde_json::from_str(&line).unwrap();
-                let (Some(id), Some(method)) = (message.get("id"), message["method"].as_str())
-                else {
-                    continue;
-                };
-                if let Some(result) = answer(method, &message["params"]) {
-                    let reply = json!({"jsonrpc": "2.0", "id": id, "result": result});
-                    let _ = in_tx.send(Ok(reply.to_string()));
-                }
-            }
-        });
-        Rpc::new(out_tx, in_rx, "it stopped".into())
-    }
 
     #[tokio::test]
     async fn the_handshake_follows_pages_of_tools() {
@@ -177,8 +228,25 @@ mod tests {
             _ => None,
         });
         let tools = handshake(&rpc).await.unwrap();
-        let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(names, ["a", "b"]);
+    }
+
+    #[test]
+    fn a_tools_setting_offers_only_what_it_names() {
+        let listed: Vec<ToolInfo> = ["get_issue", "get_pr", "delete_repo"]
+            .iter()
+            .map(|name| serde_json::from_value(json!({"name": name})).unwrap())
+            .collect();
+        let names = |allowed: Option<&[String]>| -> Vec<String> {
+            offered(listed.clone(), allowed)
+                .into_iter()
+                .map(|t| t.name)
+                .collect()
+        };
+        assert_eq!(names(None).len(), 3);
+        let allowed = ["get_*".to_owned()];
+        assert_eq!(names(Some(&allowed)), ["get_issue", "get_pr"]);
     }
 
     #[tokio::test]

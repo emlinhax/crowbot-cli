@@ -1,0 +1,11 @@
+# What a call to an MCP server's tool says beside the server's answer; {placeholders} are filled in.
+not_object = "the arguments must be a JSON object"
+failed = "MCP server {server}: {why}."
+no_output = "(no output)"
+# What stands for content that is not text: the model is sent text only.
+media = "[{kind} ({mime}) not shown: only text is passed on]"
+resource = "[resource {uri} not shown: only text is passed on]"
+link = "[link {name}: {uri}]"
+other = "[{kind} content not shown: only text is passed on]"
+# Said once when the session starts, of a tool whose name, made to fit, another tool has.
+left_out = "MCP server {server}'s tool {tool} is left out: {name} is another tool's name already."

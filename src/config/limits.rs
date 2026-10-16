@@ -141,6 +141,8 @@ pub struct McpLimits {
     pub stderr_bytes: Limit<usize>,
     pub list_pages: Limit<usize>,
     pub server_name_chars: Limit<usize>,
+    pub name_chars: Limit<usize>,
+    pub call_secs: Limit<u64>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,5 +1,5 @@
 //! A stand-in MCP server for crowbot's e2e suite: JSON-RPC over stdin and stdout, one message a
-//! line. `--exit` fails at once, saying so on stderr.
+//! line, offering the tools in `tools()`. `--exit` fails at once, saying so on stderr.
 // A test program talking on stdin and stdout; the io-wrapper rule is for crowbot itself.
 #![allow(clippy::disallowed_methods, clippy::disallowed_macros)]
 
@@ -30,6 +30,17 @@ fn main() {
                 "serverInfo": {"name": "fake", "version": "0"}
             }),
             Some("tools/list") => json!({"tools": tools()}),
+            Some("tools/call") => match call(&message["params"]) {
+                Some(result) => result,
+                None => {
+                    let error = json!({"code": -32602, "message": "no such tool"});
+                    reply(
+                        &mut out,
+                        json!({"jsonrpc": "2.0", "id": id, "error": error}),
+                    );
+                    continue;
+                }
+            },
             _ => {
                 let error = json!({"code": -32601, "message": "no such method"});
                 reply(
@@ -49,8 +60,37 @@ fn main() {
 fn tools() -> Value {
     json!([
         {"name": "echo", "description": "Says back what it is given; {max_lines} stays as written.",
-         "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}}}
+         "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}}},
+        {"name": "env", "description": "Says whether crowbot's key and FAKE_TOKEN reached it.",
+         "inputSchema": {"type": "object"}},
+        {"name": "fail", "description": "Always fails.", "inputSchema": {"type": "object"}},
+        {"name": "picture", "description": "Answers with an image.",
+         "inputSchema": {"type": "object"}}
     ])
+}
+
+/// The answer to `tools/call`; `None` for a tool it does not offer.
+fn call(params: &Value) -> Option<Value> {
+    let text = |text: String| json!({"content": [{"type": "text", "text": text}]});
+    let seen = |name: &str| std::env::var(name).unwrap_or_else(|_| "unset".into());
+    Some(match params["name"].as_str()? {
+        "echo" => text(
+            params["arguments"]["text"]
+                .as_str()
+                .unwrap_or_default()
+                .into(),
+        ),
+        "env" => text(format!(
+            "key: {}; FAKE_TOKEN: {}",
+            seen("CROWBOT_API_KEY"),
+            seen("FAKE_TOKEN")
+        )),
+        "fail" => json!({"content": [{"type": "text", "text": "fake-mcp: this tool always fails"}],
+                         "isError": true}),
+        "picture" => json!({"content": [{"type": "image", "data": "iVBORw0KGgo=",
+                                         "mimeType": "image/png"}]}),
+        _ => return None,
+    })
 }
 
 fn reply(out: &mut impl Write, message: Value) {

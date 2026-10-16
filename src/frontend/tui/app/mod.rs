@@ -38,7 +38,6 @@ use crate::frontend::tui::screen::Screen;
 use crate::frontend::tui::toast::Toast;
 use crate::frontend::tui::view::View;
 use crate::frontend::tui::{ui, welcome};
-use crate::frontend::words;
 use crate::io::clock;
 use crate::io::term;
 use crate::live::event::{AgentEvent, Ended};
@@ -128,8 +127,8 @@ pub async fn run(
     if let Some(change) = update::on_start(&app.http, &app.paths, app.settings.auto_update) {
         tui.feed.notice(&change.say(), "done");
     }
-    for (server, note) in mcp.failures() {
-        tui.feed.notice(&words::mcp_failed(server, note), "warn");
+    for (_, note) in mcp.notes() {
+        tui.feed.notice(note, "warn");
     }
     let (spent, transcript) = tui.run(turns, transcript, rx).await;
     drop(raw);

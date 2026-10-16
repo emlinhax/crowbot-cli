@@ -76,7 +76,7 @@ pub async fn run(
         declined: Mutex::new(Vec::new()),
     };
     let emit = |event: AgentEvent| out.event(event);
-    for (server, note) in mcp.failures() {
+    for (server, note) in mcp.notes() {
         emit(AgentEvent::Mcp {
             server: server.clone(),
             note: note.clone(),
@@ -207,7 +207,7 @@ impl Printer<'_> {
                 words::get().retrying,
                 *delay_ms as f64 / 1000.0
             )),
-            AgentEvent::Mcp { server, note } => self.warn(&words::mcp_failed(server, note)),
+            AgentEvent::Mcp { note, .. } => self.warn(note),
             AgentEvent::Unsaved { path, error } => {
                 self.warn(&fill(
                     &words::get().unsaved,

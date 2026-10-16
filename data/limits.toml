@@ -148,6 +148,14 @@ reason = "pages of tools a server may list; more means it is looping"
 value = 24
 reason = "a server's name starts each of its tools' names, which may be 64 characters in all"
 
+[mcp.name_chars]
+value = 64
+reason = "the longest tool name a chat request takes; a server's tool past it is cut to fit"
+
+[mcp.call_secs]
+value = 120
+reason = "a tool call a server has not answered by then is not coming; `timeout_secs` per server"
+
 [snapshot.timeout_secs]
 value = 30
 reason = "the first snapshot hashes every file git does not ignore; past this the project is too big and snapshots stop for the session"

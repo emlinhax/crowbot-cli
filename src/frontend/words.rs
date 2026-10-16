@@ -22,7 +22,6 @@ pub struct Words {
     pub turn_limit: String,
     pub retrying: String,
     pub model_gone: String,
-    pub mcp_failed: String,
     pub compact: CompactWords,
     pub print: PrintWords,
 }
@@ -96,11 +95,6 @@ pub fn compaction(end: &AgentEvent, why: (bool, bool)) -> Option<(String, &'stat
             (template::fill(&words.done, &vars), "muted")
         }
     })
-}
-
-/// That MCP server `server` is not running, and why.
-pub fn mcp_failed(server: &str, note: &str) -> String {
-    template::fill(&WORDS.mcp_failed, &[("server", server), ("note", note)])
 }
 
 /// That a resumed session's model is no longer served, and what it goes on with instead.

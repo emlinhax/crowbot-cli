@@ -51,7 +51,7 @@ struct Expect {
     files: BTreeMap<String, String>,
     #[serde(default)]
     requests: Vec<RequestCheck>,
-    /// The tools a request offered the model, by name, in order.
+    /// The tools a request offered the model, by name.
     #[serde(default)]
     tools: Vec<ToolsCheck>,
     /// Requests the fake served, exactly, by path.
@@ -105,12 +105,18 @@ fn yes() -> bool {
     true
 }
 
-/// The tools chat request `index` offered.
+/// The tools chat request `index` offered: exactly `names`, in order, and among them `has` and
+/// none of `lacks`.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ToolsCheck {
     index: usize,
-    names: Vec<String>,
+    #[serde(default)]
+    names: Option<Vec<String>>,
+    #[serde(default)]
+    has: Vec<String>,
+    #[serde(default)]
+    lacks: Vec<String>,
 }
 
 /// A check on one chat request the model was sent.
@@ -243,11 +249,22 @@ async fn check(name: String, scenario: Scenario) {
             .iter()
             .filter_map(|t| t["function"]["name"].as_str())
             .collect();
-        assert_eq!(
-            names, check.names,
-            "request {} tools\n{context}",
-            check.index
-        );
+        let at = format!("request {} tools {names:?}", check.index);
+        if let Some(want) = &check.names {
+            assert_eq!(&names, want, "{at}\n{context}");
+        }
+        for want in &check.has {
+            assert!(
+                names.contains(&want.as_str()),
+                "{at} lack {want}\n{context}"
+            );
+        }
+        for unwanted in &check.lacks {
+            assert!(
+                !names.contains(&unwanted.as_str()),
+                "{at} have {unwanted}\n{context}"
+            );
+        }
     }
     for check in &expect.requests {
         let at = format!("request {} message {}", check.index, check.message);

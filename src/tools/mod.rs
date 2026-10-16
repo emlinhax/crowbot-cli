@@ -7,6 +7,7 @@ mod fs;
 mod glob;
 mod grep;
 mod many;
+pub mod mcp;
 mod plan_exit;
 mod question;
 mod read;

@@ -58,6 +58,11 @@ permissions! {
     PLAN_EXIT = "plan_exit", Other;
     /// Starting a subagent, per kind; its own calls ask for themselves.
     TASK = "task", Other;
+    /// Calling an MCP server's tool, by its name here (`<server>__<tool>`): what rules allow.
+    MCP = "mcp", Other;
+    /// Asked beside `mcp`: a server's tool may change anything, so PLAN refuses it and /undo
+    /// snapshots before it. Allowed by default, leaving the decision to `mcp`.
+    MCP_WRITE = "mcp_write", RunsCommands;
     /// The same call repeated; asked by the agent, not a tool.
     DOOM_LOOP = "doom_loop", Other;
 }

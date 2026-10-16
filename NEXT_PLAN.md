@@ -283,7 +283,7 @@ with the session (a project's only once trusted); their tools join the registry 
 - [x] 6.10 trust lists a left-out table entry by entry, secrets by name only
 - [x] 6.11 `[mcp.<name>]` servers start with the session (`io::proc` child, JSON-RPC, handshake);
       /status names them
-- [ ] 6.12 their tools join the registry (`<server>__<tool>`, optional `tools` allowlist) and ask
+- [x] 6.12 their tools join the registry (`<server>__<tool>`, optional `tools` allowlist) and ask
       as `mcp` / `mcp_write`
 - [ ] 6.13 read-only tools (`readOnlyHint`) run in PLAN by the rules and take no snapshot
 - [ ] 6.14 interrupts send `notifications/cancelled`; a server that stops is reported once

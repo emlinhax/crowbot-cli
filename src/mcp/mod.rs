@@ -4,14 +4,16 @@
 // used. Upgrade: each as its own capability, behind the same `Server`.
 
 pub mod config;
-mod protocol;
+pub mod protocol;
 mod rpc;
-mod server;
+pub mod server;
 
 use futures_util::future::join_all;
 
 use crate::config::paths::Paths;
 use crate::config::settings::Settings;
+use crate::text::template::fill;
+use protocol::DATA;
 use server::Server;
 
 /// The session's servers: those running, and why the others are not.
@@ -19,6 +21,8 @@ pub struct Servers {
     running: Vec<Server>,
     failed: Vec<(String, String)>,
     off: Vec<String>,
+    /// What is said of a server once, when the session starts: by its name, whole sentences.
+    notes: Vec<(String, String)>,
 }
 
 /// How one server stands, for /status.
@@ -43,19 +47,34 @@ impl Servers {
             running: Vec::new(),
             failed: Vec::new(),
             off: off.into_iter().map(|(name, _)| name.clone()).collect(),
+            notes: Vec::new(),
         };
         for (name, started) in started {
             match started {
                 Ok(server) => servers.running.push(server),
-                Err(why) => servers.failed.push((name.to_string(), why)),
+                Err(why) => {
+                    let note = fill(&DATA.text.not_running, &[("server", name), ("why", &why)]);
+                    servers.note(name, note);
+                    servers.failed.push((name.to_string(), why));
+                }
             }
         }
         servers
     }
 
-    /// The servers that did not start, each with why: said once, when the session starts.
-    pub fn failures(&self) -> &[(String, String)] {
-        &self.failed
+    /// Those running, in name order.
+    pub fn running(&self) -> &[Server] {
+        &self.running
+    }
+
+    /// What is said of the servers once, when the session starts: those that did not start,
+    /// and tools left out.
+    pub fn notes(&self) -> &[(String, String)] {
+        &self.notes
+    }
+
+    pub fn note(&mut self, server: &str, note: String) {
+        self.notes.push((server.to_owned(), note));
     }
 
     /// Every server and how it stands, by name.

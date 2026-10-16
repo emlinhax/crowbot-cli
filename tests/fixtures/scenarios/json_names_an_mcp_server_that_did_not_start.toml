@@ -7,4 +7,4 @@ text = "Hello."
 
 [expect]
 exit = 0
-stdout_contains = ['{"type":"mcp","server":"gone","note":"no-such-mcp-server was not found"}']
+stdout_contains = ['{"type":"mcp","server":"gone","note":"MCP server gone is not running: no-such-mcp-server was not found."}']

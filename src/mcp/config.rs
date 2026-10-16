@@ -1,5 +1,5 @@
-//! A server as config.toml names it: `[mcp.<name>]` with the program, its arguments and its
-//! environment. Keyed by name, so a later layer changes one field of a server or turns it off
+//! A server as config.toml names it: `[mcp.<name>]` with the program, its arguments, its
+//! environment, how long a call may take and which of its tools to offer. Keyed by name, so a later layer changes one field of a server or turns it off
 //! (`enabled = false`).
 // CEILING: local servers only, started as a program and spoken to over stdin and stdout. Upgrade:
 // a `url` key for a remote server, whose HTTP task fills the same pair of line channels.
@@ -17,6 +17,10 @@ pub struct Server {
     pub args: Vec<String>,
     pub env: BTreeMap<String, String>,
     pub enabled: bool,
+    /// How long a call may take, over `mcp.call_secs`.
+    pub timeout_secs: Option<u64>,
+    /// The tools to offer, by the server's names, `*` and `?` allowed; `None` offers them all.
+    pub tools: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -30,6 +34,10 @@ struct Raw {
     env: BTreeMap<String, String>,
     #[serde(default = "on")]
     enabled: bool,
+    #[serde(default)]
+    timeout_secs: Option<u64>,
+    #[serde(default)]
+    tools: Option<Vec<String>>,
 }
 
 fn on() -> bool {
@@ -50,6 +58,8 @@ impl TryFrom<Raw> for Server {
             args: raw.args,
             env: raw.env,
             enabled: raw.enabled,
+            timeout_secs: raw.timeout_secs,
+            tools: raw.tools,
         })
     }
 }
