@@ -11,6 +11,7 @@ use futures_util::StreamExt;
 use serde_json::{Value, json};
 
 const MODELS: &str = include_str!("../fixtures/api/models.json");
+const USAGE: &str = include_str!("../fixtures/api/usage.json");
 
 /// Keys the fake accepts, and what each stands for.
 pub const ENV_KEY: &str = "test-key";
@@ -145,6 +146,8 @@ impl Fake {
             .route("/v1/chat/completions", post(chat))
             .route("/api/me", get(me))
             .route("/api/me/keys", get(me_keys))
+            .route("/api/me/usage", get(me_usage))
+            .route("/api/me/balance-fallback", post(me_fallback))
             .route("/api/me/keys/{reference}/revoke", post(me_key_revoke))
             .route("/api/pair/start", post(pair_start))
             .route("/api/pair/{code}", get(pair_poll))
@@ -364,6 +367,32 @@ async fn me(State(inner): State<Shared>, headers: HeaderMap) -> Response {
     let me = inner.lock().unwrap().me.clone();
     axum::Json(me.unwrap_or_else(|| json!({"balance_microdollars": 12_300_000, "can_spend": true})))
         .into_response()
+}
+
+async fn me_usage(State(inner): State<Shared>, headers: HeaderMap) -> Response {
+    if !authorized(&inner, &headers) {
+        return error(401, "invalid_api_key", None);
+    }
+    ([(header::CONTENT_TYPE, "application/json")], USAGE).into_response()
+}
+
+/// Sets `spend_balance_when_dry` in what `/api/me` answers from then on.
+async fn me_fallback(State(inner): State<Shared>, headers: HeaderMap, body: String) -> Response {
+    if !authorized(&inner, &headers) {
+        return error(401, "invalid_api_key", None);
+    }
+    let Some(on) = serde_json::from_str::<Value>(&body)
+        .ok()
+        .and_then(|b| b["on"].as_bool())
+    else {
+        return error(400, "bad_request", None);
+    };
+    let mut inner = inner.lock().unwrap();
+    let me = inner
+        .me
+        .get_or_insert_with(|| json!({"balance_microdollars": 12_300_000, "can_spend": true}));
+    me["spend_balance_when_dry"] = json!(on);
+    axum::Json(json!({"ok": true, "spend_balance_when_dry": on})).into_response()
 }
 
 async fn me_keys(State(inner): State<Shared>, headers: HeaderMap) -> Response {

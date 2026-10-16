@@ -88,6 +88,14 @@ reason = "crowbot raises the difficulty per address; a third stale challenge mea
 value = 30
 reason = "the most work a person waits for on one machine; crowbot itself caps signup at 28 bits"
 
+[account.usage_days]
+value = 30
+reason = "/account sums this many days of usage, the window crowbot's own statement opens on"
+
+[account.usage_models]
+value = 3
+reason = "the models /account names by spend; the total above them covers the rest"
+
 [agent.max_turns]
 value = 100
 reason = "a runaway loop on crow-2 costs real money; a run that needs more should be continued deliberately"

@@ -69,6 +69,25 @@ struct Keys {
     keys: Vec<Key>,
 }
 
+/// What the account spent over the last `days`, by model, most first.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct Usage {
+    #[serde(default)]
+    pub days: u32,
+    #[serde(default)]
+    pub models: Vec<ModelUsage>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct ModelUsage {
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub requests: u64,
+    #[serde(default)]
+    pub spent_usd: f64,
+}
+
 pub async fn me(api: &Api) -> Result<Me, ApiError> {
     api.call_json("me", Call::default()).await
 }
@@ -76,6 +95,25 @@ pub async fn me(api: &Api) -> Result<Me, ApiError> {
 pub async fn keys(api: &Api) -> Result<Vec<Key>, ApiError> {
     let keys: Keys = api.call_json("me_keys", Call::default()).await?;
     Ok(keys.keys)
+}
+
+pub async fn usage(api: &Api, days: u32) -> Result<Usage, ApiError> {
+    let days = days.to_string();
+    let call = Call {
+        args: &[("days", &days)],
+        ..Call::default()
+    };
+    api.call_json("me_usage", call).await
+}
+
+/// Whether the balance pays once the plan's allowance is spent.
+pub async fn set_fallback(api: &Api, on: bool) -> Result<(), ApiError> {
+    let body = serde_json::json!({ "on": on });
+    let call = Call {
+        body: Some(&body),
+        ..Call::default()
+    };
+    api.call("me_fallback", call).await.map(drop)
 }
 
 pub async fn revoke(api: &Api, key: &Key) -> Result<(), ApiError> {

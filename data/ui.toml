@@ -162,6 +162,16 @@ keep = "Keep it"
 revoked = "Revoked {name} {hint}."
 failed = "Account: {error}"
 hint = "esc back"
+# The last account.usage_days of spend, then the models that spent most.
+usage = "Last {days} days: {spent} over {requests}"
+usage_model = "  {label}: {spent} over {requests}"
+requests = { one = "{n} request", many = "{n} requests" }
+saving = "Telling crowbot…"
+# The option that flips balance fallback, and what it says once it has.
+fallback = "Balance fallback is {state}: turn it {other}"
+fallback_set = "Balance fallback is now {state}."
+on = "on"
+off = "off"
 
 # `/forums` in a session: the forums the agent can browse, to log in to, log out of, remove or add.
 [forums]

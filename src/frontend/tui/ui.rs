@@ -136,6 +136,14 @@ pub struct AccountText {
     pub revoked: String,
     pub failed: String,
     pub hint: String,
+    pub usage: String,
+    pub usage_model: String,
+    pub requests: Plural,
+    pub saving: String,
+    pub fallback: String,
+    pub fallback_set: String,
+    pub on: String,
+    pub off: String,
 }
 
 #[derive(Debug, Deserialize)]

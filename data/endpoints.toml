@@ -42,6 +42,20 @@ method = "POST"
 path = "/api/me/keys/{ref}/revoke"
 auth = true
 
+# Spend by model over the last {days}, and whether the balance pays once a plan's allowance is
+# spent.
+[endpoints.me_usage]
+origin = "api"
+method = "GET"
+path = "/api/me/usage?days={days}"
+auth = true
+
+[endpoints.me_fallback]
+origin = "api"
+method = "POST"
+path = "/api/me/balance-fallback"
+auth = true
+
 [endpoints.pair_start]
 origin = "api"
 method = "POST"

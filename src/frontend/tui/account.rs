@@ -1,13 +1,15 @@
-//! `/account` card: where the account stands, and the keys that sign in to it, any of which but
-//! this session's own can be revoked. Its jobs run beside input; closing the card drops them.
+//! `/account` card: where the account stands, what it spent lately, whether the balance pays
+//! once a plan's allowance is spent, and the keys that sign in to it, any of which but this
+//! session's own can be revoked. Its jobs run beside input; closing the card drops them.
 
-use futures_util::future::{BoxFuture, try_join};
+use futures_util::future::{BoxFuture, try_join3};
 
-use crate::api::account::{self, Key, Me};
+use crate::api::account::{self, Key, Me, Usage};
 use crate::api::error::said;
 use crate::app::App;
 use crate::commands::account::standing;
 use crate::commands::login::env_note;
+use crate::config::limits;
 use crate::frontend::tui::boxed::{self, boxed};
 use crate::frontend::tui::card::{self, Card, Next};
 use crate::frontend::tui::choice::{Choice, Opt};
@@ -17,11 +19,13 @@ use crate::io::term::KeyEvent;
 use crate::live::prompt::Reply;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
+use crate::text::units;
 
 pub struct Account {
     stage: Stage,
     me: Option<Me>,
     keys: Vec<Key>,
+    usage: Usage,
     /// The card's words wrap to the width it opened at.
     width: usize,
 }
@@ -44,6 +48,8 @@ enum Stage {
 pub enum Job {
     Load,
     Revoke(Key),
+    /// Whether the balance pays once the plan's allowance is spent.
+    Fallback(bool),
 }
 
 pub enum Done {
@@ -52,25 +58,41 @@ pub enum Done {
         said: Option<String>,
         me: Me,
         keys: Vec<Key>,
+        usage: Usage,
     },
     Failed(String),
 }
 
 pub fn run(app: &App, job: Job) -> BoxFuture<'_, Done> {
     Box::pin(async move {
-        let text = &ui::get().account;
-        let revoked = match job {
-            Job::Load => None,
-            Job::Revoke(key) => match account::revoke(&app.api, &key).await {
-                Ok(()) => Some(named(&text.revoked, &key)),
-                Err(e) => return Done::Failed(said(&e.into())),
-            },
+        let text = text();
+        let done = match job {
+            Job::Load => Ok(None),
+            Job::Revoke(key) => account::revoke(&app.api, &key)
+                .await
+                .map(|()| Some(named(&text.revoked, &key))),
+            Job::Fallback(on) => account::set_fallback(&app.api, on)
+                .await
+                .map(|()| Some(fill(&text.fallback_set, &[("state", state(on))]))),
         };
-        match try_join(account::me(&app.api), account::keys(&app.api)).await {
-            Ok((me, keys)) => Done::Loaded {
-                said: revoked,
+        let first = match done {
+            Ok(first) => first,
+            Err(e) => return Done::Failed(said(&e.into())),
+        };
+        let days = limits::get().account.usage_days.value;
+        let api = &app.api;
+        match try_join3(
+            account::me(api),
+            account::keys(api),
+            account::usage(api, days),
+        )
+        .await
+        {
+            Ok((me, keys, usage)) => Done::Loaded {
+                said: first,
                 me,
                 keys,
+                usage,
             },
             Err(e) => Done::Failed(said(&e.into())),
         }
@@ -90,6 +112,46 @@ fn text() -> &'static AccountText {
     &ui::get().account
 }
 
+fn state(on: bool) -> &'static str {
+    let text = text();
+    if on { &text.on } else { &text.off }
+}
+
+/// Balance fallback is on unless crowbot says it is off.
+fn fallback_on(me: &Me) -> bool {
+    me.spend_balance_when_dry != Some(false)
+}
+
+/// The window's spend and requests, then the models that spent most.
+// CEILING: one window and the top models only; the request log (/api/me/usage/log) is unused.
+// Upgrade: a Usage stage over it, paged, if people want it outside the web statement.
+fn usage_lines(usage: &Usage) -> Vec<String> {
+    let text = text();
+    let spent: f64 = usage.models.iter().map(|m| m.spent_usd).sum();
+    let requests: u64 = usage.models.iter().map(|m| m.requests).sum();
+    let count = |n: u64| text.requests.of(usize::try_from(n).unwrap_or(usize::MAX));
+    let mut lines = vec![fill(
+        &text.usage,
+        &[
+            ("days", &usage.days.to_string()),
+            ("spent", &units::usd(spent)),
+            ("requests", &count(requests)),
+        ],
+    )];
+    let shown = limits::get().account.usage_models.value;
+    lines.extend(usage.models.iter().take(shown).map(|m| {
+        fill(
+            &text.usage_model,
+            &[
+                ("label", &m.label),
+                ("spent", &units::usd(m.spent_usd)),
+                ("requests", &count(m.requests)),
+            ],
+        )
+    }));
+    lines
+}
+
 impl Account {
     /// The card, and its first work: asking crowbot where the account stands.
     pub fn open(width: usize) -> (Self, Next) {
@@ -97,6 +159,7 @@ impl Account {
             stage: Stage::Working(text().loading.clone()),
             me: None,
             keys: Vec::new(),
+            usage: Usage::default(),
             width,
         };
         (card, Next::Run(card::Job::Account(Job::Load)))
@@ -113,8 +176,22 @@ impl Account {
         if !shadowed.is_empty() {
             body.extend(Line::styled(shadowed, Style::fg("muted")).wrap(inner, &Line::default()));
         }
+        if self.me.is_some() {
+            body.push(Line::default());
+            body.extend(usage_lines(&self.usage).into_iter().map(Line::plain));
+        }
         let keys = fill(&text.keys, &[("n", &self.keys.len().to_string())]);
-        let options = vec![Opt::index(keys, 0), Opt::index(text.close.clone(), 1)];
+        let mut options = vec![Opt::index(keys, 0)];
+        // Fallback only matters to an account holding a plan.
+        if let Some(me) = self.me.as_ref().filter(|me| me.pass.is_some()) {
+            let on = fallback_on(me);
+            let label = fill(
+                &text.fallback,
+                &[("state", state(on)), ("other", state(!on))],
+            );
+            options.push(Opt::index(label, 2));
+        }
+        options.push(Opt::index(text.close.clone(), 1));
         Stage::Overview(Choice::new(text.title.clone(), body, options))
     }
 
@@ -172,6 +249,11 @@ impl Card for Account {
             Stage::Working(_) => return Next::Stay,
             Stage::Overview(choice) => match choice.key(action, key) {
                 Next::Answer(Reply::Choice(0)) => (self.key_list(), Next::Stay),
+                Next::Answer(Reply::Choice(2)) => {
+                    let on = !self.me.as_ref().is_some_and(fallback_on);
+                    let job = card::Job::Account(Job::Fallback(on));
+                    (Stage::Working(text().saving.clone()), Next::Run(job))
+                }
                 Next::Answer(_) => return Next::Close(None),
                 other => return other,
             },
@@ -204,9 +286,15 @@ impl Card for Account {
             return Next::Stay;
         };
         match done {
-            Done::Loaded { said, me, keys } => {
+            Done::Loaded {
+                said,
+                me,
+                keys,
+                usage,
+            } => {
                 self.me = Some(me);
                 self.keys = keys;
+                self.usage = usage;
                 self.stage = self.overview();
                 said.map_or(Next::Stay, Next::Note)
             }
@@ -239,6 +327,7 @@ impl Card for Account {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::account::{ModelUsage, Pass};
     use crate::frontend::tui::keymap::press;
     use crate::io::term::KeyCode;
 
@@ -275,10 +364,26 @@ mod tests {
             key("account", "•••• 3456", false),
             key("laptop", "•••• 9999", true),
         ];
+        let usage = Usage {
+            days: 30,
+            models: vec![
+                ModelUsage {
+                    label: "Crow 2".into(),
+                    requests: 40,
+                    spent_usd: 1.2,
+                },
+                ModelUsage {
+                    label: "Fake Coder".into(),
+                    requests: 1,
+                    spent_usd: 0.03,
+                },
+            ],
+        };
         let done = Done::Loaded {
             said: None,
             me,
             keys,
+            usage,
         };
         card.finished(card::Done::Account(done));
         card
@@ -289,7 +394,17 @@ mod tests {
         let mut card = loaded();
         let text = shown(&card);
         assert!(text.contains("Balance $12.30."), "{text}");
+        assert!(
+            text.contains("Last 30 days: $1.23 over 41 requests"),
+            "{text}"
+        );
+        assert!(text.contains("  Crow 2: $1.20 over 40 requests"), "{text}");
         assert!(text.contains("1 Keys (2)"), "{text}");
+        // No plan, so no fallback to choose.
+        assert!(
+            text.contains("2 Close") && !text.contains("fallback"),
+            "{text}"
+        );
         card.key(None, &digit('1'));
         let text = shown(&card);
         assert!(
@@ -315,5 +430,23 @@ mod tests {
         let failed = card::Done::Account(Done::Failed("no".into()));
         assert!(matches!(card.finished(failed), Next::Error(_)));
         assert!(shown(&card).contains("Keys (2)"));
+    }
+
+    #[test]
+    fn with_a_plan_the_overview_flips_balance_fallback() {
+        let mut card = loaded();
+        let held = Me {
+            pass: Some(Pass::default()),
+            spend_balance_when_dry: None,
+            ..card.me.clone().unwrap()
+        };
+        card.me = Some(held);
+        card.stage = card.overview();
+        assert!(shown(&card).contains("2 Balance fallback is on: turn it off"));
+        match card.key(None, &digit('2')) {
+            Next::Run(card::Job::Account(Job::Fallback(on))) => assert!(!on),
+            _ => panic!("expected the fallback to be set"),
+        }
+        assert!(shown(&card).contains("Telling crowbot"));
     }
 }

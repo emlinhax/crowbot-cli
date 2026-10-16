@@ -196,7 +196,7 @@ reader, since unread fields fail `-D warnings`.
 - [x] 4.7 `/signup` card: asks before replacing a stored key, shows the number, confirms its last
       four digits
 - [x] 4.8 `/account` card: overview and keys; revoke any key but the session's own
-- [ ] 4.9 `/account`: the last `account.usage_days` of usage by model, and the balance fallback
+- [x] 4.9 `/account`: the last `account.usage_days` of usage by model, and the balance fallback
       toggle
 - [ ] 4.10 README and Learned
 - e2e (auth and billing flows): one local batch after 4.5, one after 4.9.

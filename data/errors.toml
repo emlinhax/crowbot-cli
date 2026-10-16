@@ -59,7 +59,7 @@ session = "account"
 
 [plan_allowance_spent]
 title = "Your plan's allowance is used up for now"
-hint = "It refills over the day, or turn balance fallback back on at {chat}."
+hint = "It refills over the day, or turn balance fallback back on: /account in a session, or at {chat}."
 session = "account"
 
 [cannot_revoke_current]

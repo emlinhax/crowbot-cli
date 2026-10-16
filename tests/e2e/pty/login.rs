@@ -288,3 +288,27 @@ async fn slash_account_lists_the_keys_and_revokes_another_but_never_its_own() {
     .await;
     assert_eq!(fake.hits("/api/me/keys/000000000003/revoke"), 1);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn slash_account_shows_usage_and_turns_balance_fallback_off() {
+    let fake = Fake::start().await;
+    fake.set_me(
+        serde_json::json!({"balance_microdollars": 12_300_000, "can_spend": true,
+        "spend_balance_when_dry": true,
+        "pass": {"label": "Pro", "allowance_bp": 5000, "refills": "2 hours"}}),
+    );
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.submit("/account");
+        s.wait_for("Last 30 days: $1.23 over 42 requests");
+        s.wait_for("Crow 2: $1.20 over 40 requests");
+        s.wait_for("2 Balance fallback is on: turn it off");
+        s.send("2");
+        s.wait_for("Balance fallback is now off.");
+        s.wait_for("off, so the balance does not pay");
+        s.wait_for("2 Balance fallback is off: turn it on");
+        s.send(ESC);
+        s.wait_gone("Last 30 days");
+    })
+    .await;
+    assert_eq!(fake.hits("/api/me/balance-fallback"), 1);
+}

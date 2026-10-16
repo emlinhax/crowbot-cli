@@ -1,5 +1,5 @@
 name = "account"
-summary = "See where the account stands and revoke its keys"
+summary = "See where the account stands and what it spent, set balance fallback, revoke keys"
 usage = "account"
 scope = ["session"]
 
