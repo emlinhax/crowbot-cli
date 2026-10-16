@@ -1,0 +1,27 @@
+description = "A tool its server marks read-only runs in PLAN when a rule allows it, beside one that may change things, which PLAN still refuses"
+args = ["--mode", "plan", "-p", "look around"]
+home_files = { "config.toml" = "[mcp.fake]\ncommand = '{fake_mcp}'\n\n[[permission]]\npermission = 'mcp'\npattern = 'fake__*'\naction = 'allow'\n" }
+
+[[reply]]
+calls = [
+  { name = "fake__look", arguments = '{}' },
+  { name = "fake__echo", arguments = '{"text": "should not arrive"}' },
+]
+
+[[reply]]
+text = "The plan is ready."
+
+[expect]
+exit = 0
+
+[[expect.requests]]
+index = 1
+message = -2
+role = "tool"
+contains = "looked, changed nothing"
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "Not allowed"

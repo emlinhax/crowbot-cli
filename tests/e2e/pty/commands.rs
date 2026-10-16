@@ -289,7 +289,7 @@ async fn slash_status_names_the_mcp_servers_and_how_they_stand() {
     in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.wait_for("MCP server gone is not running");
         s.submit("/status");
-        s.wait_for("MCP: fake, 4 tools; gone not running (no-such-mcp was not found)");
+        s.wait_for("MCP: fake, 5 tools; gone not running (no-such-mcp was not found)");
     })
     .await;
 }

@@ -64,6 +64,16 @@ pub struct ToolInfo {
     /// A JSON Schema of its arguments.
     #[serde(rename = "inputSchema", default)]
     pub input_schema: Value,
+    #[serde(default)]
+    pub annotations: Annotations,
+}
+
+/// What a server says of how a tool behaves; hints, not promises.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Annotations {
+    /// It changes nothing.
+    #[serde(rename = "readOnlyHint", default)]
+    pub read_only: bool,
 }
 
 /// What `tools/call` asks with.

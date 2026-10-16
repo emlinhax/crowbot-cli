@@ -1,5 +1,6 @@
 //! An MCP server's tools as crowbot's: named `<server>__<tool>`, described as the server words
-//! them, asking `mcp` and `mcp_write` by that name, and answered with the server's reply as text.
+//! them, asking `mcp` by that name (and `mcp_write` unless read-only), and answered with the
+//! server's reply as text.
 
 mod result;
 
@@ -39,6 +40,10 @@ pub struct McpTool {
     server: String,
     /// The name its server knows it by.
     tool: String,
+    /// Its server says it changes nothing.
+    // CEILING: that is the server's own claim, which PLAN and /undo take on trust. Upgrade: a
+    // per-server setting that says whose hints to believe.
+    read_only: bool,
     caller: Caller,
 }
 
@@ -75,6 +80,7 @@ impl McpTool {
             },
             server: server.to_owned(),
             tool: info.name.clone(),
+            read_only: info.annotations.read_only,
             caller,
         }
     }
@@ -130,10 +136,11 @@ impl Tool for McpTool {
             return Err(Refusal::InvalidArgs(TEXT.not_object.clone()));
         }
         let name = &self.spec.name;
-        let asks = vec![
-            Ask::new(catalog::MCP.name, name.clone()),
-            Ask::new(catalog::MCP_WRITE.name, name.clone()),
-        ];
+        let mut asks = vec![Ask::new(catalog::MCP.name, name.clone())];
+        // Without `mcp_write`, PLAN decides it by the rules and /undo takes no snapshot first.
+        if !self.read_only {
+            asks.push(Ask::new(catalog::MCP_WRITE.name, name.clone()));
+        }
         let preview = serde_json::to_string_pretty(args).unwrap_or_default();
         Ok(Check::new(asks).with_preview(preview))
     }
@@ -229,21 +236,48 @@ mod tests {
         let project = Project::new();
         let check = project.check(&echo(), &json!({"text": "hi"})).unwrap();
         assert!(project.check(&echo(), &json!("hi")).is_err());
-        let decide = |mode: &str, rules: &[Rule]| {
-            let mode = mode::get(mode).unwrap();
-            let locks = mode.locks("/home/u/.crowbot/plans/s1.md");
-            mode.policy(rules, &locks).decide(&check.asks)
-        };
+        let decide = |mode: &str, rules: &[Rule]| decide(mode, rules, &check.asks);
         let mut rules = default_rules();
         assert_eq!(decide("manual", &rules), Decision::Ask);
         assert_eq!(decide("auto", &rules), Decision::Allow);
         assert!(matches!(decide("plan", &rules), Decision::Deny(_)));
-        rules.push(Rule {
+        rules.push(allowing_fake());
+        assert_eq!(decide("manual", &rules), Decision::Allow);
+        assert!(matches!(decide("plan", &rules), Decision::Deny(_)));
+    }
+
+    #[tokio::test]
+    async fn a_read_only_tool_changes_nothing_so_plan_decides_it_by_the_rules() {
+        let look: ToolInfo =
+            serde_json::from_value(json!({"name": "look", "annotations": {"readOnlyHint": true}}))
+                .unwrap();
+        let tool = McpTool::new("fake", &look, playing(|_, _| None));
+        let check = Project::new().check(&tool, &json!({})).unwrap();
+        assert!(
+            check
+                .asks
+                .iter()
+                .all(|a| !catalog::changes_things(&a.permission)),
+            "{:?}",
+            check.asks
+        );
+        let mut rules = default_rules();
+        assert_eq!(decide("plan", &rules, &check.asks), Decision::Ask);
+        rules.push(allowing_fake());
+        assert_eq!(decide("plan", &rules, &check.asks), Decision::Allow);
+    }
+
+    fn decide(mode: &str, rules: &[Rule], asks: &[Ask]) -> Decision {
+        let mode = mode::get(mode).unwrap();
+        let locks = mode.locks("/home/u/.crowbot/plans/s1.md");
+        mode.policy(rules, &locks).decide(asks)
+    }
+
+    fn allowing_fake() -> Rule {
+        Rule {
             permission: "mcp".into(),
             pattern: "fake__*".into(),
             action: Action::Allow,
-        });
-        assert_eq!(decide("manual", &rules), Decision::Allow);
-        assert!(matches!(decide("plan", &rules), Decision::Deny(_)));
+        }
     }
 }

@@ -65,7 +65,9 @@ fn tools() -> Value {
          "inputSchema": {"type": "object"}},
         {"name": "fail", "description": "Always fails.", "inputSchema": {"type": "object"}},
         {"name": "picture", "description": "Answers with an image.",
-         "inputSchema": {"type": "object"}}
+         "inputSchema": {"type": "object"}},
+        {"name": "look", "description": "Looks without touching anything.",
+         "inputSchema": {"type": "object"}, "annotations": {"readOnlyHint": true}}
     ])
 }
 
@@ -87,6 +89,7 @@ fn call(params: &Value) -> Option<Value> {
         )),
         "fail" => json!({"content": [{"type": "text", "text": "fake-mcp: this tool always fails"}],
                          "isError": true}),
+        "look" => text("looked, changed nothing".into()),
         "picture" => json!({"content": [{"type": "image", "data": "iVBORw0KGgo=",
                                          "mimeType": "image/png"}]}),
         _ => return None,
