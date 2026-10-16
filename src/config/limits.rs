@@ -135,6 +135,7 @@ pub struct PairLimits {
 #[serde(deny_unknown_fields)]
 pub struct SubagentLimits {
     pub max_turns: Limit<u32>,
+    pub parallel: Limit<usize>,
     pub max_depth: Limit<usize>,
 }
 

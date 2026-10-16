@@ -51,6 +51,10 @@ pub(crate) struct Run<'a> {
     session: std::path::PathBuf,
     /// The run whose `task` call started this one; `None` for the run a frontend started.
     parent: Option<&'a Run<'a>>,
+    /// Places for the subagents this run starts to work at once (`subagent.parallel`).
+    // CEILING: the places are per run, so a subagent waiting on its own subagents holds one
+    // meanwhile; moot while `subagent.max_depth` is 1. Upgrade: one pool for the whole tree.
+    slots: tokio::sync::Semaphore,
 }
 
 impl Run<'_> {

@@ -104,6 +104,10 @@ reason = "the latest turns a summary keeps word for word, enough for the work in
 value = 30
 reason = "a subagent's job is one search or one change; past this many requests it is wandering"
 
+[subagent.parallel]
+value = 2
+reason = "subagents of one run that ask crowbot at once; the smoke account's plan answers two requests at a time and a third fails on 429"
+
 [subagent.max_depth]
 value = 1
 reason = "subagents start no subagents of their own: a tree of them spends fast and is hard to follow"

@@ -2,6 +2,7 @@
 //! project to run in. Shared by every test that drives a run.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -23,6 +24,13 @@ use crate::snapshot::Shadow;
 use crate::tools::Registry;
 
 type Script = Arc<Mutex<(VecDeque<String>, Vec<Value>)>>;
+
+/// How many requests the fake is answering at once, and the most it ever was.
+#[derive(Default)]
+struct InFlight {
+    now: AtomicUsize,
+    most: AtomicUsize,
+}
 
 /// One scripted reply; `calls` are (id, tool, arguments).
 pub fn reply(text: &str, calls: &[(&str, &str, Value)], finish: &str) -> String {
@@ -61,20 +69,31 @@ pub struct Harness {
     _dir: tempfile::TempDir,
     pub app: App,
     script: Script,
+    in_flight: Arc<InFlight>,
     pub model: Model,
     pub shadow: Shadow,
 }
 
 impl Harness {
     pub async fn new(replies: Vec<String>) -> Self {
+        Self::answering(replies, std::time::Duration::ZERO).await
+    }
+
+    /// `new`, with each answer `after` that long, so requests made together overlap.
+    pub async fn answering(replies: Vec<String>, after: std::time::Duration) -> Self {
         let script: Script = Arc::new(Mutex::new((replies.into(), Vec::new())));
-        let state = script.clone();
+        let in_flight = Arc::new(InFlight::default());
+        let (state, counted) = (script.clone(), in_flight.clone());
         let base = crate::testing::serve(|_| {
             Router::new().route(
                 "/v1/chat/completions",
                 post(move |body: String| {
-                    let state = state.clone();
+                    let (state, counted) = (state.clone(), counted.clone());
                     async move {
+                        let now = counted.now.fetch_add(1, Ordering::SeqCst) + 1;
+                        counted.most.fetch_max(now, Ordering::SeqCst);
+                        crate::io::clock::sleep(after).await;
+                        counted.now.fetch_sub(1, Ordering::SeqCst);
                         let mut s = state.lock().unwrap();
                         s.1.push(serde_json::from_str(&body).unwrap());
                         let next = s.0.pop_front().unwrap_or_else(|| text("(unscripted)"));
@@ -103,6 +122,7 @@ impl Harness {
             _dir: dir,
             app,
             script,
+            in_flight,
             model,
             shadow: Shadow::none("no git in these tests".into()),
         }
@@ -175,6 +195,11 @@ impl Harness {
         let prompt = vec![Part::Text { text: "go".into() }];
         let ended = run::run(&cx, &mut transcript, shared, prompt).await;
         (ended, transcript, events.into_inner().unwrap())
+    }
+
+    /// The most requests the fake was ever answering at once.
+    pub fn most_in_flight(&self) -> usize {
+        self.in_flight.most.load(Ordering::SeqCst)
     }
 
     pub fn requests(&self) -> Vec<Value> {

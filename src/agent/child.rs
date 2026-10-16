@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use crate::agent::kinds::{self, Kind};
 use crate::agent::{Run, RunCtx, run};
 use crate::conversation::message::{Message, Part, Usage};
-use crate::live::event::{AgentEvent, Ended};
+use crate::live::event::{AgentEvent, Ended, Outcome};
 use crate::session::entry::Parent;
 use crate::session::transcript::Transcript;
 
@@ -29,6 +29,24 @@ pub struct Done {
 // `task_id` argument that reopens its file with `Transcript::open`.
 pub async fn run_child(parent: &Run<'_>, call_id: &str, kind: &Kind, prompt: String) -> Done {
     let cx = parent.cx;
+    // It waits for one of its parent's places, or for the interrupt that ends the wait.
+    let slot = tokio::select! {
+        slot = parent.slots.acquire() => slot.ok(),
+        () = parent.cancel.cancelled() => None,
+    };
+    let Some(_slot) = slot else {
+        return Done {
+            ended: Ended {
+                outcome: Outcome::Aborted,
+                turns: 0,
+            },
+            answer: None,
+            error: None,
+            session: PathBuf::new(),
+            calls: 0,
+            usage: Usage::default(),
+        };
+    };
     let tools = kinds::tools(kind, cx.tools, parent.depth() + 1);
     let shared = parent.shared.child(parent.cancel.clone());
     let session = parent
@@ -245,5 +263,37 @@ mod tests {
                 .unwrap()
                 .contains(&format!("after {limit} requests"))
         );
+    }
+
+    #[tokio::test]
+    async fn subagents_started_together_keep_to_their_places_and_answer_in_call_order() {
+        let place = crate::config::limits::get().subagent.parallel.value;
+        let calls: Vec<(String, Value)> = (0..place + 1)
+            .map(|i| {
+                let args = json!({"description": "x", "prompt": "x", "subagent_type": "explore"});
+                (format!("c{i}"), args)
+            })
+            .collect();
+        let calls: Vec<(&str, &str, Value)> = calls
+            .iter()
+            .map(|(id, args)| (id.as_str(), "task", args.clone()))
+            .collect();
+        let mut replies = vec![reply("", &calls, "tool_calls")];
+        replies.extend((0..place + 1).map(|_| text("same answer")));
+        replies.push(text("done"));
+        let h = Harness::answering(replies, std::time::Duration::from_millis(100)).await;
+        let (ended, transcript, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        assert_eq!(h.most_in_flight(), place);
+        let results: Vec<&str> = transcript
+            .messages
+            .iter()
+            .filter_map(|m| match m {
+                Message::Tool(r) => Some(r.call_id.as_str()),
+                _ => None,
+            })
+            .collect();
+        let ids: Vec<String> = (0..place + 1).map(|i| format!("c{i}")).collect();
+        assert_eq!(results, ids);
     }
 }

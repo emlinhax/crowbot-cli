@@ -48,6 +48,7 @@ pub(crate) async fn run_under(
         before: OnceLock::new(),
         session: transcript.file().to_path_buf(),
         parent,
+        slots: tokio::sync::Semaphore::new(limits::get().subagent.parallel.value),
     };
     let cancel = &run.cancel;
     say(&run, transcript, prompt);
