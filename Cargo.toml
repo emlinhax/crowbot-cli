@@ -68,6 +68,14 @@ path = "tests/smoke.rs"
 name = "battery"
 path = "tests/battery/main.rs"
 
+# Debug info is most of target/ (9 GB with full info): line tables keep backtraces' file and line
+# for crowbot's own code, and dependencies carry none.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto = "fat"
 codegen-units = 1
