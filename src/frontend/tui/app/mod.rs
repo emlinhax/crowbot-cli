@@ -388,9 +388,12 @@ impl<'a> Tui<'a> {
                     self.queue.remove(i);
                 }
             }
-            AgentEvent::Prompt { id, prompt, .. } => {
-                let card = card::from_prompt(prompt, self.draw_width());
-                self.cards.push_back((*id, card));
+            AgentEvent::Prompt { .. } | AgentEvent::Child { .. } => {
+                // A subagent asks through this session's prompts too.
+                if let AgentEvent::Prompt { id, prompt, .. } = event.innermost() {
+                    let card = card::from_prompt(prompt, self.draw_width());
+                    self.cards.push_back((*id, card));
+                }
             }
             _ => {}
         }

@@ -282,6 +282,7 @@ fn tool_cx<'a>(run: &'a Run<'a>, call_id: &'a str) -> ToolCx<'a> {
         call_id,
         plan_file: &run.plan_file,
         cancel: run.cancel.clone(),
+        run: Some(run),
     }
 }
 

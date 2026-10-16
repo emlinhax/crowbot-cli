@@ -114,8 +114,8 @@ struct Printer<'a> {
 
 impl Printer<'_> {
     fn event(&self, event: AgentEvent) {
-        // Declined at once, so the model hears why and carries on.
-        if let AgentEvent::Prompt { id, .. } = &event {
+        // Declined at once, so the model hears why and carries on; a subagent's too.
+        if let AgentEvent::Prompt { id, .. } = event.innermost() {
             self.shared.prompts.answer(*id, Reply::Unavailable);
         }
         if let AgentEvent::MessageEnd { message } = &event {

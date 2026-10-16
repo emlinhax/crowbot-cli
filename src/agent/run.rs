@@ -26,19 +26,38 @@ pub async fn run(
     shared: &Shared,
     prompt: Vec<Part>,
 ) -> Ended {
+    run_under(cx, transcript, shared, prompt, None).await
+}
+
+/// `run`, started by `parent`'s `task` call when it is a subagent's.
+pub(crate) async fn run_under(
+    cx: &RunCtx<'_>,
+    transcript: &mut Transcript,
+    shared: &Shared,
+    prompt: Vec<Part>,
+    parent: Option<&Run<'_>>,
+) -> Ended {
     let run = Run {
         cx,
         shared,
         cancel: shared.begin_run(),
-        plan_file: tools::plan_file(&cx.app.paths, transcript.id()),
+        plan_file: match parent {
+            Some(parent) => parent.plan_file.clone(),
+            None => tools::plan_file(&cx.app.paths, transcript.id()),
+        },
         before: OnceLock::new(),
+        session: transcript.file().to_path_buf(),
+        parent,
     };
     let cancel = &run.cancel;
     say(&run, transcript, prompt);
     let prompt_id = transcript.last_id().unwrap_or_default().to_owned();
     let mut snapped = false;
     let tools = cx.tools.wire();
-    let max_turns = limits::get().agent.max_turns.value;
+    let max_turns = match parent {
+        Some(_) => limits::get().subagent.max_turns.value,
+        None => limits::get().agent.max_turns.value,
+    };
     let mut turns = 0;
     // One summary-and-send-again per run, and none after one failed: a model that cannot
     // summarise would only fail again.

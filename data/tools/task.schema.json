@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "description": { "type": "string", "description": "A few words for the job, shown to the user" },
+    "prompt": { "type": "string", "description": "The whole job: what to find or do, and what to reply with" },
+    "subagent_type": { "type": "string", "description": "The kind of subagent", "enum": [] }
+  },
+  "required": ["description", "prompt", "subagent_type"]
+}

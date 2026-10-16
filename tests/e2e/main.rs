@@ -63,7 +63,7 @@ impl Sandbox {
         copy_dir(&tests_path("fixtures/projects").join(name), self.project());
     }
 
-    /// Every session file written so far.
+    /// Every session file written so far; a subagent's, in a folder beside its parent's, are not.
     pub fn sessions(&self) -> Vec<PathBuf> {
         let mut found = Vec::new();
         let root = self.home.path().join("sessions");
@@ -73,7 +73,9 @@ impl Sandbox {
                 .flatten()
                 .flatten()
             {
-                found.push(file.path());
+                if file.path().extension().is_some_and(|e| e == "jsonl") {
+                    found.push(file.path());
+                }
             }
         }
         found

@@ -21,13 +21,25 @@ struct Text {
     stale: String,
 }
 
+/// Each file's lock, shared by a run and the subagents it starts.
+type Locks = Arc<Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>>;
+
 #[derive(Default)]
 pub struct Files {
     seen: Mutex<HashMap<PathBuf, Option<SystemTime>>>,
-    locks: Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>,
+    locks: Locks,
 }
 
 impl Files {
+    /// A subagent's: what it read is its own, since the parent never saw it, but its edits take
+    /// turns with the parent's.
+    pub fn sharing_locks(&self) -> Self {
+        Self {
+            seen: Mutex::default(),
+            locks: Arc::clone(&self.locks),
+        }
+    }
+
     /// Forgets every file, for a conversation that has read none yet.
     pub fn forget_all(&self) {
         self.seen.lock().unwrap().clear();

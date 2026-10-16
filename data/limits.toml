@@ -100,6 +100,14 @@ reason = "the models /account names by spend; the total above them covers the re
 value = 20000
 reason = "the latest turns a summary keeps word for word, enough for the work in hand and its last tool results"
 
+[subagent.max_turns]
+value = 30
+reason = "a subagent's job is one search or one change; past this many requests it is wandering"
+
+[subagent.max_depth]
+value = 1
+reason = "subagents start no subagents of their own: a tree of them spends fast and is hard to follow"
+
 [compaction.threshold_pct]
 value = 85
 reason = "a request past this share of the window, after the model's room to reply, summarises first: the rest is for the next tool results"

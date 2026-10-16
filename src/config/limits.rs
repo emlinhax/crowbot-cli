@@ -74,6 +74,7 @@ pub struct Limits {
     pub account: AccountLimits,
     pub snapshot: SnapshotLimits,
     pub compaction: CompactionLimits,
+    pub subagent: SubagentLimits,
     pub agent: AgentLimits,
     pub session: SessionLimits,
     pub tools: ToolLimits,
@@ -128,6 +129,13 @@ pub struct RetryLimits {
 pub struct PairLimits {
     pub poll_interval_ms: Limit<u64>,
     pub backoff_ms: Limit<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubagentLimits {
+    pub max_turns: Limit<u32>,
+    pub max_depth: Limit<usize>,
 }
 
 #[derive(Debug, Deserialize)]

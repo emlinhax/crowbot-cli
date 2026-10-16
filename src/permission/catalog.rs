@@ -56,6 +56,8 @@ permissions! {
     TODO = "todo", Other;
     QUESTION = "question", Other;
     PLAN_EXIT = "plan_exit", Other;
+    /// Starting a subagent, per kind; its own calls ask for themselves.
+    TASK = "task", Other;
     /// The same call repeated; asked by the agent, not a tool.
     DOOM_LOOP = "doom_loop", Other;
 }

@@ -69,6 +69,12 @@ pub enum AgentEvent {
         usage: Option<Usage>,
         error: Option<String>,
     },
+    /// What a subagent's run said, started by the `task` call `call_id`; a subagent's own
+    /// subagents nest.
+    Child {
+        call_id: String,
+        event: Box<AgentEvent>,
+    },
     /// Snapshots for /undo stopped working; the session goes on without them.
     SnapshotOff {
         why: String,
@@ -142,6 +148,16 @@ impl From<Delta<'_>> for AgentEvent {
             text: text.to_owned(),
             index,
             name,
+        }
+    }
+}
+
+impl AgentEvent {
+    /// What the run that said it said, however deep the subagent.
+    pub fn innermost(&self) -> &AgentEvent {
+        match self {
+            Self::Child { event, .. } => event.innermost(),
+            event => event,
         }
     }
 }

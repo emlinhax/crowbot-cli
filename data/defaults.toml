@@ -82,3 +82,9 @@ action = "allow"
 permission = "plan_exit"
 pattern = "*"
 action = "allow"
+
+# A subagent asks for each of its own calls as the agent would.
+[[permission]]
+permission = "task"
+pattern = "*"
+action = "allow"

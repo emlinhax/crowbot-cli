@@ -11,6 +11,7 @@ mod plan_exit;
 mod question;
 mod read;
 mod target;
+mod task;
 #[cfg(test)]
 pub mod testing;
 mod todowrite;
@@ -18,6 +19,7 @@ mod webfetch;
 mod write;
 
 pub use target::plan_file;
+pub use task::NAME as TASK;
 
 use std::sync::{Arc, LazyLock};
 
@@ -196,6 +198,9 @@ pub struct ToolCx<'a> {
     pub plan_file: &'a str,
     /// Fires when the user interrupts; long-running tools stop on it.
     pub cancel: tokio_util::sync::CancellationToken,
+    /// The run making the call, for a tool that starts a run under it (`task`); `None` only where
+    /// a test calls a tool on its own.
+    pub run: Option<&'a crate::agent::Run<'a>>,
 }
 
 impl ToolCx<'_> {
@@ -264,6 +269,7 @@ pub struct Registry {
     entries: Vec<Entry>,
 }
 
+#[derive(Clone)]
 struct Entry {
     tool: Arc<dyn AnyTool>,
     /// The tool as a chat request lists it, built once when it joins, so every request sends the
@@ -299,6 +305,7 @@ impl Registry {
             Arc::new(todowrite::TodoWrite),
             Arc::new(question::Question),
             Arc::new(plan_exit::PlanExit),
+            Arc::new(task::Task),
         ];
         let mut registry = Self {
             entries: Vec::new(),
@@ -328,6 +335,18 @@ impl Registry {
         });
         self.entries.push(Entry { tool, wire });
         Ok(())
+    }
+
+    /// The tools of this registry that `names` names, in this registry's order, so their wire
+    /// list keeps it.
+    pub fn subset(&self, names: &[&str]) -> Self {
+        let entries = self
+            .entries
+            .iter()
+            .filter(|e| names.contains(&e.tool.spec().name.as_str()))
+            .cloned()
+            .collect();
+        Self { entries }
     }
 
     pub fn get(&self, name: &str) -> Option<&Arc<dyn AnyTool>> {

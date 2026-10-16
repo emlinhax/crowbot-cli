@@ -1,7 +1,7 @@
 //! Session state shared by a run and the frontend driving it, which may change it mid-run.
 
 use std::collections::VecDeque;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use tokio_util::sync::CancellationToken;
 
@@ -20,10 +20,14 @@ pub enum Reminder {
 
 pub struct Shared {
     cancel: Mutex<CancellationToken>,
+    /// A subagent's runs end with the run that started it.
+    under: Option<CancellationToken>,
     steer: Mutex<VecDeque<Vec<Part>>>,
     follow: Mutex<VecDeque<Vec<Part>>>,
-    pub prompts: Prompts,
-    mode: Mutex<&'static Mode>,
+    /// Shared with subagents, so the frontend answers their prompts as it answers these.
+    pub prompts: Arc<Prompts>,
+    /// Shared with subagents, so a switch reaches them mid-run.
+    mode: Arc<Mutex<&'static Mode>>,
     /// The mode the model was last told about.
     reminded: Mutex<Option<&'static Mode>>,
     pub files: Files,
@@ -33,18 +37,39 @@ impl Shared {
     pub fn new(mode: &'static Mode) -> Self {
         Self {
             cancel: Mutex::new(CancellationToken::new()),
+            under: None,
             steer: Mutex::default(),
             follow: Mutex::default(),
-            prompts: Prompts::default(),
-            mode: Mutex::new(mode),
+            prompts: Arc::default(),
+            mode: Arc::new(Mutex::new(mode)),
             reminded: Mutex::default(),
             files: Files::default(),
         }
     }
 
-    /// A fresh interrupt for a new run.
+    /// A subagent's, stopped with `under`, the run that starts it. It asks the user through the
+    /// same prompts, under the same mode; the messages typed for that run stay that run's.
+    // CEILING: a subagent is never told its mode and learns of a lock only from a refusal.
+    // Upgrade: a reminder of its own, worded for a subagent.
+    pub fn child(&self, under: CancellationToken) -> Self {
+        Self {
+            cancel: Mutex::new(under.child_token()),
+            under: Some(under),
+            steer: Mutex::default(),
+            follow: Mutex::default(),
+            prompts: Arc::clone(&self.prompts),
+            mode: Arc::clone(&self.mode),
+            reminded: Mutex::new(Some(self.mode())),
+            files: self.files.sharing_locks(),
+        }
+    }
+
+    /// A fresh interrupt for a new run, one that stops with the run above it, if any.
     pub fn begin_run(&self) -> CancellationToken {
-        let token = CancellationToken::new();
+        let token = match &self.under {
+            Some(under) => under.child_token(),
+            None => CancellationToken::new(),
+        };
         *self.cancel.lock().unwrap() = token.clone();
         token
     }

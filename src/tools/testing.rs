@@ -32,6 +32,7 @@ impl Project {
             call_id: "test",
             plan_file: "/nowhere/plan.md",
             cancel: tokio_util::sync::CancellationToken::new(),
+            run: None,
         }
     }
 

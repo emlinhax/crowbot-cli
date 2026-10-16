@@ -22,6 +22,9 @@ pub enum Entry {
         cwd: String,
         #[serde(default)]
         crowbot: String,
+        /// Set in a subagent's file: the session and call that started it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent: Option<Parent>,
     },
     Message {
         id: String,
@@ -61,6 +64,14 @@ pub enum Entry {
         /// The head it moved from.
         from: Option<String>,
     },
+}
+
+/// The session a subagent's file belongs to: its name, the `task` call, and the agent's kind.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Parent {
+    pub session: String,
+    pub call: String,
+    pub agent: String,
 }
 
 /// A summary of earlier turns and how it came about.

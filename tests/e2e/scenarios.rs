@@ -49,6 +49,9 @@ struct Expect {
     files: BTreeMap<String, String>,
     #[serde(default)]
     requests: Vec<RequestCheck>,
+    /// The tools a request offered the model, by name, in order.
+    #[serde(default)]
+    tools: Vec<ToolsCheck>,
     /// Requests the fake served, exactly, by path.
     #[serde(default)]
     hits: BTreeMap<String, usize>,
@@ -98,6 +101,14 @@ impl Turn {
 
 fn yes() -> bool {
     true
+}
+
+/// The tools chat request `index` offered.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ToolsCheck {
+    index: usize,
+    names: Vec<String>,
 }
 
 /// A check on one chat request the model was sent.
@@ -211,6 +222,20 @@ async fn check(name: String, scenario: Scenario) {
         assert!(
             got >= *least,
             "{got} hits on {path}, want at least {least}\n{context}"
+        );
+    }
+    for check in &expect.tools {
+        let names: Vec<&str> = bodies
+            .get(check.index)
+            .and_then(|b| b["tools"].as_array())
+            .unwrap_or_else(|| panic!("request {}: no tools\n{context}", check.index))
+            .iter()
+            .filter_map(|t| t["function"]["name"].as_str())
+            .collect();
+        assert_eq!(
+            names, check.names,
+            "request {} tools\n{context}",
+            check.index
         );
     }
     for check in &expect.requests {

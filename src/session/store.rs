@@ -4,7 +4,7 @@ use crate::config::paths::Paths;
 use crate::conversation::message::Message;
 use crate::io;
 use crate::release;
-use crate::session::entry::{self, Entry, FORMAT_VERSION, Snap, State, Summary};
+use crate::session::entry::{self, Entry, FORMAT_VERSION, Parent, Snap, State, Summary};
 
 /// Append-only JSONL session file and its only writer. Nothing is written before the first message.
 pub struct Store {
@@ -18,12 +18,18 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn create(paths: &Paths) -> Self {
+    /// A new file; a subagent's (`parent`) goes in a folder named for its parent's session, so
+    /// lists of the project's sessions never show it.
+    pub fn create(paths: &Paths, parent: Option<Parent>) -> Self {
         let id = entry::new_id();
         let created = io::clock::now();
         let name = format!("{}_{id}", created.strftime("%Y%m%dT%H%M%S"));
+        let dir = match &parent {
+            Some(parent) => paths.sessions_dir().join(&parent.session),
+            None => paths.sessions_dir(),
+        };
         Self {
-            path: paths.sessions_dir().join(format!("{name}.jsonl")),
+            path: dir.join(format!("{name}.jsonl")),
             name,
             header: Some(Entry::Session {
                 v: FORMAT_VERSION,
@@ -31,6 +37,7 @@ impl Store {
                 created,
                 cwd: paths.project.display().to_string(),
                 crowbot: release::package().to_owned(),
+                parent,
             }),
             head: None,
         }
@@ -132,7 +139,7 @@ mod tests {
     fn writes_a_header_then_linked_messages() {
         let home = tempfile::tempdir().unwrap();
         let paths = Paths::at(home.path().into(), home.path().join("proj"));
-        let mut store = Store::create(&paths);
+        let mut store = Store::create(&paths, None);
         assert!(
             !io::fs::exists(store.path()),
             "a session that has said nothing has no file"

@@ -1,0 +1,33 @@
+description = "A task call runs an explore subagent with its own tools; only its answer comes back, and only the parent's reply is printed"
+args = ["-p", "where is the parser?"]
+
+[[reply]]
+calls = [{ name = "task", arguments = '{"description": "find the parser", "prompt": "Find the parser and reply with its path.", "subagent_type": "explore"}' }]
+
+[[reply]]
+text = "CHILD: it is in src/parse.rs"
+
+[[reply]]
+text = "The parser is in src/parse.rs."
+
+[expect]
+exit = 0
+stdout = "The parser is in src/parse.rs.\n"
+stdout_lacks = ["CHILD:"]
+stderr_contains = ["› task find the parser"]
+
+[[expect.tools]]
+index = 1
+names = ["read", "glob", "grep", "webfetch"]
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "user"
+contains = "Find the parser and reply with its path."
+
+[[expect.requests]]
+index = 2
+message = -1
+role = "tool"
+contains = "CHILD: it is in src/parse.rs"

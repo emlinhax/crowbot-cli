@@ -304,7 +304,8 @@ impl Feed {
             }
             AgentEvent::Retry { .. }
             | AgentEvent::Prompt { .. }
-            | AgentEvent::SnapshotOff { .. } => {}
+            | AgentEvent::SnapshotOff { .. }
+            | AgentEvent::Child { .. } => {}
         }
     }
 

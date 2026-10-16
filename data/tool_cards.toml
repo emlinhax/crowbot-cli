@@ -23,6 +23,9 @@ summary = [
 body = "summary"
 summary = { count = "lines", one = "{n} line", many = "{n} lines" }
 
+[task]
+title = ["description"]
+
 [edit]
 body = "diff"
 max_lines = 20

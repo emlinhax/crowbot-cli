@@ -6,7 +6,7 @@ use anyhow::Context;
 use crate::config::paths::Paths;
 use crate::conversation::message::Message;
 use crate::io;
-use crate::session::entry::{self, Snap, State, Summary};
+use crate::session::entry::{self, Parent, Snap, State, Summary};
 use crate::session::reader;
 use crate::session::store::Store;
 
@@ -51,12 +51,21 @@ pub struct Unsaved {
 impl Transcript {
     /// A new conversation, with a session file that is written from its first message.
     pub fn create(paths: &Paths) -> Self {
+        Self::started(Store::create(paths, None))
+    }
+
+    /// A subagent's conversation, in a file kept with `parent`'s.
+    pub fn child(paths: &Paths, parent: Parent) -> Self {
+        Self::started(Store::create(paths, Some(parent)))
+    }
+
+    fn started(store: Store) -> Self {
         Self {
             messages: Vec::new(),
             ids: Vec::new(),
             snapshots: HashMap::new(),
             compactions: Vec::new(),
-            store: Store::create(paths),
+            store,
             unsaved: false,
         }
     }
