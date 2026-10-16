@@ -8,19 +8,24 @@ Read `AGENTS.md` before changing anything; `NEXT_PLAN.md` tracks the phases.
 
 | Platform | Do |
 |---|---|
-| Windows | Download [crowbot-x86_64-pc-windows-msvc.exe](https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-x86_64-pc-windows-msvc.exe) and double-click it; it offers to install itself for you and puts `crowbot` on your PATH. |
-| macOS (Apple silicon) | `curl -fsSL -o crowbot https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-aarch64-apple-darwin && chmod +x crowbot && ./crowbot install` |
-| Linux (x86_64) | `curl -fsSL -o crowbot https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-x86_64-unknown-linux-musl && chmod +x crowbot && ./crowbot install` |
+| macOS (Apple silicon), Linux (x86_64) | `curl -fsSL https://github.com/emlinhax/crowbot-cli/releases/latest/download/install.sh \| sh` |
+| Windows (x64, PowerShell) | `irm https://github.com/emlinhax/crowbot-cli/releases/latest/download/install.ps1 \| iex` |
 
-`crowbot install` copies the program to `%LOCALAPPDATA%\Programs\crowbot` (Windows) or
-`~/.local/bin` and puts it on PATH: on Windows directly, with an Apps & Features entry; elsewhere
-it prints the line for your shell profile. `crowbot uninstall` undoes it and keeps `~/.crowbot`.
-Binaries are unsigned: Windows asks for "More info → Run anyway"; macOS blocks a browser download
-until Privacy & Security → Open Anyway (`curl` downloads are not flagged).
+The script (`install/`) picks the release file for the machine, checks it against `SHA256SUMS`
+and runs `crowbot install`. By hand: download `crowbot-<target>` from the
+[latest release](https://github.com/emlinhax/crowbot-cli/releases/latest), then
+`chmod +x` it and run `./crowbot install`; on Windows, double-click the `.exe` and it offers to
+install itself. `crowbot install` copies the program to `%LOCALAPPDATA%\Programs\crowbot`
+(Windows) or `~/.local/bin` and puts it on PATH: on Windows directly, with an Apps & Features
+entry; elsewhere it prints the line for your shell profile. `crowbot uninstall` undoes it and
+keeps `~/.crowbot`. Binaries carry no Apple or Windows code signature: a browser download asks
+for "More info → Run anyway" on Windows and Privacy & Security → Open Anyway on macOS, while the
+scripts' downloads are not flagged.
 
-Sessions check for a new release daily, verify it against `SHA256SUMS` and swap it in; the next
-start says so. `crowbot update` does it now. `auto_update = false` or `CROWBOT_NO_UPDATE=1` turns
-it off; development builds never update.
+Sessions check for a new release daily and swap it in once its `SHA256SUMS` carries crowbot's
+minisign signature for that release and the file matches it; the next start says so.
+`crowbot update` does it now. `auto_update = false` or `CROWBOT_NO_UPDATE=1` turns it off;
+development builds never update.
 
 ## Commands
 
@@ -221,6 +226,7 @@ supported yet (`grep -rn CEILING: src/mcp src/tools/mcp`).
 | `src/release/` | Release identity, install and self-update. |
 | `src/*.rs` | Startup (`app`), routing (`cli`), the key (`auth`), data loading, efforts and modes. |
 | `crates/cffetch/` | The user's Cloudflare-aware HTTP client, vendored unchanged (outside the workspace: see `Cargo.toml`). Re-sync: copy `src/`, `tests/`, `examples/`, `Cargo.toml`. Its networked suite runs from that directory. |
+| `install/` | The install scripts each release publishes: `install.sh` (macOS, Linux) and `install.ps1` (Windows). |
 | `tests/e2e/` | The real binary against an in-process fake crowbot; `pty/` drives real sessions. |
 | `tests/fake_mcp/` | A stand-in MCP server, a test-only binary the scenarios configure as `{fake_mcp}`. |
 | `tests/fixtures/` | What the fake serves (`sse/`, `api/`), sample `projects/`, `scenarios/*.toml`, frozen `session/` files. |
@@ -262,10 +268,16 @@ When to run each: AGENTS.md.
 ## Releases
 
 Pushing `prod` runs `.github/workflows/release.yml`: the CI checks, then a release tagged
-`v<version>-<run>` with one binary per target and `SHA256SUMS`, built with that tag
-(`CROWBOT_RELEASE`) for `--version` and the updater. Asset names are fixed, so
-`releases/latest/download/<asset>` (the Install links) always serves the newest. Adding a target:
-see `data/release.toml`'s header.
+`v<version>-<run>` with one binary per target, `SHA256SUMS`, its signature `SHA256SUMS.minisig`
+and the install scripts, built with that tag (`CROWBOT_RELEASE`) for `--version` and the updater.
+Asset names are fixed, so `releases/latest/download/<asset>` (the Install lines) always serves
+the newest. Adding a target: see `data/release.toml`'s header.
+
+The signature's trusted comment is `crowbot release <tag>`, made with the repository secret
+`MINISIGN_SECRET_KEY`; a release without it fails before building. The public keys are
+`data/release.toml` `[signature] keys`. To change the key: release once with the new public key
+beside the old (still signed by the old), then put the new secret key in place and drop the old
+public key, since crowbots in the field know only the keys they were built with.
 
 ## Licence
 
