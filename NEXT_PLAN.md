@@ -331,8 +331,19 @@ with the session (a project's only once trusted); their tools join the registry 
   and a daily background update for interactive release builds (SHA256SUMS-checked, the program
   swapped where it stands); `crowbot install` / `uninstall`, and on Windows a double-clicked
   release offers to install itself (user PATH in the registry, Apps & Features entry).
-- Open: signing (minisign for updates, Authenticode and notarisation for SmartScreen and
-  Gatekeeper), Intel macOS and arm64 Linux targets, a website installer script.
+- Planned 2026-10-16: releases sign `SHA256SUMS` with minisign and the updater refuses a release
+  whose signature fails; `install.sh` and `install.ps1` go out with every release, so one line
+  installs crowbot. Decided: minisign only (notarisation and Authenticode need paid accounts);
+  the scripts live here as release assets, and the website's docs show their one-liners.
+- [ ] 7.1 the updater checks a minisign signature on `SHA256SUMS`, its trusted comment naming the
+      release (`data/release.toml` `[signature]`, a list of keys)
+- [ ] 7.2 the release signs `SHA256SUMS` with a key kept as a CI secret
+- [ ] 7.3 `install/install.sh` and `install/install.ps1`, published with each release
+- [ ] 7.4 README and the website's docs name the one-liners and the signature
+- [ ] 7.5 a release, on an explicit go; the signature and the one-liner checked live
+- e2e: one local batch after 7.3, then pushed so CI runs the scripts on macOS and Windows.
+- Open: notarisation and Authenticode (paid accounts), Intel macOS, arm64 Linux and Windows on
+  ARM targets.
 
 ## M8 — Forums (Tapatalk/mobiquo)
 - Added 2026-10-03: crowbot browses forums that run the Tapatalk plugin. Transport rides
