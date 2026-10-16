@@ -112,6 +112,21 @@ impl Feed {
         });
     }
 
+    /// The welcome, in place of the one already shown, so it follows the account.
+    pub fn set_welcome(&mut self, info: welcome::Info) {
+        let shown = self
+            .entries
+            .iter_mut()
+            .find(|e| matches!(e.block, Block::Welcome(_)));
+        match shown {
+            Some(entry) => {
+                entry.block = Block::Welcome(info);
+                entry.drawn = None;
+            }
+            None => self.push(Block::Welcome(info)),
+        }
+    }
+
     pub fn user(&mut self, text: &str) {
         self.push(Block::User(text.to_owned()));
     }

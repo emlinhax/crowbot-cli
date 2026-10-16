@@ -184,7 +184,7 @@ reader, since unread fields fail `-D warnings`.
 - [x] 4.2 bar: balance and allowance items (`data/ui.toml [footer]`), refreshed at start, on a
       key change (a counter beside the key in `Api`), at run end and at most every
       `tui.account_refresh_secs` mid-run; never on an idle timer
-- [ ] 4.3 welcome: replaced in place when the account changes; says not logged in, key file
+- [x] 4.3 welcome: replaced in place when the account changes; says not logged in, key file
       unreadable, key rejected or cannot spend
 - [ ] 4.4 login: asks before replacing a stored account number or an unreadable key file; its
       errors go through `data/errors.toml` like the feed's

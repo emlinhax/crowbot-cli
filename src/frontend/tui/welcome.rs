@@ -20,7 +20,9 @@ pub struct Info {
     pub effort: Option<String>,
     pub mode_label: String,
     pub mode_color: String,
-    pub logged_in: bool,
+    /// What stands in the way of chatting: no key, an unreadable key file, an account that
+    /// cannot spend.
+    pub warning: Option<String>,
     /// Braille glyphs render (Windows Terminal, any Unix terminal); legacy conhost does not.
     pub braille: bool,
 }
@@ -84,8 +86,8 @@ fn text(info: &Info) -> Vec<Line> {
         model,
         Line::default(),
     ];
-    if !info.logged_in {
-        lines.push(Line::styled(&ui.text.not_logged_in, Style::fg("warn")));
+    if let Some(warning) = &info.warning {
+        lines.push(Line::styled(warning, Style::fg("warn")));
     }
     let modes: Vec<&str> = mode::all().iter().map(|m| m.label.as_str()).collect();
     let modes = modes.join(&words.modes);
@@ -109,7 +111,7 @@ mod tests {
             effort: Some("high".into()),
             mode_label: "MANUAL".into(),
             mode_color: "mode_manual".into(),
-            logged_in: true,
+            warning: None,
             braille,
         }
     }
@@ -150,6 +152,19 @@ mod tests {
         insta::assert_snapshot!("welcome_wide", snapshot(&render(&info(true), 100)));
         insta::assert_snapshot!("welcome_narrow", snapshot(&render(&info(true), 40)));
         insta::assert_snapshot!("welcome_no_braille", snapshot(&render(&info(false), 100)));
+    }
+
+    #[test]
+    fn a_warning_shows_under_the_model_line() {
+        let warned = Info {
+            warning: Some("Not logged in: type /login".into()),
+            ..info(true)
+        };
+        let text = snapshot(&render(&warned, 100));
+        assert!(
+            text.contains("[warn]Not logged in: type /login[/]"),
+            "{text}"
+        );
     }
 
     #[test]

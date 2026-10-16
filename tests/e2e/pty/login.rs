@@ -113,3 +113,25 @@ async fn the_bar_shows_the_balance_and_follows_login_and_logout() {
     })
     .await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_session_that_cannot_spend_says_so_at_the_start() {
+    let fake = Fake::start().await;
+    fake.set_me(serde_json::json!({"balance_microdollars": 0, "can_spend": false}));
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.wait_for("The account cannot spend yet");
+        s.wait_bar("$0.00 left");
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unreadable_key_file_is_named_in_the_welcome() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    sandbox.write_home("auth.json", "not json");
+    in_session(&fake, sandbox, None, |s| {
+        s.wait_for("auth.json is unreadable");
+    })
+    .await;
+}

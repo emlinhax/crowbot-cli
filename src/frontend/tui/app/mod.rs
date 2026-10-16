@@ -27,7 +27,7 @@ use crate::config::limits;
 use crate::frontend::tui::card::{self, Card};
 use crate::frontend::tui::command::Work;
 use crate::frontend::tui::editor::Editor;
-use crate::frontend::tui::feed::{Block, Feed};
+use crate::frontend::tui::feed::Feed;
 use crate::frontend::tui::palette::Palette;
 use crate::frontend::tui::paste::Burst;
 use crate::frontend::tui::progress::Progress;
@@ -199,8 +199,7 @@ impl<'a> Tui<'a> {
             context_tokens: None,
             account: AccountView::new(),
         };
-        let welcome = tui.welcome();
-        tui.feed.push(Block::Welcome(welcome));
+        tui.feed.set_welcome(tui.welcome());
         tui
     }
 
@@ -231,7 +230,7 @@ impl<'a> Tui<'a> {
             effort: self.next.effort().map(str::to_owned),
             mode_label: mode.label.clone(),
             mode_color: mode.color.clone(),
-            logged_in: self.app.api.has_key(),
+            warning: self.account_warning(),
             braille: self.braille,
         }
     }
@@ -247,8 +246,7 @@ impl<'a> Tui<'a> {
         // AGENTS.md may have changed (/init writes it), and the prompt is read at a start.
         self.next.reload(&self.app.paths);
         self.feed = Feed::new();
-        let welcome = self.welcome();
-        self.feed.push(Block::Welcome(welcome));
+        self.feed.set_welcome(self.welcome());
         self.view = View::default();
         self.queue.clear();
         self.context_tokens = None;

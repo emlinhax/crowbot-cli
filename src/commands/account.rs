@@ -68,12 +68,15 @@ pub fn standing(me: &Me) -> String {
         }
     }
     if !me.can_spend {
-        out.push_str(&fill(
-            &TEXT.cannot_spend,
-            &[("chat", &endpoints::origin("chat"))],
-        ));
+        out.push(' ');
+        out.push_str(&cannot_spend());
     }
     out
+}
+
+/// That the account cannot spend, and where to fix it.
+pub fn cannot_spend() -> String {
+    fill(&TEXT.cannot_spend, &[("chat", &endpoints::origin("chat"))])
 }
 
 #[cfg(test)]

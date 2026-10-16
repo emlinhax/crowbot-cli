@@ -8,8 +8,11 @@ use futures_util::future::BoxFuture;
 use super::Tui;
 use crate::api::account::Me;
 use crate::api::error::ApiError;
+use crate::auth;
+use crate::commands::account;
 use crate::config::limits;
 use crate::frontend::tui::command::{self, Work};
+use crate::frontend::tui::ui;
 use crate::io::clock;
 
 #[derive(Default)]
@@ -45,7 +48,9 @@ impl<'a> Tui<'a> {
             view.changes = changes;
             view.me = None;
             view.due = true;
+            self.feed.set_welcome(self.welcome());
         }
+        let view = &mut self.account;
         if !self.app.api.has_key() {
             view.due = false;
             return None;
@@ -70,7 +75,21 @@ impl<'a> Tui<'a> {
         // A failed refresh keeps the last standing rather than blanking the bar.
         if let Ok(me) = result {
             view.me = Some(me);
+            self.feed.set_welcome(self.welcome());
         }
+    }
+
+    /// What the welcome warns of, if anything stands in the way of chatting.
+    pub(super) fn account_warning(&self) -> Option<String> {
+        if !self.app.api.has_key() {
+            // A key file that is there but unreadable says so, and how to clear it.
+            return Some(match auth::stored(&self.app.paths) {
+                Err(e) => format!("{e}"),
+                Ok(_) => ui::get().text.not_logged_in.clone(),
+            });
+        }
+        let me = self.account.me.as_ref()?;
+        (!me.can_spend).then(account::cannot_spend)
     }
 
     /// A reply has ended mid-run: ask again if the last answer is old enough.
