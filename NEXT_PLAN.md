@@ -236,7 +236,7 @@ only, and a running head decides the branch.
       change, files restored on `/undo`; only inside a git work tree
 - [x] 5.6 files changed after the turn are left alone and named; `/status` says whether `/undo`
       restores files
-- [ ] 5.7 `/retry`: undo, then the prompt again as a sibling branch
+- [x] 5.7 `/retry`: undo, then the prompt again as a sibling branch
 - [ ] 5.8 `/compact [focus]`: a summary of all but a recent tail (`compaction.keep_tokens`),
       sent as a reminder so the system prompt never changes
 - [ ] 5.9 automatic compaction before any request past `compaction.threshold_pct`;

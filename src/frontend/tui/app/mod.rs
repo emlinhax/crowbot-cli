@@ -72,8 +72,10 @@ enum Step<'a> {
     Job(BoxFuture<'a, card::Done>),
     /// Put the conversation away and start another.
     Session(Switch),
-    /// Take back the last prompt.
-    Undo,
+    /// Take back the last prompt, and send it `again` or put it in the editor.
+    Undo {
+        again: bool,
+    },
     /// Run beside input: a session command, or what one of them asked for.
     Work(BoxFuture<'a, Work>),
 }
@@ -327,8 +329,11 @@ impl<'a> Tui<'a> {
                 },
                 // CEILING: the restore runs in the loop, so a huge one holds the screen up to
                 // `snapshot.timeout_secs`. Upgrade: run it as `Work` and hold sends meanwhile.
-                Step::Undo => match transcript.as_mut() {
-                    Some(owned) => self.take_back(owned).await,
+                Step::Undo { again } => match transcript.take() {
+                    Some(mut owned) => match self.take_back(&mut owned, again).await {
+                        Some(prompt) => turn = Some(self.send(prompt, owned, &turns)),
+                        None => transcript = Some(owned),
+                    },
                     None => self.feed.notice(&ui::get().text.busy, "warn"),
                 },
                 // A turn holds the transcript while it runs.

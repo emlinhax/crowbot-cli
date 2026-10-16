@@ -55,6 +55,11 @@ pub static UNDO: Fixed = Fixed {
     effect: || Effect::Undo,
 };
 
+pub static RETRY: Fixed = Fixed {
+    spec: super::spec!("retry"),
+    effect: || Effect::Retry,
+};
+
 pub static QUIT: Fixed = Fixed {
     spec: super::spec!("quit"),
     effect: || Effect::Quit,

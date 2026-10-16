@@ -189,3 +189,25 @@ async fn undo_puts_back_the_files_the_prompt_changed() {
         "{session}"
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn retry_sends_the_last_prompt_again_without_its_first_reply() {
+    let fake = Fake::start().await;
+    fake.script([Reply::text("A first try."), Reply::text("A second try.")]);
+    let ended = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.submit("try this");
+        s.wait_for("A first try.");
+        s.submit("/retry");
+        s.wait_for("A second try.");
+        assert!(!s.contents().contains("A first try."), "{}", s.contents());
+    })
+    .await;
+    let bodies = fake.chat_bodies();
+    assert_eq!(bodies.len(), 2);
+    let second = bodies[1]["messages"].to_string();
+    assert_eq!(second.matches("try this").count(), 1, "{second}");
+    assert!(!second.contains("A first try."), "{second}");
+    // Both tries stay in the file, the first off the current branch.
+    let session = std::fs::read_to_string(&ended.sandbox.sessions()[0]).unwrap();
+    assert!(session.contains("A first try.") && session.contains(r#""type":"rewind""#));
+}

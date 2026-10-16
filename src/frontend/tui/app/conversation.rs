@@ -105,13 +105,17 @@ impl Tui<'_> {
         transcript
     }
 
-    /// Takes back the last prompt and what followed it, files included, and puts the prompt in
-    /// the editor.
-    pub(super) async fn take_back(&mut self, transcript: &mut Transcript) {
+    /// Takes back the last prompt and what followed it, files included. The prompt goes back
+    /// in the editor, or, sent `again`, is returned to send; the file keeps both tries.
+    pub(super) async fn take_back(
+        &mut self,
+        transcript: &mut Transcript,
+        again: bool,
+    ) -> Option<String> {
         let words = &ui::get().undo;
         let Some(undone) = undo::undo(transcript) else {
             self.feed.notice(&words.nothing, "muted");
-            return;
+            return None;
         };
         // What the model read or was told belongs to the turns taken back.
         self.shared.start_over();
@@ -120,17 +124,10 @@ impl Tui<'_> {
         self.feed.replay(&transcript.messages);
         self.view = View::default();
         self.context_tokens = last_input(&transcript.messages);
-        let draft = self.editor.text();
-        let text = match draft.trim().is_empty() {
-            true => undone.prompt,
-            false => format!("{}\n{draft}", undone.prompt),
-        };
-        self.editor.set_text(&text);
-        self.feed.notice(&words.done, "done");
         if let Some(snapshot) = &undone.snapshot {
             self.restore(snapshot).await;
         }
-        if let Some(unsaved) = undone.unsaved {
+        if let Some(unsaved) = &undone.unsaved {
             let text = template::fill(
                 &words::get().unsaved,
                 &[
@@ -140,6 +137,18 @@ impl Tui<'_> {
             );
             self.feed.notice(&text, "warn");
         }
+        if again {
+            self.feed.user(&undone.prompt);
+            return Some(undone.prompt);
+        }
+        let draft = self.editor.text();
+        let text = match draft.trim().is_empty() {
+            true => undone.prompt,
+            false => format!("{}\n{draft}", undone.prompt),
+        };
+        self.editor.set_text(&text);
+        self.feed.notice(&words.done, "done");
+        None
     }
 }
 

@@ -80,6 +80,8 @@ pub enum Effect {
     Resume,
     /// Take back the last prompt and what followed it.
     Undo,
+    /// `Undo`, then send the prompt again.
+    Retry,
     /// Ask for this reasoning effort from the next turn on.
     SetEffort(String),
     /// Put the model's last reply on the clipboard.
@@ -161,6 +163,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &fixed::NEW,
     &fixed::RESUME,
     &fixed::UNDO,
+    &fixed::RETRY,
     &fixed::QUIT,
     &keytest::KeyTest,
     &battery::Battery,
