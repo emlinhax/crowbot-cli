@@ -232,203 +232,15 @@ fn with_reminder(run: &Run<'_>, mut parts: Vec<Part>) -> Vec<Part> {
 mod tests {
     //! The loop against a local fake chat endpoint that replays scripted replies.
 
-    use std::collections::VecDeque;
-    use std::sync::{Arc, Mutex};
-
-    use axum::Router;
-    use axum::response::IntoResponse;
-    use axum::routing::post;
     use serde_json::{Value, json};
 
     use super::*;
-    use crate::api::Api;
-    use crate::api::models::Model;
-    use crate::app::App;
+    use crate::agent::testing::{Harness, last_message, refusal, reply, reply_sized, shared, text};
+    use std::sync::Mutex;
+
     use crate::conversation::message::Assistant;
-    use crate::io::http::Http;
     use crate::live::prompt::{Answer, Prompt, Reply};
     use crate::mode;
-    use crate::snapshot::Shadow;
-    use crate::tools::Registry;
-
-    type Script = Arc<Mutex<(VecDeque<String>, Vec<Value>)>>;
-
-    /// One scripted reply; `calls` are (id, tool, arguments).
-    fn reply(text: &str, calls: &[(&str, &str, Value)], finish: &str) -> String {
-        reply_sized(text, calls, finish, 10)
-    }
-
-    /// An error crowbot answers with instead of a reply.
-    fn refusal(status: u16, kind: &str) -> String {
-        let body = json!({"error": {"message": format!("refused: {kind}"), "type": kind}});
-        format!("STATUS {status} {body}")
-    }
-
-    /// `reply`, as though the request had sent `input` tokens.
-    fn reply_sized(text: &str, calls: &[(&str, &str, Value)], finish: &str, input: u64) -> String {
-        let mut frames = Vec::new();
-        if !text.is_empty() {
-            frames.push(json!({"choices": [{"index": 0, "delta": {"content": text}}]}));
-        }
-        for (i, (id, name, args)) in calls.iter().enumerate() {
-            frames.push(json!({"choices": [{"index": 0, "delta": {"tool_calls": [
-                {"index": i, "id": id, "type": "function",
-                 "function": {"name": name, "arguments": args.to_string()}}]}}]}));
-        }
-        frames.push(json!({"choices": [{"index": 0, "delta": {}, "finish_reason": finish}]}));
-        frames.push(
-            json!({"choices": [], "usage": {"prompt_tokens": input, "completion_tokens": 2}}),
-        );
-        let mut body: String = frames.iter().map(|f| format!("data: {f}\n\n")).collect();
-        body.push_str("data: [DONE]\n\n");
-        body
-    }
-
-    fn text(t: &str) -> String {
-        reply(t, &[], "stop")
-    }
-
-    struct Harness {
-        _dir: tempfile::TempDir,
-        app: App,
-        script: Script,
-        model: Model,
-        shadow: Shadow,
-    }
-
-    impl Harness {
-        async fn new(replies: Vec<String>) -> Self {
-            let script: Script = Arc::new(Mutex::new((replies.into(), Vec::new())));
-            let state = script.clone();
-            let base = crate::testing::serve(|_| {
-                Router::new().route(
-                    "/v1/chat/completions",
-                    post(move |body: String| {
-                        let state = state.clone();
-                        async move {
-                            let mut s = state.lock().unwrap();
-                            s.1.push(serde_json::from_str(&body).unwrap());
-                            let next = s.0.pop_front().unwrap_or_else(|| text("(unscripted)"));
-                            // `refusal` scripts an error status and its envelope.
-                            match next.strip_prefix("STATUS ").and_then(|r| r.split_once(' ')) {
-                                Some((status, body)) => (
-                                    axum::http::StatusCode::from_u16(status.parse().unwrap())
-                                        .unwrap(),
-                                    [("content-type", "application/json")],
-                                    body.to_owned(),
-                                )
-                                    .into_response(),
-                                None => {
-                                    ([("content-type", "text/event-stream")], next).into_response()
-                                }
-                            }
-                        }
-                    }),
-                )
-            })
-            .await;
-
-            let dir = tempfile::tempdir().unwrap();
-            let mut app = App::for_tests(dir.path());
-            let http = Http::new(std::time::Duration::from_secs(5)).unwrap();
-            app.api = Api::redirected(http, "k", &base);
-            let model = crate::testing::model(false);
-            Self {
-                _dir: dir,
-                app,
-                script,
-                model,
-                shadow: Shadow::none("no git in these tests".into()),
-            }
-        }
-
-        /// The project made a git work tree with snapshots on; `None` on a machine without git.
-        async fn with_git(mut self) -> Option<Self> {
-            let program = crate::io::proc::which("git")?;
-            let init = crate::io::proc::exec(&crate::io::proc::Program {
-                program: &program,
-                args: &["init".into(), "--quiet".into()],
-                cwd: &self.app.paths.project,
-                env: &[],
-                unset: &[],
-                timeout: std::time::Duration::from_secs(30),
-            })
-            .await
-            .ok()?;
-            assert!(init.ok());
-            self.shadow = Shadow::open(&self.app.paths).await;
-            assert_eq!(self.shadow.off(), None);
-            Some(self)
-        }
-
-        fn write(&self, path: &str, text: &str) {
-            crate::io::fs::write_atomic(
-                &self.app.paths.project.join(path),
-                text.as_bytes(),
-                crate::io::fs::Access::Shared,
-            )
-            .unwrap();
-        }
-
-        /// Runs one prompt in a new conversation; `on` sees every event and may drive `shared`
-        /// like a frontend does.
-        async fn run(
-            &self,
-            shared: &Shared,
-            on: impl Fn(&AgentEvent, &Shared) + Send + Sync,
-        ) -> (Ended, Transcript, Vec<String>) {
-            self.run_in(Transcript::create(&self.app.paths), shared, on)
-                .await
-        }
-
-        /// `run`, in a conversation the test has made.
-        async fn run_in(
-            &self,
-            mut transcript: Transcript,
-            shared: &Shared,
-            on: impl Fn(&AgentEvent, &Shared) + Send + Sync,
-        ) -> (Ended, Transcript, Vec<String>) {
-            let registry = Registry::builtin(self.app.settings.shell.as_deref());
-            let events = Mutex::new(Vec::new());
-            let emit = |event: AgentEvent| {
-                on(&event, shared);
-                let kind = serde_json::to_value(&event).unwrap()["type"]
-                    .as_str()
-                    .unwrap()
-                    .to_owned();
-                events.lock().unwrap().push(kind);
-            };
-            let cx = RunCtx {
-                app: &self.app,
-                model: &self.model,
-                effort: None,
-                system: "sys",
-                tools: &registry,
-                emit: &emit,
-                shadow: &self.shadow,
-            };
-            let prompt = vec![Part::Text { text: "go".into() }];
-            let ended = run(&cx, &mut transcript, shared, prompt).await;
-            (ended, transcript, events.into_inner().unwrap())
-        }
-
-        fn requests(&self) -> Vec<Value> {
-            self.script.lock().unwrap().1.clone()
-        }
-    }
-
-    fn shared(mode: &str) -> Shared {
-        Shared::new(mode::get(mode).unwrap())
-    }
-
-    fn last_message(request: &Value) -> Value {
-        request["messages"]
-            .as_array()
-            .unwrap()
-            .last()
-            .unwrap()
-            .clone()
-    }
 
     #[tokio::test]
     async fn parallel_results_come_back_in_call_order() {
@@ -593,7 +405,7 @@ mod tests {
                 }
             })
             .await;
-        assert_eq!(events.iter().filter(|e| *e == "prompt").count(), 1);
+        assert_eq!(events.iter().filter(|e| e["type"] == "prompt").count(), 1);
         let result = last_message(&h.requests()[1]);
         let content = result["content"].as_str().unwrap();
         assert!(content.contains("Which DB?\n  postgres"), "{content}");
@@ -648,7 +460,7 @@ mod tests {
             })
             .await;
         assert_eq!(ended.outcome, Outcome::Done);
-        assert_eq!(events.iter().filter(|e| *e == "prompt").count(), 1);
+        assert_eq!(events.iter().filter(|e| e["type"] == "prompt").count(), 1);
         for said in ["hi", "there"] {
             let ran = transcript
                 .messages
@@ -701,7 +513,7 @@ mod tests {
                 }
             })
             .await;
-        assert_eq!(events.iter().filter(|e| *e == "prompt").count(), 1);
+        assert_eq!(events.iter().filter(|e| e["type"] == "prompt").count(), 1);
         // The prompt says so, so a frontend words it as a confirmation.
         assert_eq!(*confirmed.lock().unwrap(), [true]);
     }
@@ -736,7 +548,11 @@ mod tests {
         let (ended, _, events) = h.run(&shared("auto"), |_, _| {}).await;
         assert_eq!(ended.outcome, Outcome::Done);
         for kind in ["tool_start", "tool_end"] {
-            assert_eq!(events.iter().filter(|e| *e == kind).count(), 1, "{kind}");
+            assert_eq!(
+                events.iter().filter(|e| e["type"] == *kind).count(),
+                1,
+                "{kind}"
+            );
         }
         assert_eq!(
             crate::io::fs::kind(&h.app.paths.project.join("new.txt")).unwrap(),
@@ -903,7 +719,7 @@ mod tests {
                 .contains("SUMMARY of the questions")
         );
         assert!(!requests[2]["messages"].to_string().contains("question 0"));
-        assert!(events.contains(&"compaction_end".to_owned()));
+        assert!(events.iter().any(|e| e["type"] == "compaction_end"));
         assert!(transcript.context().0.is_some());
     }
 

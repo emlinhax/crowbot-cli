@@ -9,6 +9,8 @@ pub mod overflow;
 pub mod run;
 pub mod setup;
 pub mod system_prompt;
+#[cfg(test)]
+pub mod testing;
 
 use std::sync::OnceLock;
 
