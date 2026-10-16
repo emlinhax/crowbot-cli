@@ -339,11 +339,17 @@ with the session (a project's only once trusted); their tools join the registry 
       release (`data/release.toml` `[signature]`, a list of keys)
 - [x] 7.2 the release signs `SHA256SUMS` with a key kept as a CI secret
 - [x] 7.3 `install/install.sh` and `install/install.ps1`, published with each release
-- [ ] 7.4 README and the website's docs name the one-liners and the signature
-- [ ] 7.5 a release, on an explicit go; the signature and the one-liner checked live
+- [x] 7.4 README and the website's docs name the one-liners and the signature
+- [x] 7.5 a release, on an explicit go; the signature and the one-liner checked live
 - e2e: one local batch after 7.3, then pushed so CI runs the scripts on macOS and Windows.
-- Open: notarisation and Authenticode (paid accounts), Intel macOS, arm64 Linux and Windows on
-  ARM targets.
+- 2026-10-16: `v0.2.0-6` (deploy 8477a0f) is the first signed release. Its `SHA256SUMS.minisig`
+  verifies with the minisign CLI (trusted comment `crowbot release v0.2.0-6`), and the published
+  `install.sh | sh` installed `crowbot 0.2.0 (v0.2.0-6)` into a throwaway home. The release ran
+  its checks on every target (macOS 474 + 64, Windows 464 + 63 tests). The website's docs
+  (crowbot ba068b2) show the one-liners; its deploy is a separate go.
+- Open: the updater's signature check runs for real only on the release after this one (older
+  installs do not check); notarisation and Authenticode (paid accounts); Intel macOS, arm64
+  Linux and Windows on ARM targets.
 
 **Learned**
 - From 91c1b39 (2026-10-08) to efbb769 every CI job only built: `if: matrix.checks != false`
