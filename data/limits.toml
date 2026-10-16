@@ -100,6 +100,14 @@ reason = "the models /account names by spend; the total above them covers the re
 value = 20000
 reason = "the latest turns a summary keeps word for word, enough for the work in hand and its last tool results"
 
+[compaction.threshold_pct]
+value = 85
+reason = "a request past this share of the window, after the model's room to reply, summarises first: the rest is for the next tool results"
+
+[compaction.length_overflow_pct]
+value = 95
+reason = "a reply cut off with prompt and output this close to the window ran out of window, not of output"
+
 [compaction.bytes_per_token]
 value = 4
 reason = "a rough count with no tokenizer: English and code average about four bytes a token"

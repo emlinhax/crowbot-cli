@@ -239,7 +239,7 @@ only, and a running head decides the branch.
 - [x] 5.7 `/retry`: undo, then the prompt again as a sibling branch
 - [x] 5.8 `/compact [focus]`: a summary of all but a recent tail (`compaction.keep_tokens`),
       sent as a reminder so the system prompt never changes
-- [ ] 5.9 automatic compaction before any request past `compaction.threshold_pct`;
+- [x] 5.9 automatic compaction before any request past `compaction.threshold_pct`;
       `data/overflow.toml`; a refused request compacted and sent once more
 - [ ] 5.10 README and Learned
 - e2e (session format, file restore, requests): one local batch after 5.3, 5.7 and 5.9.

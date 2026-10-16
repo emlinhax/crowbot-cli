@@ -4,6 +4,8 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
+use crate::agent::overflow;
+use crate::conversation::message::Assistant;
 use crate::data;
 use crate::live::event::AgentEvent;
 use crate::text::{template, units};
@@ -15,6 +17,7 @@ static WORDS: LazyLock<Words> = data::load!("frontend.toml");
 pub struct Words {
     pub interrupted: String,
     pub cut_off: String,
+    pub window_full: String,
     pub unsaved: String,
     pub turn_limit: String,
     pub retrying: String,
@@ -45,6 +48,14 @@ pub struct PrintWords {
 
 pub fn get() -> &'static Words {
     &WORDS
+}
+
+/// Why `reply` was cut off: its output limit, or a context window of `window` tokens that filled.
+pub fn cut_off(reply: &Assistant, window: u64) -> &'static str {
+    match overflow::window_filled(reply, window) {
+        true => &WORDS.window_full,
+        false => &WORDS.cut_off,
+    }
 }
 
 /// What a finished summary of earlier turns comes to, and whether that is bad news; `why` is

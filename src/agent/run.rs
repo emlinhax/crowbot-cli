@@ -4,10 +4,13 @@
 use std::sync::OnceLock;
 
 use crate::agent::batch::{self, Batch};
+use crate::agent::compact::{self, Why};
 use crate::agent::context;
 use crate::agent::model_text;
+use crate::agent::overflow;
 use crate::agent::{Run, RunCtx};
 use crate::api::chat::{self, Turn};
+use crate::api::models::Model;
 use crate::config::limits;
 use crate::conversation::message::{Finish, Message, Part, ToolCall};
 use crate::live::event::{AgentEvent, Ended, Outcome};
@@ -37,6 +40,9 @@ pub async fn run(
     let tools = cx.tools.wire();
     let max_turns = limits::get().agent.max_turns.value;
     let mut turns = 0;
+    // One summary-and-send-again per run, and none after one failed: a model that cannot
+    // summarise would only fail again.
+    let (mut sent_again, mut summary_failed) = (false, false);
 
     let outcome = 'run: loop {
         loop {
@@ -45,6 +51,10 @@ pub async fn run(
             }
             turns += 1;
 
+            if let Some(why) = window_full(transcript, cx.model).filter(|_| !summary_failed) {
+                let summarised = compact::compact(cx, transcript, shared, cancel, None, why).await;
+                summary_failed = !matches!(summarised, Ok(true));
+            }
             let (summary, tail) = transcript.context();
             let messages = context::build(summary, tail);
             let turn = Turn {
@@ -61,7 +71,20 @@ pub async fn run(
             record(cx, transcript, Message::Assistant(reply.clone()));
             let finish = reply.finish;
             let calls: Vec<ToolCall> = reply.tool_calls().cloned().collect();
+            let refused = reply.error.as_ref().is_some_and(overflow::refused);
             (cx.emit)(AgentEvent::MessageEnd { message: reply });
+            if refused && !sent_again && !summary_failed {
+                sent_again = true;
+                let why = Why {
+                    auto: true,
+                    overflow: true,
+                };
+                let summarised = compact::compact(cx, transcript, shared, cancel, None, why).await;
+                if matches!(summarised, Ok(true)) {
+                    continue;
+                }
+                summary_failed = true;
+            }
             match finish {
                 Finish::Aborted => break 'run Outcome::Aborted,
                 Finish::Error => break 'run Outcome::Failed,
@@ -129,6 +152,26 @@ pub async fn run(
     ended
 }
 
+/// Why the conversation should be summarised before the next request, if it should: the last
+/// request since the latest summary nearly filled the window, or its reply was cut off because
+/// the window ran out.
+fn window_full(transcript: &Transcript, model: &Model) -> Option<Why> {
+    let last = transcript
+        .since_summary()
+        .iter()
+        .rev()
+        .find_map(|m| match m {
+            Message::Assistant(reply) => reply.usage.map(|usage| (reply, usage)),
+            _ => None,
+        });
+    let (reply, usage) = last?;
+    let filled = overflow::window_filled(reply, model.context_window);
+    (filled || overflow::nearly_full(usage.input, model)).then_some(Why {
+        auto: true,
+        overflow: filled,
+    })
+}
+
 /// Keeps `message`; a session file that can no longer be written is reported once, and the
 /// run goes on without it.
 fn record(cx: &RunCtx<'_>, transcript: &mut Transcript, message: Message) {
@@ -193,6 +236,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use axum::Router;
+    use axum::response::IntoResponse;
     use axum::routing::post;
     use serde_json::{Value, json};
 
@@ -200,6 +244,7 @@ mod tests {
     use crate::api::Api;
     use crate::api::models::Model;
     use crate::app::App;
+    use crate::conversation::message::Assistant;
     use crate::io::http::Http;
     use crate::live::prompt::{Answer, Prompt, Reply};
     use crate::mode;
@@ -210,6 +255,17 @@ mod tests {
 
     /// One scripted reply; `calls` are (id, tool, arguments).
     fn reply(text: &str, calls: &[(&str, &str, Value)], finish: &str) -> String {
+        reply_sized(text, calls, finish, 10)
+    }
+
+    /// An error crowbot answers with instead of a reply.
+    fn refusal(status: u16, kind: &str) -> String {
+        let body = json!({"error": {"message": format!("refused: {kind}"), "type": kind}});
+        format!("STATUS {status} {body}")
+    }
+
+    /// `reply`, as though the request had sent `input` tokens.
+    fn reply_sized(text: &str, calls: &[(&str, &str, Value)], finish: &str, input: u64) -> String {
         let mut frames = Vec::new();
         if !text.is_empty() {
             frames.push(json!({"choices": [{"index": 0, "delta": {"content": text}}]}));
@@ -220,7 +276,9 @@ mod tests {
                  "function": {"name": name, "arguments": args.to_string()}}]}}]}));
         }
         frames.push(json!({"choices": [{"index": 0, "delta": {}, "finish_reason": finish}]}));
-        frames.push(json!({"choices": [], "usage": {"prompt_tokens": 10, "completion_tokens": 2}}));
+        frames.push(
+            json!({"choices": [], "usage": {"prompt_tokens": input, "completion_tokens": 2}}),
+        );
         let mut body: String = frames.iter().map(|f| format!("data: {f}\n\n")).collect();
         body.push_str("data: [DONE]\n\n");
         body
@@ -251,7 +309,19 @@ mod tests {
                             let mut s = state.lock().unwrap();
                             s.1.push(serde_json::from_str(&body).unwrap());
                             let next = s.0.pop_front().unwrap_or_else(|| text("(unscripted)"));
-                            ([("content-type", "text/event-stream")], next)
+                            // `refusal` scripts an error status and its envelope.
+                            match next.strip_prefix("STATUS ").and_then(|r| r.split_once(' ')) {
+                                Some((status, body)) => (
+                                    axum::http::StatusCode::from_u16(status.parse().unwrap())
+                                        .unwrap(),
+                                    [("content-type", "application/json")],
+                                    body.to_owned(),
+                                )
+                                    .into_response(),
+                                None => {
+                                    ([("content-type", "text/event-stream")], next).into_response()
+                                }
+                            }
                         }
                     }),
                 )
@@ -789,6 +859,80 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(text.matches(r#""type":"snapshot""#).count(), 2, "{text}");
+    }
+
+    /// A conversation long enough that a summary has something to stand for.
+    fn long(h: &Harness) -> Transcript {
+        let mut transcript = Transcript::create(&h.app.paths);
+        let big = "x".repeat(limits::get().compaction.keep_tokens.value * 2);
+        for i in 0..3 {
+            transcript
+                .push(Message::user_text(format!("question {i} {big}")))
+                .unwrap();
+            let text = format!("answer {i} {big}");
+            let reply = Assistant::stub(Finish::Done, vec![Part::Text { text }]);
+            transcript.push(Message::Assistant(reply)).unwrap();
+        }
+        transcript
+    }
+
+    fn asked_to_summarise(request: &Value) -> bool {
+        last_message(request)["content"]
+            .as_str()
+            .is_some_and(|c| c.contains("call no tools"))
+    }
+
+    #[tokio::test]
+    async fn a_request_that_nearly_filled_the_window_is_summarised_before_the_next() {
+        let call = [("c1", "read", json!({"path": "a.txt"}))];
+        let h = Harness::new(vec![
+            reply_sized("", &call, "tool_calls", 90_000),
+            text("SUMMARY of the questions"),
+            text("done"),
+        ])
+        .await;
+        h.write("a.txt", "a");
+        let (ended, transcript, events) = h.run_in(long(&h), &shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let requests = h.requests();
+        assert!(!asked_to_summarise(&requests[0]));
+        assert!(asked_to_summarise(&requests[1]));
+        assert!(
+            requests[2]["messages"]
+                .to_string()
+                .contains("SUMMARY of the questions")
+        );
+        assert!(!requests[2]["messages"].to_string().contains("question 0"));
+        assert!(events.contains(&"compaction_end".to_owned()));
+        assert!(transcript.context().0.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_request_refused_as_too_long_is_summarised_and_sent_once_more() {
+        let h = Harness::new(vec![
+            refusal(413, "body_too_large"),
+            text("SUMMARY"),
+            text("done"),
+        ])
+        .await;
+        let (ended, _, _) = h.run_in(long(&h), &shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let requests = h.requests();
+        assert_eq!(requests.len(), 3);
+        assert!(asked_to_summarise(&requests[1]));
+        assert!(requests[2]["messages"].to_string().contains("SUMMARY"));
+
+        // Refused again: no third try.
+        let h = Harness::new(vec![
+            refusal(413, "body_too_large"),
+            text("SUMMARY"),
+            refusal(413, "body_too_large"),
+            text("never asked"),
+        ])
+        .await;
+        let (ended, _, _) = h.run_in(long(&h), &shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Failed);
+        assert_eq!(h.requests().len(), 3);
     }
 
     #[tokio::test]

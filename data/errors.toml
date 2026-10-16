@@ -80,7 +80,7 @@ hint = "Pick a live one from `crowbot models`."
 
 [body_too_large]
 title = "The request is over crowbot's 16 MiB limit"
-hint = "Start a new session; this one has grown too long to send."
+hint = "/compact summarises earlier turns; if it is still too long, start a new session."
 
 [rate_limited]
 title = "Too many requests at once"

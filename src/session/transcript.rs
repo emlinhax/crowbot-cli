@@ -156,6 +156,14 @@ impl Transcript {
         }
     }
 
+    /// The messages since the latest summary was made: what tells whether another is due.
+    pub fn since_summary(&self) -> &[Message] {
+        match self.compactions.last() {
+            Some(c) => &self.messages[c.head + 1..],
+            None => &self.messages,
+        }
+    }
+
     /// Where the messages not yet summarised start.
     pub fn summarised(&self) -> usize {
         self.compactions.last().map_or(0, |c| c.kept)

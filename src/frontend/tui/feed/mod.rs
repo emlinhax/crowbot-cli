@@ -88,6 +88,8 @@ pub struct Feed {
     running: Vec<Running>,
     /// Why the summary in progress was made (`auto`, `overflow`), for its end to say.
     compacting: (bool, bool),
+    /// The model's context window, to tell a reply cut off by it from one out of output.
+    window: u64,
 }
 
 impl Feed {
@@ -105,7 +107,13 @@ impl Feed {
             reasoning_since: None,
             running: Vec::new(),
             compacting: (false, false),
+            window: 0,
         }
+    }
+
+    /// The window of the model the session uses from now on.
+    pub fn set_window(&mut self, window: u64) {
+        self.window = window;
     }
 
     pub fn push(&mut self, block: Block) {
@@ -430,7 +438,7 @@ impl Feed {
         if let Some(error) = &message.error {
             self.push(Block::Error(error.clone()));
         } else if message.finish == Finish::Length {
-            let text = &words::get().cut_off;
+            let text = words::cut_off(message, self.window);
             self.notice(text, "warn");
         }
     }

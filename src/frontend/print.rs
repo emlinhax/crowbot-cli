@@ -68,6 +68,8 @@ pub async fn run(
     let out = Printer {
         format,
         shared: &shared,
+        window: model.context_window,
+        compacting: Mutex::new((false, false)),
         at_line_start: AtomicBool::new(true),
         last: Mutex::new(None),
         declined: Mutex::new(Vec::new()),
@@ -99,6 +101,10 @@ pub async fn run(
 struct Printer<'a> {
     format: Format,
     shared: &'a Shared,
+    /// The model's context window, to tell a reply cut off by it from one out of output.
+    window: u64,
+    /// Why the summary in progress was made, for its end to say.
+    compacting: Mutex<(bool, bool)>,
     /// Whether stdout ends at a line start, so stderr notes do not land mid-sentence.
     at_line_start: AtomicBool,
     last: Mutex<Option<Assistant>>,
@@ -197,6 +203,15 @@ impl Printer<'_> {
                     &[("path", path), ("error", error)],
                 ));
             }
+            AgentEvent::CompactionStart { auto, overflow } => {
+                *self.compacting.lock().unwrap() = (*auto, *overflow);
+            }
+            AgentEvent::CompactionEnd { .. } => {
+                let why = *self.compacting.lock().unwrap();
+                if let Some((text, _)) = words::compaction(event, why) {
+                    self.note(&text);
+                }
+            }
             _ => {}
         }
     }
@@ -246,8 +261,8 @@ impl Printer<'_> {
             }
             Outcome::Rejected => ExitCode::FAILURE,
             Outcome::Done => {
-                if last.is_some_and(|m| m.finish == Finish::Length) {
-                    term::warn(&words::get().cut_off);
+                if let Some(cut) = last.filter(|m| m.finish == Finish::Length) {
+                    term::warn(words::cut_off(&cut, self.window));
                 }
                 ExitCode::SUCCESS
             }

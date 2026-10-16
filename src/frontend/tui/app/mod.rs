@@ -397,6 +397,8 @@ impl<'a> Tui<'a> {
         if let Some(progress) = &mut self.progress {
             progress.event(&event, now);
         }
+        // The model can change between turns; the feed reads its window when a reply ends.
+        self.feed.set_window(self.next.model.context_window);
         self.feed.event(&event, now);
     }
 }

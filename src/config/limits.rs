@@ -133,6 +133,8 @@ pub struct PairLimits {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CompactionLimits {
+    pub threshold_pct: Limit<u64>,
+    pub length_overflow_pct: Limit<u64>,
     pub keep_tokens: Limit<usize>,
     pub bytes_per_token: Limit<usize>,
 }

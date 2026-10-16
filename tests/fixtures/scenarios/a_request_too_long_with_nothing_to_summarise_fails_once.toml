@@ -1,0 +1,10 @@
+description = "A request refused as too long is summarised and sent again; with nothing to summarise yet it fails at once, saying so"
+args = ["-p", "hi"]
+
+[[reply]]
+error = { status = 413, kind = "body_too_large" }
+
+[expect]
+exit = 1
+stderr_contains = ["Nothing to summarise yet", "16 MiB"]
+hits = { "/v1/chat/completions" = 1 }
