@@ -283,9 +283,11 @@ reader, since unread fields fail `-D warnings`.
 - [x] Pilot (`make battery TASKS=… REPEATS=1`, 3 runs, $0.04), then the full run and a report:
       `bench/runs/20261012T105806` (local only), 90 runs in 81 min, $1.89, 69 done, 14 ended on
       a server error. The candidates are below, each with the count behind it.
-- [ ] Re-run to show the applied candidates moved the numbers. The baseline's sessions stay on the
-      machine that ran it, so its `report.md` and `results.jsonl` are kept in `bench/baseline/`
-      and the new report is compared with that one by hand. On a fresh machine (Linux or macOS:
+- [x] Re-run to show the applied candidates moved the numbers: `bench/runs/20261016T085230`
+      (local only; crowbot 506f196), 90 runs in 86 min, $2.78, 87 done, none ended on an error.
+      Its `report.md` and `results.jsonl` are the new `bench/baseline/`; the first full run's
+      stay in git history. A later run is compared with that one by hand. On a fresh machine
+      (Linux or macOS:
       the runner stops runs with SIGINT, and ufo's setup links with `ln -s`):
       1. Rust from `rust-toolchain.toml` plus libclang, git, python3, and node 18.12 or later with
          corepack (ufo's pnpm refuses older).
@@ -295,6 +297,8 @@ reader, since unread fields fail `-D warnings`.
          `parallel = 2`, which must not exceed the requests the key's plan runs in flight).
       5. `cargo run -q -- battery report bench/runs/<stamp>`, then diff its `report.md` with
          `bench/baseline/report.md`.
+      A run beside ongoing work goes in a detached `git worktree` of the measured commit; it builds
+      its own `target/` (a few GB), so remove the worktree once the report is written.
 
 **Learned**
 - A run costs about 2¢ with this model, not the 8.5¢ estimated: the whole battery is under $2.
@@ -328,8 +332,29 @@ reader, since unread fields fail `-D warnings`.
 - The first re-run (`20261014T090725`) is void: the smoke account's plan runs 2 requests in flight
   and the battery ran 4, so 84 of 90 runs ended on a 429 after crowbot's four 2 s retries.
   `parallel` is now 2.
+- The re-run (2026-10-16) against the first full run: 87/90 done (69), none ended on an error
+  (14), PLAN 16/18 (6/18), no run stopped by the 15-minute wall (9), $2.78 and 14.5M tokens
+  ($1.89, 10.1M) because runs that ended early now finish. None of the 502s, 503s or cut-off
+  streams came back, which is crowbot's gateway as much as this client, so the run says nothing
+  new about retries or the stall timeout.
+- The candidates moved what they aimed at: under MANUAL `cd` (54), `ls` (33), `git log` (19),
+  `echo` (16) and `git status` (7) no longer ask, PLAN refused no `git` (21), and heredoc bodies
+  no longer show as commands to approve.
+- codesearch's lookups moved to webfetch: 16 calls became 53, 17 of them failed, and MANUAL would
+  ask before each. The model still reads the pinned repos upstream, so private fixtures remain the
+  way to measure what it works out alone.
+- Readers as reads half landed: PLAN still refused 12 grep lines, 6 of them `"a\|b"`
+  alternations that the reader check refused for the backslash inside double quotes. Fixed after
+  the run (de7b042), not yet measured; `2>/dev/null`, `|| true`, `-r` and a pipe into `awk` keep
+  the rest ordinary commands by design.
+- The three runs not done are the model's: `ufo-fix-double-slash` #3 stopped on a `length` finish
+  in its first reasoning (1 turn, 1.3 s), and two `semver-plan-intersects` plans never named the
+  file the check looks for.
+- A pinned worktree's own `target/` beside the main one filled the one 98 GB partition as the run
+  ended. Dev builds now keep line tables only (9 GB to 3.1 GB).
 
-**Candidates** (counts across the 90 runs; all five applied 2026-10-12, re-run still to come)
+**Candidates** (counts across the first full run's 90; all five applied 2026-10-12 and measured
+2026-10-16, above)
 - [x] codesearch timed out on 14 of 21 calls at 30 s, and the rest were upstream lookups: removed
       rather than given its own timeout; webfetch covers what it was for.
 - [x] `cd <project> &&` and `git -C <project>` run where commands run anyway
@@ -344,5 +369,7 @@ reader, since unread fields fail `-D warnings`.
 - [x] Each reply event must come within `chat.stall_timeout_secs` (300 s), keepalives or not:
       one run lost 15 minutes.
 - Later: PLAN allows `npx vitest` and `python3 -m unittest`; edit's "read it first" refusal fired
-  6 times after grep had shown the lines; read takes `path:line` (once). read→read→read (54) is
-  mostly reads that depend on the one before, so it is not a batching candidate yet.
+  6 times after grep had shown the lines; read takes `path:line` (once). read→read→read (54, then
+  83 in the re-run) is mostly reads that depend on the one before, so it is not a batching
+  candidate yet. Under MANUAL, webfetch (53) and project test runs (`python` 54, `cargo test` 39)
+  are now the most asked; both run or fetch what a person should see, so they stay asks.
