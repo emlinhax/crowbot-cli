@@ -195,7 +195,7 @@ reader, since unread fields fail `-D warnings`.
       anything can drop it, and the proof of work stops when its job is dropped
 - [x] 4.7 `/signup` card: asks before replacing a stored key, shows the number, confirms its last
       four digits
-- [ ] 4.8 `/account` card: overview and keys; revoke any key but the session's own
+- [x] 4.8 `/account` card: overview and keys; revoke any key but the session's own
 - [ ] 4.9 `/account`: the last `account.usage_days` of usage by model, and the balance fallback
       toggle
 - [ ] 4.10 README and Learned

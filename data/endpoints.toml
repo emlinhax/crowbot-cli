@@ -29,6 +29,19 @@ method = "GET"
 path = "/api/me"
 auth = true
 
+# The account's keys, and revoking one; crowbot refuses to revoke the key that asks.
+[endpoints.me_keys]
+origin = "api"
+method = "GET"
+path = "/api/me/keys"
+auth = true
+
+[endpoints.me_key_revoke]
+origin = "api"
+method = "POST"
+path = "/api/me/keys/{ref}/revoke"
+auth = true
+
 [endpoints.pair_start]
 origin = "api"
 method = "POST"

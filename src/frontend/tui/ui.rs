@@ -35,6 +35,7 @@ pub struct Ui {
     pub login: LoginText,
     pub replace: ReplaceText,
     pub signup: SignupText,
+    pub account: AccountText,
     pub forums: ForumsText,
 }
 
@@ -112,6 +113,28 @@ pub struct SignupText {
     pub failed: String,
     pub retry: String,
     pub close: String,
+    pub hint: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AccountText {
+    pub title: String,
+    pub loading: String,
+    pub revoking: String,
+    pub keys: String,
+    pub close: String,
+    pub back: String,
+    pub key: String,
+    pub current: String,
+    pub current_kept: String,
+    pub confirm: String,
+    pub device_warning: String,
+    pub account_warning: String,
+    pub revoke: String,
+    pub keep: String,
+    pub revoked: String,
+    pub failed: String,
     pub hint: String,
 }
 

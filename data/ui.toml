@@ -142,6 +142,27 @@ retry = "Try again"
 close = "Close"
 hint = "esc close"
 
+# `/account` in a session: where the account stands, and its keys. {name} is a key's device (or
+# "account" for the account number), {hint} its last digits, {date} the day it was made.
+[account]
+title = "Account"
+loading = "Asking crowbot…"
+revoking = "Revoking the key…"
+keys = "Keys ({n})"
+close = "Close"
+back = "Back"
+key = "{name}  {hint}  since {date}"
+current = "  · this session"
+current_kept = "That is the key this session uses; revoke it from another device, or /logout here."
+confirm = "Revoke {name} {hint}?"
+device_warning = "Whatever uses this key stops working at once; that device can be paired again."
+account_warning = "This is the account number itself. Once revoked it signs in nowhere, and only the remaining device keys reach the account."
+revoke = "Revoke it"
+keep = "Keep it"
+revoked = "Revoked {name} {hint}."
+failed = "Account: {error}"
+hint = "esc back"
+
 # `/forums` in a session: the forums the agent can browse, to log in to, log out of, remove or add.
 [forums]
 title = "Forums"

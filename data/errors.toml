@@ -62,6 +62,13 @@ title = "Your plan's allowance is used up for now"
 hint = "It refills over the day, or turn balance fallback back on at {chat}."
 session = "account"
 
+[cannot_revoke_current]
+title = "That is the key this session uses"
+hint = "Revoke it from another device, or /logout here."
+
+[not_found]
+title = "crowbot has no such thing"
+
 [model_not_found]
 title = "That model is not being served"
 hint = "Pick a live one from `crowbot models`."

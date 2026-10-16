@@ -84,6 +84,8 @@ pub enum Effect {
     PickModel {
         refresh: bool,
     },
+    /// Open the session's account card.
+    Account,
     /// Open the session's signup card; `force` skips asking about a stored key.
     Signup {
         force: bool,

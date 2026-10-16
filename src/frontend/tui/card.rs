@@ -13,7 +13,7 @@ use crate::frontend::tui::keymap::Action;
 use crate::frontend::tui::questions::Questions;
 use crate::frontend::tui::rows::capped;
 use crate::frontend::tui::ui::{self, PermissionReply};
-use crate::frontend::tui::{forums, login, signup};
+use crate::frontend::tui::{account, forums, login, signup};
 use crate::io::term::KeyEvent;
 use crate::live::prompt::{Prompt, Reply};
 use crate::permission::gate;
@@ -41,6 +41,7 @@ pub enum Next {
 pub enum Job {
     Login(login::Job),
     Signup(signup::Job),
+    Account(account::Job),
     /// Boxed: it carries a whole forum.
     Forums(Box<forums::Job>),
 }
@@ -49,6 +50,7 @@ pub enum Job {
 pub enum Done {
     Login(login::Done),
     Signup(signup::Done),
+    Account(account::Done),
     Forums(forums::Done),
 }
 
@@ -56,6 +58,7 @@ pub fn run(app: &App, job: Job) -> BoxFuture<'_, Done> {
     match job {
         Job::Login(job) => login::run(app, job).map(Done::Login).boxed(),
         Job::Signup(job) => signup::run(app, job).map(Done::Signup).boxed(),
+        Job::Account(job) => account::run(app, job).map(Done::Account).boxed(),
         Job::Forums(job) => forums::run(app, *job).map(Done::Forums).boxed(),
     }
 }

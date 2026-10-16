@@ -189,6 +189,12 @@ impl<'a> Tui<'a> {
         if matches!(done, card::Done::Forums(forums::Done::Changed { .. })) {
             self.next.reload(&self.app.paths);
         }
+        // What the account card learned is what the bar and welcome show.
+        if let card::Done::Account(done) = &done
+            && let Some(me) = done.me()
+        {
+            self.account_seen(me.clone());
+        }
         match self.panel.as_mut().map(|card| card.finished(done)) {
             Some(next) => self.panel_next(next),
             None => Step::Continue,

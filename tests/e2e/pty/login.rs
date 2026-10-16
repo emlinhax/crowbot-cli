@@ -3,7 +3,7 @@
 
 use super::harness::{ENTER, ESC, in_session};
 use crate::Sandbox;
-use crate::fake_crowbot::{ACCOUNT_NUMBER, ENV_KEY, Fake, Reply};
+use crate::fake_crowbot::{ACCOUNT_NUMBER, DEVICE_KEY, ENV_KEY, Fake, Reply};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_command_typed_during_a_run_never_reaches_the_model() {
@@ -238,7 +238,10 @@ async fn slash_signup_creates_an_account_in_a_card_and_the_session_uses_it() {
         .iter()
         .map(|f| std::fs::read_to_string(f).unwrap())
         .collect();
-    assert!(!sessions.contains("9012"), "the number was saved: {sessions}");
+    assert!(
+        !sessions.contains("9012"),
+        "the number was saved: {sessions}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -257,4 +260,31 @@ async fn slash_signup_asks_before_replacing_a_stored_key() {
     })
     .await;
     assert_eq!(fake.hits("/api/pow"), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn slash_account_lists_the_keys_and_revokes_another_but_never_its_own() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse")]);
+    in_session(&fake, Sandbox::default(), Some(DEVICE_KEY), |s| {
+        s.submit("/account");
+        s.wait_for("Balance $12.30.");
+        s.wait_for("Keys (3)");
+        s.send("1");
+        s.wait_for("laptop  •••• 9999  since 2026-10-01  · this session");
+        s.send("2");
+        s.wait_for("That is the key this session uses");
+        s.send("3");
+        s.wait_for("Revoke ci •••• -key?");
+        s.send("1");
+        s.wait_for("Revoked ci •••• -key.");
+        s.wait_for("Keys (2)");
+        s.send(ESC);
+        s.wait_gone("Keys (2)");
+        // The session's own key still works.
+        s.submit("hi");
+        s.wait_for("Hello there!");
+    })
+    .await;
+    assert_eq!(fake.hits("/api/me/keys/000000000003/revoke"), 1);
 }

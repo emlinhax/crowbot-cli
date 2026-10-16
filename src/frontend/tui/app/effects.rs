@@ -1,7 +1,9 @@
 //! What a finished command asks the session to do, and the changes it makes for one.
 
 use super::{Step, Tui};
+use crate::api::error::said;
 use crate::commands::{Effect, Outcome as CommandOutcome};
+use crate::frontend::tui::account::Account;
 use crate::frontend::tui::command::{self, Work};
 use crate::frontend::tui::forums::Forums;
 use crate::frontend::tui::login::Login;
@@ -23,7 +25,7 @@ impl<'a> Tui<'a> {
                 return Step::Continue;
             }
             Work::Command(Err(e)) => {
-                self.feed.notice(&format!("{e:#}"), "error");
+                self.feed.notice(&said(&e), "error");
                 return Step::Continue;
             }
             Work::Command(Ok(outcome)) => outcome,
@@ -46,6 +48,11 @@ impl<'a> Tui<'a> {
                 }
                 Effect::Login { number } => {
                     let (card, next) = Login::open(&self.app.paths, number, self.draw_width());
+                    self.panel = Some(Box::new(card));
+                    return self.panel_next(next);
+                }
+                Effect::Account => {
+                    let (card, next) = Account::open(self.draw_width());
                     self.panel = Some(Box::new(card));
                     return self.panel_next(next);
                 }

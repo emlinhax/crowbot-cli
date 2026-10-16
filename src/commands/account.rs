@@ -3,9 +3,10 @@ use std::sync::LazyLock;
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
-use super::{Command, Ctx, Outcome, Spec};
-use crate::api::account::{self, Me};
+use super::{Command, Ctx, Effect, Outcome, Spec};
+use crate::api::account::Me;
 use crate::api::endpoints;
+use crate::api::error::ApiError;
 use crate::data;
 use crate::text::template::fill;
 use crate::text::units;
@@ -37,7 +38,10 @@ impl Command for Account {
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             cx.no_args(&SPEC, args)?;
-            Ok(standing(&account::me(&cx.app.api).await?).into())
+            if !cx.app.api.has_key() {
+                return Err(ApiError::not_logged_in().into());
+            }
+            Ok(Effect::Account.into())
         })
     }
 }

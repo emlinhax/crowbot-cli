@@ -1,5 +1,6 @@
 //! The interactive terminal UI.
 
+mod account;
 mod app;
 mod bar;
 mod boxed;

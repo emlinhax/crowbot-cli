@@ -85,13 +85,21 @@ impl<'a> Tui<'a> {
                 if say {
                     self.feed.markdown(&account::standing(&me));
                 }
-                self.account.me = Some(me);
-                self.account.rejected = false;
+                self.account_seen(me);
             }
-            Err(e) if Entry::of(&e.info).session == Some(Follow::Login) => self.reject(),
+            Err(e) if Entry::of(&e.info).session == Some(Follow::Login) => {
+                self.reject();
+                self.feed.set_welcome(self.welcome());
+            }
             // Any other failure keeps the last standing rather than blanking the bar.
-            Err(_) => return,
+            Err(_) => {}
         }
+    }
+
+    /// The account as crowbot just described it, with this session's key.
+    pub(super) fn account_seen(&mut self, me: Me) {
+        self.account.me = Some(me);
+        self.account.rejected = false;
         self.feed.set_welcome(self.welcome());
     }
 

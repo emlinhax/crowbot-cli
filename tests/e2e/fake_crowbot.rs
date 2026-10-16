@@ -16,6 +16,12 @@ const MODELS: &str = include_str!("../fixtures/api/models.json");
 pub const ENV_KEY: &str = "test-key";
 pub const DEVICE_KEY: &str = "device-key-9999";
 pub const ACCOUNT_NUMBER: &str = "1234567890123456";
+/// Each accepted key as `/api/me/keys` lists it: the key, its reference, name and hint.
+const KEYS: [(&str, &str, &str, &str); 3] = [
+    (ACCOUNT_NUMBER, "000000000001", "account", "•••• 3456"),
+    (DEVICE_KEY, "000000000002", "laptop", "•••• 9999"),
+    (ENV_KEY, "000000000003", "ci", "•••• -key"),
+];
 /// The one password the fake forum's Tapatalk plugin accepts, and the session it hands back.
 pub const FORUM_PASSWORD: &str = "hunter2";
 pub const FORUM_COOKIE: &str = "bbsessionhash=fake; path=/; HttpOnly";
@@ -56,6 +62,8 @@ struct Inner {
     stale_proofs: usize,
     /// What `/api/me` answers a known key; `None` is a funded account with no plan.
     me: Option<Value>,
+    /// Keys revoked through `/api/me/keys/{ref}/revoke`; each is refused from then on.
+    revoked: Vec<&'static str>,
 }
 
 type Shared = Arc<Mutex<Inner>>;
@@ -136,6 +144,8 @@ impl Fake {
             .route("/v1/models", get(models))
             .route("/v1/chat/completions", post(chat))
             .route("/api/me", get(me))
+            .route("/api/me/keys", get(me_keys))
+            .route("/api/me/keys/{reference}/revoke", post(me_key_revoke))
             .route("/api/pair/start", post(pair_start))
             .route("/api/pair/{code}", get(pair_poll))
             .route("/api/pow", get(pow))
@@ -199,12 +209,22 @@ async fn record(State(inner): State<Shared>, req: Request, next: Next) -> Respon
     next.run(req).await
 }
 
-fn authorized(headers: &HeaderMap) -> bool {
-    let bearer = headers
+fn bearer(headers: &HeaderMap) -> Option<&str> {
+    headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "));
-    matches!(bearer, Some(ENV_KEY | DEVICE_KEY | ACCOUNT_NUMBER))
+        .and_then(|v| v.strip_prefix("Bearer "))
+}
+
+fn authorized(inner: &Shared, headers: &HeaderMap) -> bool {
+    let bearer = bearer(headers);
+    let revoked = inner
+        .lock()
+        .unwrap()
+        .revoked
+        .iter()
+        .any(|k| Some(*k) == bearer);
+    matches!(bearer, Some(ENV_KEY | DEVICE_KEY | ACCOUNT_NUMBER)) && !revoked
 }
 
 fn error(status: u16, kind: &str, retry_after: Option<u64>) -> Response {
@@ -282,7 +302,7 @@ async fn models() -> impl IntoResponse {
 }
 
 async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> Response {
-    if !authorized(&headers) {
+    if !authorized(&inner, &headers) {
         return error(401, "invalid_api_key", None);
     }
     let (reply, base, home) = {
@@ -338,12 +358,50 @@ async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> 
 }
 
 async fn me(State(inner): State<Shared>, headers: HeaderMap) -> Response {
-    if !authorized(&headers) {
+    if !authorized(&inner, &headers) {
         return error(401, "invalid_api_key", None);
     }
     let me = inner.lock().unwrap().me.clone();
     axum::Json(me.unwrap_or_else(|| json!({"balance_microdollars": 12_300_000, "can_spend": true})))
         .into_response()
+}
+
+async fn me_keys(State(inner): State<Shared>, headers: HeaderMap) -> Response {
+    if !authorized(&inner, &headers) {
+        return error(401, "invalid_api_key", None);
+    }
+    let revoked = inner.lock().unwrap().revoked.clone();
+    let keys: Vec<Value> = KEYS
+        .iter()
+        .filter(|(key, ..)| !revoked.contains(key))
+        .map(|(key, reference, name, hint)| {
+            json!({"ref": reference, "name": name, "hint": hint,
+                "created_at": "2026-10-01T09:00:00+00:00", "current": bearer(&headers) == Some(key)})
+        })
+        .collect();
+    axum::Json(json!({ "keys": keys })).into_response()
+}
+
+async fn me_key_revoke(
+    State(inner): State<Shared>,
+    Path(reference): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&inner, &headers) {
+        return error(401, "invalid_api_key", None);
+    }
+    let mut inner = inner.lock().unwrap();
+    let Some((key, ..)) = KEYS
+        .iter()
+        .find(|(key, r, ..)| *r == reference && !inner.revoked.contains(key))
+    else {
+        return error(404, "not_found", None);
+    };
+    if bearer(&headers) == Some(key) {
+        return error(409, "cannot_revoke_current", None);
+    }
+    inner.revoked.push(key);
+    axum::Json(json!({"ok": true})).into_response()
 }
 
 async fn pair_start() -> impl IntoResponse {

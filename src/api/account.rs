@@ -1,4 +1,4 @@
-//! The signed-in account: balance, plan, and whether it can spend.
+//! The signed-in account: balance, plan, whether it can spend, and its keys.
 
 use serde::Deserialize;
 
@@ -39,8 +39,51 @@ impl Pass {
     }
 }
 
+/// One key that signs in to the account. No secret: crowbot keeps only its hint.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub struct Key {
+    /// What revoking names it by.
+    #[serde(rename = "ref")]
+    pub reference: String,
+    /// `account` for the account number itself, else the paired device's name.
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub hint: String,
+    #[serde(default)]
+    pub created_at: String,
+    /// The key this request signed in with.
+    #[serde(default)]
+    pub current: bool,
+}
+
+impl Key {
+    /// The account number itself, rather than a paired device's key.
+    pub fn is_account(&self) -> bool {
+        self.name == "account"
+    }
+}
+
+#[derive(Deserialize)]
+struct Keys {
+    keys: Vec<Key>,
+}
+
 pub async fn me(api: &Api) -> Result<Me, ApiError> {
     api.call_json("me", Call::default()).await
+}
+
+pub async fn keys(api: &Api) -> Result<Vec<Key>, ApiError> {
+    let keys: Keys = api.call_json("me_keys", Call::default()).await?;
+    Ok(keys.keys)
+}
+
+pub async fn revoke(api: &Api, key: &Key) -> Result<(), ApiError> {
+    let call = Call {
+        args: &[("ref", &key.reference)],
+        ..Call::default()
+    };
+    api.call("me_key_revoke", call).await.map(drop)
 }
 
 #[cfg(test)]
@@ -63,5 +106,52 @@ mod tests {
         let old: Me =
             serde_json::from_str(r#"{"balance_microdollars": 5, "can_spend": true}"#).unwrap();
         assert_eq!((old.pass, old.spend_balance_when_dry), (None, None));
+    }
+
+    #[tokio::test]
+    async fn keys_are_listed_and_one_is_revoked_by_its_reference() {
+        use axum::response::IntoResponse;
+        use axum::routing::{get, post};
+        let base = crate::testing::serve(|_| {
+            axum::Router::new()
+                .route(
+                    "/api/me/keys",
+                    get(|| async {
+                        axum::Json(serde_json::json!({"keys": [
+                            {"ref": "0123456789ab", "name": "laptop", "hint": "•••• 9999",
+                             "created_at": "2026-10-01T09:00:00+00:00", "current": false}]}))
+                    }),
+                )
+                .route(
+                    "/api/me/keys/{reference}/revoke",
+                    post(
+                        |axum::extract::Path(r): axum::extract::Path<String>| async move {
+                            match r.as_str() {
+                                "0123456789ab" => {
+                                    axum::Json(serde_json::json!({"ok": true})).into_response()
+                                }
+                                _ => (
+                                    axum::http::StatusCode::CONFLICT,
+                                    r#"{"error":{"message":"no","type":"cannot_revoke_current"}}"#,
+                                )
+                                    .into_response(),
+                            }
+                        },
+                    ),
+                )
+        })
+        .await;
+        let http = crate::io::http::Http::new(std::time::Duration::from_secs(5)).unwrap();
+        let api = Api::redirected(http, "k", &base);
+        let listed = keys(&api).await.unwrap();
+        assert_eq!(listed[0].name, "laptop");
+        assert!(!listed[0].is_account());
+        revoke(&api, &listed[0]).await.unwrap();
+        let mine = Key {
+            reference: "ffffffffffff".into(),
+            ..listed[0].clone()
+        };
+        let refused = revoke(&api, &mine).await.unwrap_err();
+        assert_eq!(refused.info.kind, "cannot_revoke_current");
     }
 }
