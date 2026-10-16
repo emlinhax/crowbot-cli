@@ -1,6 +1,6 @@
 //! Chatting, switching mode, thinking blocks and the context share.
 
-use super::harness::{CTRL_T, DOWN, ENTER, SHIFT_TAB, in_session, in_session_with};
+use super::harness::{CTRL_C, CTRL_T, DOWN, ENTER, SHIFT_TAB, in_session, in_session_with};
 use crate::Sandbox;
 use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
 
@@ -97,4 +97,46 @@ async fn continue_reopens_the_last_conversation_with_its_mode() {
     let second = fake.chat_bodies()[1]["messages"].to_string();
     assert!(second.contains("the first question"), "{second}");
     assert_eq!(ended.sandbox.sessions().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn undo_takes_back_the_last_prompt_for_good() {
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::text("The first answer."),
+        Reply::text("An answer to take back."),
+        Reply::text("The answer after."),
+    ]);
+    let first = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.submit("/undo");
+        s.wait_for("Nothing to take back");
+        s.submit("first");
+        s.wait_for("The first answer.");
+        s.submit("second");
+        s.wait_for("An answer to take back.");
+        s.submit("/undo");
+        s.wait_for("Took back the last prompt");
+        assert!(
+            !s.contents().contains("An answer to take back."),
+            "{}",
+            s.contents()
+        );
+        // The prompt is back in the editor; quit with it unsent.
+        s.wait_for("second");
+        s.send(CTRL_C);
+    })
+    .await;
+    in_session_with(&fake, first.sandbox, Some(ENV_KEY), &["--continue"], |s| {
+        s.wait_for("The first answer.");
+        assert!(!s.contents().contains("take back"), "{}", s.contents());
+        s.submit("third");
+        s.wait_for("The answer after.");
+    })
+    .await;
+    let third = fake.chat_bodies()[2]["messages"].to_string();
+    assert!(
+        third.contains("first") && third.contains("third"),
+        "{third}"
+    );
+    assert!(!third.contains("second"), "{third}");
 }

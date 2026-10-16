@@ -33,6 +33,7 @@ pub struct Ui {
     pub status: StatusText,
     pub picker: PickerText,
     pub resume: ResumeText,
+    pub undo: UndoText,
     pub login: LoginText,
     pub replace: ReplaceText,
     pub signup: SignupText,
@@ -175,6 +176,14 @@ pub struct ForumsText {
     pub saving: String,
     pub cancel_hint: String,
     pub failed: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UndoText {
+    pub done: String,
+    pub files_kept: String,
+    pub nothing: String,
 }
 
 #[derive(Debug, Deserialize)]

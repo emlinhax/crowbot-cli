@@ -113,6 +113,12 @@ hint = "↑↓ move · → or enter go on with it · esc close"
 none = "No earlier session in this project to go on with."
 saved = "The last conversation is saved in {path}."
 
+# `/undo` inside a session.
+[undo]
+done = "Took back the last prompt and what followed it; it is in the editor to change or send again."
+files_kept = "Files it changed were not restored."
+nothing = "Nothing to take back yet."
+
 # The popup listing commands while a `/name` is typed.
 [palette]
 title = "commands"

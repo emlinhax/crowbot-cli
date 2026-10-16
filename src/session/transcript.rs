@@ -5,13 +5,15 @@ use anyhow::Context;
 use crate::config::paths::Paths;
 use crate::conversation::message::Message;
 use crate::io;
-use crate::session::entry::State;
+use crate::session::entry::{self, State};
 use crate::session::reader;
 use crate::session::store::Store;
 
 /// The conversation in memory, mirrored to its session file.
 pub struct Transcript {
     pub messages: Vec<Message>,
+    /// Each message's entry id in the file, in step with `messages`.
+    ids: Vec<String>,
     store: Store,
     /// A write failed; the file stopped being written and no longer holds everything.
     unsaved: bool,
@@ -38,6 +40,7 @@ impl Transcript {
     pub fn create(paths: &Paths) -> Self {
         Self {
             messages: Vec::new(),
+            ids: Vec::new(),
             store: Store::create(paths),
             unsaved: false,
         }
@@ -50,7 +53,7 @@ impl Transcript {
             .with_context(|| format!("{} is gone", path.display()))?;
         let loaded = reader::read(&text);
         let head = loaded.branch.last().map(|(id, _)| id.clone());
-        let messages: Vec<Message> = loaded.branch.into_iter().map(|(_, m)| m).collect();
+        let (ids, messages): (Vec<String>, Vec<Message>) = loaded.branch.into_iter().unzip();
         let replies = || {
             messages.iter().filter_map(|m| match m {
                 Message::Assistant(a) => Some(a),
@@ -70,6 +73,7 @@ impl Transcript {
             .sum();
         let transcript = Self {
             messages,
+            ids,
             store: Store::open(path.to_path_buf(), head),
             unsaved: false,
         };
@@ -109,16 +113,34 @@ impl Transcript {
     }
 
     fn keep(&mut self, message: Message, state: Option<State>) -> Result<(), Unsaved> {
-        let written = if self.unsaved {
-            Ok(())
-        } else {
-            self.store.append(&message, state).map_err(|e| Unsaved {
-                path: self.store.path().to_path_buf(),
-                error: format!("{e:#}"),
-            })
-        };
-        self.unsaved |= written.is_err();
+        let id = entry::new_id();
+        let written = self.saved(|store| store.append(&id, &message, state));
         self.messages.push(message);
+        self.ids.push(id);
+        written
+    }
+
+    /// Takes back every message from `len` on; the file keeps them off its current branch.
+    pub fn rewind(&mut self, len: usize) -> Result<(), Unsaved> {
+        self.messages.truncate(len);
+        self.ids.truncate(len);
+        let to = self.ids.last().cloned();
+        self.saved(|store| store.rewind(to.as_deref()))
+    }
+
+    /// Runs `write` while the file is still written; the first failure stops saving.
+    fn saved(
+        &mut self,
+        write: impl FnOnce(&mut Store) -> anyhow::Result<()>,
+    ) -> Result<(), Unsaved> {
+        if self.unsaved {
+            return Ok(());
+        }
+        let written = write(&mut self.store).map_err(|e| Unsaved {
+            path: self.store.path().to_path_buf(),
+            error: format!("{e:#}"),
+        });
+        self.unsaved |= written.is_err();
         written
     }
 }
@@ -186,5 +208,28 @@ mod tests {
         let (reopened, resumed) = Transcript::open(&path).unwrap();
         assert_eq!(reopened.messages.len(), 11);
         assert_eq!(resumed.state, Some(state));
+    }
+
+    #[test]
+    fn a_rewind_takes_messages_back_and_the_next_one_follows_where_it_went() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = Paths::at(root.path().join("home"), root.path().into());
+        let mut transcript = Transcript::create(&paths);
+        for text in ["one", "reply", "two", "reply two"] {
+            transcript.push(Message::user_text(text)).unwrap();
+        }
+        transcript.rewind(2).unwrap();
+        assert_eq!(transcript.messages.len(), 2);
+        let path = transcript.path().unwrap().to_path_buf();
+        let (reopened, _) = Transcript::open(&path).unwrap();
+        assert_eq!(reopened.messages, transcript.messages);
+
+        transcript.push(Message::user_text("two again")).unwrap();
+        let (reopened, _) = Transcript::open(&path).unwrap();
+        assert_eq!(reopened.messages.len(), 3);
+        assert_eq!(reopened.messages[2], Message::user_text("two again"));
+        // The taken-back pair stays in the file.
+        let text = io::fs::read_string(&path).unwrap().unwrap();
+        assert!(text.contains("reply two"));
     }
 }

@@ -29,6 +29,7 @@ pub const ESC: &str = "\x1b";
 pub const DOWN: &str = "\x1b[B";
 pub const LEFT: &str = "\x1b[D";
 pub const SHIFT_TAB: &str = "\x1b[Z";
+pub const CTRL_C: &str = "\x03";
 pub const CTRL_D: &str = "\x04";
 pub const CTRL_T: &str = "\x14";
 pub const BACKSPACE: &str = "\x7f";

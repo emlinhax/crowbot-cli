@@ -76,6 +76,8 @@ pub enum Effect {
     NewConversation,
     /// Open the session's picker of this project's earlier sessions.
     Resume,
+    /// Take back the last prompt and what followed it.
+    Undo,
     /// Ask for this reasoning effort from the next turn on.
     SetEffort(String),
     /// Put the model's last reply on the clipboard.
@@ -156,6 +158,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &fixed::INIT,
     &fixed::NEW,
     &fixed::RESUME,
+    &fixed::UNDO,
     &fixed::QUIT,
     &keytest::KeyTest,
     &battery::Battery,

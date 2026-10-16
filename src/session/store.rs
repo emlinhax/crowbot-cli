@@ -64,23 +64,39 @@ impl Store {
         &self.path
     }
 
-    pub fn append(&mut self, message: &Message, state: Option<State>) -> anyhow::Result<()> {
+    /// Writes `message` as entry `id`, following the head, which it then becomes.
+    pub fn append(
+        &mut self,
+        id: &str,
+        message: &Message,
+        state: Option<State>,
+    ) -> anyhow::Result<()> {
         if let Some(header) = &self.header {
             self.write(header)?;
             self.header = None;
         }
-        let id = entry::new_id();
-        // CEILING: the parent is always the last entry written. Upgrade: undo/retry (M5) passes it in.
-        let parent = self.head.take();
+        let parent = self.head.replace(id.to_owned());
         self.write(&Entry::Message {
-            id: id.clone(),
+            id: id.to_owned(),
             parent,
             ts: io::clock::now(),
             message: message.clone(),
             state,
-        })?;
-        self.head = Some(id);
-        Ok(())
+        })
+    }
+
+    /// Moves the head back to entry `to` (`None`: before the first message). What followed it
+    /// stays in the file, off the current branch.
+    pub fn rewind(&mut self, to: Option<&str>) -> anyhow::Result<()> {
+        if !self.written() {
+            return Ok(());
+        }
+        let from = std::mem::replace(&mut self.head, to.map(str::to_owned));
+        self.write(&Entry::Rewind {
+            ts: io::clock::now(),
+            to: to.map(str::to_owned),
+            from,
+        })
     }
 
     fn write(&self, entry: &Entry) -> anyhow::Result<()> {
@@ -102,8 +118,8 @@ mod tests {
             !io::fs::exists(store.path()),
             "a session that has said nothing has no file"
         );
-        store.append(&Message::user_text("one"), None).unwrap();
-        store.append(&Message::user_text("two"), None).unwrap();
+        store.append("a", &Message::user_text("one"), None).unwrap();
+        store.append("b", &Message::user_text("two"), None).unwrap();
         let text = io::fs::read_string(store.path()).unwrap().unwrap();
         let entries = entry::parse(&text);
         assert!(matches!(entries[0], Entry::Session { .. }));

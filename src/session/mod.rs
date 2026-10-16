@@ -7,3 +7,4 @@ pub mod reader;
 pub mod store;
 pub mod table;
 pub mod transcript;
+pub mod undo;

@@ -50,6 +50,11 @@ pub static RESUME: Fixed = Fixed {
     effect: || Effect::Resume,
 };
 
+pub static UNDO: Fixed = Fixed {
+    spec: super::spec!("undo"),
+    effect: || Effect::Undo,
+};
+
 pub static QUIT: Fixed = Fixed {
     spec: super::spec!("quit"),
     effect: || Effect::Quit,

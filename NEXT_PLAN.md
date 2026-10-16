@@ -231,7 +231,7 @@ only, and a running head decides the branch.
       model, effort and (in the TUI) mode, and the conversation replayed
 - [x] 5.3 `/resume`: a picker over this project's sessions, the `/models` picker made one table
       picker
-- [ ] 5.4 `/undo`, the conversation: a `rewind` marker, the prompt back in the editor
+- [x] 5.4 `/undo`, the conversation: a `rewind` marker, the prompt back in the editor
 - [ ] 5.5 shadow git (`io::proc::exec`, `src/snapshot/`): a snapshot before a prompt's first
       change, files restored on `/undo`; only inside a git work tree
 - [ ] 5.6 files changed after the turn are left alone and named; `/status` says whether `/undo`
