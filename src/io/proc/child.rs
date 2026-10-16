@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio_util::codec::{FramedRead, LinesCodec};
 
 use super::group::{self, Tree};
@@ -33,7 +33,7 @@ pub struct Running {
     /// Each line it prints; an `Err` names why no more will come (a line past the limit, a read
     /// that failed). The channel closes when it closes stdout.
     pub incoming: mpsc::UnboundedReceiver<Result<String, String>>,
-    /// Lines to send it; dropping every sender closes its stdin.
+    /// Lines to send it; dropping every sender, or `Process::stop`, closes its stdin.
     pub outgoing: mpsc::UnboundedSender<String>,
     pub process: Process,
 }
@@ -42,6 +42,8 @@ pub struct Process {
     child: tokio::process::Child,
     tree: Tree,
     stderr: Arc<Mutex<VecDeque<u8>>>,
+    /// Dropped to close its stdin, however many senders are still about.
+    stdin_open: oneshot::Sender<()>,
 }
 
 pub fn start(service: &Service<'_>) -> io::Result<Running> {
@@ -67,8 +69,9 @@ pub fn start(service: &Service<'_>) -> io::Result<Running> {
         tokio::spawn(read_lines(lines, tx));
     }
     let (outgoing, rx) = mpsc::unbounded_channel::<String>();
+    let (stdin_open, closed) = oneshot::channel();
     if let Some(stdin) = child.stdin.take() {
-        tokio::spawn(write_lines(stdin, rx));
+        tokio::spawn(write_lines(stdin, rx, closed));
     }
     let stderr = Arc::new(Mutex::new(VecDeque::new()));
     if let Some(err) = child.stderr.take() {
@@ -81,6 +84,7 @@ pub fn start(service: &Service<'_>) -> io::Result<Running> {
             child,
             tree,
             stderr,
+            stdin_open,
         },
     })
 }
@@ -93,11 +97,18 @@ impl Process {
         String::from_utf8_lossy(&bytes).trim().to_owned()
     }
 
-    /// Waits up to `grace` for it to end on its own (its stdin closed once every sender is
-    /// dropped), then ends it and all it started.
-    pub async fn stop(mut self, grace: Duration) {
-        let _ = crate::io::clock::timeout(grace, self.child.wait()).await;
-        self.tree.kill();
+    /// Closes its stdin, waits up to `grace` for it to end on its own, then ends it and all it
+    /// started.
+    pub async fn stop(self, grace: Duration) {
+        let Self {
+            mut child,
+            tree,
+            stdin_open,
+            ..
+        } = self;
+        drop(stdin_open);
+        let _ = crate::io::clock::timeout(grace, child.wait()).await;
+        tree.kill();
     }
 }
 
@@ -116,8 +127,14 @@ async fn read_lines(
 async fn write_lines(
     mut stdin: tokio::process::ChildStdin,
     mut from: mpsc::UnboundedReceiver<String>,
+    mut closed: oneshot::Receiver<()>,
 ) {
-    while let Some(mut line) = from.recv().await {
+    loop {
+        let line = tokio::select! {
+            line = from.recv() => line,
+            _ = &mut closed => None,
+        };
+        let Some(mut line) = line else { break };
         line.push('\n');
         if stdin.write_all(line.as_bytes()).await.is_err() || stdin.flush().await.is_err() {
             break;
@@ -189,6 +206,18 @@ mod tests {
         drop(running.outgoing);
         assert_eq!(running.incoming.recv().await, None);
         running.process.stop(Duration::from_secs(5)).await;
+    }
+
+    #[tokio::test]
+    async fn a_stop_closes_stdin_while_a_sender_lives_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let (program, args) = echo(dir.path());
+        let running = start(&service(&program, &args, dir.path(), 1024)).unwrap();
+        let grace = Duration::from_secs(10);
+        let started = std::time::Instant::now();
+        running.process.stop(grace).await;
+        assert!(started.elapsed() < grace, "it waited out the grace");
+        drop(running.outgoing);
     }
 
     #[tokio::test]
