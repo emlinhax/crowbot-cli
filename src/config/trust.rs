@@ -17,6 +17,8 @@ static DATA: LazyLock<Data> = data::load!("trust.toml");
 #[serde(deny_unknown_fields)]
 struct Data {
     untrusted_keys: Vec<String>,
+    masked: Vec<String>,
+    mask: String,
     warning: String,
     danger: String,
     question: String,
@@ -88,10 +90,54 @@ fn split_untrusted(layer: toml::Table) -> (toml::Table, Vec<String>) {
                     safe.insert(key, toml::Value::Array(denies));
                 }
             }
-            value => left_out.push(format!("{key} = {value}")),
+            value => left_out.extend(listed(&key, &value)),
         }
     }
     (safe, left_out)
+}
+
+/// How a left-out setting is shown: a table of named entries (`[mcp.<name>]`) one entry a line,
+/// each value under a `masked` key by name only.
+fn listed(key: &str, value: &toml::Value) -> Vec<String> {
+    match value {
+        toml::Value::Table(entries)
+            if !entries.is_empty() && entries.values().all(|v| v.is_table()) =>
+        {
+            entries
+                .iter()
+                .map(|(name, entry)| format!("[{key}.{name}] {}", fields(entry)))
+                .collect()
+        }
+        value => vec![format!("{key} = {}", shown(key, value))],
+    }
+}
+
+fn fields(entry: &toml::Value) -> String {
+    let Some(entry) = entry.as_table() else {
+        return String::new();
+    };
+    entry
+        .iter()
+        .map(|(key, value)| format!("{key} = {}", shown(key, value)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// `value` as written, or by its keys only when `key` may hold secrets.
+fn shown(key: &str, value: &toml::Value) -> String {
+    if !DATA.masked.iter().any(|m| m == key) {
+        return value.to_string();
+    }
+    match value.as_table() {
+        Some(table) => {
+            let names: Vec<String> = table
+                .keys()
+                .map(|name| format!("{name} = {}", DATA.mask))
+                .collect();
+            format!("{{ {} }}", names.join(", "))
+        }
+        None => DATA.mask.clone(),
+    }
 }
 
 fn rule_line(rule: &toml::Value) -> String {

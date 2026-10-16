@@ -245,6 +245,20 @@ mod tests {
     }
 
     #[test]
+    fn an_untrusted_projects_server_is_named_without_its_secrets() {
+        let (_root, paths) = project_with(
+            "[mcp.github]\ncommand = 'npx'\nargs = ['server']\nenv = { GITHUB_TOKEN = 'sekret' }",
+        );
+        let settings = load(&paths, &Overrides::default()).unwrap();
+        let keys = settings.untrusted.unwrap().keys;
+        assert_eq!(keys.len(), 1);
+        assert!(keys[0].starts_with("[mcp.github] "), "{keys:?}");
+        assert!(keys[0].contains("command = \"npx\""), "{keys:?}");
+        assert!(keys[0].contains("GITHUB_TOKEN = …"), "{keys:?}");
+        assert!(!keys[0].contains("sekret"), "{keys:?}");
+    }
+
+    #[test]
     fn an_untrusted_project_may_pick_its_model_and_add_denies() {
         let (_root, paths) = project_with(
             "model = 'project'\n[[permission]]\npermission = 'bash'\npattern = 'rm *'\naction = 'deny'",

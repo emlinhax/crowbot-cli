@@ -280,7 +280,7 @@ with the session (a project's only once trusted); their tools join the registry 
 - [x] 6.7 `general`: the parent's tools; its edits are covered by /undo
 - [x] 6.8 a plain No inside a child stops the parent
 - [x] 6.9 README and Learned (subagents)
-- [ ] 6.10 trust lists a left-out table entry by entry, secrets by name only
+- [x] 6.10 trust lists a left-out table entry by entry, secrets by name only
 - [ ] 6.11 `[mcp.<name>]` servers start with the session (`io::proc` child, JSON-RPC, handshake);
       /status names them
 - [ ] 6.12 their tools join the registry (`<server>__<tool>`, optional `tools` allowlist) and ask
