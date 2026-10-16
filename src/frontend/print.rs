@@ -157,15 +157,15 @@ impl Printer<'_> {
             AgentEvent::ToolStart {
                 name, arguments, ..
             } => self.note(&call_line(&words::get().print.call, name, arguments)),
-            // Only a subagent's calls show; its words are its parent's to pass on.
-            AgentEvent::Child { event, .. } => {
-                if let AgentEvent::ToolStart {
+            // Only a subagent's calls and what it found of a server show; its words are its
+            // parent's to pass on.
+            AgentEvent::Child { event, .. } => match event.innermost() {
+                AgentEvent::ToolStart {
                     name, arguments, ..
-                } = event.innermost()
-                {
-                    self.note(&call_line(&words::get().print.child_call, name, arguments));
-                }
-            }
+                } => self.note(&call_line(&words::get().print.child_call, name, arguments)),
+                AgentEvent::Mcp { note, .. } => self.warn(note),
+                _ => {}
+            },
             AgentEvent::ToolEnd { result } if result.is_error => {
                 let first = result.content.lines().next().unwrap_or_default();
                 let error = shorten::line(first, note_chars());

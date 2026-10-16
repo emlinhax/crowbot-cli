@@ -7,5 +7,6 @@ mod forums;
 mod harness;
 mod keytest;
 mod login;
+mod mcp;
 mod prompts;
 mod session;

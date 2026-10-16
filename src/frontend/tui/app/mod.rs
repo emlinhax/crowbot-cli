@@ -401,21 +401,24 @@ impl<'a> Tui<'a> {
                     self.queue.remove(i);
                 }
             }
-            // A subagent asks through this session's prompts, and what it spends is this
-            // session's; the window it fills is its own.
-            AgentEvent::Prompt { .. } | AgentEvent::Child { .. } => match event.innermost() {
-                AgentEvent::Prompt { id, prompt, .. } => {
-                    let card = card::from_prompt(prompt, self.draw_width());
-                    self.cards.push_back((*id, card));
+            // A subagent asks through this session's prompts, what it spends is this session's,
+            // and so are the servers it calls; the window it fills is its own.
+            AgentEvent::Prompt { .. } | AgentEvent::Child { .. } | AgentEvent::Mcp { .. } => {
+                match event.innermost() {
+                    AgentEvent::Prompt { id, prompt, .. } => {
+                        let card = card::from_prompt(prompt, self.draw_width());
+                        self.cards.push_back((*id, card));
+                    }
+                    AgentEvent::MessageEnd { message } => {
+                        self.cost_micros += message.usage.map_or(0, |u| u.cost_micros);
+                    }
+                    AgentEvent::CompactionEnd {
+                        usage: Some(usage), ..
+                    } => self.cost_micros += usage.cost_micros,
+                    AgentEvent::Mcp { note, .. } => self.feed.notice(note, "warn"),
+                    _ => {}
                 }
-                AgentEvent::MessageEnd { message } => {
-                    self.cost_micros += message.usage.map_or(0, |u| u.cost_micros);
-                }
-                AgentEvent::CompactionEnd {
-                    usage: Some(usage), ..
-                } => self.cost_micros += usage.cost_micros,
-                _ => {}
-            },
+            }
             _ => {}
         }
         if let Some(progress) = &mut self.progress {

@@ -63,7 +63,8 @@ impl Rpc {
             .clone()
     }
 
-    /// Asks `method` and waits up to `limit` for the answer.
+    /// Asks `method` and waits up to `limit` for the answer; given up on before it comes (past
+    /// the limit, or dropped), the server is told so.
     pub async fn request(
         &self,
         method: &str,
@@ -78,8 +79,10 @@ impl Rpc {
         lock(&self.waiting).insert(id, tx);
         // Whatever ends the wait (an answer, a timeout, the caller giving up) forgets the id.
         let _forget = Forget {
-            waiting: &self.waiting,
+            rpc: self,
             id,
+            // The protocol has `initialize` run to the end.
+            cancel: method != "initialize",
         };
         let line = json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
         if self.outgoing.send(line.to_string()).is_err() {
@@ -100,13 +103,19 @@ impl Rpc {
 }
 
 struct Forget<'a> {
-    waiting: &'a Waiting,
+    rpc: &'a Rpc,
     id: u64,
+    cancel: bool,
 }
 
 impl Drop for Forget<'_> {
     fn drop(&mut self) {
-        lock(self.waiting).remove(&self.id);
+        // Still waiting: nothing answered it, nor did the server stop.
+        let abandoned = lock(&self.rpc.waiting).remove(&self.id).is_some();
+        if abandoned && self.cancel {
+            self.rpc
+                .notify("notifications/cancelled", json!({"requestId": self.id}));
+        }
     }
 }
 
@@ -247,12 +256,45 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_request_past_its_limit_times_out_and_is_forgotten() {
-        let (rpc, _out, _answers) = pair();
+    async fn a_request_past_its_limit_times_out_is_forgotten_and_the_server_told() {
+        let (rpc, mut out, _answers) = pair();
         let done = rpc
             .request("slow", json!({}), Duration::from_millis(20))
             .await;
         assert_eq!(done, Err(Error::TimedOut));
         assert!(lock(&rpc.waiting).is_empty());
+        let asked = sent(out.recv().await);
+        let told = sent(out.recv().await);
+        assert_eq!(told["method"], "notifications/cancelled");
+        assert_eq!(told["params"]["requestId"], asked["id"]);
+    }
+
+    #[tokio::test]
+    async fn a_request_dropped_unanswered_is_cancelled_and_an_answered_one_is_not() {
+        let (rpc, mut out, answers) = pair();
+        let rpc = Arc::new(rpc);
+        let waiting = rpc.clone();
+        let pending = tokio::spawn(async move {
+            waiting
+                .request("x", json!({}), Duration::from_secs(5))
+                .await
+        });
+        let asked = sent(out.recv().await);
+        pending.abort();
+        let told = sent(out.recv().await);
+        assert_eq!(told["params"]["requestId"], asked["id"]);
+
+        let answering = rpc.clone();
+        let answered = tokio::spawn(async move {
+            answering
+                .request("y", json!({}), Duration::from_secs(5))
+                .await
+        });
+        let id = sent(out.recv().await)["id"].clone();
+        let reply = json!({"jsonrpc": "2.0", "id": id, "result": {}});
+        answers.send(Ok(reply.to_string())).unwrap();
+        assert_eq!(answered.await.unwrap(), Ok(json!({})));
+        rpc.notify("marker", json!({}));
+        assert_eq!(sent(out.recv().await)["method"], "marker");
     }
 }

@@ -29,6 +29,7 @@ pub struct Text {
     pub closed: String,
     pub said: String,
     pub not_running: String,
+    pub stopped: String,
 }
 
 /// What `initialize` asks with: the version crowbot speaks, no capabilities of its own.

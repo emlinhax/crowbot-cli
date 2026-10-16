@@ -286,7 +286,7 @@ with the session (a project's only once trusted); their tools join the registry 
 - [x] 6.12 their tools join the registry (`<server>__<tool>`, optional `tools` allowlist) and ask
       as `mcp` / `mcp_write`
 - [x] 6.13 read-only tools (`readOnlyHint`) run in PLAN by the rules and take no snapshot
-- [ ] 6.14 interrupts send `notifications/cancelled`; a server that stops is reported once
+- [x] 6.14 interrupts send `notifications/cancelled`; a server that stops is reported once
 - [ ] 6.15 README and Learned (MCP)
 - e2e: one local batch after 6.5, 6.8, 6.12 and 6.14; each batch is pushed so CI covers Windows.
   Subagents: 61 after 6.5, 63 after 6.8.

@@ -27,8 +27,12 @@ pub struct Servers {
 
 /// How one server stands, for /status.
 pub enum State {
-    Running { tools: usize },
+    Running {
+        tools: usize,
+    },
     Failed(String),
+    /// It started, then stopped.
+    Stopped,
     Off,
 }
 
@@ -83,12 +87,13 @@ impl Servers {
             .running
             .iter()
             .map(|s| {
-                (
-                    s.name.clone(),
-                    State::Running {
+                let state = match s.stopped() {
+                    true => State::Stopped,
+                    false => State::Running {
                         tools: s.tools.len(),
                     },
-                )
+                };
+                (s.name.clone(), state)
             })
             .chain(
                 self.failed

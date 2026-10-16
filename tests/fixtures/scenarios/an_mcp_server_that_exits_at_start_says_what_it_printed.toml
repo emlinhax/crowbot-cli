@@ -7,4 +7,4 @@ text = "Hello."
 
 [expect]
 exit = 0
-stderr_contains = ["MCP server fake is not running: it stopped. It printed: fake-mcp: told to fail at start."]
+stderr_contains = ["MCP server fake is not running: it exited. It printed: fake-mcp: told to fail at start."]

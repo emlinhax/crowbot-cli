@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::codec::{FramedRead, LinesCodec};
 
 use super::group::{self, Tree};
@@ -41,7 +41,7 @@ pub struct Running {
 pub struct Process {
     child: tokio::process::Child,
     tree: Tree,
-    stderr: Arc<Mutex<VecDeque<u8>>>,
+    stderr: Stderr,
     /// Dropped to close its stdin, however many senders are still about.
     stdin_open: oneshot::Sender<()>,
 }
@@ -73,10 +73,13 @@ pub fn start(service: &Service<'_>) -> io::Result<Running> {
     if let Some(stdin) = child.stdin.take() {
         tokio::spawn(write_lines(stdin, rx, closed));
     }
-    let stderr = Arc::new(Mutex::new(VecDeque::new()));
+    let kept = Arc::new(Mutex::new(VecDeque::new()));
+    // The reader holds the sender, so the channel closes when stderr does.
+    let (reading, ended) = watch::channel(());
     if let Some(err) = child.stderr.take() {
-        tokio::spawn(keep_tail(err, stderr.clone(), service.stderr_bytes));
+        tokio::spawn(keep_tail(err, kept.clone(), service.stderr_bytes, reading));
     }
+    let stderr = Stderr { kept, ended };
     Ok(Running {
         incoming,
         outgoing,
@@ -89,12 +92,38 @@ pub fn start(service: &Service<'_>) -> io::Result<Running> {
     })
 }
 
-impl Process {
-    /// The end of what it printed on stderr, as text.
-    pub fn stderr_tail(&self) -> String {
-        let kept = self.stderr.lock().unwrap_or_else(|e| e.into_inner());
+/// The end of what a program printed on stderr; a handle that outlives the program.
+#[derive(Clone)]
+pub struct Stderr {
+    kept: Arc<Mutex<VecDeque<u8>>>,
+    ended: watch::Receiver<()>,
+}
+
+impl Stderr {
+    /// Nothing printed, and stderr closed: for tests that play a program.
+    #[cfg(test)]
+    pub fn none() -> Self {
+        let (_, ended) = watch::channel(());
+        Self {
+            kept: Arc::default(),
+            ended,
+        }
+    }
+
+    /// The end of what it printed, as text, once it has closed stderr or `wait` has passed: a
+    /// program that stops closes stdout and stderr in no set order.
+    pub async fn tail(&self, wait: Duration) -> String {
+        let mut ended = self.ended.clone();
+        let _ = crate::io::clock::timeout(wait, ended.changed()).await;
+        let kept = self.kept.lock().unwrap_or_else(|e| e.into_inner());
         let bytes: Vec<u8> = kept.iter().copied().collect();
         String::from_utf8_lossy(&bytes).trim().to_owned()
+    }
+}
+
+impl Process {
+    pub fn stderr(&self) -> Stderr {
+        self.stderr.clone()
     }
 
     /// Closes its stdin, waits up to `grace` for it to end on its own, then ends it and all it
@@ -130,7 +159,9 @@ async fn write_lines(
     mut closed: oneshot::Receiver<()>,
 ) {
     loop {
+        // Lines sent before the stop still go out.
         let line = tokio::select! {
+            biased;
             line = from.recv() => line,
             _ = &mut closed => None,
         };
@@ -146,6 +177,7 @@ async fn keep_tail(
     mut from: tokio::process::ChildStderr,
     into: Arc<Mutex<VecDeque<u8>>>,
     cap: usize,
+    _reading: watch::Sender<()>,
 ) {
     let mut buf = vec![0u8; 4096];
     while let Ok(n) = from.read(&mut buf).await {
@@ -245,8 +277,7 @@ mod tests {
         } = running;
         drop(outgoing);
         while incoming.recv().await.is_some() {}
-        crate::io::clock::sleep(Duration::from_millis(200)).await;
-        let tail = process.stderr_tail();
+        let tail = process.stderr().tail(Duration::from_secs(5)).await;
         assert!("bye".ends_with(&tail) && tail.len() <= 2, "{tail:?}");
     }
 }

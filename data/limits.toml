@@ -130,7 +130,7 @@ reason = "a server started through npx may fetch its package first; past this it
 
 [mcp.stop_ms]
 value = 2000
-reason = "time a server gets to finish once its stdin closes, before it is ended"
+reason = "time a server gets to finish once its stdin closes, before it is ended, and to close stderr once it is gone"
 
 [mcp.line_bytes]
 value = 8388608

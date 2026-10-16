@@ -2,6 +2,7 @@
 //! listed, called, and stopped with the session.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -10,7 +11,7 @@ use crate::auth;
 use crate::config::limits;
 use crate::config::paths::Paths;
 use crate::io;
-use crate::io::proc::child::{self, Process, Service};
+use crate::io::proc::child::{self, Process, Service, Stderr};
 use crate::mcp::config;
 use crate::mcp::protocol::{self, CallResult, DATA, Initialized, ToolInfo, ToolPage};
 use crate::mcp::rpc::{self, Rpc};
@@ -28,9 +29,22 @@ pub struct Server {
 /// The way to call a server's tools, which they all share.
 #[derive(Clone)]
 pub struct Caller {
+    server: String,
     rpc: Arc<Rpc>,
     /// How long a call may take.
     limit: Duration,
+    stderr: Stderr,
+    /// Whether a call has said yet that the server stopped.
+    told_stopped: Arc<AtomicBool>,
+}
+
+/// Why a call came back with no answer.
+#[derive(Debug)]
+pub struct Failed {
+    pub why: String,
+    /// That the server stopped, for the first call to find it so: said once a session.
+    // CEILING: a server that stops stays stopped. Upgrade: start it again once, here.
+    pub stopped: Option<String>,
 }
 
 impl Server {
@@ -70,21 +84,29 @@ impl Server {
                 name: name.to_owned(),
                 tools: offered(tools, cfg.tools.as_deref()),
                 caller: Caller {
+                    server: name.to_owned(),
                     rpc: Arc::new(rpc),
                     limit,
+                    stderr: running.process.stderr(),
+                    told_stopped: Arc::default(),
                 },
                 process: running.process,
             }),
             Err(why) => {
-                let said = said(&why, &running.process);
+                let stderr = running.process.stderr();
                 running.process.stop(limits.stop_ms.ms()).await;
-                Err(said)
+                Err(said(&why, &stderr).await)
             }
         }
     }
 
     pub fn caller(&self) -> Caller {
         self.caller.clone()
+    }
+
+    /// Whether it has stopped since it started.
+    pub fn stopped(&self) -> bool {
+        self.caller.rpc.closed().is_some()
     }
 
     /// Closes its stdin, gives it `mcp.stop_ms` to finish, then ends it.
@@ -94,15 +116,26 @@ impl Server {
 }
 
 impl Caller {
-    /// Calls its tool `tool`, by the server's name for it; `Err` says why no answer came.
-    pub async fn call(&self, tool: &str, arguments: Value) -> Result<CallResult, String> {
+    /// Calls its tool `tool`, by the server's name for it. A server that stopped fails it at
+    /// once, with the end of what it printed.
+    pub async fn call(&self, tool: &str, arguments: Value) -> Result<CallResult, Failed> {
         let params = protocol::call(tool, arguments);
-        let answer = self
-            .rpc
-            .request("tools/call", params, self.limit)
-            .await
-            .map_err(|e| why(&e, self.limit))?;
-        serde_json::from_value(answer).map_err(|e| e.to_string())
+        let failed = |why| Failed { why, stopped: None };
+        match self.rpc.request("tools/call", params, self.limit).await {
+            Ok(answer) => serde_json::from_value(answer).map_err(|e| failed(e.to_string())),
+            Err(rpc::Error::Closed(why)) => {
+                let why = said(&why, &self.stderr).await;
+                let first = !self.told_stopped.swap(true, Ordering::Relaxed);
+                let stopped = first.then(|| {
+                    fill(
+                        &DATA.text.stopped,
+                        &[("server", &self.server), ("why", &why)],
+                    )
+                });
+                Err(Failed { why, stopped })
+            }
+            Err(e) => Err(failed(why(&e, self.limit))),
+        }
     }
 }
 
@@ -118,8 +151,8 @@ fn offered(tools: Vec<ToolInfo>, allowed: Option<&[String]>) -> Vec<ToolInfo> {
 }
 
 /// `why`, with the end of what the server printed on stderr, if it printed anything.
-fn said(why: &str, process: &Process) -> String {
-    let stderr = process.stderr_tail();
+async fn said(why: &str, stderr: &Stderr) -> String {
+    let stderr = stderr.tail(limits::get().mcp.stop_ms.ms()).await;
     match stderr.is_empty() {
         true => why.to_owned(),
         false => fill(&DATA.text.said, &[("why", why), ("stderr", &stderr)]),
@@ -207,9 +240,26 @@ fn serve(answer: impl Fn(&str, &Value) -> Option<Value> + Send + 'static) -> Rpc
 /// unanswered times out within a second.
 #[cfg(test)]
 pub fn playing(answer: impl Fn(&str, &Value) -> Option<Value> + Send + 'static) -> Caller {
+    played(serve(answer))
+}
+
+/// A caller whose server has stopped already.
+#[cfg(test)]
+pub fn stopped() -> Caller {
+    let (out_tx, out_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (in_tx, in_rx) = tokio::sync::mpsc::unbounded_channel();
+    drop((out_rx, in_tx));
+    played(Rpc::new(out_tx, in_rx, "it exited".into()))
+}
+
+#[cfg(test)]
+fn played(rpc: Rpc) -> Caller {
     Caller {
-        rpc: Arc::new(serve(answer)),
+        server: "fake".into(),
+        rpc: Arc::new(rpc),
         limit: Duration::from_secs(1),
+        stderr: Stderr::none(),
+        told_stopped: Arc::default(),
     }
 }
 
@@ -230,6 +280,16 @@ mod tests {
         let tools = handshake(&rpc).await.unwrap();
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(names, ["a", "b"]);
+    }
+
+    #[tokio::test]
+    async fn calls_to_a_server_that_stopped_fail_and_only_the_first_says_so() {
+        let caller = stopped();
+        let first = caller.call("echo", json!({})).await.unwrap_err();
+        let second = caller.call("echo", json!({})).await.unwrap_err();
+        let note = first.stopped.unwrap();
+        assert!(note.starts_with("MCP server fake stopped"), "{note}");
+        assert!(second.stopped.is_none(), "{second:?}");
     }
 
     #[test]

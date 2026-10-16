@@ -8,10 +8,12 @@ client = "crowbot"
 [text]
 # Said once when the session starts, of a server that did not; {why} is one of those below.
 not_running = "MCP server {server} is not running: {why}."
+# Said once, by the first call to find a server gone since it started.
+stopped = "MCP server {server} stopped, so its tools fail from here on: {why}."
 # Why a server is not running, as /status shows it too.
 not_found = "{command} was not found"
 no_start = "it did not start: {error}"
 timed_out = "it did not answer within {secs}s"
 version = "it speaks MCP {version}; crowbot speaks {accepted}"
-closed = "it stopped"
+closed = "it exited"
 said = "{why}. It printed: {stderr}"

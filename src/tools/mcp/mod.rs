@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use super::{Check, Output, Refusal, Registry, Spec, Tool, ToolCx};
 use crate::config::limits;
 use crate::data;
+use crate::live::event::AgentEvent;
 use crate::mcp::Servers;
 use crate::mcp::protocol::ToolInfo;
 use crate::mcp::server::Caller;
@@ -145,16 +146,20 @@ impl Tool for McpTool {
         Ok(Check::new(asks).with_preview(preview))
     }
 
-    fn run<'a>(
-        &'a self,
-        args: Value,
-        _cx: &'a ToolCx<'a>,
-    ) -> BoxFuture<'a, Result<Output, String>> {
+    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let answer =
-                self.caller.call(&self.tool, args).await.map_err(|why| {
-                    fill(&TEXT.failed, &[("server", &self.server), ("why", &why)])
-                })?;
+            let answer = self.caller.call(&self.tool, args).await.map_err(|failed| {
+                if let Some(note) = failed.stopped {
+                    (cx.emit)(AgentEvent::Mcp {
+                        server: self.server.clone(),
+                        note,
+                    });
+                }
+                fill(
+                    &TEXT.failed,
+                    &[("server", &self.server), ("why", &failed.why)],
+                )
+            })?;
             Ok(result::output(answer))
         })
     }

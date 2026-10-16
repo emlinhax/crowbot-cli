@@ -25,4 +25,5 @@ undo_conversation = "takes back a prompt, not its files: {why}"
 mcp_none = "no servers in config.toml"
 mcp_running = { one = "`{name}`, {n} tool", many = "`{name}`, {n} tools" }
 mcp_failed = "`{name}` not running ({why})"
+mcp_stopped = "`{name}` stopped"
 mcp_off = "`{name}` off"

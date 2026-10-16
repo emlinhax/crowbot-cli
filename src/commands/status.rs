@@ -29,6 +29,7 @@ struct Text {
     mcp_none: String,
     mcp_running: Plural,
     mcp_failed: String,
+    mcp_stopped: String,
     mcp_off: String,
 }
 
@@ -118,6 +119,7 @@ fn servers(servers: &[(String, State)]) -> String {
         .map(|(name, state)| match state {
             State::Running { tools } => fill(&TEXT.mcp_running.of(*tools), &[("name", name)]),
             State::Failed(why) => fill(&TEXT.mcp_failed, &[("name", name), ("why", why)]),
+            State::Stopped => fill(&TEXT.mcp_stopped, &[("name", name)]),
             State::Off => fill(&TEXT.mcp_off, &[("name", name)]),
         })
         .collect();
