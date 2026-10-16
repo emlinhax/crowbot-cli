@@ -132,6 +132,26 @@ mod tests {
     }
 
     #[test]
+    fn the_release_signs_its_sums_as_the_updater_checks_them() {
+        let release = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/.github/workflows/release.yml"
+        ));
+        let signing = signing();
+        let comment = crate::text::template::fill(&signing.comment, &[("tag", "$TAG")]);
+        assert!(
+            release.contains(&format!("-t \"{comment}\"")),
+            "release.yml signs without the comment {comment:?}"
+        );
+        assert!(
+            release.contains(&format!("-x dist/{}", signing.file)),
+            "release.yml does not write {}",
+            signing.file
+        );
+        assert!(release.contains(&format!("-m dist/{}", sums())));
+    }
+
+    #[test]
     fn a_development_build_reports_the_plain_version() {
         if tag().is_none() {
             assert_eq!(version(), package());

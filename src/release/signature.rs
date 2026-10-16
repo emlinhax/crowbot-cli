@@ -99,6 +99,23 @@ mod tests {
         assert!(check(sums.as_bytes(), &old.sign(sums, "v1"), "v1", &both));
     }
 
+    /// Signed by the minisign CLI, as release.yml signs, with the key data/release.toml names.
+    #[test]
+    fn the_minisign_cli_signs_as_the_updater_reads_with_the_release_key() {
+        let fixture = |name: &str| {
+            let path = format!(
+                "{}/tests/fixtures/release/{name}",
+                env!("CARGO_MANIFEST_DIR")
+            );
+            crate::io::fs::read_bytes(std::path::Path::new(&path)).unwrap()
+        };
+        let (sums, signed) = (fixture("SHA256SUMS"), fixture("SHA256SUMS.minisig"));
+        let signed = String::from_utf8(signed).unwrap();
+        let signing = super::super::signing();
+        assert!(check(&sums, &signed, "v0.2.0-99", signing));
+        assert!(!check(&sums, &signed, "v0.2.0-98", signing));
+    }
+
     #[test]
     fn the_release_keys_are_minisign_public_keys() {
         assert!(!super::super::signing().keys.is_empty());

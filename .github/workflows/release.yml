@@ -26,6 +26,14 @@ jobs:
         run: |
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
           echo "tag=v$version-$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+      # A release the updater would refuse is not worth building: fail before the builds start.
+      - env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "::error::MINISIGN_SECRET_KEY is not set; releases are signed with it"
+            exit 1
+          fi
 
   check:
     needs: tag
@@ -46,6 +54,18 @@ jobs:
           path: dist
           merge-multiple: true
       - run: cd dist && sha256sum crowbot-* > SHA256SUMS
+      # The updater takes a release only once SHA256SUMS carries this signature, its trusted
+      # comment naming the release (data/release.toml [signature]).
+      - run: sudo apt-get update && sudo apt-get install -y minisign
+      - env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          TAG: ${{ needs.tag.outputs.tag }}
+        run: |
+          key=$(mktemp)
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$key"
+          minisign -S -s "$key" -m dist/SHA256SUMS -x dist/SHA256SUMS.minisig \
+            -t "crowbot release $TAG" < /dev/null
       - env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
