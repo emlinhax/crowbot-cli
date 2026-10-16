@@ -271,7 +271,7 @@ result, its cost counts in the parent's, its conversation is a file beside the p
 edits are the parent prompt's for /undo. MCP servers are local programs in `[mcp.<name>]`, started
 with the session (a project's only once trusted); their tools join the registry as
 `<server>__<tool>` and ask like bash: MANUAL asks, AUTO runs, PLAN refuses all but read-only ones.
-- [ ] 6.1 the registry holds owned specs, built by adding; each description filled once
+- [x] 6.1 the registry holds owned specs, built by adding; each description filled once
 - [ ] 6.2 the run harness moves to `src/agent/testing.rs`
 - [ ] 6.3 `task` + `explore`: a child runs in its own file and answers
 - [ ] 6.4 a child's cost counts in the parent's, live and after resume

@@ -51,18 +51,19 @@ macro_rules! spec {
 }
 pub(crate) use spec;
 
-/// A tool's name, description (data/tools/<name>.md) and argument schema (<name>.schema.json).
+/// A tool's name, description and argument schema: a built-in's from data/tools/<name>.md and
+/// <name>.schema.json, or what another source (an MCP server) says of its own.
 pub struct Spec {
-    pub name: &'static str,
-    pub description: &'static str,
+    pub name: String,
+    pub description: String,
     pub parameters: Value,
 }
 
 impl Spec {
-    pub fn load(name: &'static str, description: &'static str, schema: &str) -> Self {
+    pub fn load(name: &str, description: &str, schema: &str) -> Self {
         Self {
-            name,
-            description,
+            name: name.to_owned(),
+            description: description.to_owned(),
             parameters: serde_json::from_str(schema).expect("tool schemas are checked by tests"),
         }
     }
@@ -258,11 +259,21 @@ impl<T: Tool> AnyTool for T {
     }
 }
 
+/// The tools a run offers, in the order the model is shown them.
 pub struct Registry {
-    tools: Vec<Arc<dyn AnyTool>>,
-    /// Values for `{placeholders}` in tool descriptions: every `tools.*` limit, and the shell.
-    vars: Vec<(String, String)>,
+    entries: Vec<Entry>,
 }
+
+struct Entry {
+    tool: Arc<dyn AnyTool>,
+    /// The tool as a chat request lists it, built once when it joins, so every request sends the
+    /// same bytes and the vendor's cache of them holds.
+    wire: Value,
+}
+
+/// The tool's name is another's already; the first keeps it.
+#[derive(Debug)]
+pub struct Taken;
 
 impl Registry {
     /// Every tool, with bash running `shell` (the `shell` setting; `None` picks one).
@@ -270,6 +281,7 @@ impl Registry {
         let shell = bash::shell::resolve(shell);
         let mut vars = limits::vars("tools");
         vars.push(("shell_note".to_owned(), shell.note.clone()));
+        let vars: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         let tools: Vec<Arc<dyn AnyTool>> = vec![
             Arc::new(read::Read),
             Arc::new(write::Write),
@@ -288,42 +300,54 @@ impl Registry {
             Arc::new(question::Question),
             Arc::new(plan_exit::PlanExit),
         ];
-        Self { tools, vars }
+        let mut registry = Self {
+            entries: Vec::new(),
+        };
+        for tool in tools {
+            registry
+                .add(tool, &vars)
+                .expect("built-in tools have names of their own");
+        }
+        registry
+    }
+
+    /// Adds `tool` after the others, its description's `{placeholders}` filled from `vars`; a
+    /// tool from outside passes none, so its words go out as written.
+    pub fn add(&mut self, tool: Arc<dyn AnyTool>, vars: &[(&str, &str)]) -> Result<(), Taken> {
+        let spec = tool.spec();
+        if self.get(&spec.name).is_some() {
+            return Err(Taken);
+        }
+        let wire = json!({
+            "type": "function",
+            "function": {
+                "name": spec.name,
+                "description": template::fill(&spec.description, vars).trim(),
+                "parameters": spec.parameters,
+            }
+        });
+        self.entries.push(Entry { tool, wire });
+        Ok(())
     }
 
     pub fn get(&self, name: &str) -> Option<&Arc<dyn AnyTool>> {
-        self.tools.iter().find(|t| t.spec().name == name)
+        self.entries
+            .iter()
+            .map(|e| &e.tool)
+            .find(|t| t.spec().name == name)
     }
 
     pub fn names(&self) -> String {
-        self.tools
+        self.entries
             .iter()
-            .map(|t| t.spec().name)
+            .map(|e| e.tool.spec().name.as_str())
             .collect::<Vec<_>>()
             .join(", ")
     }
 
     /// The `tools` array of a chat request.
     pub fn wire(&self) -> Vec<Value> {
-        let vars: Vec<(&str, &str)> = self
-            .vars
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
-            .collect();
-        self.tools
-            .iter()
-            .map(|t| {
-                let spec = t.spec();
-                json!({
-                    "type": "function",
-                    "function": {
-                        "name": spec.name,
-                        "description": template::fill(spec.description, &vars).trim(),
-                        "parameters": spec.parameters,
-                    }
-                })
-            })
-            .collect()
+        self.entries.iter().map(|e| e.wire.clone()).collect()
     }
 }
 
@@ -336,7 +360,7 @@ mod tests {
     fn every_schema_fits_its_arguments() {
         let project = Project::new();
         let registry = Registry::builtin(None);
-        for tool in &registry.tools {
+        for tool in registry.entries.iter().map(|e| &e.tool) {
             let args = sample(&tool.spec().parameters);
             if let Err(Refusal::InvalidArgs(e)) = project.check(tool.as_ref(), &args) {
                 panic!("{}: schema sample rejected: {e}", tool.spec().name);
@@ -361,5 +385,44 @@ mod tests {
             let text = spec["function"]["description"].as_str().unwrap();
             assert!(!text.contains('{'), "unfilled placeholder in: {text}");
         }
+    }
+
+    /// A tool from outside, named and worded by `name` and `description`.
+    struct Outside(Spec);
+
+    impl Tool for Outside {
+        type Args = Value;
+        fn spec(&self) -> &Spec {
+            &self.0
+        }
+        fn check(&self, _: &Value, _: &ToolCx<'_>) -> Result<Check, Refusal> {
+            Ok(Check::new(Vec::new()))
+        }
+        fn run<'a>(&'a self, _: Value, _: &'a ToolCx<'a>) -> BoxFuture<'a, Result<Output, String>> {
+            Box::pin(async { Ok(Output::ok("")) })
+        }
+    }
+
+    fn outside(name: &str, description: &str) -> Arc<dyn AnyTool> {
+        Arc::new(Outside(Spec::load(
+            name,
+            description,
+            r#"{"type":"object"}"#,
+        )))
+    }
+
+    #[test]
+    fn a_tool_added_later_keeps_its_words_and_a_taken_name_is_refused() {
+        let mut registry = Registry::builtin(None);
+        let before = registry.wire();
+        registry
+            .add(outside("server__echo", "Echoes {max_lines} lines."), &[])
+            .unwrap();
+        let wire = registry.wire();
+        assert_eq!(wire[..before.len()], before[..]);
+        let added = &wire[before.len()]["function"];
+        assert_eq!(added["description"], "Echoes {max_lines} lines.");
+        assert!(registry.add(outside("read", "another read"), &[]).is_err());
+        assert_eq!(registry.wire().len(), before.len() + 1);
     }
 }
