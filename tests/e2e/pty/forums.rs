@@ -33,8 +33,8 @@ async fn slash_forums_logs_in_with_a_hidden_password_and_retries_a_wrong_one() {
         s.wait_for("1 Log in");
         s.send("1");
         s.wait_for("Log in to Fake Forum");
-        s.submit("crow");
-        s.submit("wrong");
+        s.fill_in("crow");
+        s.fill_in("wrong");
         s.wait_for("Wrong password");
         // Back at the name, still typed: Enter, then the right password.
         s.send(ENTER);
@@ -84,7 +84,7 @@ async fn forums_login_on_the_command_line_takes_a_pasted_hidden_password() {
         let args = ["forums", "login", "Fake Forum"];
         let mut s = Session::start_as(&sandbox, &url, Some(ENV_KEY), &args);
         s.wait_for("Username for Fake Forum");
-        s.submit("crow");
+        s.fill_in("crow");
         s.wait_for("Password (hidden)");
         // A paste arrives whole; its line break does not end the password early.
         s.send(&format!("\x1b[200~{FORUM_PASSWORD}\n\x1b[201~"));

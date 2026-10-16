@@ -72,7 +72,7 @@ async fn slash_login_takes_a_masked_account_number_and_retries_a_wrong_one() {
         s.submit("/login");
         s.wait_for("Log in to crowbot");
         s.send("2");
-        s.submit("0000 0000 0000 0000");
+        s.fill_in("0000 0000 0000 0000");
         s.wait_for("crowbot does not know that key");
         s.send("2");
         s.type_text("1234 5678 9012 3456");
@@ -221,9 +221,9 @@ async fn slash_signup_creates_an_account_in_a_card_and_the_session_uses_it() {
         s.wait_for("/signup for a new account");
         s.submit("/signup");
         s.wait_for("Your account number:  1234 5678 9012 3456");
-        s.submit("0000");
+        s.fill_in("0000");
         s.wait_for("does not match");
-        s.submit("3456");
+        s.fill_in("3456");
         s.wait_for("Account …3456 created");
         s.wait_bar("$12.30 left");
         s.submit("hi");

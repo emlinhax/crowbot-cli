@@ -19,7 +19,8 @@ pub const EXIT_WAIT: Duration = Duration::from_secs(10);
 pub const POLL: Duration = Duration::from_millis(50);
 /// Between typed keys: far above `tui.paste_gap_ms` (data/limits.toml), so typing never looks
 /// like a paste. CEILING: keys are timestamped when crowbot reads them, so a stall longer than
-/// two gaps can still bunch three into a paste (frontend/tui/paste.rs).
+/// two gaps can still bunch three into a paste (frontend/tui/paste.rs); harmless for text, and
+/// `submit` holds its Enter until the editor shows what was typed.
 pub const KEY_GAP: Duration = Duration::from_millis(30);
 
 /// Keys as a terminal sends them.
@@ -111,8 +112,29 @@ impl Session {
         }
     }
 
-    /// Types `text` and presses Enter.
+    /// Types `text` in the editor and presses Enter once the editor shows it: keys crowbot reads
+    /// in one go after a stall look like a paste, whose Enter adds a line instead of sending.
+    #[track_caller]
     pub fn submit(&mut self, text: &str) {
+        self.type_text(text);
+        let start: String = text
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .chars()
+            .take(40)
+            .collect();
+        let shown = format!("› {start}");
+        self.poll(WAIT, &format!("the editor never showed {text:?}"), |s| {
+            (0..usize::from(ROWS))
+                .any(|r| s.row(r).contains(&shown))
+                .then_some(())
+        });
+        self.send(ENTER);
+    }
+
+    /// Types `text` in a card's field, which may hide it, and presses Enter.
+    pub fn fill_in(&mut self, text: &str) {
         self.type_text(text);
         self.send(ENTER);
     }
