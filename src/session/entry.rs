@@ -31,13 +31,20 @@ pub enum Entry {
         ts: Timestamp,
         message: Message,
     },
+    /// Moves the head back to `to` (`None`: before the first message); what came after stays in
+    /// the file as a branch.
+    Rewind {
+        ts: Timestamp,
+        to: Option<String>,
+        /// The head it moved from.
+        from: Option<String>,
+    },
 }
 
-/// Short random ids, readable in a file.
-/// CEILING: 32 random bits, ~1% chance of a repeat in a 9k-entry file. Upgrade: a per-file
-/// counter or u64 once a reader follows parents.
+/// Random ids, readable in a file. A reader resolves a repeat to the nearest earlier entry, so
+/// one is harmless; with 64 bits it is also all but impossible.
 pub fn new_id() -> String {
-    format!("{:08x}", fastrand::u32(..))
+    format!("{:016x}", fastrand::u64(..))
 }
 
 /// Every line of a session file's `text`, naming the line that does not parse.

@@ -1,0 +1,10 @@
+{"type":"session","v":1,"id":"b1","created":"2026-10-16T10:00:00Z","cwd":"/home/u/proj","crowbot":"0.2.0"}
+{"type":"message","id":"a1","parent":null,"ts":"2026-10-16T10:00:01Z","message":{"role":"user","parts":[{"type":"text","text":"first"}]}}
+{"type":"message","id":"a2","parent":"a1","ts":"2026-10-16T10:00:02Z","message":{"role":"assistant","parts":[{"type":"text","text":"first reply"}],"model":"crow-2","finish":"done"}}
+{"type":"message","id":"a3","parent":"a2","ts":"2026-10-16T10:00:03Z","message":{"role":"user","parts":[{"type":"text","text":"second, undone"}]}}
+{"type":"message","id":"a4","parent":"a3","ts":"2026-10-16T10:00:04Z","message":{"role":"assistant","parts":[{"type":"text","text":"undone reply"}],"model":"crow-2","finish":"done"}}
+{"type":"rewind","ts":"2026-10-16T10:00:05Z","to":"a2","from":"a4"}
+{"type":"from_the_future","id":"zz"}
+{"type":"message","id":"a5","parent":"a2","ts":"2026-10-16T10:00:06Z","message":{"role":"user","parts":[{"type":"text","text":"second, again"}]}}
+{"type":"message","id":"a1","parent":"a5","ts":"2026-10-16T10:00:07Z","message":{"role":"assistant","parts":[{"type":"text","text":"a repeated id"}],"model":"crow-2","finish":"done"}}
+{"type":"message","id":"a6","parent":"a1","ts":"2026-10-16T10:00:08Z","message":{"role":"user","parts":[{"type":"text","text":"third"}]}}

@@ -13,7 +13,8 @@ pub struct Store {
     path: PathBuf,
     header: Entry,
     written: bool,
-    last: Option<String>,
+    /// The entry the next message follows.
+    head: Option<String>,
 }
 
 impl Store {
@@ -32,7 +33,7 @@ impl Store {
                 crowbot: release::package().to_owned(),
             },
             written: false,
-            last: None,
+            head: None,
         }
     }
 
@@ -57,14 +58,14 @@ impl Store {
         }
         let id = entry::new_id();
         // CEILING: the parent is always the last entry written. Upgrade: undo/retry (M5) passes it in.
-        let parent = self.last.take();
+        let parent = self.head.take();
         self.write(&Entry::Message {
             id: id.clone(),
             parent,
             ts: io::clock::now(),
             message: message.clone(),
         })?;
-        self.last = Some(id);
+        self.head = Some(id);
         Ok(())
     }
 

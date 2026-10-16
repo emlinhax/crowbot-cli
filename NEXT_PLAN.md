@@ -225,7 +225,7 @@ and the files from a shadow git snapshot, and `/retry` sends it again. Long conv
 summarised before the window fills, by `/compact` or on their own, and a request refused as too
 long is compacted and sent once more. The format stays v1: new line types and optional fields
 only, and a running head decides the branch.
-- [ ] 5.1 session tree: the reader follows parents and `rewind` markers to the current branch;
+- [x] 5.1 session tree: the reader follows parents and `rewind` markers to the current branch;
       64-bit ids; a frozen fixture with branches
 - [ ] 5.2 `crowbot --continue` (TUI and headless): reopen the latest session, its recorded
       model, effort and (in the TUI) mode, and the conversation replayed
