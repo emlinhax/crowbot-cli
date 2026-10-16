@@ -191,7 +191,7 @@ reader, since unread fields fail `-D warnings`.
 - [x] 4.5 errors say what follows (`session` in `data/errors.toml`): a 401 opens the login card,
       a 402 or a spent allowance refreshes the account and shows its standing; the key is never
       dropped on a 401
-- [ ] 4.6 signup core shared by `crowbot signup` and the session: the number is saved before
+- [x] 4.6 signup core shared by `crowbot signup` and the session: the number is saved before
       anything can drop it, and the proof of work stops when its job is dropped
 - [ ] 4.7 `/signup` card: asks before replacing a stored key, shows the number, confirms its last
       four digits

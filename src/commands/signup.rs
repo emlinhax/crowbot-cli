@@ -6,8 +6,8 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
 use super::{Command, Ctx, Outcome, Spec};
-use crate::api::{endpoints, signup};
-use crate::auth::{self, KeyKind};
+use crate::api::endpoints;
+use crate::auth;
 use crate::data;
 use crate::io::term;
 use crate::text::template::fill;
@@ -51,15 +51,14 @@ impl Command for Signup {
                 bail!(fill(&TEXT.logged_in, &[("logout", &logout)]));
             }
             term::out(&format!("{}\n", TEXT.creating));
-            let account = signup::register(&app.api).await?;
             // Saved before it is shown, so an interrupted terminal cannot lose the only copy.
-            auth::save(&app.paths, &account.account_number, KeyKind::Account)?;
+            let account = auth::sign_up(&app.api, &app.paths).await?;
             let path = app.paths.auth().display().to_string();
             term::out(&fill(
                 &TEXT.number,
                 &[("number", &account.formatted), ("path", &path)],
             ));
-            confirm(&account.account_number)?;
+            confirm(&account.number)?;
             let mut out = fill(&TEXT.next, &[("chat", &endpoints::origin("chat"))]);
             out.push_str(super::login::env_note());
             Ok(out.into())
@@ -72,14 +71,6 @@ fn confirm(number: &str) -> anyhow::Result<()> {
     if !term::stdin_is_terminal() {
         return Ok(());
     }
-    let tail: String = number
-        .chars()
-        .rev()
-        .take(auth::HINT_CHARS)
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect();
     loop {
         term::out(&fill(
             &TEXT.confirm,
@@ -88,9 +79,29 @@ fn confirm(number: &str) -> anyhow::Result<()> {
         let Some(line) = term::read_line()? else {
             return Ok(());
         };
-        if line.trim() == tail {
+        if confirms(number, &line) {
             return Ok(());
         }
         term::out(&format!("{}\n", TEXT.mismatch));
+    }
+}
+
+/// Whether `typed` is the number's last digits, the proof it was saved somewhere.
+pub fn confirms(number: &str, typed: &str) -> bool {
+    let digits: Vec<char> = number.chars().filter(char::is_ascii_digit).collect();
+    let tail = &digits[digits.len().saturating_sub(auth::HINT_CHARS)..];
+    typed.trim().chars().eq(tail.iter().copied())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_last_digits_confirm() {
+        assert!(confirms("1234567890123456", " 3456\n"));
+        assert!(confirms("1234 5678 9012 3456", "3456"));
+        assert!(!confirms("1234567890123456", "456"));
+        assert!(!confirms("1234567890123456", "1234"));
     }
 }

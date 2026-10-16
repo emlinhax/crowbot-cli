@@ -8,6 +8,7 @@ use crate::api::Api;
 use crate::api::account::{self, Me};
 use crate::api::error::ApiError;
 use crate::api::pair::{self, Started};
+use crate::api::signup;
 use crate::config::paths::Paths;
 use crate::io::{self, fs::Access};
 use crate::text::shorten;
@@ -152,6 +153,26 @@ pub struct LoggedIn {
     pub kind: KeyKind,
     pub hint: String,
     pub me: Me,
+}
+
+/// A new account, saved here. No `Debug`: it holds the account number.
+pub struct SignedUp {
+    pub number: String,
+    /// The number grouped for reading.
+    pub formatted: String,
+}
+
+/// Creates an account, stores its number and switches this process to it.
+pub async fn sign_up(api: &Api, paths: &Paths) -> anyhow::Result<SignedUp> {
+    let account = signup::register(api).await?;
+    // Nothing awaits between creating and saving, so dropping this future can never lose the
+    // only copy of the number.
+    save(paths, &account.account_number, KeyKind::Account)?;
+    api.set_key(Some(normalize(&account.account_number)));
+    Ok(SignedUp {
+        number: account.account_number,
+        formatted: account.formatted,
+    })
 }
 
 /// Pairs this machine once the user has the code `started` gives: opens the page, waits for the

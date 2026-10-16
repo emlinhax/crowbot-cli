@@ -1,6 +1,7 @@
 //! Account creation. crowbot asks for proof of work instead of an email: find a nonce whose
 //! `sha256("challenge:nonce")` starts with `bits` zero bits.
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Deserialize;
@@ -25,22 +26,35 @@ pub struct Account {
 }
 
 /// Solves a challenge and creates the account, fetching a fresh challenge when the one solved
-/// went stale (crowbot raised the difficulty meanwhile), up to `signup.max_attempts`.
+/// went stale (crowbot raised the difficulty meanwhile), up to `signup.max_attempts`. Dropping
+/// the future stops the search, so a closed card leaves no core busy.
 pub async fn register(api: &Api) -> Result<Account, ApiError> {
+    let stop = StopOnDrop(Arc::default());
     let mut stale = None;
     for _ in 0..limits::get().signup.max_attempts.value {
         let challenge = challenge(api).await?;
         within_bound(&challenge)?;
         let seed = challenge.challenge.clone();
-        let nonce = tokio::task::spawn_blocking(move || solve(&seed, challenge.bits))
+        let flag = Arc::clone(&stop.0);
+        let nonce = tokio::task::spawn_blocking(move || solve(&seed, challenge.bits, &flag))
             .await
-            .map_err(|e| ErrorInfo::local("unknown", e.to_string()))?;
+            .map_err(|e| ErrorInfo::local("unknown", e.to_string()))?
+            .ok_or_else(|| ErrorInfo::local("unknown", "the search was stopped"))?;
         match create(api, &challenge.challenge, &nonce).await {
             Err(e) if e.info.kind == "pow_required" => stale = Some(e),
             done => return done,
         }
     }
     Err(stale.unwrap_or_else(|| ErrorInfo::local("pow_required", "no challenge was tried").into()))
+}
+
+/// Raises its flag when dropped, with the future that holds it.
+struct StopOnDrop(Arc<AtomicBool>);
+
+impl Drop for StopOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
 }
 
 fn within_bound(challenge: &Challenge) -> Result<(), ApiError> {
@@ -81,8 +95,9 @@ async fn create(api: &Api, challenge: &str, nonce: &str) -> Result<Account, ApiE
     .await
 }
 
-/// Searches nonces on every core; blocking, so run it off the async threads.
-fn solve(challenge: &str, bits: u32) -> String {
+/// Searches nonces on every core until one is found or `stop` is raised (`None`); blocking, so
+/// run it off the async threads.
+fn solve(challenge: &str, bits: u32, stop: &AtomicBool) -> Option<String> {
     let prefix = Sha256::new_with_prefix(format!("{challenge}:"));
     let workers = std::thread::available_parallelism().map_or(1, usize::from) as u64;
     let found = AtomicBool::new(false);
@@ -92,7 +107,7 @@ fn solve(challenge: &str, bits: u32) -> String {
                 let (prefix, found) = (&prefix, &found);
                 scope.spawn(move || {
                     let mut n = start;
-                    while !found.load(Ordering::Relaxed) {
+                    while !found.load(Ordering::Relaxed) && !stop.load(Ordering::Relaxed) {
                         let nonce = base36(n);
                         let mut hash = prefix.clone();
                         hash.update(nonce.as_bytes());
@@ -106,10 +121,7 @@ fn solve(challenge: &str, bits: u32) -> String {
                 })
             })
             .collect();
-        handles
-            .into_iter()
-            .find_map(|h| h.join().ok().flatten())
-            .expect("some worker finds a nonce")
+        handles.into_iter().find_map(|h| h.join().ok().flatten())
     })
 }
 
@@ -145,10 +157,20 @@ mod tests {
 
     #[test]
     fn solution_meets_the_difficulty() {
-        let nonce = solve("abc123", 12);
+        let nonce = solve("abc123", 12, &AtomicBool::new(false)).unwrap();
         let hash = Sha256::digest(format!("abc123:{nonce}"));
         assert!(leading_zero_bits(&hash) >= 12);
         assert!(nonce.len() <= 40);
+    }
+
+    #[test]
+    fn a_raised_stop_ends_the_search_unsolved() {
+        // 256 bits is never found, so only the flag can end it.
+        assert_eq!(solve("abc123", 256, &AtomicBool::new(true)), None);
+        let stop = StopOnDrop(Arc::default());
+        let flag = Arc::clone(&stop.0);
+        drop(stop);
+        assert!(flag.load(Ordering::Relaxed));
     }
 
     #[test]
