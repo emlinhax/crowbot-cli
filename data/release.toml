@@ -3,6 +3,15 @@
 # files: change both.
 sums = "SHA256SUMS"
 
+# The checksums are signed with minisign when a release is published (release.yml), and the
+# updater takes no release whose signature fails. `keys`: the public keys any of which may sign; a
+# new one joins beside the old for a release before the old one goes. `comment`: the trusted
+# comment each signature carries, so one release's checksums cannot pass for another's.
+[signature]
+file = "SHA256SUMS.minisig"
+keys = ["RWSNmPrBe2CCfeQes8FVEwo92i2aTq+AFUHjHwv8gMG7Wl4CuSfgXABQ"]
+comment = "crowbot release {tag}"
+
 [[asset]]
 os = "linux"
 arch = "x86_64"

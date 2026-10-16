@@ -15,7 +15,7 @@ use crate::config::paths::Paths;
 use crate::data;
 use crate::io::http::{Http, Method, Request};
 use crate::io::{self, fs::Access};
-use crate::release;
+use crate::release::{self, Signing, signature};
 use crate::text::template::fill;
 
 static TEXT: LazyLock<Text> = data::load!("update.toml", "text");
@@ -31,6 +31,7 @@ struct Text {
     missing: String,
     not_writable: String,
     mismatch: String,
+    unsigned: String,
     http: String,
 }
 
@@ -142,7 +143,7 @@ pub async fn now(http: &Http, paths: &Paths, tell: Tell) -> anyhow::Result<Outco
     let latest = endpoints::url(endpoints::get("latest_release"), &[]);
     let mut state = load(paths);
     state.checked_at = Some(io::clock::now());
-    let result = run(http, &latest, current, &exe).await;
+    let result = run(http, &latest, current, &exe, release::signing()).await;
     match (&result, tell) {
         (Ok(_), Tell::Here) => {
             state.updated = None;
@@ -172,11 +173,15 @@ struct Remote {
     browser_download_url: String,
 }
 
-/// Replaces `exe` (release `current`) with the release at `latest_url` once the download matches
-/// its checksum.
-/// CEILING: the checksums come from the same release, so they catch a damaged download, not a
-/// hostile upload. Upgrade: a minisign signature checked against a key built into crowbot.
-async fn run(http: &Http, latest_url: &str, current: &str, exe: &Path) -> anyhow::Result<Outcome> {
+/// Replaces `exe` (release `current`) with the release at `latest_url` once its checksums carry a
+/// signature by a key `signing` names and the download matches them.
+async fn run(
+    http: &Http,
+    latest_url: &str,
+    current: &str,
+    exe: &Path,
+    signing: &Signing,
+) -> anyhow::Result<Outcome> {
     let listing = get(http, latest_url, limits::get().http.request_timeout_ms.ms()).await;
     let latest: Latest = listing
         .and_then(|body| Ok(serde_json::from_slice(&body)?))
@@ -200,7 +205,11 @@ async fn run(http: &Http, latest_url: &str, current: &str, exe: &Path) -> anyhow
                 ))
             })
     };
-    let (file, sums) = (find(&ours.file)?, find(release::sums())?);
+    let (file, sums, signed) = (
+        find(&ours.file)?,
+        find(release::sums())?,
+        find(&signing.file)?,
+    );
     let dir = exe.parent().context("the program has no folder")?;
     if !io::exe::writable(dir) {
         bail!(fill(
@@ -211,6 +220,14 @@ async fn run(http: &Http, latest_url: &str, current: &str, exe: &Path) -> anyhow
     let download = limits::get().update.download_timeout_secs.secs();
     let bytes = get(http, &file.browser_download_url, download).await?;
     let sums = get(http, &sums.browser_download_url, download).await?;
+    let signed = get(http, &signed.browser_download_url, download).await?;
+    let tag = &latest.tag_name;
+    if !signature::check(&sums, &String::from_utf8_lossy(&signed), tag, signing) {
+        bail!(fill(
+            &TEXT.unsigned,
+            &[("file", release::sums()), ("tag", tag)]
+        ));
+    }
     if !matches(&bytes, &String::from_utf8_lossy(&sums), &ours.file) {
         bail!(fill(&TEXT.mismatch, &[("file", &ours.file)]));
     }
@@ -264,6 +281,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::release::signature::TestKey;
 
     fn sums_for(bytes: &[u8], name: &str) -> String {
         let hex: String = Sha256::digest(bytes)
@@ -298,41 +316,56 @@ mod tests {
         assert_eq!(due(&stale, now, true), release::tag().is_some());
     }
 
-    /// A stand-in for GitHub: the newest release `tag`, its file for this platform, and sums.
-    async fn github(tag: &str, file: Vec<u8>, sums: String) -> String {
+    /// A stand-in for GitHub: the newest release `tag`, its file for this platform, its sums
+    /// and, when there is one, their signature.
+    async fn github(tag: &str, file: Vec<u8>, sums: String, signed: Option<String>) -> String {
         let name = release::asset().unwrap().file.clone();
         let file = Arc::new(file);
         let base = crate::testing::serve(|base| {
-            let latest = json!({"tag_name": tag, "assets": [
-                {"name": name, "browser_download_url": format!("{base}/file")},
-                {"name": release::sums(), "browser_download_url": format!("{base}/sums")},
-            ]});
+            let mut assets = vec![
+                json!({"name": name, "browser_download_url": format!("{base}/file")}),
+                json!({"name": release::sums(), "browser_download_url": format!("{base}/sums")}),
+            ];
+            if signed.is_some() {
+                let url = format!("{base}/signed");
+                assets.push(json!({"name": release::signing().file, "browser_download_url": url}));
+            }
+            let latest = json!({"tag_name": tag, "assets": assets});
+            let signed = signed.unwrap_or_default();
             Router::new()
                 .route("/latest", get(move || async move { axum::Json(latest) }))
                 .route("/file", get(move || async move { file.as_ref().clone() }))
                 .route("/sums", get(move || async move { sums }))
+                .route("/signed", get(move || async move { signed }))
         })
         .await;
         format!("{base}/latest")
     }
 
+    /// A release `tag` of `file`, its sums signed by `key` as that release.
+    async fn signed_release(key: &TestKey, tag: &str, file: &[u8], sums_of: &[u8]) -> String {
+        let sums = sums_for(sums_of, &release::asset().unwrap().file);
+        let signed = key.sign(&sums, tag);
+        github(tag, file.to_vec(), sums, Some(signed)).await
+    }
+
     #[tokio::test]
-    async fn a_newer_release_replaces_the_program_once_its_checksum_matches() {
-        let Some(asset) = release::asset() else {
+    async fn a_newer_release_replaces_the_program_once_signed_and_its_checksum_matches() {
+        if release::asset().is_none() {
             return;
-        };
+        }
         let dir = tempfile::tempdir().unwrap();
         let exe = dir.path().join("crowbot");
         io::exe::write(&exe, b"old build").unwrap();
         let http = Http::new(std::time::Duration::from_secs(5)).unwrap();
 
-        let url = github(
-            "v0.2.0-2",
-            b"new build".to_vec(),
-            sums_for(b"new build", &asset.file),
-        )
-        .await;
-        let outcome = run(&http, &url, "v0.2.0-1", &exe).await.unwrap();
+        let key = TestKey::new();
+        let run = |url: String, current: &'static str| {
+            let (http, exe, signing) = (&http, &exe, &key.signing);
+            async move { run(http, &url, current, exe, signing).await }
+        };
+        let url = signed_release(&key, "v0.2.0-2", b"new build", b"new build").await;
+        let outcome = run(url.clone(), "v0.2.0-1").await.unwrap();
         assert_eq!(
             outcome,
             Outcome::Updated(Change {
@@ -342,18 +375,46 @@ mod tests {
         );
         assert_eq!(io::fs::read_bytes(&exe).unwrap(), b"new build");
         assert_eq!(
-            run(&http, &url, "v0.2.0-2", &exe).await.unwrap(),
+            run(url, "v0.2.0-2").await.unwrap(),
             Outcome::UpToDate("v0.2.0-2".into())
         );
 
-        let tampered = github(
-            "v0.2.0-3",
-            b"evil build".to_vec(),
-            sums_for(b"new build", &asset.file),
-        )
-        .await;
-        let refused = run(&http, &tampered, "v0.2.0-2", &exe).await.unwrap_err();
+        let tampered = signed_release(&key, "v0.2.0-3", b"evil build", b"new build").await;
+        let refused = run(tampered, "v0.2.0-2").await.unwrap_err();
         assert!(refused.to_string().contains("does not match"), "{refused}");
         assert_eq!(io::fs::read_bytes(&exe).unwrap(), b"new build");
+    }
+
+    #[tokio::test]
+    async fn a_release_whose_sums_are_not_signed_for_it_changes_nothing() {
+        let Some(asset) = release::asset() else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("crowbot");
+        io::exe::write(&exe, b"old build").unwrap();
+        let http = Http::new(std::time::Duration::from_secs(5)).unwrap();
+        let key = TestKey::new();
+        let sums = sums_for(b"evil build", &asset.file);
+        let releases = [
+            github("v0.2.0-2", b"evil build".to_vec(), sums.clone(), None).await,
+            signed_release(&TestKey::new(), "v0.2.0-2", b"evil build", b"evil build").await,
+            // An older release's signed sums, offered as a newer release.
+            github(
+                "v0.2.0-2",
+                b"evil build".to_vec(),
+                sums.clone(),
+                Some(key.sign(&sums, "v0.2.0-1")),
+            )
+            .await,
+        ];
+        for url in releases {
+            let refused = run(&http, &url, "v0.2.0-1", &exe, &key.signing)
+                .await
+                .unwrap_err();
+            let said = refused.to_string();
+            assert!(said.contains("SHA256SUMS"), "{said}");
+            assert_eq!(io::fs::read_bytes(&exe).unwrap(), b"old build");
+        }
     }
 }

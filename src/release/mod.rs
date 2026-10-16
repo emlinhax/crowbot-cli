@@ -3,6 +3,7 @@
 
 pub mod install;
 pub mod path;
+mod signature;
 pub mod update;
 
 use std::sync::LazyLock;
@@ -17,7 +18,20 @@ static CATALOG: LazyLock<Catalog> = data::load!("release.toml");
 #[serde(deny_unknown_fields)]
 struct Catalog {
     sums: String,
+    signature: Signing,
     asset: Vec<Asset>,
+}
+
+/// How a release's checksums are signed.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Signing {
+    /// The signature's file in a release, beside the checksums.
+    pub file: String,
+    /// minisign public keys, in base64; any one of them may sign.
+    pub keys: Vec<String>,
+    /// The trusted comment a signature carries; `{tag}` is its release.
+    pub comment: String,
 }
 
 #[derive(Deserialize)]
@@ -75,6 +89,10 @@ fn asset_for(os: &str, arch: &str) -> Option<&'static Asset> {
 /// The checksum file every release carries.
 pub fn sums() -> &'static str {
     &CATALOG.sums
+}
+
+pub fn signing() -> &'static Signing {
+    &CATALOG.signature
 }
 
 #[cfg(test)]
