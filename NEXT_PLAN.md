@@ -217,7 +217,32 @@ reader, since unread fields fail `-D warnings`.
 - pty tests must close a card they leave open, or Ctrl+D goes to the card and the session never
   quits; and a sentence a card wraps can only be matched by a piece that stays on one row.
 
-## M5 — Context + sessions (compaction, shadow-git /undo)
+## M5 — Context + sessions (compaction, shadow-git /undo) (planned 2026-10-16)
+Plan: a session can be continued, taken back and kept inside the model's window.
+`crowbot --continue` and a `/resume` picker reopen this project's sessions with their model,
+effort and mode. `/undo` takes back the last prompt, the conversation as a branch the file keeps
+and the files from a shadow git snapshot, and `/retry` sends it again. Long conversations are
+summarised before the window fills, by `/compact` or on their own, and a request refused as too
+long is compacted and sent once more. The format stays v1: new line types and optional fields
+only, and a running head decides the branch.
+- [ ] 5.1 session tree: the reader follows parents and `rewind` markers to the current branch;
+      64-bit ids; a frozen fixture with branches
+- [ ] 5.2 `crowbot --continue` (TUI and headless): reopen the latest session, its recorded
+      model, effort and (in the TUI) mode, and the conversation replayed
+- [ ] 5.3 `/resume`: a picker over this project's sessions, the `/models` picker made one table
+      picker
+- [ ] 5.4 `/undo`, the conversation: a `rewind` marker, the prompt back in the editor
+- [ ] 5.5 shadow git (`io::proc::exec`, `src/snapshot/`): a snapshot before a prompt's first
+      change, files restored on `/undo`; only inside a git work tree
+- [ ] 5.6 files changed after the turn are left alone and named; `/status` says whether `/undo`
+      restores files
+- [ ] 5.7 `/retry`: undo, then the prompt again as a sibling branch
+- [ ] 5.8 `/compact [focus]`: a summary of all but a recent tail (`compaction.keep_tokens`),
+      sent as a reminder so the system prompt never changes
+- [ ] 5.9 automatic compaction before any request past `compaction.threshold_pct`;
+      `data/overflow.toml`; a refused request compacted and sent once more
+- [ ] 5.10 README and Learned
+- e2e (session format, file restore, requests): one local batch after 5.3, 5.7 and 5.9.
 ## M6 — Subagents + MCP
 ## M7 — Release (`prod` → GitHub Releases, installers)
 - Added 2026-10-02: every push to `prod` runs `ci.yml` through `release.yml` and publishes
