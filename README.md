@@ -86,7 +86,9 @@ A headless run declines every prompt: allow what it needs with `[[permission]]` 
 The session takes over the whole terminal (the alternate screen) and gives it back on exit. The
 conversation scrolls above; the message bar is pinned to the bottom, between two rules in the
 mode's colour, and the bottom one carries the status on its right: the mode, the model and effort,
-context use and cost. While crowbot works, a murmuration of crows ripples above the bar beside the
+context use, cost, the plan's allowance left and the balance (orange when the account cannot
+spend). The account is asked at the start, on a new key, at the end of each run and at most
+every `tui.account_refresh_secs` mid-run; an idle session never asks. While crowbot works, a murmuration of crows ripples above the bar beside the
 time and tokens so far. Right-click copies a message whole (yours, a reply, a tool's output, the
 pairing code), with a "Copied" note at the top right; Shift+drag selects any text, since the mouse
 otherwise belongs to crowbot. The session file under `~/.crowbot/sessions/` keeps the whole
@@ -116,13 +118,17 @@ session, `/help` lists the commands:
 | `/new` (or `/clear`) | a fresh conversation in a new session file; the last one stays saved |
 | `/models`, `/effort [level]`, `/mode [id]` | model, reasoning effort or permission mode for the rest of the session |
 | `/status` | account and balance, model, mode, context use, cost so far, session file |
+| `/account` | balance and plan, the last `account.usage_days` of spend by model, balance fallback on or off, the account's keys (revoke any but this session's own) |
 | `/copy` | the last reply to the clipboard, as markdown |
 | `/init` | crowbot studies the project and writes its `AGENTS.md` |
 | `/login`, `/logout` | pair this device or take an account number (shown masked), or forget the key |
+| `/signup` | create an account in a card; its number shows once and its last digits are typed back |
 | `/forums` | the forums the agent can browse: log in, log out, remove, add |
 | `/quit` (or `/exit`) | leave |
 
-`/login` takes effect without a restart. The project's `AGENTS.md` (else `CLAUDE.md`) joins the
+`/login` and `/signup` take effect without a restart, and ask first before they would replace a
+stored account number (signup asks about any stored key). A refused key in a session opens
+`/login`; running out of funds or allowance says where the account stands. The project's `AGENTS.md` (else `CLAUDE.md`) joins the
 system prompt at conversation start, up to `agent.instructions_bytes`. On Windows a paste arrives
 as keystrokes; a key burst counts as a paste, so its Enters add lines.
 

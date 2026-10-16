@@ -198,8 +198,24 @@ reader, since unread fields fail `-D warnings`.
 - [x] 4.8 `/account` card: overview and keys; revoke any key but the session's own
 - [x] 4.9 `/account`: the last `account.usage_days` of usage by model, and the balance fallback
       toggle
-- [ ] 4.10 README and Learned
-- e2e (auth and billing flows): one local batch after 4.5, one after 4.9.
+- [x] 4.10 README and Learned
+- e2e (auth and billing flows): one local batch after 4.5 (47 passed), one after 4.9 (51 passed).
+- [ ] Manual, against the real API with a scratch account: the bar's allowance on a plan, `/account`
+      usage, a fallback flip and a device key revoked (all tested against the fake only)
+
+**Learned**
+- Unread fields fail `-D warnings`, so the order held only because each field, word and route
+  landed with its first reader: the replace question's device wording left 4.4 and came back in
+  4.7 with signup, its first user.
+- A counter beside the key in `Api` lets the session notice `/login`, `/logout`, `/signup` and
+  `forget` without any of them telling it, and lets a refresh answered for an old key be dropped.
+- A card's prebuilt body (the replace question, `/account`) wraps at the width it opened at, as
+  prompt cards do; a resize does not rewrap it.
+- A key refused while login checks it was never in use, so "it may have been revoked" misled:
+  it is `key_unknown` now. crowbot's `plan_allowance_spent` is a 402 like an empty balance, and
+  `/v1` never reports the balance, so the bar asks `/api/me` (CEILING in `tui/app/account.rs`).
+- pty tests must close a card they leave open, or Ctrl+D goes to the card and the session never
+  quits; and a sentence a card wraps can only be matched by a piece that stays on one row.
 
 ## M5 — Context + sessions (compaction, shadow-git /undo)
 ## M6 — Subagents + MCP
