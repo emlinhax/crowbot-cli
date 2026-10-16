@@ -203,7 +203,6 @@ impl Bash {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io;
     use crate::permission::gate::Ask;
     use crate::tools::testing::Project;
 
@@ -263,7 +262,7 @@ mod tests {
             .as_str()
             .unwrap()
             .to_owned();
-        let spilled = io::fs::read_string(std::path::Path::new(&spill))
+        let spilled = crate::io::fs::read_string(std::path::Path::new(&spill))
             .unwrap()
             .unwrap();
         assert_eq!(spilled.lines().count(), 200_000);
@@ -283,7 +282,9 @@ mod tests {
             .as_str()
             .unwrap()
             .to_owned();
-        let saved = io::fs::read_string(Path::new(&file)).unwrap().unwrap();
+        let saved = crate::io::fs::read_string(Path::new(&file))
+            .unwrap()
+            .unwrap();
         assert!(saved.starts_with("\x1b[31mred\x1b[0m\n"), "{saved:?}");
     }
 

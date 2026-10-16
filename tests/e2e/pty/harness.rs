@@ -191,7 +191,8 @@ impl Session {
     }
 
     /// Until the copied note shows, then that `text` went to the clipboard (as OSC 52 carries
-    /// it, base64).
+    /// it, base64). The copy tests that read it run on Linux only.
+    #[cfg(target_os = "linux")]
     #[track_caller]
     pub fn wait_copied(&mut self, text: &str) {
         use base64::Engine;
