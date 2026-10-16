@@ -381,4 +381,52 @@ mod tests {
         );
         assert!(!crate::io::fs::exists(&h.app.paths.project.join("a.txt")));
     }
+
+    /// A run whose explore subagent's webfetch asks, answered `answer`.
+    async fn asked(answer: crate::live::prompt::Reply) -> (Harness, Outcome) {
+        let fetch = reply(
+            "",
+            &[("c1", "webfetch", json!({"url": "https://example.com"}))],
+            "tool_calls",
+        );
+        let h = Harness::new(vec![
+            task("fetch it"),
+            fetch,
+            text("child goes on"),
+            text("done"),
+        ])
+        .await;
+        let (ended, _, _) = h
+            .run(&shared("manual"), |event, shared| {
+                if let AgentEvent::Prompt { id, .. } = event.innermost() {
+                    shared.prompts.answer(*id, answer.clone());
+                }
+            })
+            .await;
+        (h, ended.outcome)
+    }
+
+    #[tokio::test]
+    async fn a_plain_no_inside_a_subagent_stops_its_parent_and_words_carry_on() {
+        use crate::live::prompt::Reply;
+        let (h, outcome) = asked(Reply::No { feedback: None }).await;
+        assert_eq!(outcome, Outcome::Rejected);
+        assert_eq!(h.requests().len(), 2);
+
+        let why = Reply::No {
+            feedback: Some("not that site".into()),
+        };
+        let (h, outcome) = asked(why).await;
+        assert_eq!(outcome, Outcome::Done);
+        assert!(
+            h.requests()[2]["messages"]
+                .to_string()
+                .contains("not that site")
+        );
+        assert_eq!(last_message(&h.requests()[3])["content"], "child goes on");
+
+        let (h, outcome) = asked(Reply::Unavailable).await;
+        assert_eq!(outcome, Outcome::Done);
+        assert_eq!(h.requests().len(), 4);
+    }
 }

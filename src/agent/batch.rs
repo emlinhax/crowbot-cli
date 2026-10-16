@@ -88,9 +88,10 @@ pub(super) async fn run<'a>(run: &'a Run<'a>, history: &[Message], calls: &'a [T
     if changes && run.root().before.get().is_none() {
         snapshot(run).await;
     }
+    let (results, declined) = settle(run, calls, cleared).await;
     Batch {
-        results: settle(run, calls, cleared).await,
-        stop,
+        results,
+        stop: stop || declined,
     }
 }
 
@@ -125,15 +126,21 @@ pub(super) async fn refuse_all<'a>(
         .map(|_| Err(Refused::new(kind, why.to_owned())))
         .collect();
     Batch {
-        results: settle(run, calls, slots).await,
+        results: settle(run, calls, slots).await.0,
         stop: false,
     }
 }
 
 /// Polled in order, so tools start, and results come back, in the order they were called.
-/// A refused call gets its start and end too, so a frontend shows every call's fate.
-async fn settle<'a>(run: &'a Run<'a>, calls: &'a [ToolCall], slots: Vec<Slot>) -> Vec<ToolResult> {
-    join_all(slots.into_iter().zip(calls).map(|(slot, call)| async move {
+/// A refused call gets its start and end too, so a frontend shows every call's fate. `true` when
+/// a call says the run should stop (a subagent the user turned down).
+async fn settle<'a>(
+    run: &'a Run<'a>,
+    calls: &'a [ToolCall],
+    slots: Vec<Slot>,
+) -> (Vec<ToolResult>, bool) {
+    let settled = join_all(slots.into_iter().zip(calls).map(|(slot, call)| async move {
+        let mut stop = false;
         (run.cx.emit)(AgentEvent::ToolStart {
             call_id: call.id.clone(),
             name: call.name.clone(),
@@ -155,6 +162,7 @@ async fn settle<'a>(run: &'a Run<'a>, calls: &'a [ToolCall], slots: Vec<Slot>) -
                         () = run.cancel.cancelled() => Output::cancelled(),
                     }
                 };
+                stop = out.stop;
                 ToolResult {
                     asks: cleared.asks,
                     ..result(call, out)
@@ -164,9 +172,11 @@ async fn settle<'a>(run: &'a Run<'a>, calls: &'a [ToolCall], slots: Vec<Slot>) -
         (run.cx.emit)(AgentEvent::ToolEnd {
             result: done.clone(),
         });
-        done
+        (done, stop)
     }))
-    .await
+    .await;
+    let stop = settled.iter().any(|(_, stop)| *stop);
+    (settled.into_iter().map(|(done, _)| done).collect(), stop)
 }
 
 /// Everything a call must pass before it runs, in order: not cancelled, a known tool, valid

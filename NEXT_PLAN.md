@@ -278,7 +278,7 @@ with the session (a project's only once trusted); their tools join the registry 
 - [x] 6.5 the task card, headless notes, `child` events in `--json`
 - [x] 6.6 parallel children within `subagent.parallel`
 - [x] 6.7 `general`: the parent's tools; its edits are covered by /undo
-- [ ] 6.8 a plain No inside a child stops the parent
+- [x] 6.8 a plain No inside a child stops the parent
 - [ ] 6.9 README and Learned (subagents)
 - [ ] 6.10 trust lists a left-out table entry by entry, secrets by name only
 - [ ] 6.11 `[mcp.<name>]` servers start with the session (`io::proc` child, JSON-RPC, handshake);

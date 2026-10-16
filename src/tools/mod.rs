@@ -138,6 +138,9 @@ pub struct Output {
     pub details: Option<Value>,
     /// What the call's own requests cost (a subagent's), recorded with its result.
     pub usage: Option<Usage>,
+    /// The user declined something inside the call without a word, as at a prompt of the run's
+    /// own: the run stops after this batch.
+    pub stop: bool,
 }
 
 impl Output {
@@ -147,6 +150,7 @@ impl Output {
             is_error: false,
             details: None,
             usage: None,
+            stop: false,
         }
     }
 
@@ -156,6 +160,7 @@ impl Output {
             is_error: true,
             details: None,
             usage: None,
+            stop: false,
         }
     }
 
@@ -194,6 +199,12 @@ impl Output {
 
     pub fn with_usage(mut self, usage: Usage) -> Self {
         self.usage = Some(usage);
+        self
+    }
+
+    /// Stops the run after this batch, as a plain No at its own prompt does.
+    pub fn stopping(mut self) -> Self {
+        self.stop = true;
         self
     }
 }

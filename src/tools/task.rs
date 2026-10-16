@@ -124,7 +124,8 @@ fn said(done: &Done) -> Output {
             let error = done.error.clone().unwrap_or_default();
             Output::error(fill(&TEXT.failed, &[("error", &error)]))
         }
-        Outcome::Rejected => Output::error(TEXT.rejected.clone()),
+        // A plain No to the subagent is a No to the run that started it.
+        Outcome::Rejected => Output::error(TEXT.rejected.clone()).stopping(),
         Outcome::Aborted => Output::cancelled(),
     }
 }
