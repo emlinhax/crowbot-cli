@@ -85,7 +85,7 @@ pub(super) async fn run<'a>(run: &'a Run<'a>, history: &[Message], calls: &'a [T
             .iter()
             .any(|a| catalog::changes_things(&a.permission))
     });
-    if changes && run.before.get().is_none() {
+    if changes && run.root().before.get().is_none() {
         snapshot(run).await;
     }
     Batch {
@@ -99,15 +99,16 @@ pub(super) async fn run<'a>(run: &'a Run<'a>, history: &[Message], calls: &'a [T
 async fn snapshot(run: &Run<'_>) {
     let shadow = run.cx.shadow;
     let was_on = shadow.off().is_none();
-    match shadow.take().await {
-        Some(tree) => {
-            let _ = run.before.set(tree);
-        }
-        None => {
-            if let Some(why) = shadow.off().filter(|_| was_on) {
-                (run.cx.emit)(AgentEvent::SnapshotOff { why });
-            }
-        }
+    // Subagents changing files at once wait for the one snapshot rather than take their own.
+    let taken = run
+        .root()
+        .before
+        .get_or_try_init(|| async { shadow.take().await.ok_or(()) })
+        .await;
+    if taken.is_err()
+        && let Some(why) = shadow.off().filter(|_| was_on)
+    {
+        (run.cx.emit)(AgentEvent::SnapshotOff { why });
     }
 }
 

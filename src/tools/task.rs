@@ -144,6 +144,6 @@ mod tests {
             spec.description
         );
         let choices = &spec.parameters["properties"]["subagent_type"]["enum"];
-        assert_eq!(choices, &Value::from(vec!["explore"]));
+        assert_eq!(choices, &Value::from(vec!["explore", "general"]));
     }
 }

@@ -296,4 +296,89 @@ mod tests {
         let ids: Vec<String> = (0..place + 1).map(|i| format!("c{i}")).collect();
         assert_eq!(results, ids);
     }
+
+    fn general(id: &str, prompt: &str) -> (String, &'static str, Value) {
+        let args =
+            json!({"description": "change it", "prompt": prompt, "subagent_type": "general"});
+        (id.to_owned(), "task", args)
+    }
+
+    fn write(path: &str) -> String {
+        reply(
+            "",
+            &[("w1", "write", json!({"path": path, "content": "x"}))],
+            "tool_calls",
+        )
+    }
+
+    /// The snapshot lines in the session file at `path`.
+    fn snapshots(path: &std::path::Path) -> Vec<Value> {
+        crate::io::fs::read_string(path)
+            .unwrap()
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str::<Value>(l).unwrap())
+            .filter(|l| l["type"] == "snapshot")
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn a_general_subagents_edits_are_the_parent_prompts_for_undo() {
+        let calls = [general("c1", "make a file"), general("c2", "make another")];
+        let calls: Vec<(&str, &str, Value)> = calls
+            .iter()
+            .map(|(i, t, a)| (i.as_str(), *t, a.clone()))
+            .collect();
+        let replies = vec![
+            reply("", &calls, "tool_calls"),
+            write("a.txt"),
+            write("b.txt"),
+            text("wrote it"),
+            text("wrote it"),
+            text("done"),
+        ];
+        let Some(h) = Harness::new(replies).await.with_git().await else {
+            return;
+        };
+        let (ended, transcript, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let project = &h.app.paths.project;
+        assert!(crate::io::fs::exists(&project.join("a.txt")));
+        assert!(crate::io::fs::exists(&project.join("b.txt")));
+        // One snapshot for the prompt, in the parent's file, however many subagents changed things.
+        let parent = transcript.path().unwrap();
+        let snaps = snapshots(parent);
+        assert_eq!(snaps.len(), 2, "{snaps:?}");
+        let folder = parent.with_extension("");
+        for child in crate::io::fs::list_dir(&folder).unwrap() {
+            assert!(snapshots(&folder.join(child.name)).is_empty());
+        }
+        let (before, after) = (snaps[1]["before"].as_str(), snaps[1]["after"].as_str());
+        let restored = h.shadow.restore(before.unwrap(), after).await.unwrap();
+        assert_eq!(restored.files, 2);
+        assert!(!crate::io::fs::exists(&project.join("a.txt")));
+    }
+
+    #[tokio::test]
+    async fn under_plan_a_general_subagent_cannot_write() {
+        let calls = [general("c1", "make a file")];
+        let calls: Vec<(&str, &str, Value)> = calls
+            .iter()
+            .map(|(i, t, a)| (i.as_str(), *t, a.clone()))
+            .collect();
+        let h = Harness::new(vec![
+            reply("", &calls, "tool_calls"),
+            write("a.txt"),
+            text("could not"),
+            text("done"),
+        ])
+        .await;
+        h.run(&shared("plan"), |_, _| {}).await;
+        let refused = last_message(&h.requests()[2]);
+        assert!(
+            refused["content"].as_str().unwrap().contains("Not allowed"),
+            "{refused}"
+        );
+        assert!(!crate::io::fs::exists(&h.app.paths.project.join("a.txt")));
+    }
 }

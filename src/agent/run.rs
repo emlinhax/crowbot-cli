@@ -1,8 +1,6 @@
 //! The agent loop (after pi's agent-loop): ask the model, run what it calls, feed the results
 //! back, until it stops calling tools. Messages queued meanwhile are delivered at safe points.
 
-use std::sync::OnceLock;
-
 use crate::agent::batch::{self, Batch};
 use crate::agent::compact::{self, Why};
 use crate::agent::context;
@@ -45,7 +43,7 @@ pub(crate) async fn run_under(
             Some(parent) => parent.plan_file.clone(),
             None => tools::plan_file(&cx.app.paths, transcript.id()),
         },
-        before: OnceLock::new(),
+        before: tokio::sync::OnceCell::new(),
         session: transcript.file().to_path_buf(),
         parent,
         slots: tokio::sync::Semaphore::new(limits::get().subagent.parallel.value),
@@ -121,8 +119,9 @@ pub(crate) async fn run_under(
                     batch::run(&run, history, &calls).await
                 };
                 let Batch { results, stop } = batch;
-                // The snapshot goes in the file before the changes it lets /undo take back.
-                if let Some(before) = run.before.get().filter(|_| !snapped) {
+                // The snapshot goes in the file before the changes it lets /undo take back; only
+                // the frontend's run writes one, its subagents' changes included.
+                if let Some(before) = run.before.get().filter(|_| !snapped && parent.is_none()) {
                     snapped = true;
                     let trees = Snap {
                         before: before.clone(),
@@ -160,7 +159,7 @@ pub(crate) async fn run_under(
             deliver(&run, transcript, parts);
         }
     };
-    if let Some(before) = run.before.get() {
+    if let Some(before) = run.before.get().filter(|_| parent.is_none()) {
         let trees = Snap {
             before: before.clone(),
             after: cx.shadow.take().await,

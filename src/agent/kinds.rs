@@ -12,7 +12,10 @@ use crate::config::limits;
 use crate::data;
 use crate::tools::Registry;
 
-const SOURCES: &[&str] = &[data::raw!("agents/explore.toml")];
+const SOURCES: &[&str] = &[
+    data::raw!("agents/explore.toml"),
+    data::raw!("agents/general.toml"),
+];
 
 static KINDS: LazyLock<Vec<Kind>> = LazyLock::new(|| {
     SOURCES
@@ -26,8 +29,11 @@ static KINDS: LazyLock<Vec<Kind>> = LazyLock::new(|| {
 pub struct Kind {
     pub id: String,
     pub summary: String,
-    /// The parent's tools it gets, by name.
+    /// The parent's tools it gets, by name; `*` is all of them.
     tools: Vec<String>,
+    /// Tools a `*` leaves out.
+    #[serde(default)]
+    except: Vec<String>,
     pub prompt: String,
 }
 
@@ -43,10 +49,13 @@ pub fn get(id: &str) -> Option<&'static Kind> {
 /// frontend's: never `task` at the depth limit, so it is never offered a call it could not make.
 pub fn tools(kind: &Kind, registry: &Registry, depth: usize) -> Registry {
     let deepest = depth >= limits::get().subagent.max_depth.value;
-    let names: Vec<&str> = kind
-        .tools
-        .iter()
-        .map(String::as_str)
+    let named: Vec<&str> = match kind.tools.iter().any(|t| t == "*") {
+        true => registry.each_name().collect(),
+        false => kind.tools.iter().map(String::as_str).collect(),
+    };
+    let names: Vec<&str> = named
+        .into_iter()
+        .filter(|name| !kind.except.iter().any(|e| e == name))
         .filter(|name| !(deepest && *name == crate::tools::TASK))
         .collect();
     registry.subset(&names)
@@ -66,10 +75,21 @@ mod tests {
         ids.dedup();
         assert_eq!(ids.len(), all().len());
         for kind in all() {
-            for tool in &kind.tools {
+            for tool in kind.tools.iter().chain(&kind.except).filter(|t| *t != "*") {
                 assert!(registry.get(tool).is_some(), "{}: no tool {tool}", kind.id);
             }
         }
+    }
+
+    #[test]
+    fn general_gets_every_tool_but_handing_over_the_plan_and_starting_another() {
+        let registry = Registry::builtin(None);
+        let general = tools(get("general").unwrap(), &registry, 1);
+        let want: Vec<&str> = registry
+            .each_name()
+            .filter(|n| !["plan_exit", crate::tools::TASK].contains(n))
+            .collect();
+        assert_eq!(general.each_name().collect::<Vec<_>>(), want);
     }
 
     #[test]

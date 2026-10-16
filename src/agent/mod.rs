@@ -14,8 +14,6 @@ pub mod system_prompt;
 #[cfg(test)]
 pub mod testing;
 
-use std::sync::OnceLock;
-
 use tokio_util::sync::CancellationToken;
 
 use crate::api::models::Model;
@@ -45,8 +43,9 @@ pub(crate) struct Run<'a> {
     /// Where PLAN mode writes its plan; the only file it may change. A subagent's is its
     /// parent's.
     plan_file: String,
-    /// The files before the run's first change, once a call that may change them is cleared.
-    before: OnceLock<String>,
+    /// The files before the prompt's first change, once a call that may change them is
+    /// cleared; a subagent's change takes its parent's (`root`), so one prompt has one.
+    before: tokio::sync::OnceCell<String>,
     /// The session file the run writes, which a subagent's file is kept beside.
     session: std::path::PathBuf,
     /// The run whose `task` call started this one; `None` for the run a frontend started.
@@ -61,5 +60,10 @@ impl Run<'_> {
     /// How many runs started this one: 0 for a frontend's.
     pub(crate) fn depth(&self) -> usize {
         self.parent.map_or(0, |p| p.depth() + 1)
+    }
+
+    /// The run a frontend started, which this one is under.
+    pub(crate) fn root(&self) -> &Run<'_> {
+        self.parent.map_or(self, |p| p.root())
     }
 }

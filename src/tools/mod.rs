@@ -376,12 +376,12 @@ impl Registry {
             .find(|t| t.spec().name == name)
     }
 
+    pub fn each_name(&self) -> impl Iterator<Item = &str> {
+        self.entries.iter().map(|e| e.tool.spec().name.as_str())
+    }
+
     pub fn names(&self) -> String {
-        self.entries
-            .iter()
-            .map(|e| e.tool.spec().name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ")
+        self.each_name().collect::<Vec<_>>().join(", ")
     }
 
     /// The `tools` array of a chat request.
