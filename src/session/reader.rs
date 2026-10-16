@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use crate::conversation::message::Message;
-use crate::session::entry::{Entry, Snap, State};
+use crate::session::entry::{Entry, Snap, State, Summary};
 
 /// The conversation on the current branch, each message with its entry id.
 pub struct Loaded {
@@ -18,6 +18,9 @@ pub struct Loaded {
     pub state: Option<State>,
     /// Each prompt's snapshots, by its id.
     pub snapshots: HashMap<String, Snap>,
+    /// Summaries made on this branch, oldest first: each with the last message it saw and the
+    /// first it kept word for word, as indexes into `branch`.
+    pub compactions: Vec<(usize, usize, Summary)>,
 }
 
 struct Node {
@@ -33,6 +36,8 @@ pub fn read(text: &str) -> Loaded {
     let mut by_id: HashMap<String, usize> = HashMap::new();
     let mut head: Option<usize> = None;
     let mut snapshots = HashMap::new();
+    // Each with the nodes it names; whether they are on the branch is settled below.
+    let mut compactions = Vec::new();
     for entry in text
         .lines()
         .filter_map(|line| serde_json::from_str::<Entry>(line).ok())
@@ -65,6 +70,16 @@ pub fn read(text: &str) -> Loaded {
             Entry::Snapshot { of, trees, .. } => {
                 snapshots.insert(of, trees);
             }
+            Entry::Compaction {
+                head,
+                kept,
+                summary,
+                ..
+            } => {
+                if let (Some(&head), Some(&kept)) = (by_id.get(&head), by_id.get(&kept)) {
+                    compactions.push((head, kept, summary));
+                }
+            }
             Entry::Session { .. } => {}
         }
     }
@@ -75,6 +90,12 @@ pub fn read(text: &str) -> Loaded {
         at = nodes[i].parent;
     }
     let state = chain.iter().find_map(|&i| nodes[i].state.clone());
+    // Node indexes to places on the branch; a summary off it is dropped.
+    let place = |node: usize| chain.iter().rev().position(|&i| i == node);
+    let compactions = compactions
+        .into_iter()
+        .filter_map(|(head, kept, summary)| Some((place(head)?, place(kept)?, summary)))
+        .collect();
     let mut nodes: Vec<Option<Node>> = nodes.into_iter().map(Some).collect();
     let branch = chain
         .into_iter()
@@ -86,6 +107,7 @@ pub fn read(text: &str) -> Loaded {
         branch,
         state,
         snapshots,
+        compactions,
     }
 }
 

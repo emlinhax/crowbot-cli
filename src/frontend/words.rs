@@ -5,7 +5,8 @@ use std::sync::LazyLock;
 use serde::Deserialize;
 
 use crate::data;
-use crate::text::template;
+use crate::live::event::AgentEvent;
+use crate::text::{template, units};
 
 static WORDS: LazyLock<Words> = data::load!("frontend.toml");
 
@@ -18,7 +19,18 @@ pub struct Words {
     pub turn_limit: String,
     pub retrying: String,
     pub model_gone: String,
+    pub compact: CompactWords,
     pub print: PrintWords,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompactWords {
+    pub done: String,
+    pub nothing: String,
+    pub failed: String,
+    pub auto: String,
+    pub overflow: String,
 }
 
 #[derive(Deserialize)]
@@ -33,6 +45,44 @@ pub struct PrintWords {
 
 pub fn get() -> &'static Words {
     &WORDS
+}
+
+/// What a finished summary of earlier turns comes to, and whether that is bad news; `why` is
+/// what its start said (`auto`, `overflow`).
+pub fn compaction(end: &AgentEvent, why: (bool, bool)) -> Option<(String, &'static str)> {
+    let AgentEvent::CompactionEnd {
+        summarised,
+        kept,
+        usage,
+        error,
+    } = end
+    else {
+        return None;
+    };
+    let words = &WORDS.compact;
+    let why = match why {
+        (_, true) => words.overflow.as_str(),
+        (true, _) => words.auto.as_str(),
+        _ => "",
+    };
+    Some(match (error, summarised) {
+        (Some(error), _) => (
+            template::fill(&words.failed, &[("why", why), ("error", error)]),
+            "warn",
+        ),
+        (None, 0) => (words.nothing.clone(), "muted"),
+        (None, count) => {
+            let cost = units::usd_micros(usage.map_or(0, |u| u.cost_micros));
+            let (count, kept) = (count.to_string(), kept.to_string());
+            let vars = [
+                ("why", why),
+                ("count", &count),
+                ("kept", &kept),
+                ("cost", &cost),
+            ];
+            (template::fill(&words.done, &vars), "muted")
+        }
+    })
 }
 
 /// That a resumed session's model is no longer served, and what it goes on with instead.

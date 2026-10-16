@@ -4,7 +4,7 @@ use crate::config::paths::Paths;
 use crate::conversation::message::Message;
 use crate::io;
 use crate::release;
-use crate::session::entry::{self, Entry, FORMAT_VERSION, Snap, State};
+use crate::session::entry::{self, Entry, FORMAT_VERSION, Snap, State, Summary};
 
 /// Append-only JSONL session file and its only writer. Nothing is written before the first message.
 pub struct Store {
@@ -82,6 +82,16 @@ impl Store {
             ts: io::clock::now(),
             message: message.clone(),
             state,
+        })
+    }
+
+    /// Records a summary of what precedes entry `kept`, made at entry `head`.
+    pub fn compaction(&mut self, head: &str, kept: &str, summary: &Summary) -> anyhow::Result<()> {
+        self.write(&Entry::Compaction {
+            ts: io::clock::now(),
+            head: head.to_owned(),
+            kept: kept.to_owned(),
+            summary: summary.clone(),
         })
     }
 

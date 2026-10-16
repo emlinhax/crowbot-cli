@@ -226,3 +226,53 @@ async fn slash_resume_goes_on_with_an_earlier_session_and_keeps_this_one() {
         ended.exited
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn slash_compact_sends_a_summary_and_the_recent_turns_word_for_word() {
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::call("read", r#"{"path": "big1.txt"}"#),
+        Reply::call("read", r#"{"path": "big2.txt"}"#),
+        Reply::call("read", r#"{"path": "big3.txt"}"#),
+        Reply::text("Read all three."),
+        Reply::text("SUMMARY: the user had three big files read."),
+        Reply::text("Carrying on."),
+    ]);
+    let sandbox = Sandbox::default();
+    sandbox.write_home("config.toml", "mode = \"auto\"\n");
+    for (name, word) in [
+        ("big1.txt", "FIRST"),
+        ("big2.txt", "SECOND"),
+        ("big3.txt", "THIRD"),
+    ] {
+        let line = format!("{} {word}\n", "x".repeat(90));
+        sandbox.write_project(name, &line.repeat(1200));
+    }
+    in_session(&fake, sandbox, Some(ENV_KEY), |s| {
+        s.submit("/compact");
+        s.wait_for("Nothing to summarise yet");
+        s.submit("read the files");
+        s.wait_for("Read all three.");
+        s.submit("/compact");
+        s.wait_for("Summarised 3 earlier messages");
+        s.submit("go on");
+        s.wait_for("Carrying on.");
+    })
+    .await;
+    let bodies = fake.chat_bodies();
+    let asked = bodies[4]["messages"].to_string();
+    assert!(
+        asked.contains("FIRST") && asked.contains("call no tools"),
+        "{asked}"
+    );
+    let next = bodies[5]["messages"].to_string();
+    assert!(
+        next.contains("SUMMARY: the user had three big files read."),
+        "{next}"
+    );
+    assert!(next.contains("SECOND") && next.contains("THIRD"), "{next}");
+    assert!(
+        !next.contains("FIRST"),
+        "the summarised read was sent again"
+    );
+}

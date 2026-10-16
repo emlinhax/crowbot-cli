@@ -6,7 +6,7 @@ use anyhow::Context;
 use crate::config::paths::Paths;
 use crate::conversation::message::Message;
 use crate::io;
-use crate::session::entry::{self, Snap, State};
+use crate::session::entry::{self, Snap, State, Summary};
 use crate::session::reader;
 use crate::session::store::Store;
 
@@ -17,9 +17,19 @@ pub struct Transcript {
     ids: Vec<String>,
     /// Each prompt's snapshots, by its entry id.
     snapshots: HashMap<String, Snap>,
+    /// Summaries of earlier turns, oldest first; the model is sent the latest and what follows.
+    compactions: Vec<Compaction>,
     store: Store,
     /// A write failed; the file stopped being written and no longer holds everything.
     unsaved: bool,
+}
+
+/// A summary in force while message `head` is still in the conversation.
+struct Compaction {
+    head: usize,
+    /// The first message sent word for word after it.
+    kept: usize,
+    summary: Summary,
 }
 
 /// What a reopened session brings beyond its messages.
@@ -45,6 +55,7 @@ impl Transcript {
             messages: Vec::new(),
             ids: Vec::new(),
             snapshots: HashMap::new(),
+            compactions: Vec::new(),
             store: Store::create(paths),
             unsaved: false,
         }
@@ -71,14 +82,26 @@ impl Transcript {
                 mode: None,
             })
         });
+        let summaries = loaded.compactions.iter().filter_map(|(_, _, s)| s.usage);
         let spent_micros = replies()
             .filter_map(|a| a.usage)
+            .chain(summaries)
             .map(|u| u.cost_micros)
             .sum();
+        let compactions = loaded
+            .compactions
+            .into_iter()
+            .map(|(head, kept, summary)| Compaction {
+                head,
+                kept,
+                summary,
+            })
+            .collect();
         let transcript = Self {
             messages,
             ids,
             snapshots: loaded.snapshots,
+            compactions,
             store: Store::open(path.to_path_buf(), head),
             unsaved: false,
         };
@@ -125,6 +148,32 @@ impl Transcript {
         written
     }
 
+    /// What the model is sent: the latest summary, if any, and the messages after it.
+    pub fn context(&self) -> (Option<&str>, &[Message]) {
+        match self.compactions.last() {
+            Some(c) => (Some(&c.summary.summary), &self.messages[c.kept..]),
+            None => (None, &self.messages),
+        }
+    }
+
+    /// Where the messages not yet summarised start.
+    pub fn summarised(&self) -> usize {
+        self.compactions.last().map_or(0, |c| c.kept)
+    }
+
+    /// Records `summary` of the messages before `kept`, made now.
+    pub fn compact(&mut self, kept: usize, summary: Summary) -> Result<(), Unsaved> {
+        let head = self.messages.len().saturating_sub(1);
+        let (head_id, kept_id) = (self.ids[head].clone(), self.ids[kept].clone());
+        let written = self.saved(|store| store.compaction(&head_id, &kept_id, &summary));
+        self.compactions.push(Compaction {
+            head,
+            kept,
+            summary,
+        });
+        written
+    }
+
     /// The entry id of the last message, the run's prompt right after it is said.
     pub fn last_id(&self) -> Option<&str> {
         self.ids.last().map(String::as_str)
@@ -146,6 +195,8 @@ impl Transcript {
     pub fn rewind(&mut self, len: usize) -> Result<(), Unsaved> {
         self.messages.truncate(len);
         self.ids.truncate(len);
+        // A summary made after the turns taken back speaks of them.
+        self.compactions.retain(|c| c.head < len);
         let to = self.ids.last().cloned();
         self.saved(|store| store.rewind(to.as_deref()))
     }
@@ -253,5 +304,37 @@ mod tests {
         // The taken-back pair stays in the file.
         let text = io::fs::read_string(&path).unwrap().unwrap();
         assert!(text.contains("reply two"));
+    }
+
+    #[test]
+    fn a_summary_stands_for_what_it_covers_until_a_rewind_takes_its_turns_back() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = Paths::at(root.path().join("home"), root.path().into());
+        let mut transcript = Transcript::create(&paths);
+        for text in ["one", "two", "three", "four"] {
+            transcript.push(Message::user_text(text)).unwrap();
+        }
+        let summary = Summary {
+            summary: "one and two happened".into(),
+            auto: true,
+            overflow: false,
+            model: "m".into(),
+            usage: None,
+        };
+        transcript.compact(2, summary).unwrap();
+        let (said, tail) = transcript.context();
+        assert_eq!(said, Some("one and two happened"));
+        assert_eq!(tail.len(), 2);
+
+        let path = transcript.path().unwrap().to_path_buf();
+        let (reopened, _) = Transcript::open(&path).unwrap();
+        assert_eq!(reopened.context().0, Some("one and two happened"));
+        assert_eq!(reopened.summarised(), 2);
+
+        // Taking back the turn it was made after leaves it behind.
+        transcript.rewind(3).unwrap();
+        assert_eq!(transcript.context(), (None, &transcript.messages[..]));
+        let (reopened, _) = Transcript::open(&path).unwrap();
+        assert_eq!(reopened.context().0, None);
     }
 }

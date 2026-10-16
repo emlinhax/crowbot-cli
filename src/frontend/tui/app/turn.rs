@@ -2,7 +2,7 @@
 //! that model), and starting one with the transcript lent to it.
 
 use super::{Tui, Turn, Turns};
-use crate::agent::{RunCtx, run, system_prompt};
+use crate::agent::{RunCtx, compact, run, system_prompt};
 use crate::api::models::Model;
 use crate::config::paths::Paths;
 use crate::conversation::message::Part;
@@ -10,18 +10,20 @@ use crate::frontend::tui::progress::Progress;
 use crate::io::clock;
 use crate::session::transcript::Transcript;
 
+/// What a turn does with the transcript it is lent.
+pub(super) enum Job {
+    /// Answer this prompt.
+    Prompt(String),
+    /// Summarise earlier turns, keeping this in mind.
+    Compact(Option<String>),
+}
+
 impl<'a> Tui<'a> {
-    /// Starts a turn with `text`, lending it the transcript until it hands it back.
-    pub(super) fn send(
-        &mut self,
-        text: String,
-        mut owned: Transcript,
-        turns: &Turns<'a>,
-    ) -> Turn<'a> {
+    /// Starts a turn doing `job`, lending it the transcript until it hands it back.
+    pub(super) fn start(&mut self, job: Job, mut owned: Transcript, turns: &Turns<'a>) -> Turn<'a> {
         let progress = Progress::start(clock::instant(), self.last_verb, &mut self.rng);
         self.last_verb = Some(progress.verb());
         self.progress = Some(progress);
-        let parts = vec![Part::Text { text }];
         let (app, shared, shadow) = (self.app, self.shared, self.shadow);
         let (tools, emit) = (turns.tools, turns.emit);
         let next = self.next.clone();
@@ -35,8 +37,15 @@ impl<'a> Tui<'a> {
                 emit,
                 shadow,
             };
-            let outcome = run::run(&cx, &mut owned, shared, parts).await;
-            (owned, outcome)
+            let ended = match job {
+                Job::Prompt(text) => {
+                    run::run(&cx, &mut owned, shared, vec![Part::Text { text }]).await
+                }
+                Job::Compact(focus) => {
+                    compact::run(&cx, &mut owned, shared, focus.as_deref()).await
+                }
+            };
+            (owned, ended)
         })
     }
 }

@@ -23,6 +23,8 @@ pub struct ModelText {
     pub unconfirmed: String,
     pub doom_loop: String,
     pub mode_left: String,
+    pub compact_focus: String,
+    pub compacted: String,
 }
 
 pub fn get() -> &'static ModelText {

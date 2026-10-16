@@ -1,6 +1,7 @@
 //! The agent loop: model turns, tool batches, and what the model is sent and told.
 
 pub mod batch;
+pub mod compact;
 pub mod context;
 pub mod doom_loop;
 pub mod model_text;

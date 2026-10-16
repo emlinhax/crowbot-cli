@@ -7,7 +7,7 @@ use serde::Serialize;
 use crate::api::assemble::Delta;
 use crate::api::chat::Event;
 use crate::conversation::error::ErrorInfo;
-use crate::conversation::message::{Assistant, ToolResult};
+use crate::conversation::message::{Assistant, ToolResult, Usage};
 use crate::live::prompt::Prompt;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -54,6 +54,20 @@ pub enum AgentEvent {
     Unsaved {
         path: String,
         error: String,
+    },
+    /// Earlier turns are being summarised; `auto` when the window filled, `overflow` when
+    /// crowbot refused a request as too long.
+    CompactionStart {
+        auto: bool,
+        overflow: bool,
+    },
+    /// The summary is in: `summarised` messages it stands for, `kept` word for word after it.
+    /// Nothing summarised and no error means there was nothing to summarise yet.
+    CompactionEnd {
+        summarised: usize,
+        kept: usize,
+        usage: Option<Usage>,
+        error: Option<String>,
     },
     /// Snapshots for /undo stopped working; the session goes on without them.
     SnapshotOff {

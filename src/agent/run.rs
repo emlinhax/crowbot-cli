@@ -45,7 +45,8 @@ pub async fn run(
             }
             turns += 1;
 
-            let messages = context::build(&transcript.messages);
+            let (summary, tail) = transcript.context();
+            let messages = context::build(summary, tail);
             let turn = Turn {
                 model: cx.model,
                 effort: cx.effort,

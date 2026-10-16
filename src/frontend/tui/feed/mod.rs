@@ -86,6 +86,8 @@ pub struct Feed {
     reasoning: String,
     reasoning_since: Option<Instant>,
     running: Vec<Running>,
+    /// Why the summary in progress was made (`auto`, `overflow`), for its end to say.
+    compacting: (bool, bool),
 }
 
 impl Feed {
@@ -102,6 +104,7 @@ impl Feed {
             reasoning: String::new(),
             reasoning_since: None,
             running: Vec::new(),
+            compacting: (false, false),
         }
     }
 
@@ -285,6 +288,12 @@ impl Feed {
             AgentEvent::Delivered { text } => self.user(text),
             // The working line shows a retry; a prompt is a card; the session words a stopped
             // snapshot with what /undo can no longer do.
+            AgentEvent::CompactionStart { auto, overflow } => self.compacting = (*auto, *overflow),
+            AgentEvent::CompactionEnd { .. } => {
+                if let Some((text, role)) = words::compaction(event, self.compacting) {
+                    self.notice(&text, role);
+                }
+            }
             AgentEvent::Retry { .. }
             | AgentEvent::Prompt { .. }
             | AgentEvent::SnapshotOff { .. } => {}

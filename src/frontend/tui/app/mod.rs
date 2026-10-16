@@ -52,7 +52,7 @@ use crate::text::units;
 use crate::tools::Registry;
 use account::AccountView;
 use conversation::Switch;
-use turn::NextTurn;
+use turn::{Job, NextTurn};
 
 type Turn<'a> = Pin<Box<dyn Future<Output = (Transcript, Ended)> + 'a>>;
 
@@ -76,6 +76,8 @@ enum Step<'a> {
     Undo {
         again: bool,
     },
+    /// Summarise earlier turns, keeping this in mind.
+    Compact(Option<String>),
     /// Run beside input: a session command, or what one of them asked for.
     Work(BoxFuture<'a, Work>),
 }
@@ -324,14 +326,18 @@ impl<'a> Tui<'a> {
                 Step::Work(run) => work.push(run),
                 // Typed text queues while a turn runs; only a command's message gets here.
                 Step::Send(text) => match transcript.take() {
-                    Some(owned) => turn = Some(self.send(text, owned, &turns)),
+                    Some(owned) => turn = Some(self.start(Job::Prompt(text), owned, &turns)),
+                    None => self.feed.notice(&ui::get().text.busy, "warn"),
+                },
+                Step::Compact(focus) => match transcript.take() {
+                    Some(owned) => turn = Some(self.start(Job::Compact(focus), owned, &turns)),
                     None => self.feed.notice(&ui::get().text.busy, "warn"),
                 },
                 // CEILING: the restore runs in the loop, so a huge one holds the screen up to
                 // `snapshot.timeout_secs`. Upgrade: run it as `Work` and hold sends meanwhile.
                 Step::Undo { again } => match transcript.take() {
                     Some(mut owned) => match self.take_back(&mut owned, again).await {
-                        Some(prompt) => turn = Some(self.send(prompt, owned, &turns)),
+                        Some(prompt) => turn = Some(self.start(Job::Prompt(prompt), owned, &turns)),
                         None => transcript = Some(owned),
                     },
                     None => self.feed.notice(&ui::get().text.busy, "warn"),
@@ -364,6 +370,15 @@ impl<'a> Tui<'a> {
                 self.account_reply_ended();
             }
             AgentEvent::RunEnd(_) => self.account_run_ended(),
+            AgentEvent::CompactionEnd { usage, error, .. } => {
+                if let Some(usage) = usage {
+                    self.cost_micros += usage.cost_micros;
+                }
+                // The next request's size is unknown until it is sent.
+                if error.is_none() {
+                    self.context_tokens = None;
+                }
+            }
             AgentEvent::SnapshotOff { why } => {
                 let text = template::fill(&ui::get().undo.off, &[("why", why)]);
                 self.feed.notice(&text, "warn");

@@ -73,6 +73,7 @@ pub struct Limits {
     pub signup: SignupLimits,
     pub account: AccountLimits,
     pub snapshot: SnapshotLimits,
+    pub compaction: CompactionLimits,
     pub agent: AgentLimits,
     pub session: SessionLimits,
     pub tools: ToolLimits,
@@ -127,6 +128,13 @@ pub struct RetryLimits {
 pub struct PairLimits {
     pub poll_interval_ms: Limit<u64>,
     pub backoff_ms: Limit<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompactionLimits {
+    pub keep_tokens: Limit<usize>,
+    pub bytes_per_token: Limit<usize>,
 }
 
 #[derive(Debug, Deserialize)]

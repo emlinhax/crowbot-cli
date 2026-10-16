@@ -1,0 +1,4 @@
+name = "compact"
+summary = "Summarise earlier turns to free the model's window; the last ones stay word for word"
+usage = "compact [what to keep in mind]"
+scope = ["session"]

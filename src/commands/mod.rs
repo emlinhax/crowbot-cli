@@ -3,6 +3,7 @@
 
 pub mod account;
 mod battery;
+mod compact;
 mod effort;
 mod fixed;
 pub mod forums;
@@ -82,6 +83,10 @@ pub enum Effect {
     Undo,
     /// `Undo`, then send the prompt again.
     Retry,
+    /// Summarise earlier turns, keeping `focus` in mind.
+    Compact {
+        focus: Option<String>,
+    },
     /// Ask for this reasoning effort from the next turn on.
     SetEffort(String),
     /// Put the model's last reply on the clipboard.
@@ -164,6 +169,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &fixed::RESUME,
     &fixed::UNDO,
     &fixed::RETRY,
+    &compact::Compact,
     &fixed::QUIT,
     &keytest::KeyTest,
     &battery::Battery,

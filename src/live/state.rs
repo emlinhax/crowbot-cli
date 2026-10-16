@@ -83,9 +83,14 @@ impl Shared {
         }
     }
 
+    /// What the model was told about the mode was summarised away; the next prompt tells it again.
+    pub fn forget_reminded(&self) {
+        *self.reminded.lock().unwrap() = None;
+    }
+
     /// A new conversation: the model has been told nothing, read nothing, and nothing waits.
     pub fn start_over(&self) {
-        *self.reminded.lock().unwrap() = None;
+        self.forget_reminded();
         self.steer.lock().unwrap().clear();
         self.follow.lock().unwrap().clear();
         self.files.forget_all();

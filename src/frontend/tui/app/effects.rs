@@ -77,6 +77,7 @@ impl<'a> Tui<'a> {
                 Effect::NewConversation => return Step::Session(Switch::New),
                 Effect::Undo => return Step::Undo { again: false },
                 Effect::Retry => return Step::Undo { again: true },
+                Effect::Compact { focus } => return Step::Compact(focus),
                 Effect::Resume => {
                     let current = Path::new(&self.session_file);
                     let list: Vec<_> = session::list::list(&self.app.paths)

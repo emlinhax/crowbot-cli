@@ -7,6 +7,15 @@ turn_limit = "Stopped after {count} turns."
 retrying = "retrying in"
 model_gone = "This session used {model}, which crowbot no longer serves; going on with {instead}."
 
+# A summary of earlier turns, made by /compact or on its own; {why} is `auto` or `overflow` below
+# when it was not asked for.
+[compact]
+done = "{why}Summarised {count} earlier messages; the last {kept} go on word for word (about {cost})."
+nothing = "Nothing to summarise yet: the whole conversation fits in what is kept word for word."
+failed = "{why}Could not summarise earlier turns: {error}"
+auto = "The conversation neared the model's window. "
+overflow = "crowbot refused the request as too long. "
+
 # Lines only a headless run prints, on stderr beside the reply.
 [print]
 call = "› {tool}"

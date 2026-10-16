@@ -4,7 +4,7 @@
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-use crate::conversation::message::Message;
+use crate::conversation::message::{Message, Usage};
 
 /// Bump only for a change old files can't load under; additions don't bump it.
 pub const FORMAT_VERSION: u32 = 1;
@@ -43,6 +43,16 @@ pub enum Entry {
         #[serde(flatten)]
         trees: Snap,
     },
+    /// Everything before message `kept`, on the branch that ends at `head`, summarised for the
+    /// model; it is sent the summary and what follows, word for word. A rewind to before `head`
+    /// leaves it behind.
+    Compaction {
+        ts: Timestamp,
+        head: String,
+        kept: String,
+        #[serde(flatten)]
+        summary: Summary,
+    },
     /// Moves the head back to `to` (`None`: before the first message); what came after stays in
     /// the file as a branch.
     Rewind {
@@ -51,6 +61,22 @@ pub enum Entry {
         /// The head it moved from.
         from: Option<String>,
     },
+}
+
+/// A summary of earlier turns and how it came about.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Summary {
+    pub summary: String,
+    /// Made on its own before a request, rather than asked for with /compact.
+    #[serde(default)]
+    pub auto: bool,
+    /// Made because crowbot refused a request as too long.
+    #[serde(default)]
+    pub overflow: bool,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub usage: Option<Usage>,
 }
 
 /// A prompt's two snapshots: before its first change, and when its run ended (`None` until then).
