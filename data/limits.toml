@@ -316,6 +316,10 @@ reason = "the editor keeps room for a few lines however short the terminal"
 value = 3
 reason = "a card's text field (a question's own words, a login) shows a few lines, like a small editor"
 
+[tui.account_refresh_secs]
+value = 60
+reason = "mid-run, the bar's balance is asked for at most this often; a run's end always asks"
+
 [tui.welcome_gutter]
 value = 3
 reason = "columns between the raven and the text beside it"

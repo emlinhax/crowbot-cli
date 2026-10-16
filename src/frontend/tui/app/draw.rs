@@ -61,6 +61,7 @@ impl<'a> Tui<'a> {
                 effort: self.next.effort(),
                 context_pct: self.context_pct(),
                 cost_micros: self.cost_micros,
+                account: self.account.me.as_ref(),
             },
             width,
         ));

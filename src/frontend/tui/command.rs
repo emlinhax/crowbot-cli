@@ -3,6 +3,8 @@
 
 use futures_util::future::BoxFuture;
 
+use crate::api::account::{self, Me};
+use crate::api::error::ApiError;
 use crate::app::App;
 use crate::commands::{self, Ctx, Missing, Outcome, Scope, Session};
 use crate::frontend::tui::ui;
@@ -13,6 +15,11 @@ use crate::text::template;
 pub enum Work {
     Command(anyhow::Result<Outcome>),
     Catalog(Catalog),
+    /// The account as the key of generation `changes` (`Api::key_changes`) sees it.
+    Account {
+        changes: u64,
+        result: Result<Me, ApiError>,
+    },
 }
 
 /// Starts `line` (what followed the `/`); `Err` is the notice for a command that does not run
@@ -50,4 +57,15 @@ pub fn start<'a>(
 /// A fresh model list, fetched without holding up input.
 pub fn refresh_catalog(app: &App) -> BoxFuture<'_, Work> {
     Box::pin(async move { Work::Catalog(models::load(&app.api, &app.paths, true).await) })
+}
+
+/// Where the account stands now, tagged with the key it was asked with.
+pub fn refresh_account(app: &App) -> BoxFuture<'_, Work> {
+    let changes = app.api.key_changes();
+    Box::pin(async move {
+        Work::Account {
+            changes,
+            result: account::me(&app.api).await,
+        }
+    })
 }

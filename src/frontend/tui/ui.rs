@@ -198,6 +198,9 @@ pub enum FooterItem {
     Model,
     Context,
     Cost,
+    /// What is left of the plan's allowance, when the account holds one.
+    Allowance,
+    Balance,
 }
 
 #[derive(Debug, Deserialize)]
@@ -207,6 +210,8 @@ pub struct Footer {
     pub separator: String,
     pub context: String,
     pub cost: String,
+    pub allowance: String,
+    pub balance: String,
 }
 
 #[derive(Debug, Deserialize)]

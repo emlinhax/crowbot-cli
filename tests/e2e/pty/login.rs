@@ -98,3 +98,18 @@ async fn slash_login_takes_the_same_arguments_as_the_command_line() {
     .await;
     assert!(ended.sandbox.home().join("auth.json").exists());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_bar_shows_the_balance_and_follows_login_and_logout() {
+    let fake = Fake::start().await;
+    in_session(&fake, Sandbox::default(), None, |s| {
+        s.wait_for("type /login");
+        assert!(!s.bottom_row().contains("left"), "{}", s.bottom_row());
+        s.submit("/login --key 1234 5678 9012 3456");
+        s.wait_bar("$12.30 left");
+        s.submit("/logout");
+        s.wait_for("Logged out");
+        s.wait_bar_gone("$12.30 left");
+    })
+    .await;
+}

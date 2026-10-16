@@ -229,6 +229,7 @@ pub struct TuiLimits {
     pub glint_rest: Limit<usize>,
     pub editor_min_rows: Limit<usize>,
     pub field_rows: Limit<usize>,
+    pub account_refresh_secs: Limit<u64>,
     pub welcome_gutter: Limit<usize>,
     pub welcome_min_text: Limit<usize>,
 }

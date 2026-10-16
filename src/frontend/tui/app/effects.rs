@@ -26,6 +26,10 @@ impl<'a> Tui<'a> {
                 return Step::Continue;
             }
             Work::Command(Ok(outcome)) => outcome,
+            Work::Account { changes, result } => {
+                self.account_landed(changes, result);
+                return Step::Continue;
+            }
         };
         if !outcome.text.is_empty() {
             self.feed.markdown(&outcome.text);

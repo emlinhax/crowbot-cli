@@ -41,10 +41,12 @@ bottom_right = "╯"
 
 [footer]
 # Items on the rule under the bar, right-aligned, in this order (effort follows the model).
-items = ["mode", "model", "context", "cost"]
+items = ["mode", "model", "context", "cost", "allowance", "balance"]
 separator = " · "
 context = "ctx {pct}%"
 cost = "{cost} est"
+allowance = "{plan} {pct}%"
+balance = "{balance} left"
 
 # The welcome card's lines: the version after the name, then model, effort and mode.
 [welcome]

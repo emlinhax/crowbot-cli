@@ -2,6 +2,7 @@
 //! frame tick. The loop owns the transcript and lends it to each turn, which hands it back, so a
 //! turn runs alongside input without an engine thread.
 
+mod account;
 mod draw;
 mod effects;
 mod input;
@@ -46,6 +47,7 @@ use crate::text::template;
 use crate::text::theme;
 use crate::text::units;
 use crate::tools::Registry;
+use account::AccountView;
 use turn::NextTurn;
 
 type Turn<'a> = Pin<Box<dyn Future<Output = (Transcript, Ended)> + 'a>>;
@@ -152,6 +154,7 @@ struct Tui<'a> {
     /// Input tokens of the last request; the bar divides by the current model's window, so a
     /// switch of model shows its own share at once.
     context_tokens: Option<u64>,
+    account: AccountView,
 }
 
 impl<'a> Tui<'a> {
@@ -194,6 +197,7 @@ impl<'a> Tui<'a> {
             session_file,
             earlier: Vec::new(),
             context_tokens: None,
+            account: AccountView::new(),
         };
         let welcome = tui.welcome();
         tui.feed.push(Block::Welcome(welcome));
@@ -278,6 +282,9 @@ impl<'a> Tui<'a> {
         let mut tick = clock::ticks(limits::get().tui.frame_ms.ms());
         let _shared = self.shared;
         loop {
+            if let Some(run) = self.account_work() {
+                work.push(run);
+            }
             self.draw(turn.is_some());
             let step = tokio::select! {
                 input = inputs.next() => {
@@ -341,7 +348,9 @@ impl<'a> Tui<'a> {
                     self.cost_micros += usage.cost_micros;
                     self.context_tokens = Some(usage.input);
                 }
+                self.account_reply_ended();
             }
+            AgentEvent::RunEnd(_) => self.account_run_ended(),
             AgentEvent::Delivered { text } => {
                 if let Some(i) = self.queue.iter().position(|(_, t)| t == text) {
                     self.queue.remove(i);

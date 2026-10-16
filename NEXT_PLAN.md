@@ -181,7 +181,7 @@ reader, since unread fields fail `-D warnings`.
 - [x] 4.1 standing: `Me` reads `pass` and `spend_balance_when_dry` (optional; the two-field reply
       still parses); one `standing()` worded in `data/commands/account.toml`, used by login,
       `/status` and a first `/account`; the fake's `/api/me` is scriptable
-- [ ] 4.2 bar: balance and allowance items (`data/ui.toml [footer]`), refreshed at start, on a
+- [x] 4.2 bar: balance and allowance items (`data/ui.toml [footer]`), refreshed at start, on a
       key change (a counter beside the key in `Api`), at run end and at most every
       `tui.account_refresh_secs` mid-run; never on an idle timer
 - [ ] 4.3 welcome: replaced in place when the account changes; says not logged in, key file

@@ -1,6 +1,7 @@
 //! The rules above and below the message bar, in the mode's colour. The bottom one carries the
 //! footer items (data/ui.toml), right-aligned; dashes shrink before items are cut.
 
+use crate::api::account::Me;
 use crate::effort;
 use crate::frontend::tui::ui::{self, FooterItem};
 use crate::mode::Mode;
@@ -18,6 +19,8 @@ pub struct Info<'a> {
     /// Share of the context window the last request used.
     pub context_pct: Option<u64>,
     pub cost_micros: u64,
+    /// Where the account stood at its last refresh; `None` until one lands.
+    pub account: Option<&'a Me>,
 }
 
 pub fn top(mode: &Mode, width: usize) -> Line {
@@ -85,6 +88,22 @@ fn item_line(mode: &Mode, info: &Info<'_>, item: FooterItem) -> Option<Line> {
             let cost = units::usd_micros(info.cost_micros);
             Line::styled(fill(&footer().cost, &[("cost", &cost)]), muted)
         }
+        FooterItem::Allowance => {
+            let pass = info.account?.pass.as_ref()?;
+            let pct = pass.pct().to_string();
+            let text = fill(&footer().allowance, &[("plan", &pass.label), ("pct", &pct)]);
+            Line::styled(text, muted)
+        }
+        FooterItem::Balance => {
+            let me = info.account?;
+            let balance = units::usd_micros(me.balance_microdollars);
+            let style = if me.can_spend {
+                muted
+            } else {
+                Style::fg("warn")
+            };
+            Line::styled(fill(&footer().balance, &[("balance", &balance)]), style)
+        }
     })
 }
 
@@ -99,6 +118,7 @@ mod tests {
             effort: Some("high"),
             context_pct: Some(12),
             cost_micros: 42_000,
+            account: None,
         }
     }
 
@@ -158,5 +178,48 @@ mod tests {
                 .text()
                 .ends_with(" MANUAL · crow-2 · $0.042 est ──")
         );
+    }
+
+    #[test]
+    fn the_account_shows_its_allowance_then_its_balance_warned_when_it_cannot_spend() {
+        let pro = Me {
+            balance_microdollars: 12_300_000,
+            can_spend: true,
+            pass: Some(crate::api::account::Pass {
+                label: "Pro".into(),
+                allowance_bp: 6_375,
+                refills: None,
+            }),
+            ..Me::default()
+        };
+        let line = bottom(
+            manual(),
+            &Info {
+                account: Some(&pro),
+                ..info()
+            },
+            100,
+        );
+        assert!(
+            line.text()
+                .ends_with(" $0.042 est · Pro 63% · $12.30 left ──"),
+            "{}",
+            line.text()
+        );
+        let dry = Me {
+            can_spend: false,
+            ..Me::default()
+        };
+        let tagged = bottom(
+            manual(),
+            &Info {
+                account: Some(&dry),
+                ..info()
+            },
+            100,
+        )
+        .to_tagged();
+        assert!(tagged.contains("[warn]$0.00 left[/]"), "{tagged}");
+        assert!(!tagged.contains("Pro"), "{tagged}");
     }
 }

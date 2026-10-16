@@ -181,6 +181,14 @@ impl Session {
         });
     }
 
+    /// Until the bar under the editor no longer shows `text`.
+    #[track_caller]
+    pub fn wait_bar_gone(&mut self, text: &str) {
+        self.poll(WAIT, &format!("the bar kept showing {text:?}"), |s| {
+            (!s.bottom_row().contains(text)).then_some(())
+        });
+    }
+
     /// Until the copied note shows, then that `text` went to the clipboard (as OSC 52 carries
     /// it, base64).
     #[track_caller]
