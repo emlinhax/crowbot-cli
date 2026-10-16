@@ -1,11 +1,9 @@
-//! Columns that fit a width. Each column starts as wide as its widest cell, then the widest one
-//! gives up a cell at a time (its cells cut with `…`) until the table fits, so rows always stay
-//! aligned. Markdown grids, `crowbot models` and the model picker all lay out here.
+//! Columns that fit a width: each starts at its widest cell, then the widest gives up one cell at a
+//! time (cut with `…`) until the table fits.
 
+use crate::config::limits;
 use crate::text::styled::{Line, Style};
-
-/// Narrowest a column is shrunk to; a letter and the `…` still say what was there.
-const MIN_COLUMN: usize = 3;
+use crate::text::theme;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -17,7 +15,7 @@ pub enum Align {
 
 /// Column widths for `rows` in `width` cells, `overhead` of which go to borders and gaps.
 /// CEILING: cells are cut, never wrapped; wrapping would need rows of several lines.
-pub fn widths(rows: &[Vec<Line>], width: usize, overhead: usize) -> Vec<usize> {
+fn widths(rows: &[Vec<Line>], width: usize, overhead: usize) -> Vec<usize> {
     let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
     let mut widths = vec![0; columns];
     for row in rows {
@@ -30,7 +28,7 @@ pub fn widths(rows: &[Vec<Line>], width: usize, overhead: usize) -> Vec<usize> {
         let Some((i, &w)) = widths.iter().enumerate().max_by_key(|&(_, w)| *w) else {
             break;
         };
-        if w <= MIN_COLUMN {
+        if w <= limits::get().text.min_column.value {
             break;
         }
         widths[i] -= 1;
@@ -40,7 +38,7 @@ pub fn widths(rows: &[Vec<Line>], width: usize, overhead: usize) -> Vec<usize> {
 
 /// The columns to show in `width`: all of them while they fit uncut, else as few left out as
 /// needed, in `drop` order. What is kept may still be cut to fit.
-pub fn keep(rows: &[Vec<Line>], drop: &[usize], width: usize, gap: usize) -> Vec<usize> {
+fn keep(rows: &[Vec<Line>], drop: &[usize], width: usize, gap: usize) -> Vec<usize> {
     let natural = widths(rows, usize::MAX, 0);
     let fits = |kept: &[usize]| {
         kept.iter().map(|&i| natural[i]).sum::<usize>() + gap * kept.len().saturating_sub(1)
@@ -57,16 +55,12 @@ pub fn keep(rows: &[Vec<Line>], drop: &[usize], width: usize, gap: usize) -> Vec
 }
 
 /// `cell` cut or padded to exactly `width` cells.
-pub fn fit(cell: &Line, width: usize, align: Align) -> Line {
+fn fit(cell: &Line, width: usize, align: Align) -> Line {
     let cell = cell.truncate(width);
-    let pad = " ".repeat(width.saturating_sub(cell.width()));
     match align {
-        Align::Left => {
-            let mut out = cell;
-            out.push(pad, Style::default());
-            out
-        }
+        Align::Left => cell.padded(width, &Style::default()),
         Align::Right => {
+            let pad = " ".repeat(width.saturating_sub(cell.width()));
             let mut out = Line::plain(pad);
             out.extend(cell);
             out
@@ -98,7 +92,7 @@ pub fn grid(rows: &[Vec<Line>], aligns: &[Align], width: usize) -> Vec<Line> {
     let narrowest = |columns: usize| -> usize {
         natural[..columns]
             .iter()
-            .map(|&w| w.min(MIN_COLUMN))
+            .map(|&w| w.min(limits::get().text.min_column.value))
             .sum::<usize>()
             + overhead(columns)
     };
@@ -119,13 +113,14 @@ pub fn grid(rows: &[Vec<Line>], aligns: &[Align], width: usize) -> Vec<Line> {
         .collect();
     let widths = widths(&rows, width, overhead(columns));
     let border = Style::fg("muted");
-    let rule = |edges: [&str; 3]| {
+    let g = &theme::get().glyphs;
+    let rule = |edges: &[String; 3]| {
         let dashes = widths
             .iter()
-            .map(|w| Line::styled("─".repeat(w + 2), border.clone()));
-        join(dashes, edges, &border)
+            .map(|w| Line::styled(g.rule.repeat(w + 2), border.clone()));
+        join(dashes, edges.each_ref().map(String::as_str), &border)
     };
-    let mut lines = vec![rule(["┌", "┬", "┐"])];
+    let mut lines = vec![rule(&g.table_top)];
     for (r, row) in rows.iter().enumerate() {
         let cells = row.iter().zip(&widths).enumerate().map(|(i, (cell, w))| {
             let mut padded = Line::plain(" ");
@@ -133,14 +128,18 @@ pub fn grid(rows: &[Vec<Line>], aligns: &[Align], width: usize) -> Vec<Line> {
             padded.push(" ", Style::default());
             padded
         });
-        lines.push(join(cells, ["│", "│", "│"], &border));
+        let side = g.table_side.as_str();
+        lines.push(join(cells, [side, side, side], &border));
         if r == 0 && rows.len() > 1 {
-            lines.push(rule(["├", "┼", "┤"]));
+            lines.push(rule(&g.table_head));
         }
     }
-    lines.push(rule(["└", "┴", "┘"]));
+    lines.push(rule(&g.table_bottom));
     lines.into_iter().map(|l| l.truncate(width)).collect()
 }
+
+/// Cells between the columns of a borderless table.
+pub const GAP: usize = 2;
 
 /// Borderless rows, cells `gap` apart, fitted to `width` by leaving out columns in `drop`
 /// order, then cutting.

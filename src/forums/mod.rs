@@ -1,25 +1,25 @@
-//! Web forums: discover and add one, log in with the user's own account, and let the agent read
-//! sections, topics and threads, search, and post. One backend today — `mobiquo`, the Tapatalk
-//! plugin's XML-RPC — chosen per forum by its `kind`.
+//! Web forums: discover, log in, read and post. A forum's `kind` names its backend; only `mobiquo`
+//! (Tapatalk's XML-RPC) exists.
 //!
-//! CEILING: with a single backend the typed calls live in `mobiquo` and callers use them directly;
-//! `store::add` keeps every stored forum `kind = "mobiquo"`. When a second kind arrives (Discourse's
-//! JSON API, a plain-HTML reader), route the calls through a `match forum.kind` here and that stays
-//! the one place that knows backend names.
+//! CEILING: one backend, called directly (tools/forum/, commands/forums.rs). A second adds a
+//! `match forum.kind` here and moves `mobiquo_dir`/`ext` under its kind.
 
 use std::sync::LazyLock;
 
+use anyhow::{Context, Result, bail};
+
 use serde::{Deserialize, Serialize};
 
+use crate::data;
+use crate::io::fetch::{self, Fetch, Fetched};
+
+pub mod account;
 pub mod directory;
 pub mod mobiquo;
 pub mod store;
-pub mod xmlrpc;
+mod xmlrpc;
 
-static DATA: LazyLock<Data> = LazyLock::new(|| {
-    toml::from_str(include_str!("../../data/forums.toml"))
-        .expect("data/forums.toml is checked by tests")
-});
+static DATA: LazyLock<Data> = data::load!("forums.toml");
 
 pub fn data() -> &'static Data {
     &DATA
@@ -28,20 +28,22 @@ pub fn data() -> &'static Data {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Data {
-    pub directory: Directory,
+    pub directory: directory::Directory,
+    pub text: Text,
     #[serde(default)]
     pub seed: Vec<Forum>,
     #[serde(default)]
     pub suggest: Vec<Suggestion>,
 }
 
+/// What a failed call says when the forum gives no reason of its own.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Directory {
-    pub url: String,
-    pub path: String,
-    pub app_id: String,
-    pub app_key: String,
+pub struct Text {
+    pub refused: String,
+    pub rejected: String,
+    pub login_failed: String,
+    pub unreadable: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,26 +52,41 @@ pub struct Suggestion {
     pub query: String,
 }
 
-/// A forum crowbot knows how to reach. A list of these is the store; every field past the endpoint
-/// is optional so older files load. The password is never here — only the session cookies a login
-/// returned.
+/// A POST to a forum or the directory, `who` naming it in errors; a refusal says so, and
+/// whether a firewall gave it.
+pub(crate) async fn post(fetch: &Fetch, who: &str, request: fetch::Post<'_>) -> Result<Fetched> {
+    let resp = fetch
+        .post(request)
+        .await
+        .with_context(|| format!("reaching {who}"))?;
+    if resp.status >= 400 {
+        let hint = if resp.firewall {
+            " (a firewall refused it)"
+        } else {
+            ""
+        };
+        bail!("{who} replied HTTP {}{hint}", resp.status);
+    }
+    Ok(resp)
+}
+
+/// A stored forum. Fields past the endpoint are optional so older files load. Holds session
+/// cookies, never the password.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Forum {
     pub id: String,
     pub name: String,
-    /// What this forum is about and the kind of thing found there, so the agent can pick wisely;
-    /// shown when it lists forums. From the seed or the directory's description.
+    /// What the forum covers, so the agent knows when to use it. From the seed or the directory.
     #[serde(default)]
     pub hint: String,
     pub base_url: String,
     #[serde(default)]
     pub mobiquo_dir: String,
-    #[serde(default = "php")]
-    pub ext: String,
-    #[serde(default = "mobiquo_kind")]
-    pub kind: String,
+    /// The plugin script's extension; empty leaves the backend's own.
     #[serde(default)]
-    pub user_agent: String,
+    pub ext: String,
+    #[serde(default = "default_kind")]
+    pub kind: String,
     /// Empty means browsing as a guest.
     #[serde(default)]
     pub cookies: Vec<String>,
@@ -79,21 +96,21 @@ pub struct Forum {
 }
 
 impl Forum {
-    /// The host it lives on, for display; its name when the URL has none.
+    /// Its host, for display and permission rules; its lowercased name when the URL has none.
     pub fn host(&self) -> String {
-        url::Url::parse(&self.base_url)
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_owned))
-            .unwrap_or_else(|| self.name.to_lowercase())
+        host(&self.base_url).unwrap_or_else(|| self.name.to_lowercase())
     }
 }
 
-fn php() -> String {
-    "php".to_owned()
+/// The host of `url`, if it is a URL with one.
+pub fn host(url: &str) -> Option<String> {
+    url::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
 }
 
-fn mobiquo_kind() -> String {
-    "mobiquo".to_owned()
+fn default_kind() -> String {
+    mobiquo::KIND.to_owned()
 }
 
 /// A section of a forum (a board), flattened from the tree with its depth.
@@ -128,10 +145,20 @@ pub struct Post {
     pub content: String,
 }
 
+/// A page number, or the last page, where a thread's newest posts are.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Page {
+    Num(i64),
+    Last,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Thread {
     pub title: String,
     pub total: Option<i64>,
+    /// The page these posts are, and how many there are when the forum gives the total.
+    pub page: i64,
+    pub pages: Option<i64>,
     pub posts: Vec<Post>,
 }
 

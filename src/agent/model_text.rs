@@ -4,16 +4,14 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
-const SRC: &str = include_str!("../../data/model_text.toml");
+use crate::data;
 
-static TEXT: LazyLock<ModelText> =
-    LazyLock::new(|| toml::from_str(SRC).expect("data/model_text.toml is checked by tests"));
+static TEXT: LazyLock<ModelText> = data::load!("model_text.toml");
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelText {
     pub no_result: String,
-    pub cancelled: String,
     pub truncated_tool_call: String,
     pub unknown_tool: String,
     pub bad_json: String,
@@ -22,19 +20,11 @@ pub struct ModelText {
     pub rejected: String,
     pub rejected_with_feedback: String,
     pub non_interactive: String,
+    pub unconfirmed: String,
     pub doom_loop: String,
-    pub questions_answered: String,
-    pub question_answer: String,
-    pub question_own_words: String,
-    pub question_dismissed: String,
-    pub question_unavailable: String,
-    pub plan_missing: String,
-    pub plan_approved: String,
-    pub plan_keep: String,
-    pub plan_changes: String,
-    pub plan_unavailable: String,
-    pub plan_only: String,
     pub mode_left: String,
+    pub compact_focus: String,
+    pub compacted: String,
 }
 
 pub fn get() -> &'static ModelText {

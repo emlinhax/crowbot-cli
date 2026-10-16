@@ -1,0 +1,9 @@
+# What the question tool tells the model; {placeholders} are filled in.
+count = "ask between 1 and {max} questions"
+no_text = "a question has no text"
+options = "give each question between 1 and {max} options"
+answered = "The user answered:\n{answers}"
+answer = "- {question}\n  {answer}"
+own_words = "in their own words: {text}"
+dismissed = "The user dismissed the questions without answering."
+unavailable = "Nobody can answer questions in this run; decide yourself and say what you assumed."

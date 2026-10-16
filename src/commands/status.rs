@@ -3,24 +3,17 @@ use std::sync::LazyLock;
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
+use super::account::standing;
 use super::{Command, Ctx, Outcome, Session, Spec, login};
 use crate::api::account::{self, Me};
 use crate::api::error::ApiError;
+use crate::data;
+use crate::mcp::State;
 use crate::text::template::fill;
-use crate::text::units;
+use crate::text::units::{self, Plural};
 
-const SRC: &str = include_str!("../../data/commands/status.toml");
-
-static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec::parse(SRC));
-static TEXT: LazyLock<Text> = LazyLock::new(|| {
-    #[derive(Deserialize)]
-    struct File {
-        text: Text,
-    }
-    toml::from_str::<File>(SRC)
-        .expect("data/commands/status.toml is checked by tests")
-        .text
-});
+static SPEC: LazyLock<Spec> = super::spec!("status");
+static TEXT: LazyLock<Text> = data::load!("commands/status.toml", "text");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -31,6 +24,13 @@ struct Text {
     effort: String,
     context: String,
     no_context: String,
+    undo_files: String,
+    undo_conversation: String,
+    mcp_none: String,
+    mcp_running: Plural,
+    mcp_failed: String,
+    mcp_stopped: String,
+    mcp_off: String,
 }
 
 pub struct Status;
@@ -70,10 +70,7 @@ fn render(
         None => login.to_owned(),
         Some(Ok(me)) => fill(
             &TEXT.balance,
-            &[
-                ("login", login),
-                ("balance", &units::usd_micros(me.balance_microdollars)),
-            ],
+            &[("login", login), ("standing", &standing(&me))],
         ),
         Some(Err(e)) => fill(
             &TEXT.balance_failed,
@@ -87,6 +84,11 @@ fn render(
         ),
         None => session.model.clone(),
     };
+    let undo = match &session.snapshots_off {
+        None => TEXT.undo_files.clone(),
+        Some(why) => fill(&TEXT.undo_conversation, &[("why", why)]),
+    };
+    let mcp = servers(&session.mcp);
     let context = match session.context_pct {
         Some(pct) => fill(&TEXT.context, &[("pct", &pct.to_string())]),
         None => TEXT.no_context.clone(),
@@ -98,11 +100,30 @@ fn render(
             ("model", &model),
             ("mode", &session.mode),
             ("context", &context),
+            ("undo", &undo),
+            ("mcp", &mcp),
             ("cost", &units::usd_micros(session.cost_micros)),
             ("file", &session.file),
             ("project", project),
         ],
     )
+}
+
+/// Each MCP server and how it stands, on one line.
+fn servers(servers: &[(String, State)]) -> String {
+    if servers.is_empty() {
+        return TEXT.mcp_none.clone();
+    }
+    let each: Vec<String> = servers
+        .iter()
+        .map(|(name, state)| match state {
+            State::Running { tools } => fill(&TEXT.mcp_running.of(*tools), &[("name", name)]),
+            State::Failed(why) => fill(&TEXT.mcp_failed, &[("name", name), ("why", why)]),
+            State::Stopped => fill(&TEXT.mcp_stopped, &[("name", name)]),
+            State::Off => fill(&TEXT.mcp_off, &[("name", name)]),
+        })
+        .collect();
+    each.join("; ")
 }
 
 #[cfg(test)]
@@ -117,6 +138,14 @@ mod tests {
             context_pct: Some(12),
             cost_micros: 42_000,
             file: "/home/u/.crowbot/sessions/s.jsonl".into(),
+            snapshots_off: Some("git was not found".into()),
+            mcp: vec![
+                ("fake".into(), State::Running { tools: 3 }),
+                (
+                    "gone".into(),
+                    State::Failed("gone-mcp was not found".into()),
+                ),
+            ],
         }
     }
 
@@ -125,6 +154,7 @@ mod tests {
         let me = Me {
             balance_microdollars: 12_300_000,
             can_spend: true,
+            ..Me::default()
         };
         let text = render(
             &session(),
@@ -138,6 +168,8 @@ mod tests {
             "Mode: MANUAL",
             "Context: 12% of the window",
             "This session: about $0.042",
+            "Undo: takes back a prompt, not its files: git was not found",
+            "MCP: `fake`, 3 tools; `gone` not running (gone-mcp was not found)",
             "`/home/u/.crowbot/sessions/s.jsonl`",
         ] {
             assert!(text.contains(want), "{want} missing from:\n{text}");

@@ -63,6 +63,9 @@ pub mod fixture {
     }
 
     pub fn words() -> Words {
-        toml::from_str(include_str!("../../data/commands/battery.toml")).unwrap()
+        crate::data::parse(
+            crate::data::raw!("commands/battery.toml"),
+            "commands/battery.toml",
+        )
     }
 }

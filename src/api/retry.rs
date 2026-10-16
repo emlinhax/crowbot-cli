@@ -1,7 +1,8 @@
 use std::time::Duration;
 
-use crate::api::error::ErrorInfo;
-use crate::limits;
+use crate::api::error::Entry;
+use crate::config::limits;
+use crate::conversation::error::ErrorInfo;
 
 /// How long to wait before retrying after `attempt` failed with `error`, or `None` to give up.
 pub fn delay(error: &ErrorInfo, retry_after: Option<Duration>, attempt: u32) -> Option<Duration> {
@@ -25,8 +26,7 @@ pub fn delay(error: &ErrorInfo, retry_after: Option<Duration>, attempt: u32) -> 
 /// The catalog's flag, where it has one; otherwise rate limits and server errors are worth
 /// another try, and client errors would fail the same way again.
 pub fn retryable(error: &ErrorInfo) -> bool {
-    error
-        .entry()
+    Entry::of(error)
         .retry
         .unwrap_or(matches!(error.status, Some(429 | 500..=599)))
 }

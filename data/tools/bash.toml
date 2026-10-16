@@ -1,0 +1,11 @@
+# What bash tells the model; {placeholders} are filled in. The bracketed notes follow the output.
+empty = "`command` is empty"
+no_start = "Could not start {shell}: {error}"
+tail = "[Showing the last {kept} of {total} lines.{full}{stops}]"
+full = " Full output: {path}"
+stops = " It stops at {bytes} bytes."
+exit_code = "[exit code {code}]"
+signal = "[terminated by a signal]"
+timed_out = "[timed out after {secs}s; stopped]"
+cancelled = "[cancelled by the user]"
+no_output = "(no output)"

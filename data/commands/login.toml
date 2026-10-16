@@ -11,11 +11,10 @@ Pair this machine with your crowbot account:
   2. Sign in and enter the code  {code}
 
 Waiting for approval (Ctrl+C to cancel)…"""
-logged_in = "Logged in with {what} {hint}. Balance {balance}."
-cannot_spend = " The account cannot spend yet; top it up at chat.crowbot.sh."
+logged_in = "Logged in with {what} {hint}. {standing}"
 status = "Logged in with {what} {hint}."
 from_env = "Using CROWBOT_API_KEY from the environment."
-env_note = " CROWBOT_API_KEY is set in this environment; crowbot uses it over any stored key until it is unset."
+env_note = " CROWBOT_API_KEY is set in this environment and overrides any stored key."
 logged_out = "Not logged in. Run `{login}`."
 account = "account number"
 device = "device key"

@@ -1,24 +1,24 @@
 //! One reply's tool calls: cleared one by one in the order the model made them (prompts stay
 //! in order), then run together, with results kept in call order.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures_util::future::join_all;
 use serde_json::Value;
-use tokio_util::sync::CancellationToken;
 
+use crate::agent::Run;
 use crate::agent::doom_loop;
-use crate::agent::event::AgentEvent;
-use crate::agent::message::{Message, ToolCall, ToolResult};
 use crate::agent::model_text;
-use crate::agent::prompt::{self, Prompt, Reply};
-use crate::agent::run::RunCtx;
-use crate::agent::state::Shared;
-use crate::limits;
-use crate::mode::{DoomLoop, Mode};
-use crate::permission::gate::{self, Ask, Decision, Policy};
+use crate::conversation::message::{Message, ToolCall, ToolResult};
+use crate::live::event::AgentEvent;
+use crate::live::prompt::{Prompt, Reply};
+use crate::mode::{self, DoomLoop};
+use crate::permission::catalog;
+use crate::permission::gate::{self, Ask, Decision};
+use crate::permission::rule::Rule;
 use crate::text::template::fill;
-use crate::tools::{Output, Refusal, Tool, ToolCx, permissions};
+use crate::tools::{self, AnyTool, Output, Refusal, ToolCx};
 
 pub struct Batch {
     pub results: Vec<ToolResult>,
@@ -28,7 +28,7 @@ pub struct Batch {
 
 /// A call that may run, and what it was cleared for.
 struct Cleared {
-    tool: Arc<dyn Tool>,
+    tool: Arc<dyn AnyTool>,
     args: Value,
     asks: Vec<Ask>,
 }
@@ -58,34 +58,90 @@ impl Refused {
     }
 }
 
-pub async fn run<'a>(
-    cx: &'a RunCtx<'a>,
-    history: &[Message],
-    calls: &'a [ToolCall],
-    shared: &'a Shared,
-    cancel: &'a CancellationToken,
-) -> Batch {
-    let mode = shared.mode();
+/// A call cleared to run, or why it does not.
+type Slot = Result<Cleared, Refused>;
 
+/// Each mode's locks, filled once a batch for the mode in force at each call.
+type Locks = HashMap<&'static str, Vec<Rule>>;
+
+pub(super) async fn run<'a>(run: &'a Run<'a>, history: &[Message], calls: &'a [ToolCall]) -> Batch {
     let mut cleared = Vec::with_capacity(calls.len());
+    let mut locks = Locks::new();
     let mut stop = false;
     for (i, call) in calls.iter().enumerate() {
         let slot = if stop {
             Err(Refused::new("rejected", model_text::get().rejected.clone()))
         } else {
-            let repeats = doom_loop::repeats(history, calls, i);
-            clear(cx, shared, cancel, mode, repeats, call).await
+            let looping = doom_loop::looping(history, calls, i);
+            clear(run, &mut locks, looping, call).await
         };
         if let Err(refused) = &slot {
             stop |= refused.stop;
         }
         cleared.push(slot);
     }
+    let changes = cleared.iter().flatten().any(|c| {
+        c.asks
+            .iter()
+            .any(|a| catalog::changes_things(&a.permission))
+    });
+    if changes && run.root().before.get().is_none() {
+        snapshot(run).await;
+    }
+    let (results, declined) = settle(run, calls, cleared).await;
+    Batch {
+        results,
+        stop: stop || declined,
+    }
+}
 
-    // Polled in order, so tools start, and results come back, in the order they were called.
-    // A refused call gets its start and end too, so a frontend shows every call's fate.
-    let results = join_all(cleared.into_iter().zip(calls).map(|(slot, call)| async move {
-        (cx.emit)(AgentEvent::ToolStart {
+/// Keeps the files as they are, before the first call that may change them runs. When the
+/// shadow fails here, the frontend hears it once.
+async fn snapshot(run: &Run<'_>) {
+    let shadow = run.cx.shadow;
+    let was_on = shadow.off().is_none();
+    // Subagents changing files at once wait for the one snapshot rather than take their own.
+    let taken = run
+        .root()
+        .before
+        .get_or_try_init(|| async { shadow.take().await.ok_or(()) })
+        .await;
+    if taken.is_err()
+        && let Some(why) = shadow.off().filter(|_| was_on)
+    {
+        (run.cx.emit)(AgentEvent::SnapshotOff { why });
+    }
+}
+
+/// None of the calls run, each refused with `why`, recorded as `kind`; they still get their start
+/// and end.
+pub(super) async fn refuse_all<'a>(
+    run: &'a Run<'a>,
+    calls: &'a [ToolCall],
+    kind: &'static str,
+    why: &str,
+) -> Batch {
+    let slots = calls
+        .iter()
+        .map(|_| Err(Refused::new(kind, why.to_owned())))
+        .collect();
+    Batch {
+        results: settle(run, calls, slots).await.0,
+        stop: false,
+    }
+}
+
+/// Polled in order, so tools start, and results come back, in the order they were called.
+/// A refused call gets its start and end too, so a frontend shows every call's fate. `true` when
+/// a call says the run should stop (a subagent the user turned down).
+async fn settle<'a>(
+    run: &'a Run<'a>,
+    calls: &'a [ToolCall],
+    slots: Vec<Slot>,
+) -> (Vec<ToolResult>, bool) {
+    let settled = join_all(slots.into_iter().zip(calls).map(|(slot, call)| async move {
+        let mut stop = false;
+        (run.cx.emit)(AgentEvent::ToolStart {
             call_id: call.id.clone(),
             name: call.name.clone(),
             arguments: call.arguments.clone(),
@@ -97,39 +153,46 @@ pub async fn run<'a>(
                 ..result(call, Output::error(refused.why))
             },
             Ok(cleared) => {
-                let tcx = tool_cx(cx, shared, cancel, &call.id);
-                let out = tokio::select! {
-                    out = cleared.tool.run(cleared.args, &tcx) => out,
-                    () = cancel.cancelled() => Output::error(model_text::get().cancelled.clone()),
+                let tcx = tool_cx(run, &call.id);
+                let out = if cleared.tool.stops_on_cancel() {
+                    cleared.tool.run(cleared.args, &tcx).await
+                } else {
+                    tokio::select! {
+                        out = cleared.tool.run(cleared.args, &tcx) => out,
+                        () = run.cancel.cancelled() => Output::cancelled(),
+                    }
                 };
+                stop = out.stop;
                 ToolResult {
                     asks: cleared.asks,
                     ..result(call, out)
                 }
             }
         };
-        (cx.emit)(AgentEvent::ToolEnd {
+        (run.cx.emit)(AgentEvent::ToolEnd {
             result: done.clone(),
         });
-        done
+        (done, stop)
     }))
     .await;
-    Batch { results, stop }
+    let stop = settled.iter().any(|(_, stop)| *stop);
+    (settled.into_iter().map(|(done, _)| done).collect(), stop)
 }
 
 /// Everything a call must pass before it runs, in order: not cancelled, a known tool, valid
 /// JSON, not a loop, the tool's own check, then the permission policy (asking if it says so).
+/// The mode is read per call: a switch at one call's prompt governs the calls after it.
 async fn clear<'a>(
-    cx: &'a RunCtx<'a>,
-    shared: &'a Shared,
-    cancel: &'a CancellationToken,
-    mode: &Mode,
-    repeats: usize,
+    run: &'a Run<'a>,
+    locks: &mut Locks,
+    looping: Option<usize>,
     call: &'a ToolCall,
-) -> Result<Cleared, Refused> {
+) -> Slot {
+    let (cx, shared) = (run.cx, run.shared);
+    let mode = shared.mode();
     let text = model_text::get();
-    if cancel.is_cancelled() {
-        return Err(Refused::new("cancelled", text.cancelled.clone()));
+    if run.cancel.is_cancelled() {
+        return Err(Refused::new("cancelled", tools::text().cancelled.clone()));
     }
     let tool = cx.tools.get(&call.name).ok_or_else(|| {
         Refused::new(
@@ -148,42 +211,44 @@ async fn clear<'a>(
     })?;
 
     let mut asks = Vec::new();
-    if repeats >= limits::get().agent.doom_loop_repeats.value {
-        match mode.verdicts.doom_loop {
+    if let Some(count) = looping {
+        match mode.doom_loop {
             DoomLoop::TellModel => {
                 return Err(Refused::new(
                     "doom_loop",
-                    fill(&text.doom_loop, &[("count", &repeats.to_string())]),
+                    fill(&text.doom_loop, &[("count", &count.to_string())]),
                 ));
             }
-            DoomLoop::Ask => asks.push(Ask::new(permissions::DOOM_LOOP.name, call.name.clone())),
+            DoomLoop::Ask => asks.push(Ask::new(catalog::DOOM_LOOP.name, call.name.clone())),
         }
     }
-    let check = tool
-        .check(&args, &tool_cx(cx, shared, cancel, &call.id))
-        .map_err(|refusal| match refusal {
-            Refusal::InvalidArgs(error) => Refused::new(
-                "invalid_arguments",
-                fill(
-                    &text.invalid_arguments,
-                    &[("name", &call.name), ("error", &error)],
-                ),
+    let tcx = tool_cx(run, &call.id);
+    let check = tool.check(&args, &tcx).map_err(|refusal| match refusal {
+        Refusal::InvalidArgs(error) => Refused::new(
+            "invalid_arguments",
+            fill(
+                &text.invalid_arguments,
+                &[("name", &call.name), ("error", &error)],
             ),
-            Refusal::Refused(why) => Refused::new("check", why),
-        })?;
+        ),
+        Refusal::Refused(why) => Refused::new("check", why),
+    })?;
     asks.extend(check.asks);
 
-    let policy = Policy {
-        rules: &cx.app.settings.permission,
-        mode,
-        plan_file: &cx.plan_file,
+    let lock = locks
+        .entry(mode.id.as_str())
+        .or_insert_with(|| mode.locks(&run.plan_file));
+    let policy = mode.policy(&cx.app.settings.permission, lock);
+    let decision = match policy.decide(&asks) {
+        Decision::Allow if check.confirm => Decision::Ask,
+        decision => decision,
     };
     let cleared = |asks| Cleared {
         tool: tool.clone(),
         args,
         asks,
     };
-    match policy.decide(&asks) {
+    match decision {
         Decision::Allow => Ok(cleared(asks)),
         Decision::Deny(what) => {
             Err(Refused::new("denied", fill(&text.denied, &[("what", &what)])).asked(asks))
@@ -193,9 +258,9 @@ async fn clear<'a>(
                 tool: call.name.clone(),
                 asks: asks.clone(),
                 preview: check.preview,
+                confirm: check.confirm,
             };
-            let reply = prompt::ask(shared, cx.emit, &call.id, prompt, cancel).await;
-            let refused = match reply {
+            let refused = match tcx.ask(prompt).await {
                 Some(Reply::Yes) => return Ok(cleared(asks)),
                 Some(Reply::No { feedback: Some(f) } | Reply::Text(f)) => Refused::new(
                     "rejected_with_feedback",
@@ -207,41 +272,32 @@ async fn clear<'a>(
                         ..Refused::new("rejected", text.rejected.clone())
                     }
                 }
-                Some(Reply::Unavailable) => Refused::new(
-                    "non_interactive",
-                    fill(&text.non_interactive, &[("what", &gate::describe(&asks))]),
-                ),
-                None => Refused::new("cancelled", text.cancelled.clone()),
+                Some(Reply::Unavailable) => {
+                    let (kind, why) = if check.confirm {
+                        ("unconfirmed", &text.unconfirmed)
+                    } else {
+                        ("non_interactive", &text.non_interactive)
+                    };
+                    let mode = &mode::unattended().id;
+                    let what = gate::describe(&asks);
+                    Refused::new(kind, fill(why, &[("what", &what), ("mode", mode)]))
+                }
+                None => Refused::new("cancelled", tools::text().cancelled.clone()),
             };
             Err(refused.asked(asks))
         }
     }
 }
 
-fn tool_cx<'a>(
-    cx: &'a RunCtx<'a>,
-    shared: &'a Shared,
-    cancel: &CancellationToken,
-    call_id: &'a str,
-) -> ToolCx<'a> {
+fn tool_cx<'a>(run: &'a Run<'a>, call_id: &'a str) -> ToolCx<'a> {
     ToolCx {
-        app: cx.app,
-        shared,
-        emit: cx.emit,
+        app: run.cx.app,
+        shared: run.shared,
+        emit: run.cx.emit,
         call_id,
-        plan_file: &cx.plan_file,
-        cancel: cancel.clone(),
-    }
-}
-
-/// Every call failed with the same message, e.g. when the reply was cut off mid-arguments.
-pub fn fail_all(calls: &[ToolCall], why: &str) -> Batch {
-    Batch {
-        results: calls
-            .iter()
-            .map(|c| result(c, Output::error(why)))
-            .collect(),
-        stop: false,
+        plan_file: &run.plan_file,
+        cancel: run.cancel.clone(),
+        run: Some(run),
     }
 }
 
@@ -254,5 +310,6 @@ fn result(call: &ToolCall, out: Output) -> ToolResult {
         details: out.details,
         asks: Vec::new(),
         refused: None,
+        usage: out.usage,
     }
 }

@@ -19,4 +19,4 @@ summary = "Think harder on tricky problems"
 [[level]]
 id = "max"
 color = "effort_max"
-summary = "The model's ceiling; crowbot maps it down for models with fewer tiers"
+summary = "Most reasoning; mapped down on models with fewer tiers"

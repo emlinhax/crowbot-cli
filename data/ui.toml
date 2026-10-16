@@ -15,29 +15,59 @@ tips = [
   "Right-click copies a message",
 ]
 
+# Marks drawn across the session; each is one cell wide.
+[marks]
+# A finished or failed tool call, and an error card.
+done = "●"
+# The selected row of a card's list.
+selected = "›"
+# A card's own-words field.
+field = "✎"
+# A question already answered, on its tab.
+answered = "✓"
+ticked = "[x]"
+unticked = "[ ]"
+# A message waiting under the bar.
+queued = "↳"
+# Each hidden character of a secret.
+mask = "•"
+# The rules round the bar and the edges of a card's box.
+rule = "─"
+side = "│"
+top_left = "╭"
+top_right = "╮"
+bottom_left = "╰"
+bottom_right = "╯"
+
 [footer]
-# All the status, right-aligned on the rule under the message bar, in this order; effort rides
-# with the model. The rule above the bar is plain, in the mode's colour.
-items = ["mode", "model", "context", "cost"]
+# Items on the rule under the bar, right-aligned, in this order (effort follows the model).
+items = ["mode", "model", "context", "cost", "allowance", "balance"]
 separator = " · "
+context = "ctx {pct}%"
+cost = "{cost} est"
+allowance = "{plan} {pct}%"
+balance = "{balance} left"
+
+# The welcome card's lines: the version after the name, then model, effort and mode.
+[welcome]
+version = " v{version}"
+separator = " · "
+# Joins the modes in the Shift+Tab tip.
+modes = " → "
 
 [text]
-interrupt = "esc to interrupt"
-retrying = "retrying in"
 queued = "queued"
 steering = "steering"
-cost_estimate = "est"
-not_logged_in = "Not logged in: type /login"
-interrupted = "Interrupted."
+request = "request {id}"
+not_logged_in = "Not logged in: type /login, or /signup for a new account"
+key_rejected = "crowbot did not accept this key: type /login"
+resumed = "Going on with {path}; it spent about {cost} before."
 declined = "Stopped: you declined a call."
-cut_off = "The reply hit its output limit (a low balance lowers that limit)."
 ctrl_c_again = "Press Ctrl+C again to quit"
 unknown_command = "Unknown command {command}. {help} lists them."
 more_lines = { one = "… {n} more line", many = "… {n} more lines" }
-elsewhere = "{command} only works as {places}."
 more_below = "↓ {n} more · PgDn"
 saved = "Session saved to {path}"
-unsaved = "No longer saving this session to {path}: {error}. The conversation goes on unsaved."
 spent = "Spent about {cost} this session."
 copied = "✓ Copied"
 nothing_to_copy = "Nothing to copy yet: crowbot has not replied."
@@ -47,23 +77,26 @@ effort_unsent = " {model} does not reason, so it sends none."
 new_conversation = "A new conversation."
 new_saved = "A new conversation. The last one is saved in {path}."
 
-# The line above the bar while crowbot works: a murmuration of crows, a verb with a glint running
-# along it, then elapsed time and tokens.
+# The working line: a flock, a verb with a glint, time and tokens.
 [status]
-# A murmuration: a ribbon of crows rising and falling, drawn in braille dots two to a cell, a
-# frame per `tui.status_frame_ms`. Every frame is the same width, so the verb never moves.
+# One frame per `tui.status_frame_ms`; all frames one width, so the verb stays put.
 frames = ["⠑⢄⡠⠊⠑", "⠢⣀⠔⠉⠢", "⢄⡠⠊⠑⢄", "⣀⠔⠉⠢⣀", "⡠⠊⠑⢄⡠", "⠔⠉⠢⣀⠔", "⠊⠑⢄⡠⠊", "⠉⠢⣀⠔⠉"]
 # For terminals without braille (legacy Windows conhost).
 plain = ["'._-'", "-_.'-", "._-'.", "_.'-_", "_-'._", ".'-_.", "-'._-", "'-_.'"]
 # One per turn, never the same twice running.
 verbs = ["Gooning", "Tweaking", "Cooking", "Pasting", "Maffing", "Napping", "Trapping", "Crowing", "Bypassing", "Caw-cawing"]
 tokens = "↓ {n} tok"
+working = "  {secs}s · {tokens} · esc to interrupt"
+# {retrying} is the shared word (data/frontend.toml).
+retry = "{retrying} {secs}s · esc to interrupt"
 
 # Thinking blocks: a click opens or closes one, Ctrl+T all of them.
 [thinking]
 closed = "▸"
 open = "▾"
 done = "Thought for {secs}s"
+# Read back from a session file, which keeps no duration.
+untimed = "Thought"
 live = "Thinking… {secs}s"
 gutter = "│ "
 
@@ -72,6 +105,27 @@ gutter = "│ "
 title = "Models"
 hint = "↑↓ move · → or enter select · esc close"
 switched = "Model: {model} for this session."
+
+# `/resume` inside a session: this project's earlier sessions.
+[resume]
+title = "Sessions"
+hint = "↑↓ move · → or enter go on with it · esc close"
+none = "No earlier session in this project to go on with."
+saved = "The last conversation is saved in {path}."
+
+# A `task` card while its subagent works: `{call}` is the subagent's latest call.
+[task]
+step = "  └ {call}"
+
+# `/undo` inside a session.
+[undo]
+done = "Took back the last prompt and what followed it; it is in the editor to change or send again."
+restored = { one = "{n} file it changed is back as it was.", many = "{n} files it changed are back as they were." }
+not_restored = "Files it changed were not restored: {why}."
+failed = "Could not restore {what}"
+kept = "Left as they are, since they changed after that reply: {paths}"
+off = "/undo will not restore files from here on: {why}."
+nothing = "Nothing to take back yet."
 
 # The popup listing commands while a `/name` is typed.
 [palette]
@@ -91,11 +145,61 @@ checking = "Checking with crowbot…"
 failed = "Login failed: {error}"
 hint = "esc cancel"
 
+# Asked before a login or signup replaces the key stored on this machine; {hint} is its last
+# digits, {error} why the file cannot be read.
+[replace]
+title = "Replace the stored key?"
+account = "This machine keeps account number {hint}. An account number has no recovery: unless it is written down elsewhere, replacing it here loses the account."
+device = "This machine keeps device key {hint}. Replacing it is safe: the device can be paired again."
+unreadable = "{error}. Replacing it overwrites whatever it holds."
+replace = "Replace it"
+keep = "Keep it"
+
+# `/signup` in a session; the rest of its words are signup's own (data/commands/signup.toml).
+[signup]
+title = "Create a crowbot account"
+number = "Your account number:  "
+done = "Account {hint} created and saved in {path}. "
+closed = "Account {hint} is saved in {path}."
+failed = "Signup failed: {error}"
+retry = "Try again"
+close = "Close"
+hint = "esc close"
+
+# `/account` in a session: where the account stands, and its keys. {name} is a key's device (or
+# "account" for the account number), {hint} its last digits, {date} the day it was made.
+[account]
+title = "Account"
+loading = "Asking crowbot…"
+revoking = "Revoking the key…"
+keys = "Keys ({n})"
+close = "Close"
+back = "Back"
+key = "{name}  {hint}  since {date}"
+current = "  · this session"
+current_kept = "That is the key this session uses; revoke it from another device, or /logout here."
+confirm = "Revoke {name} {hint}?"
+device_warning = "Whatever uses this key stops working at once; that device can be paired again."
+account_warning = "This is the account number itself. Once revoked it signs in nowhere, and only the remaining device keys reach the account."
+revoke = "Revoke it"
+keep = "Keep it"
+revoked = "Revoked {name} {hint}."
+failed = "Account: {error}"
+hint = "esc back"
+# The last account.usage_days of spend, then the models that spent most.
+usage = "Last {days} days: {spent} over {requests}"
+usage_model = "  {label}: {spent} over {requests}"
+requests = { one = "{n} request", many = "{n} requests" }
+saving = "Telling crowbot…"
+# The option that flips balance fallback, and what it says once it has.
+fallback = "Balance fallback is {state}: turn it {other}"
+fallback_set = "Balance fallback is now {state}."
+on = "on"
+off = "off"
+
 # `/forums` in a session: the forums the agent can browse, to log in to, log out of, remove or add.
 [forums]
 title = "Forums"
-guest = "guest"
-logged_in = "logged in as {user}"
 add = "+ Add a forum"
 hint = "↑↓ move · → or enter open · esc close"
 menu_hint = "↑↓ move · enter choose · 1-9 pick · esc back"
@@ -104,7 +208,7 @@ log_in_again = "Log in as someone else"
 log_out = "Log out"
 remove = "Remove"
 add_title = "Add a forum"
-add_note = "Searches Tapatalk's directory; only forums running the Tapatalk plugin can be added."
+add_note = "Searches Tapatalk's directory; only Tapatalk forums can be added."
 search = "Search by name or URL…"
 found_title = "Forums matching “{query}”"
 found_hint = "↑↓ move · → or enter add · esc back"
@@ -154,4 +258,4 @@ reply = "no_why"
 
 # How a run that ended early is told.
 [outcome]
-turn_limit = "Stopped after {count} turns. Send a message to continue."
+turn_limit = "{stopped} Send a message to continue."

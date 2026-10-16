@@ -7,11 +7,11 @@ use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::sync::LazyLock;
 
-use serde::Deserialize;
 use syntect::highlighting::ScopeSelectors;
 use syntect::parsing::{ParseState, ScopeStack, SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
 
+use crate::data;
 use crate::text::styled::{Line, Style};
 use crate::text::theme;
 
@@ -29,15 +29,7 @@ static RULES: LazyLock<Vec<(ScopeSelectors, String)>> = LazyLock::new(|| {
         .collect()
 });
 
-static ALIASES: LazyLock<BTreeMap<String, String>> = LazyLock::new(|| {
-    #[derive(Deserialize)]
-    struct File {
-        alias: BTreeMap<String, String>,
-    }
-    toml::from_str::<File>(include_str!("../../data/code_aliases.toml"))
-        .expect("data/code_aliases.toml is checked by tests")
-        .alias
-});
+static ALIASES: LazyLock<BTreeMap<String, String>> = data::load!("code_aliases.toml", "alias");
 
 /// `code` as lines coloured for `lang`; an unknown language comes back uncoloured.
 pub fn highlight(code: &str, lang: &str) -> Vec<Line> {

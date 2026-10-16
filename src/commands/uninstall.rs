@@ -3,11 +3,10 @@ use std::sync::LazyLock;
 use futures_util::future::BoxFuture;
 
 use super::{Command, Ctx, Outcome, Spec};
-use crate::install::{self, Place};
 use crate::io;
+use crate::release::install::{self, Place};
 
-static SPEC: LazyLock<Spec> =
-    LazyLock::new(|| Spec::parse(include_str!("../../data/commands/uninstall.toml")));
+static SPEC: LazyLock<Spec> = super::spec!("uninstall");
 
 pub struct Uninstall;
 
@@ -23,7 +22,7 @@ impl Command for Uninstall {
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             cx.no_args(&SPEC, args)?;
-            let exe = io::proc::current_exe()?;
+            let exe = io::exe::current()?;
             Ok(install::uninstall(&Place::here()?, &exe, &cx.app.paths)?.into())
         })
     }

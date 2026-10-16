@@ -1,0 +1,8 @@
+# What the task tool says to the model; {placeholders} are filled in.
+agent = "- `{id}`: {summary}"
+unknown_agent = "There is no kind of subagent called `{id}`. The kinds: {kinds}."
+no_answer = "The subagent finished without a reply."
+turn_limit = "The subagent stopped after {turns} requests, its limit, before it finished. Its last words: {answer}"
+failed = "The subagent's run failed: {error}"
+rejected = "The user turned down one of the subagent's calls, so it stopped."
+no_run = "A subagent can only be started by a run."

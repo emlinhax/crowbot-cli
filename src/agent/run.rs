@@ -2,43 +2,65 @@
 //! back, until it stops calling tools. Messages queued meanwhile are delivered at safe points.
 
 use crate::agent::batch::{self, Batch};
+use crate::agent::compact::{self, Why};
 use crate::agent::context;
-use crate::agent::event::{AgentEvent, Outcome};
-use crate::agent::message::{Finish, Message, Part, ToolCall};
 use crate::agent::model_text;
-use crate::agent::state::{Reminder, Shared};
-use crate::agent::system_prompt;
-use crate::api::chat::{self, Event, Turn};
+use crate::agent::overflow;
+use crate::agent::{Run, RunCtx};
+use crate::api::chat::{self, Turn};
 use crate::api::models::Model;
-use crate::app::App;
-use crate::limits;
-use crate::session::transcript::Transcript;
+use crate::config::limits;
+use crate::conversation::message::{Finish, Message, Part, ToolCall};
+use crate::live::event::{AgentEvent, Ended, Outcome};
+use crate::live::state::{Reminder, Shared};
+use crate::session::entry::{Snap, State};
+use crate::session::transcript::{Transcript, Unsaved};
 use crate::text::template::fill;
-use crate::tools::Registry;
-
-pub struct RunCtx<'a> {
-    pub app: &'a App,
-    pub model: &'a Model,
-    pub effort: Option<&'a str>,
-    pub system: &'a str,
-    pub tools: &'a Registry,
-    /// Where PLAN mode writes its plan; the only file it may change.
-    pub plan_file: String,
-    pub emit: &'a (dyn Fn(AgentEvent) + Send + Sync),
-}
+use crate::tools;
 
 pub async fn run(
     cx: &RunCtx<'_>,
     transcript: &mut Transcript,
     shared: &Shared,
     prompt: Vec<Part>,
-) -> Outcome {
-    let cancel = shared.begin_run();
-    let parts = with_reminder(cx, shared, prompt);
-    record(cx, transcript, Message::User { parts });
+) -> Ended {
+    run_under(cx, transcript, shared, prompt, None).await
+}
+
+/// `run`, started by `parent`'s `task` call when it is a subagent's.
+pub(crate) async fn run_under(
+    cx: &RunCtx<'_>,
+    transcript: &mut Transcript,
+    shared: &Shared,
+    prompt: Vec<Part>,
+    parent: Option<&Run<'_>>,
+) -> Ended {
+    let run = Run {
+        cx,
+        shared,
+        cancel: shared.begin_run(),
+        plan_file: match parent {
+            Some(parent) => parent.plan_file.clone(),
+            None => tools::plan_file(&cx.app.paths, transcript.id()),
+        },
+        before: tokio::sync::OnceCell::new(),
+        session: transcript.file().to_path_buf(),
+        parent,
+        slots: tokio::sync::Semaphore::new(limits::get().subagent.parallel.value),
+    };
+    let cancel = &run.cancel;
+    say(&run, transcript, prompt);
+    let prompt_id = transcript.last_id().unwrap_or_default().to_owned();
+    let mut snapped = false;
     let tools = cx.tools.wire();
-    let max_turns = limits::get().agent.max_turns.value;
+    let max_turns = match parent {
+        Some(_) => limits::get().subagent.max_turns.value,
+        None => limits::get().agent.max_turns.value,
+    };
     let mut turns = 0;
+    // One summary-and-send-again per run, and none after one failed: a model that cannot
+    // summarise would only fail again.
+    let (mut sent_again, mut summary_failed) = (false, false);
 
     let outcome = 'run: loop {
         loop {
@@ -47,7 +69,12 @@ pub async fn run(
             }
             turns += 1;
 
-            let messages = context::build(&transcript.messages);
+            if let Some(why) = window_full(transcript, cx.model).filter(|_| !summary_failed) {
+                let summarised = compact::compact(cx, transcript, shared, cancel, None, why).await;
+                summary_failed = !matches!(summarised, Ok(true));
+            }
+            let (summary, tail) = transcript.context();
+            let messages = context::build(summary, tail);
             let turn = Turn {
                 model: cx.model,
                 effort: cx.effort,
@@ -55,25 +82,27 @@ pub async fn run(
                 messages: &messages,
                 tools: &tools,
             };
-            let reply = chat::stream(&cx.app.api, &turn, &cancel, &mut |event| {
-                (cx.emit)(match event {
-                    Event::Delta(delta) => AgentEvent::from(delta),
-                    Event::Retry {
-                        attempt,
-                        delay,
-                        error,
-                    } => AgentEvent::Retry {
-                        attempt,
-                        delay_ms: delay.as_millis() as u64,
-                        error: error.clone(),
-                    },
-                });
+            let reply = chat::stream(&cx.app.api, &turn, cancel, &mut |event| {
+                (cx.emit)(AgentEvent::from(event));
             })
             .await;
             record(cx, transcript, Message::Assistant(reply.clone()));
             let finish = reply.finish;
             let calls: Vec<ToolCall> = reply.tool_calls().cloned().collect();
+            let refused = reply.error.as_ref().is_some_and(overflow::refused);
             (cx.emit)(AgentEvent::MessageEnd { message: reply });
+            if refused && !sent_again && !summary_failed {
+                sent_again = true;
+                let why = Why {
+                    auto: true,
+                    overflow: true,
+                };
+                let summarised = compact::compact(cx, transcript, shared, cancel, None, why).await;
+                if matches!(summarised, Ok(true)) {
+                    continue;
+                }
+                summary_failed = true;
+            }
             match finish {
                 Finish::Aborted => break 'run Outcome::Aborted,
                 Finish::Error => break 'run Outcome::Failed,
@@ -83,12 +112,23 @@ pub async fn run(
             if !calls.is_empty() {
                 let batch = if finish == Finish::Length {
                     // A reply cut off mid-call may carry truncated arguments; never run those.
-                    batch::fail_all(&calls, &model_text::get().truncated_tool_call)
+                    let why = &model_text::get().truncated_tool_call;
+                    batch::refuse_all(&run, &calls, "truncated_tool_call", why).await
                 } else {
                     let history = &transcript.messages[..transcript.messages.len() - 1];
-                    batch::run(cx, history, &calls, shared, &cancel).await
+                    batch::run(&run, history, &calls).await
                 };
                 let Batch { results, stop } = batch;
+                // The snapshot goes in the file before the changes it lets /undo take back; only
+                // the frontend's run writes one, its subagents' changes included.
+                if let Some(before) = run.before.get().filter(|_| !snapped && parent.is_none()) {
+                    snapped = true;
+                    let trees = Snap {
+                        before: before.clone(),
+                        after: None,
+                    };
+                    reported(cx, transcript.snapshot(&prompt_id, trees));
+                }
                 for result in results {
                     record(cx, transcript, Message::Tool(result));
                 }
@@ -103,7 +143,7 @@ pub async fn run(
             let steered = shared.drain_steer();
             if !steered.is_empty() {
                 for parts in steered {
-                    deliver(cx, shared, transcript, parts);
+                    deliver(&run, transcript, parts);
                 }
                 continue;
             }
@@ -116,17 +156,49 @@ pub async fn run(
             break Outcome::Done;
         }
         for parts in queued {
-            deliver(cx, shared, transcript, parts);
+            deliver(&run, transcript, parts);
         }
     };
-    (cx.emit)(AgentEvent::RunEnd { outcome });
-    outcome
+    if let Some(before) = run.before.get().filter(|_| parent.is_none()) {
+        let trees = Snap {
+            before: before.clone(),
+            after: cx.shadow.take().await,
+        };
+        reported(cx, transcript.snapshot(&prompt_id, trees));
+    }
+    let ended = Ended { outcome, turns };
+    (cx.emit)(AgentEvent::RunEnd(ended));
+    ended
+}
+
+/// Why the conversation should be summarised before the next request, if it should: the last
+/// request since the latest summary nearly filled the window, or its reply was cut off because
+/// the window ran out.
+fn window_full(transcript: &Transcript, model: &Model) -> Option<Why> {
+    let last = transcript
+        .since_summary()
+        .iter()
+        .rev()
+        .find_map(|m| match m {
+            Message::Assistant(reply) => reply.usage.map(|usage| (reply, usage)),
+            _ => None,
+        });
+    let (reply, usage) = last?;
+    let filled = overflow::window_filled(reply, model.context_window);
+    (filled || overflow::nearly_full(usage.input, model)).then_some(Why {
+        auto: true,
+        overflow: filled,
+    })
 }
 
 /// Keeps `message`; a session file that can no longer be written is reported once, and the
 /// run goes on without it.
 fn record(cx: &RunCtx<'_>, transcript: &mut Transcript, message: Message) {
-    if let Err(unsaved) = transcript.push(message) {
+    reported(cx, transcript.push(message));
+}
+
+fn reported(cx: &RunCtx<'_>, kept: Result<(), Unsaved>) {
+    if let Err(unsaved) = kept {
         (cx.emit)(AgentEvent::Unsaved {
             path: unsaved.path.display().to_string(),
             error: unsaved.error,
@@ -135,29 +207,35 @@ fn record(cx: &RunCtx<'_>, transcript: &mut Transcript, message: Message) {
 }
 
 /// Hands a message typed mid-run to the model, and tells the frontend it landed.
-fn deliver(cx: &RunCtx<'_>, shared: &Shared, transcript: &mut Transcript, parts: Vec<Part>) {
-    let text = parts
-        .iter()
-        .filter_map(|p| match p {
-            Part::Text { text } => Some(text.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    (cx.emit)(AgentEvent::Delivered { text });
-    let parts = with_reminder(cx, shared, parts);
-    record(cx, transcript, Message::User { parts });
+fn deliver(run: &Run<'_>, transcript: &mut Transcript, parts: Vec<Part>) {
+    let text = Part::text_of(&parts);
+    (run.cx.emit)(AgentEvent::Delivered { text });
+    say(run, transcript, parts);
+}
+
+/// Records a user message, with any reminder that is due in front of it and what it is sent
+/// under.
+fn say(run: &Run<'_>, transcript: &mut Transcript, parts: Vec<Part>) {
+    let parts = with_reminder(run, parts);
+    let state = State {
+        model: run.cx.model.id.clone(),
+        effort: run.cx.effort.map(str::to_owned),
+        mode: Some(run.shared.mode().id.clone()),
+    };
+    reported(
+        run.cx,
+        transcript.push_prompt(Message::User { parts }, state),
+    );
 }
 
 /// Mode changes reach the model as a reminder on the next user message, so the system prompt
 /// (and the vendor's cache of it) never changes mid-session.
-fn with_reminder(cx: &RunCtx<'_>, shared: &Shared, mut parts: Vec<Part>) -> Vec<Part> {
-    let text = match shared.take_reminder() {
+fn with_reminder(run: &Run<'_>, mut parts: Vec<Part>) -> Vec<Part> {
+    let text = match run.shared.take_reminder() {
         Some(Reminder::Entered(mode)) => mode
             .reminder
             .as_deref()
-            .and_then(system_prompt::reminder)
-            .map(|text| fill(text, &[("plan_file", &cx.plan_file)])),
+            .map(|text| fill(text.trim_end(), &[("plan_file", &run.plan_file)])),
         Some(Reminder::Left { now }) => {
             Some(fill(&model_text::get().mode_left, &[("mode", &now.label)]))
         }
@@ -173,162 +251,15 @@ fn with_reminder(cx: &RunCtx<'_>, shared: &Shared, mut parts: Vec<Part>) -> Vec<
 mod tests {
     //! The loop against a local fake chat endpoint that replays scripted replies.
 
-    use std::collections::VecDeque;
-    use std::sync::{Arc, Mutex};
-
-    use axum::Router;
-    use axum::routing::post;
     use serde_json::{Value, json};
 
     use super::*;
-    use crate::agent::prompt::{Answer, Reply};
-    use crate::api::Api;
-    use crate::api::models::{Capabilities, Pricing};
-    use crate::io::http::Http;
+    use crate::agent::testing::{Harness, last_message, refusal, reply, reply_sized, shared, text};
+    use std::sync::Mutex;
+
+    use crate::conversation::message::Assistant;
+    use crate::live::prompt::{Answer, Prompt, Reply};
     use crate::mode;
-
-    type Script = Arc<Mutex<(VecDeque<String>, Vec<Value>)>>;
-
-    /// One scripted reply; `calls` are (id, tool, arguments).
-    fn reply(text: &str, calls: &[(&str, &str, Value)], finish: &str) -> String {
-        let mut frames = Vec::new();
-        if !text.is_empty() {
-            frames.push(json!({"choices": [{"index": 0, "delta": {"content": text}}]}));
-        }
-        for (i, (id, name, args)) in calls.iter().enumerate() {
-            frames.push(json!({"choices": [{"index": 0, "delta": {"tool_calls": [
-                {"index": i, "id": id, "type": "function",
-                 "function": {"name": name, "arguments": args.to_string()}}]}}]}));
-        }
-        frames.push(json!({"choices": [{"index": 0, "delta": {}, "finish_reason": finish}]}));
-        frames.push(json!({"choices": [], "usage": {"prompt_tokens": 10, "completion_tokens": 2}}));
-        let mut body: String = frames.iter().map(|f| format!("data: {f}\n\n")).collect();
-        body.push_str("data: [DONE]\n\n");
-        body
-    }
-
-    fn text(t: &str) -> String {
-        reply(t, &[], "stop")
-    }
-
-    struct Harness {
-        _dir: tempfile::TempDir,
-        app: App,
-        script: Script,
-        model: Model,
-    }
-
-    impl Harness {
-        async fn new(replies: Vec<String>) -> Self {
-            let script: Script = Arc::new(Mutex::new((replies.into(), Vec::new())));
-            let state = script.clone();
-            let router = Router::new().route(
-                "/v1/chat/completions",
-                post(move |body: String| {
-                    let state = state.clone();
-                    async move {
-                        let mut s = state.lock().unwrap();
-                        s.1.push(serde_json::from_str(&body).unwrap());
-                        let next = s.0.pop_front().unwrap_or_else(|| text("(unscripted)"));
-                        ([("content-type", "text/event-stream")], next)
-                    }
-                }),
-            );
-            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let base = format!("http://{}", listener.local_addr().unwrap());
-            tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-
-            let dir = tempfile::tempdir().unwrap();
-            let mut app = App::for_tests(dir.path());
-            let http = Http::new(std::time::Duration::from_secs(5)).unwrap();
-            app.api = Api::redirected(http, "k", &base);
-            let model = Model {
-                id: "m".into(),
-                display_name: String::new(),
-                description: String::new(),
-                context_window: 100_000,
-                max_output_tokens: 1000,
-                pricing: Pricing {
-                    input_per_1m_usd: 1.0,
-                    cached_input_per_1m_usd: 0.1,
-                    output_per_1m_usd: 2.0,
-                },
-                capabilities: Capabilities::default(),
-            };
-            Self {
-                _dir: dir,
-                app,
-                script,
-                model,
-            }
-        }
-
-        fn write(&self, path: &str, text: &str) {
-            crate::io::fs::write_atomic(
-                &self.app.paths.project.join(path),
-                text.as_bytes(),
-                crate::io::fs::Access::Shared,
-            )
-            .unwrap();
-        }
-
-        /// Runs one prompt; `on` sees every event and may drive `shared` like a frontend does.
-        async fn run(
-            &self,
-            shared: &Shared,
-            on: impl Fn(&AgentEvent, &Shared) + Send + Sync,
-        ) -> (Outcome, Transcript, Vec<String>) {
-            let registry = Registry::builtin(&self.app);
-            let events = Mutex::new(Vec::new());
-            let emit = |event: AgentEvent| {
-                on(&event, shared);
-                let kind = serde_json::to_value(&event).unwrap()["type"]
-                    .as_str()
-                    .unwrap()
-                    .to_owned();
-                events.lock().unwrap().push(kind);
-            };
-            let cx = RunCtx {
-                app: &self.app,
-                model: &self.model,
-                effort: None,
-                system: "sys",
-                tools: &registry,
-                plan_file: self.plan_file(),
-                emit: &emit,
-            };
-            let mut transcript = Transcript::new(None);
-            let prompt = vec![Part::Text { text: "go".into() }];
-            let outcome = run(&cx, &mut transcript, shared, prompt).await;
-            (outcome, transcript, events.into_inner().unwrap())
-        }
-
-        fn plan_file(&self) -> String {
-            self.app
-                .paths
-                .home
-                .join("plan.md")
-                .to_string_lossy()
-                .replace('\\', "/")
-        }
-
-        fn requests(&self) -> Vec<Value> {
-            self.script.lock().unwrap().1.clone()
-        }
-    }
-
-    fn shared(mode: &str) -> Shared {
-        Shared::new(mode::get(mode).unwrap())
-    }
-
-    fn last_message(request: &Value) -> Value {
-        request["messages"]
-            .as_array()
-            .unwrap()
-            .last()
-            .unwrap()
-            .clone()
-    }
 
     #[tokio::test]
     async fn parallel_results_come_back_in_call_order() {
@@ -346,8 +277,10 @@ mod tests {
         .await;
         h.write("a.txt", "AAA");
         h.write("b.txt", "BBB");
-        let (outcome, transcript, _) = h.run(&shared("manual"), |_, _| {}).await;
-        assert_eq!(outcome, Outcome::Done);
+        let (ended, transcript, _) = h.run(&shared("manual"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        // One turn made the calls and one read their results.
+        assert_eq!(ended.turns, 2);
         let results: Vec<&str> = transcript
             .messages
             .iter()
@@ -398,8 +331,8 @@ mod tests {
         state.follow_up(vec![Part::Text {
             text: "and then?".into(),
         }]);
-        let (outcome, _, _) = h.run(&state, |_, _| {}).await;
-        assert_eq!(outcome, Outcome::Done);
+        let (ended, _, _) = h.run(&state, |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
         let requests = h.requests();
         assert_eq!(requests.len(), 2);
         assert_eq!(last_message(&requests[1])["content"], "and then?");
@@ -413,14 +346,14 @@ mod tests {
             "tool_calls",
         )])
         .await;
-        let (outcome, transcript, _) = h
+        let (ended, transcript, _) = h
             .run(&shared("manual"), |event, shared| {
                 if let AgentEvent::Prompt { id, .. } = event {
-                    shared.answer(*id, Reply::No { feedback: None });
+                    shared.prompts.answer(*id, Reply::No { feedback: None });
                 }
             })
             .await;
-        assert_eq!(outcome, Outcome::Rejected);
+        assert_eq!(ended.outcome, Outcome::Rejected);
         assert_eq!(h.requests().len(), 1);
         assert!(matches!(transcript.messages.last(), Some(Message::Tool(r)) if r.is_error));
     }
@@ -438,7 +371,7 @@ mod tests {
         .await;
         h.run(&shared("manual"), |event, shared| {
             if let AgentEvent::Prompt { id, .. } = event {
-                shared.answer(
+                shared.prompts.answer(
                     *id,
                     Reply::No {
                         feedback: Some("use trash instead".into()),
@@ -487,11 +420,11 @@ mod tests {
                             text: None,
                         },
                     ];
-                    shared.answer(*id, Reply::Answers(answers));
+                    shared.prompts.answer(*id, Reply::Answers(answers));
                 }
             })
             .await;
-        assert_eq!(events.iter().filter(|e| *e == "prompt").count(), 1);
+        assert_eq!(events.iter().filter(|e| e["type"] == "prompt").count(), 1);
         let result = last_message(&h.requests()[1]);
         let content = result["content"].as_str().unwrap();
         assert!(content.contains("Which DB?\n  postgres"), "{content}");
@@ -505,16 +438,17 @@ mod tests {
             text("implementing"),
         ])
         .await;
+        let transcript = Transcript::create(&h.app.paths);
         crate::io::fs::write_atomic(
-            std::path::Path::new(&h.plan_file()),
+            &h.app.paths.plan_file(transcript.id()),
             b"1. do it",
             crate::io::fs::Access::Shared,
         )
         .unwrap();
         let state = shared("plan");
-        h.run(&state, |event, shared| {
+        h.run_in(transcript, &state, |event, shared| {
             if let AgentEvent::Prompt { id, .. } = event {
-                shared.answer(*id, Reply::Choice(0));
+                shared.prompts.answer(*id, Reply::Choice(0));
             }
         })
         .await;
@@ -524,29 +458,99 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn switching_to_auto_approves_a_waiting_prompt() {
+    async fn switching_to_auto_approves_a_waiting_prompt_and_the_calls_after_it() {
         let h = Harness::new(vec![
             reply(
                 "",
-                &[("c1", "bash", json!({"command": "printf hi"}))],
+                &[
+                    ("c1", "bash", json!({"command": "printf hi"})),
+                    ("c2", "bash", json!({"command": "printf there"})),
+                ],
                 "tool_calls",
             ),
             text("done"),
         ])
         .await;
-        let (outcome, transcript, _) = h
+        let (ended, transcript, events) = h
             .run(&shared("manual"), |event, shared| {
                 if matches!(event, AgentEvent::Prompt { .. }) {
                     shared.set_mode(mode::get("auto").unwrap());
                 }
             })
             .await;
-        assert_eq!(outcome, Outcome::Done);
-        let ran = transcript
-            .messages
-            .iter()
-            .any(|m| matches!(m, Message::Tool(r) if r.content.contains("hi")));
-        assert!(ran);
+        assert_eq!(ended.outcome, Outcome::Done);
+        assert_eq!(events.iter().filter(|e| e["type"] == "prompt").count(), 1);
+        for said in ["hi", "there"] {
+            let ran = transcript
+                .messages
+                .iter()
+                .any(|m| matches!(m, Message::Tool(r) if r.content.contains(said)));
+            assert!(ran, "{said}");
+        }
+    }
+
+    /// A forum post, to a stored forum on a port nothing listens on, so an approved post fails at
+    /// once without leaving the machine.
+    async fn posting() -> Harness {
+        let h = Harness::new(vec![
+            reply(
+                "",
+                &[(
+                    "c1",
+                    "forum_post",
+                    json!({"forum": "Closed", "section": "1", "topic": "2", "body": "hi"}),
+                )],
+                "tool_calls",
+            ),
+            text("done"),
+        ])
+        .await;
+        let forum = crate::forums::Forum {
+            id: "7".into(),
+            name: "Closed".into(),
+            base_url: "http://127.0.0.1:9/forum".into(),
+            mobiquo_dir: "mobiquo".into(),
+            ext: "php".into(),
+            kind: "mobiquo".into(),
+            ..Default::default()
+        };
+        crate::forums::store::add(&h.app.paths, forum).unwrap();
+        h
+    }
+
+    #[tokio::test]
+    async fn a_forum_post_asks_once_even_in_auto() {
+        let h = posting().await;
+        let confirmed = Mutex::new(Vec::new());
+        let (_, _, events) = h
+            .run(&shared("auto"), |event, shared| {
+                if let AgentEvent::Prompt { id, prompt, .. } = event {
+                    if let Prompt::Permission { confirm, .. } = prompt {
+                        confirmed.lock().unwrap().push(*confirm);
+                    }
+                    shared.prompts.answer(*id, Reply::Yes);
+                }
+            })
+            .await;
+        assert_eq!(events.iter().filter(|e| e["type"] == "prompt").count(), 1);
+        // The prompt says so, so a frontend words it as a confirmation.
+        assert_eq!(*confirmed.lock().unwrap(), [true]);
+    }
+
+    #[tokio::test]
+    async fn a_headless_run_never_posts() {
+        let h = posting().await;
+        let (_, transcript, _) = h
+            .run(&shared("auto"), |event, shared| {
+                if let AgentEvent::Prompt { id, .. } = event {
+                    shared.prompts.answer(*id, Reply::Unavailable);
+                }
+            })
+            .await;
+        let refused = transcript.messages.iter().any(
+            |m| matches!(m, Message::Tool(r) if r.is_error && r.content.contains("confirm it")),
+        );
+        assert!(refused);
     }
 
     #[tokio::test]
@@ -560,8 +564,15 @@ mod tests {
             text("ok"),
         ])
         .await;
-        let (outcome, _, _) = h.run(&shared("auto"), |_, _| {}).await;
-        assert_eq!(outcome, Outcome::Done);
+        let (ended, _, events) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        for kind in ["tool_start", "tool_end"] {
+            assert_eq!(
+                events.iter().filter(|e| e["type"] == *kind).count(),
+                1,
+                "{kind}"
+            );
+        }
         assert_eq!(
             crate::io::fs::kind(&h.app.paths.project.join("new.txt")).unwrap(),
             crate::io::fs::Kind::Missing
@@ -590,7 +601,7 @@ mod tests {
         let (_, transcript, _) = h
             .run(&shared("manual"), |event, shared| {
                 if let AgentEvent::Prompt { id, .. } = event {
-                    shared.answer(*id, Reply::Unavailable);
+                    shared.prompts.answer(*id, Reply::Unavailable);
                 }
             })
             .await;
@@ -628,6 +639,138 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_run_that_changes_files_is_snapshotted_once_and_a_reading_one_never() {
+        let write = |path: &str| {
+            reply(
+                "",
+                &[("c1", "write", json!({"path": path, "content": "x"}))],
+                "tool_calls",
+            )
+        };
+        let read = reply(
+            "",
+            &[("c1", "read", json!({"path": "a.txt"}))],
+            "tool_calls",
+        );
+        let replies = vec![
+            write("one.txt"),
+            write("two.txt"),
+            text("done"),
+            read,
+            text("read"),
+        ];
+        let Some(h) = Harness::new(replies).await.with_git().await else {
+            return;
+        };
+        h.write("a.txt", "a");
+        let (_, transcript, _) = h.run(&shared("auto"), |_, _| {}).await;
+        let path = transcript.path().unwrap().to_path_buf();
+        let text = crate::io::fs::read_string(&path).unwrap().unwrap();
+        let lines: Vec<Value> = text
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        let snaps: Vec<&Value> = lines.iter().filter(|l| l["type"] == "snapshot").collect();
+        // One before the first write, then the same one again with the run's end.
+        assert_eq!(snaps.len(), 2, "{text}");
+        assert_eq!(snaps[0]["before"], snaps[1]["before"]);
+        assert!(snaps[0]["after"].is_null() && snaps[1]["after"].is_string());
+        assert_ne!(snaps[1]["before"], snaps[1]["after"]);
+        let first_snapshot = lines.iter().position(|l| l["type"] == "snapshot").unwrap();
+        let first_result = lines
+            .iter()
+            .position(|l| l["message"]["role"] == "tool")
+            .unwrap();
+        assert!(first_snapshot < first_result);
+
+        let (_, transcript, _) = h
+            .run_in(
+                Transcript::open(&path).unwrap().0,
+                &shared("auto"),
+                |_, _| {},
+            )
+            .await;
+        let text = crate::io::fs::read_string(transcript.path().unwrap())
+            .unwrap()
+            .unwrap();
+        assert_eq!(text.matches(r#""type":"snapshot""#).count(), 2, "{text}");
+    }
+
+    /// A conversation long enough that a summary has something to stand for.
+    fn long(h: &Harness) -> Transcript {
+        let mut transcript = Transcript::create(&h.app.paths);
+        let big = "x".repeat(limits::get().compaction.keep_tokens.value * 2);
+        for i in 0..3 {
+            transcript
+                .push(Message::user_text(format!("question {i} {big}")))
+                .unwrap();
+            let text = format!("answer {i} {big}");
+            let reply = Assistant::stub(Finish::Done, vec![Part::Text { text }]);
+            transcript.push(Message::Assistant(reply)).unwrap();
+        }
+        transcript
+    }
+
+    fn asked_to_summarise(request: &Value) -> bool {
+        last_message(request)["content"]
+            .as_str()
+            .is_some_and(|c| c.contains("call no tools"))
+    }
+
+    #[tokio::test]
+    async fn a_request_that_nearly_filled_the_window_is_summarised_before_the_next() {
+        let call = [("c1", "read", json!({"path": "a.txt"}))];
+        let h = Harness::new(vec![
+            reply_sized("", &call, "tool_calls", 90_000),
+            text("SUMMARY of the questions"),
+            text("done"),
+        ])
+        .await;
+        h.write("a.txt", "a");
+        let (ended, transcript, events) = h.run_in(long(&h), &shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let requests = h.requests();
+        assert!(!asked_to_summarise(&requests[0]));
+        assert!(asked_to_summarise(&requests[1]));
+        assert!(
+            requests[2]["messages"]
+                .to_string()
+                .contains("SUMMARY of the questions")
+        );
+        assert!(!requests[2]["messages"].to_string().contains("question 0"));
+        assert!(events.iter().any(|e| e["type"] == "compaction_end"));
+        assert!(transcript.context().0.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_request_refused_as_too_long_is_summarised_and_sent_once_more() {
+        let h = Harness::new(vec![
+            refusal(413, "body_too_large"),
+            text("SUMMARY"),
+            text("done"),
+        ])
+        .await;
+        let (ended, _, _) = h.run_in(long(&h), &shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let requests = h.requests();
+        assert_eq!(requests.len(), 3);
+        assert!(asked_to_summarise(&requests[1]));
+        assert!(requests[2]["messages"].to_string().contains("SUMMARY"));
+
+        // Refused again: no third try.
+        let h = Harness::new(vec![
+            refusal(413, "body_too_large"),
+            text("SUMMARY"),
+            refusal(413, "body_too_large"),
+            text("never asked"),
+        ])
+        .await;
+        let (ended, _, _) = h.run_in(long(&h), &shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Failed);
+        assert_eq!(h.requests().len(), 3);
+    }
+
+    #[tokio::test]
     async fn plan_mode_reminds_the_model_and_refuses_edits() {
         let h = Harness::new(vec![
             reply(
@@ -638,8 +781,8 @@ mod tests {
             text("planned"),
         ])
         .await;
-        let (outcome, _, _) = h.run(&shared("plan"), |_, _| {}).await;
-        assert_eq!(outcome, Outcome::Done);
+        let (ended, _, _) = h.run(&shared("plan"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
         let first = last_message(&h.requests()[0]);
         assert!(first["content"].as_str().unwrap().contains("PLAN mode"));
         let result = last_message(&h.requests()[1]);

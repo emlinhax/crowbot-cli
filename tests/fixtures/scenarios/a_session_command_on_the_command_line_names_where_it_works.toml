@@ -1,0 +1,7 @@
+description = "A session-only command typed on the command line says where it works"
+args = ["mode"]
+reply = []
+
+[expect]
+exit = 1
+stderr_contains = ["`crowbot mode` only works as `/mode`"]

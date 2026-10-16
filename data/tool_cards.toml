@@ -1,13 +1,15 @@
-# How each tool call looks in the transcript. `title` lists argument names; the first one present
-# titles the card. `body` is one of: none, diff (details.diff), head, tail, summary.
-# `summary` fills {placeholders} from the result's details, or counts one of them:
-# `{ count = "<key>", one = "…{n}…", many = "…{n}…" }` picks the form for that number. A list of
-# summaries shows the first whose details are all there.
-# Tools without a section use [default].
+# How each tool call looks in the transcript; tools without a section use [default], key by key.
+# `title`: argument names, the first present one titles the card (`title_join` joins all present);
+# a list arg shows `title_items` items, past that one fewer and "+N". `body`: none, diff
+# (details.diff), head, tail or summary, cut to `max_lines`. `summary`: a template over the
+# result's details, `{ count, one, many }` for a counted form, or a list whose first complete
+# entry shows.
 
 [default]
 title = ["path", "command", "pattern", "url", "query"]
 body = "none"
+max_lines = 1
+title_items = 3
 
 [read]
 body = "summary"
@@ -20,6 +22,11 @@ summary = [
 [write]
 body = "summary"
 summary = { count = "lines", one = "{n} line", many = "{n} lines" }
+
+[task]
+title = ["description"]
+body = "summary"
+summary = { count = "calls", one = "{agent}: {n} call", many = "{agent}: {n} calls" }
 
 [edit]
 body = "diff"

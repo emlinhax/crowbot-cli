@@ -1,0 +1,53 @@
+description = "A configured MCP server's tools reach the model after crowbot's own and run in AUTO; the server gets its env but never crowbot's key, and what is not text is named"
+args = ["--mode", "auto", "-p", "use the tools"]
+home_files = { "config.toml" = "[mcp.fake]\ncommand = '{fake_mcp}'\nenv = { FAKE_TOKEN = 't0ken' }\n" }
+
+[[reply]]
+calls = [
+  { name = "fake__echo", arguments = '{"text": "hello from the model"}' },
+  { name = "fake__env", arguments = '{}' },
+  { name = "fake__fail", arguments = '{}' },
+  { name = "fake__picture", arguments = '{}' },
+]
+
+[[reply]]
+text = "Done."
+
+[expect]
+exit = 0
+stdout = "Done.\n"
+stderr_contains = ["› fake__echo"]
+
+[[expect.tools]]
+index = 0
+has = ["read", "task", "fake__echo", "fake__env", "fake__fail", "fake__picture"]
+
+[[expect.requests]]
+index = 1
+message = -4
+role = "tool"
+contains = "hello from the model"
+
+[[expect.requests]]
+index = 1
+message = -3
+role = "tool"
+contains = "key: unset; FAKE_TOKEN: t0ken"
+
+[[expect.requests]]
+index = 1
+message = -3
+role = "tool"
+lacks = "test-key"
+
+[[expect.requests]]
+index = 1
+message = -2
+role = "tool"
+contains = "fake-mcp: this tool always fails"
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "[image (image/png) not shown"

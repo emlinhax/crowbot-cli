@@ -22,9 +22,7 @@ Record what each phase taught us under **Learned**.
 - Binary crates warn on unread `pub` fields, so data fields are added only when read.
 - Windows Terminal via crossterm (no kitty enhancement): every key also sends a Release event
   (filter to Press/Repeat); Shift+Tab is `BackTab`+SHIFT; Shift+Enter keeps SHIFT; Ctrl+J is
-  `Char('j')`+CONTROL. A paste is plain key presses (13 for "one
-two
-three", 2 of them Enter)
+  `Char('j')`+CONTROL. A paste is plain key presses (13 for "one⏎two⏎three", 2 of them Enter),
   all queued at once, never `Event::Paste`: the TUI must treat an Enter with more input already
   pending as a newline.
 
@@ -60,6 +58,7 @@ three", 2 of them Enter)
 - Headless runs answer every prompt `Unavailable`, so the model hears why and carries on instead of
   the run hanging; the TUI will answer them for real.
 - `Reply`/`steer`/`follow_up`/`set_mode` carry `allow(dead_code)` outside tests until M3 wires them.
+
 ## M3 — TUI core
 Plan: inline renderer that commits finished blocks to real scrollback and diff-redraws only a live
 region; Enter queues and Tab steers while running; prompts are a numbered card (Yes / No / No +
@@ -114,6 +113,7 @@ command popup; `/login` inside the session.
 - Anything the session waits on (a turn, a login) is a future beside input in one `select!`; a
   command awaited inside the input branch would freeze the screen.
 - Opening the browser belongs in the job, not the state machine, or unit tests open real tabs.
+
 ## M3.9 — Full-screen session (after second use)
 Plan: the session moves to the alternate screen with its own scrollable transcript so the bar can
 never move and thinking blocks can be clicked; a crow working line; an aligned `/models` picker.
@@ -152,7 +152,7 @@ interstitial passed off as the article. The API stays on reqwest.
 - [x] `io/fetch.rs` (`Fetch` in `App`, replacing `App.http`); `CfError` → `FetchError`
 - [x] webfetch on `Fetch`; its messages in `data/tools/webfetch.toml`; the model told not to retry
 - [x] e2e: the real binary and client against a readable page and a Cloudflare-style challenge
-- [x] CI: `.github/actions/boringssl` on every job; glibc is the required Linux release target
+- [x] CI: `.github/actions/setup` on every job; Linux ships static musl
 - [x] First CI run: the toolchain builds on all three OSes and `release-musl` passes, so Linux
       ships fully static
 - [ ] Manual: webfetch on a normal docs page and on a known protected page in a session
@@ -170,9 +170,158 @@ interstitial passed off as the article. The API stays on reqwest.
 - BoringSSL builds against musl too, so the Linux release is the static musl binary and glibc
   stays the CI check target.
 
-## M4 — Account UX in the TUI
-## M5 — Context + sessions (compaction, shadow-git /undo)
-## M6 — Subagents + MCP
+## M4 — Account UX in the TUI (planned 2026-10-16)
+Plan: the session shows where the account stands and handles every account step itself. Signup
+becomes a card. The bar carries the balance and the plan's allowance. The welcome follows the
+key. A rejected key offers the login card, and running out of funds says where the account
+stands. Login asks before it replaces a stored account number. An `/account` card lists and
+revokes keys, sums recent usage and toggles balance fallback. Buying plans, payments and deleting
+the account stay on the web. Each new `Me` field, endpoint or fake route lands with its first
+reader, since unread fields fail `-D warnings`.
+- [x] 4.1 standing: `Me` reads `pass` and `spend_balance_when_dry` (optional; the two-field reply
+      still parses); one `standing()` worded in `data/commands/account.toml`, used by login,
+      `/status` and a first `/account`; the fake's `/api/me` is scriptable
+- [x] 4.2 bar: balance and allowance items (`data/ui.toml [footer]`), refreshed at start, on a
+      key change (a counter beside the key in `Api`), at run end and at most every
+      `tui.account_refresh_secs` mid-run; never on an idle timer
+- [x] 4.3 welcome: replaced in place when the account changes; says not logged in, key file
+      unreadable, key rejected or cannot spend
+- [x] 4.4 login: asks before replacing a stored account number or an unreadable key file; its
+      errors go through `data/errors.toml` like the feed's
+- [x] 4.5 errors say what follows (`session` in `data/errors.toml`): a 401 opens the login card,
+      a 402 or a spent allowance refreshes the account and shows its standing; the key is never
+      dropped on a 401
+- [x] 4.6 signup core shared by `crowbot signup` and the session: the number is saved before
+      anything can drop it, and the proof of work stops when its job is dropped
+- [x] 4.7 `/signup` card: asks before replacing a stored key, shows the number, confirms its last
+      four digits
+- [x] 4.8 `/account` card: overview and keys; revoke any key but the session's own
+- [x] 4.9 `/account`: the last `account.usage_days` of usage by model, and the balance fallback
+      toggle
+- [x] 4.10 README and Learned
+- e2e (auth and billing flows): one local batch after 4.5 (47 passed), one after 4.9 (51 passed).
+- [ ] Manual, against the real API with a scratch account: the bar's allowance on a plan, `/account`
+      usage, a fallback flip and a device key revoked (all tested against the fake only)
+
+**Learned**
+- Unread fields fail `-D warnings`, so the order held only because each field, word and route
+  landed with its first reader: the replace question's device wording left 4.4 and came back in
+  4.7 with signup, its first user.
+- A counter beside the key in `Api` lets the session notice `/login`, `/logout`, `/signup` and
+  `forget` without any of them telling it, and lets a refresh answered for an old key be dropped.
+- A card's prebuilt body (the replace question, `/account`) wraps at the width it opened at, as
+  prompt cards do; a resize does not rewrap it.
+- A key refused while login checks it was never in use, so "it may have been revoked" misled:
+  it is `key_unknown` now. crowbot's `plan_allowance_spent` is a 402 like an empty balance, and
+  `/v1` never reports the balance, so the bar asks `/api/me` (CEILING in `tui/app/account.rs`).
+- pty tests must close a card they leave open, or Ctrl+D goes to the card and the session never
+  quits; and a sentence a card wraps can only be matched by a piece that stays on one row.
+
+## M5 — Context + sessions (compaction, shadow-git /undo) (planned 2026-10-16)
+Plan: a session can be continued, taken back and kept inside the model's window.
+`crowbot --continue` and a `/resume` picker reopen this project's sessions with their model,
+effort and mode. `/undo` takes back the last prompt, the conversation as a branch the file keeps
+and the files from a shadow git snapshot, and `/retry` sends it again. Long conversations are
+summarised before the window fills, by `/compact` or on their own, and a request refused as too
+long is compacted and sent once more. The format stays v1: new line types and optional fields
+only, and a running head decides the branch.
+- [x] 5.1 session tree: the reader follows parents and `rewind` markers to the current branch;
+      64-bit ids; a frozen fixture with branches
+- [x] 5.2 `crowbot --continue` (TUI and headless): reopen the latest session, its recorded
+      model, effort and (in the TUI) mode, and the conversation replayed
+- [x] 5.3 `/resume`: a picker over this project's sessions, the `/models` picker made one table
+      picker
+- [x] 5.4 `/undo`, the conversation: a `rewind` marker, the prompt back in the editor
+- [x] 5.5 shadow git (`io::proc::exec`, `src/snapshot/`): a snapshot before a prompt's first
+      change, files restored on `/undo`; only inside a git work tree
+- [x] 5.6 files changed after the turn are left alone and named; `/status` says whether `/undo`
+      restores files
+- [x] 5.7 `/retry`: undo, then the prompt again as a sibling branch
+- [x] 5.8 `/compact [focus]`: a summary of all but a recent tail (`compaction.keep_tokens`),
+      sent as a reminder so the system prompt never changes
+- [x] 5.9 automatic compaction before any request past `compaction.threshold_pct`;
+      `data/overflow.toml`; a refused request compacted and sent once more
+- [x] 5.10 README and Learned
+- e2e (session format, file restore, requests): one local batch after 5.3 (54 passed), 5.7 (57)
+  and 5.9 (58); CI passed on the push after 5.7, Windows and macOS included.
+- [ ] Live: one real too-long request (or the gateway's own wording) to confirm
+      `data/overflow.toml`'s phrases; only crowbot's 413 is tested end to end
+- [ ] Manual on Windows: `/undo` in a real repository (CRLF, long paths, a file open elsewhere)
+
+**Learned**
+- A running head made branches free: a line without a known parent follows the head where it was
+  written, so every v1 file reads exactly as before and the format stayed v1. Three line types
+  (`rewind`, `snapshot`, `compaction`) and one optional field (`state`) were enough.
+- A summary is weighed only against replies made since it: the big reply just before a summary
+  would otherwise ask for another one at once.
+- The summary request keeps the session's system prompt and tools, so its prefix is the one the
+  vendor has cached; it is the conversation plus one instruction, not a new conversation.
+- git needs the shadow's folder to exist before `--git-dir` can init it, and a user's global
+  `core.hooksPath` would run their hooks on a restore; hooks point at the shadow's own empty
+  folder. Using the repository's top level as the work tree is what makes `.gitignore` apply.
+- The fake's errors say "fake {kind}", so overflow by wording is tested against the run harness,
+  and only the 413 crowbot answers itself goes end to end.
+- A pty test that leaves a prompt in the editor (undo puts it back) must clear it before Ctrl+D
+  can quit.
+## M6 — Subagents + MCP (planned 2026-10-16)
+Plan: the model can hand a self-contained job to a subagent, and use the tools of MCP servers the
+user configures. A `task` tool runs a child loop of one kind from `data/agents/` (`explore`
+read-only, `general` with the parent's tools) under the parent's mode; its answer is the tool
+result, its cost counts in the parent's, its conversation is a file beside the parent's, and its
+edits are the parent prompt's for /undo. MCP servers are local programs in `[mcp.<name>]`, started
+with the session (a project's only once trusted); their tools join the registry as
+`<server>__<tool>` and ask like bash: MANUAL asks, AUTO runs, PLAN refuses all but read-only ones.
+- [x] 6.1 the registry holds owned specs, built by adding; each description filled once
+- [x] 6.2 the run harness moves to `src/agent/testing.rs`
+- [x] 6.3 `task` + `explore`: a child runs in its own file and answers
+- [x] 6.4 a child's cost counts in the parent's, live and after resume
+- [x] 6.5 the task card, headless notes, `child` events in `--json`
+- [x] 6.6 parallel children within `subagent.parallel`
+- [x] 6.7 `general`: the parent's tools; its edits are covered by /undo
+- [x] 6.8 a plain No inside a child stops the parent
+- [x] 6.9 README and Learned (subagents)
+- [x] 6.10 trust lists a left-out table entry by entry, secrets by name only
+- [x] 6.11 `[mcp.<name>]` servers start with the session (`io::proc` child, JSON-RPC, handshake);
+      /status names them
+- [x] 6.12 their tools join the registry (`<server>__<tool>`, optional `tools` allowlist) and ask
+      as `mcp` / `mcp_write`
+- [x] 6.13 read-only tools (`readOnlyHint`) run in PLAN by the rules and take no snapshot
+- [x] 6.14 interrupts send `notifications/cancelled`; a server that stops is reported once
+- [x] 6.15 README and Learned (MCP)
+- e2e: one local batch after 6.5, 6.8, 6.12 and 6.14; each batch is pushed so CI covers Windows.
+  Subagents: 61 after 6.5, 63 after 6.8. MCP: 64 after 6.12, 65 after 6.14.
+- Open (live): a real npx server on Linux and Windows (a `.cmd` shim started directly); the
+  gateway taking real-world schemas such as GitHub's; a battery re-run against the baseline, since
+  `task` and `system.md` changed it.
+
+**Learned (subagents)**
+- A subagent is the same loop under its parent: a `Shared` of its own whose cancel token is a
+  child of the parent run's, with the parent's prompts and mode shared and its own queues, read
+  set and reminder latch. Nothing in the loop had to learn it was nested; the run future proved
+  `Send` behind the tool's `BoxFuture` without a change.
+- One `child` event wrapping the subagent's own keeps the stream additive and settles a real
+  collision: subagents reuse call ids like `c1`, so frontends keep their lists for the outermost
+  call only.
+- An interrupt must wait for a subagent, not drop it (`Tool::stops_on_cancel`), or what it
+  spent and its last turn are lost.
+- Esc at a permission card is a No, not an interrupt; inside a subagent that No now stops the
+  parent, which is what makes a declined child card behave like one of the session's own.
+- One snapshot per prompt, shared through the root run's `OnceCell`, is what lets parallel
+  subagents edit without two `git add -A` on one shadow index.
+
+**Learned (MCP)**
+- The RPC dispatch keeps a sender to answer pings, so dropping the client never closed the
+  server's stdin and every stop waited out its grace, then killed. A stop closes stdin itself;
+  only a test that stopped a server with a sender alive showed it.
+- A program that dies closes stdout and stderr in no set order, so its stderr tail read when the
+  stream ends can come back empty. The tail waits, bounded, for stderr to close: the start notice
+  had the same race and passed by luck.
+- A tool left out over a name clash, said through "is not running", showed the `mcp` event must
+  carry the whole sentence from the side that knows what happened.
+- `[[expect.tools]]` with exact names would tie every MCP scenario to the built-in list; `has` and
+  `lacks` keep each about its server. A fake that logs what it heard into the project, read back
+  with `expect.files`, proves the cancel without a test harness of its own.
+- `make lint | grep` hides lint's exit status: one batch passed that way while lint failed.
 ## M7 — Release (`prod` → GitHub Releases, installers)
 - Added 2026-10-02: every push to `prod` runs `ci.yml` through `release.yml` and publishes
   `crowbot-<target>` for musl Linux, Apple-silicon macOS and Windows, plus `SHA256SUMS`. Proven
@@ -182,8 +331,35 @@ interstitial passed off as the article. The API stays on reqwest.
   and a daily background update for interactive release builds (SHA256SUMS-checked, the program
   swapped where it stands); `crowbot install` / `uninstall`, and on Windows a double-clicked
   release offers to install itself (user PATH in the registry, Apps & Features entry).
-- Open: signing (minisign for updates, Authenticode and notarisation for SmartScreen and
-  Gatekeeper), Intel macOS and arm64 Linux targets, a website installer script.
+- Planned 2026-10-16: releases sign `SHA256SUMS` with minisign and the updater refuses a release
+  whose signature fails; `install.sh` and `install.ps1` go out with every release, so one line
+  installs crowbot. Decided: minisign only (notarisation and Authenticode need paid accounts);
+  the scripts live here as release assets, and the website's docs show their one-liners.
+- [x] 7.1 the updater checks a minisign signature on `SHA256SUMS`, its trusted comment naming the
+      release (`data/release.toml` `[signature]`, a list of keys)
+- [x] 7.2 the release signs `SHA256SUMS` with a key kept as a CI secret
+- [x] 7.3 `install/install.sh` and `install/install.ps1`, published with each release
+- [ ] 7.4 README and the website's docs name the one-liners and the signature
+- [ ] 7.5 a release, on an explicit go; the signature and the one-liner checked live
+- e2e: one local batch after 7.3, then pushed so CI runs the scripts on macOS and Windows.
+- Open: notarisation and Authenticode (paid accounts), Intel macOS, arm64 Linux and Windows on
+  ARM targets.
+
+**Learned**
+- From 91c1b39 (2026-10-08) to efbb769 every CI job only built: `if: matrix.checks != false`
+  is false for an entry without `checks`, as Actions compares null and false as 0. Every green
+  run of M5, M6 and M7.1–7.3 tested Linux only, on this machine; "CI covers macOS and Windows"
+  in M5's and M6's notes was not true until 9964060. A flag now names what to skip
+  (`build_only`), and a run counts as tested only once its job logs show `test result` lines.
+- What the eight days hid, all fixed: /undo on macOS and Windows snapshotted the shadow's own git
+  dir and a restore deleted its objects (crowbot's home inside the work tree was compared
+  unresolved against git's resolved path); a test file name Windows refuses (`*`); an unreadable
+  key file's reason cut off by a long macOS temp path; pty tests sending /undo before the run had
+  ended, or an Enter read with its text as a paste on a loaded Windows runner; two
+  platform-only lint errors.
+- The minisign crate writes raw key bytes from `generate_and_write_*`; the CLI's file format is
+  `to_box().into_string()`. The key was proven with Ubuntu 24.04's minisign 0.11, the runner's,
+  unpacked without root.
 
 ## M8 — Forums (Tapatalk/mobiquo)
 - Added 2026-10-03: crowbot browses forums that run the Tapatalk plugin. Transport rides
@@ -194,16 +370,14 @@ interstitial passed off as the article. The API stays on reqwest.
   (read, default-allow) and `forum_post` (reply or new topic, confirmed every time even in AUTO,
   refused headless). `/forums` and `crowbot forums` add, log in (hidden password, never stored),
   list, logout and remove.
-- 2026-10-04: in a session `/forums` is a card (`src/tui/forums.rs`): the list, a menu per forum
-  (log in / log out / remove), login as a username then a dots-only password, and an add flow that
-  offers the `[[suggest]]` searches not yet added, or the user's own words, and picks from what
-  the directory found. Its network and store work shares the login card's job slot, so closing
-  either card drops what it waited on. e2e: a pty test logs in to a fake forum seeded into a plain
-  sealed store, wrong password first, and checks that no file holds the password.
-- Verified by unit tests at every layer against in-process fakes (transport POST/cookies, codec
-  incl. malformed XML and faults, backend against a fake mobiquo, directory against a fake
-  directory, store round-trip, tool rendering, command parsing). Protocol facts came from a live
-  capture (`HANDOFF.md`) but have not yet been re-run live from this build.
+- 2026-10-04: `/forums` is a card (`src/frontend/tui/forums.rs`): list, per-forum menu, username +
+  masked password login, and an add flow (unadded `[[suggest]]` searches or free text → directory
+  results). Its work runs in the one card job slot, so closing the card drops what it waited on.
+  e2e: a pty test logs in to a fake forum, wrong password first, and checks no file holds the
+  password.
+- Unit-tested at every layer against in-process fakes (transport, codec incl. malformed XML,
+  backend, directory, store, tools, commands). Protocol facts come from a live capture; not yet
+  re-run live.
 - Open:
   - a live smoke run against UnknownCheats: confirm `search`/`reply_post`/`new_topic` param shapes
     and that cffetch clears the WAF (the mobiquo dir can rotate — re-resolve on a 404);
@@ -239,16 +413,22 @@ interstitial passed off as the article. The API stays on reqwest.
 - [x] Pilot (`make battery TASKS=… REPEATS=1`, 3 runs, $0.04), then the full run and a report:
       `bench/runs/20261012T105806` (local only), 90 runs in 81 min, $1.89, 69 done, 14 ended on
       a server error. The candidates are below, each with the count behind it.
-- [ ] Re-run to show the applied candidates moved the numbers. The baseline's sessions stay on the
-      machine that ran it, so its `report.md` and `results.jsonl` are kept in `bench/baseline/`
-      and the new report is compared with that one by hand. On a fresh machine (Linux or macOS:
+- [x] Re-run to show the applied candidates moved the numbers: `bench/runs/20261016T085230`
+      (local only; crowbot 506f196), 90 runs in 86 min, $2.78, 87 done, none ended on an error.
+      Its `report.md` and `results.jsonl` are the new `bench/baseline/`; the first full run's
+      stay in git history. A later run is compared with that one by hand. On a fresh machine
+      (Linux or macOS:
       the runner stops runs with SIGINT, and ufo's setup links with `ln -s`):
-      1. Rust from `rust-toolchain.toml` plus libclang, git, python3, and node with corepack.
+      1. Rust from `rust-toolchain.toml` plus libclang, git, python3, and node 18.12 or later with
+         corepack (ufo's pnpm refuses older).
       2. The key in `~/.config/crowbot-smoke.key` (mode 600), never in the repo.
       3. `make battery-setup` (about 2 min, free).
-      4. `CROWBOT_SMOKE_KEY=$(cat ~/.config/crowbot-smoke.key) make battery` (about 80 min, ~$2).
+      4. `CROWBOT_SMOKE_KEY=$(cat ~/.config/crowbot-smoke.key) make battery` (~$2; about 2.5 h at
+         `parallel = 2`, which must not exceed the requests the key's plan runs in flight).
       5. `cargo run -q -- battery report bench/runs/<stamp>`, then diff its `report.md` with
          `bench/baseline/report.md`.
+      A run beside ongoing work goes in a detached `git worktree` of the measured commit; it builds
+      its own `target/` (a few GB), so remove the worktree once the report is written.
 
 **Learned**
 - A run costs about 2¢ with this model, not the 8.5¢ estimated: the whole battery is under $2.
@@ -274,8 +454,37 @@ interstitial passed off as the article. The API stays on reqwest.
   unlikely to move these; the gate and the tools have to meet the model where it is.
 - Setup: the cached repos must be excluded from crowbot's Cargo workspace, and pnpm through
   corepack stops to ask unless `COREPACK_ENABLE_DOWNLOAD_PROMPT=0`.
+- semver's copies shared one `CARGO_TARGET_DIR`, and `git archive` stamps every file with the
+  commit's time, so cargo took another copy's later build as fresh: a second setup failed untouched
+  on the tilde bug's binary. Each copy now builds its own `target/`. In the baseline, a cargo check
+  or the model's own `cargo test` could have run a parallel run's binary, so its semver rows are
+  suspect, fix-caret's one failure most of all.
+- The first re-run (`20261014T090725`) is void: the smoke account's plan runs 2 requests in flight
+  and the battery ran 4, so 84 of 90 runs ended on a 429 after crowbot's four 2 s retries.
+  `parallel` is now 2.
+- The re-run (2026-10-16) against the first full run: 87/90 done (69), none ended on an error
+  (14), PLAN 16/18 (6/18), no run stopped by the 15-minute wall (9), $2.78 and 14.5M tokens
+  ($1.89, 10.1M) because runs that ended early now finish. None of the 502s, 503s or cut-off
+  streams came back, which is crowbot's gateway as much as this client, so the run says nothing
+  new about retries or the stall timeout.
+- The candidates moved what they aimed at: under MANUAL `cd` (54), `ls` (33), `git log` (19),
+  `echo` (16) and `git status` (7) no longer ask, PLAN refused no `git` (21), and heredoc bodies
+  no longer show as commands to approve.
+- codesearch's lookups moved to webfetch: 16 calls became 53, 17 of them failed, and MANUAL would
+  ask before each. The model still reads the pinned repos upstream, so private fixtures remain the
+  way to measure what it works out alone.
+- Readers as reads half landed: PLAN still refused 12 grep lines, 6 of them `"a\|b"`
+  alternations that the reader check refused for the backslash inside double quotes. Fixed after
+  the run (de7b042), not yet measured; `2>/dev/null`, `|| true`, `-r` and a pipe into `awk` keep
+  the rest ordinary commands by design.
+- The three runs not done are the model's: `ufo-fix-double-slash` #3 stopped on a `length` finish
+  in its first reasoning (1 turn, 1.3 s), and two `semver-plan-intersects` plans never named the
+  file the check looks for.
+- A pinned worktree's own `target/` beside the main one filled the one 98 GB partition as the run
+  ended. Dev builds now keep line tables only (9 GB to 3.1 GB).
 
-**Candidates** (counts across the 90 runs; all five applied 2026-10-12, re-run still to come)
+**Candidates** (counts across the first full run's 90; all five applied 2026-10-12 and measured
+2026-10-16, above)
 - [x] codesearch timed out on 14 of 21 calls at 30 s, and the rest were upstream lookups: removed
       rather than given its own timeout; webfetch covers what it was for.
 - [x] `cd <project> &&` and `git -C <project>` run where commands run anyway
@@ -290,5 +499,7 @@ interstitial passed off as the article. The API stays on reqwest.
 - [x] Each reply event must come within `chat.stall_timeout_secs` (300 s), keepalives or not:
       one run lost 15 minutes.
 - Later: PLAN allows `npx vitest` and `python3 -m unittest`; edit's "read it first" refusal fired
-  6 times after grep had shown the lines; read takes `path:line` (once). read→read→read (54) is
-  mostly reads that depend on the one before, so it is not a batching candidate yet.
+  6 times after grep had shown the lines; read takes `path:line` (once). read→read→read (54, then
+  83 in the re-run) is mostly reads that depend on the one before, so it is not a batching
+  candidate yet. Under MANUAL, webfetch (53) and project test runs (`python` 54, `cargo test` 39)
+  are now the most asked; both run or fetch what a person should see, so they stay asks.

@@ -1,6 +1,11 @@
 description = "webfetch through the real cffetch client: a readable page reaches the model as markdown"
 args = ["--mode", "auto", "-p", "read the docs"]
-replies = ["web/fetch_ok.sse", "web/done.sse"]
+
+[[reply]]
+calls = [{ name = "webfetch", arguments = '{"url": "{base}/web/ok"}' }]
+
+[[reply]]
+text = 'Done.'
 
 [expect]
 exit = 0

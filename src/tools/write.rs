@@ -2,22 +2,29 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 
-use super::permissions;
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
+use super::target::{self, Target};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
+use crate::data;
 use crate::io::{self, fs::Access, fs::Kind};
+use crate::permission::catalog;
+use crate::text::diff;
+use crate::text::template::fill;
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "write",
-        include_str!("../../data/tools/write.md"),
-        include_str!("../../data/tools/write.schema.json"),
-    )
-});
+static SPEC: LazyLock<Spec> = super::spec!("write");
+
+static TEXT: LazyLock<Text> = data::load!("tools/write.toml");
 
 #[derive(Deserialize)]
-struct Args {
+#[serde(deny_unknown_fields)]
+struct Text {
+    created: String,
+    replaced: String,
+}
+
+#[derive(Deserialize)]
+pub struct Args {
     path: String,
     content: String,
 }
@@ -25,58 +32,57 @@ struct Args {
 pub struct Write;
 
 impl Tool for Write {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: Args = parse(args)?;
-        let target = target::resolve(&cx.app.paths, &args.path).map_err(Refusal::Refused)?;
-        if target.kind().map_err(Refusal::Refused)? == Kind::Dir {
-            return Err(Refusal::Refused(format!(
-                "{} is a directory.",
-                target.shown
-            )));
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+        let target = target::resolve(&cx.app.paths, &args.path)?;
+        if target.kind()? == Kind::Dir {
+            return Err(fill(&target::TEXT.is_dir, &[("path", &target.shown)]).into());
         }
-        cx.files()
-            .check_fresh(&target.path, &target.shown)
-            .map_err(Refusal::Refused)?;
-        let preview: String = args
-            .content
-            .lines()
-            // All of it: the card shows what fits and counts the rest.
-            .map(|l| format!("+{l}\n"))
-            .collect();
-        Ok(Check::new(target::asks(permissions::EDIT.name, &target)).with_preview(preview))
+        cx.files().check_fresh(&target.path, &target.shown)?;
+        let preview = diff::added(&args.content);
+        Ok(Check::new(target::asks(catalog::EDIT.name, &target)).with_preview(preview))
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let args: Args = match parse_or_fail(&args) {
-                Ok(args) => args,
-                Err(out) => return out,
-            };
-            let target = match target::resolve(&cx.app.paths, &args.path) {
-                Ok(target) => target,
-                Err(why) => return Output::error(why),
-            };
-            let _guard = cx.files().lock(&target.path).await;
-            if let Err(why) = cx.files().check_fresh(&target.path, &target.shown) {
-                return Output::error(why);
-            }
+            let target = target::resolve(&cx.app.paths, &args.path)?;
+            let _guard = cx.files().claim(&target.path, &target.shown).await?;
             let created = target.kind() == Ok(Kind::Missing);
-            if let Err(e) =
-                io::fs::write_atomic(&target.path, args.content.as_bytes(), Access::Shared)
-            {
-                return Output::error(format!("Could not write {}: {e}", target.shown));
-            }
-            cx.files().saw(&target.path);
+            save(cx, &target, &args.content)?;
             let lines = args.content.lines().count();
-            let verb = if created { "Created" } else { "Replaced" };
-            Output::ok(format!("{verb} {} ({lines} lines).", target.shown))
-                .with_details(json!({"created": created, "lines": lines}))
+            let said = if created {
+                &TEXT.created
+            } else {
+                &TEXT.replaced
+            };
+            Ok(Output::ok(fill(
+                said,
+                &[("path", &target.shown), ("lines", &lines.to_string())],
+            ))
+            .with_details(json!({"created": created, "lines": lines})))
         })
     }
+}
+
+/// Writes `text` over the target and marks it read, so the model may change it again.
+pub fn save(cx: &ToolCx<'_>, target: &Target, text: &str) -> Result<(), String> {
+    io::fs::write_atomic(&target.path, text.as_bytes(), Access::Shared).map_err(|e| {
+        fill(
+            &target::TEXT.write_failed,
+            &[("path", &target.shown), ("error", &e.to_string())],
+        )
+    })?;
+    cx.files().saw(&target.path);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -88,11 +94,8 @@ mod tests {
     fn the_preview_holds_every_new_line_so_the_card_can_count_them() {
         let project = Project::new();
         let content: String = (0..100).map(|i| format!("line {i}\n")).collect();
-        let check = Write
-            .check(
-                &json!({"path": "big.txt", "content": content}),
-                &project.cx(),
-            )
+        let check = project
+            .check(&Write, &json!({"path": "big.txt", "content": content}))
             .unwrap();
         assert_eq!(check.preview.unwrap().lines().count(), 100);
     }
@@ -100,18 +103,15 @@ mod tests {
     #[tokio::test]
     async fn creates_new_files_but_only_replaces_read_ones() {
         let project = Project::new();
-        let out = Write
-            .run(
-                json!({"path": "new/a.txt", "content": "hi\n"}),
-                &project.cx(),
-            )
+        let out = project
+            .run(&Write, json!({"path": "new/a.txt", "content": "hi\n"}))
             .await;
         assert!(!out.is_error, "{}", out.content);
         assert_eq!(project.read("new/a.txt"), "hi\n");
 
         project.write("old.txt", "keep");
-        let refused = Write
-            .run(json!({"path": "old.txt", "content": "x"}), &project.cx())
+        let refused = project
+            .run(&Write, json!({"path": "old.txt", "content": "x"}))
             .await;
         assert!(refused.is_error);
         assert_eq!(project.read("old.txt"), "keep");

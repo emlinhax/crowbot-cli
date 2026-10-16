@@ -3,13 +3,12 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
+use crate::data;
+use crate::io;
 use crate::io::http::Method;
-use crate::settings;
+use crate::text::template;
 
-const SRC: &str = include_str!("../../data/endpoints.toml");
-
-static CATALOG: LazyLock<Catalog> =
-    LazyLock::new(|| toml::from_str(SRC).expect("data/endpoints.toml is checked by tests"));
+static CATALOG: LazyLock<Catalog> = data::load!("endpoints.toml");
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -46,7 +45,7 @@ pub fn get(id: &str) -> &'static Endpoint {
 
 pub fn origin(name: &str) -> String {
     let origin = &CATALOG.origins[name];
-    settings::env(&origin.env)
+    io::env::var(&origin.env)
         .unwrap_or_else(|| origin.url.clone())
         .trim_end_matches('/')
         .to_owned()
@@ -58,10 +57,7 @@ pub fn url(endpoint: &Endpoint, args: &[(&str, &str)]) -> String {
 
 /// The endpoint's path with its `{placeholders}` filled.
 pub fn path(endpoint: &Endpoint, args: &[(&str, &str)]) -> String {
-    args.iter()
-        .fold(endpoint.path.clone(), |path, (key, value)| {
-            path.replace(&format!("{{{key}}}"), value)
-        })
+    template::fill(&endpoint.path, args)
 }
 
 #[cfg(test)]

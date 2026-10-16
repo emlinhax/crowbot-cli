@@ -1,0 +1,225 @@
+//! The rules above and below the message bar, in the mode's colour. The bottom one carries the
+//! footer items (data/ui.toml), right-aligned; dashes shrink before items are cut.
+
+use crate::api::account::Me;
+use crate::effort;
+use crate::frontend::tui::ui::{self, FooterItem};
+use crate::mode::Mode;
+use crate::text::styled::{Line, Style};
+use crate::text::template::fill;
+use crate::text::units;
+
+/// Dashes kept at each end of the bottom rule so it still reads as a rule.
+const LEAD: usize = 2;
+const TAIL: usize = 2;
+
+pub struct Info<'a> {
+    pub model: &'a str,
+    pub effort: Option<&'a str>,
+    /// Share of the context window the last request used.
+    pub context_pct: Option<u64>,
+    pub cost_micros: u64,
+    /// Where the account stood at its last refresh; `None` until one lands.
+    pub account: Option<&'a Me>,
+}
+
+pub fn top(mode: &Mode, width: usize) -> Line {
+    Line::styled(rule().repeat(width), Style::fg(&mode.color))
+}
+
+pub fn bottom(mode: &Mode, info: &Info<'_>, width: usize) -> Line {
+    let style = Style::fg(&mode.color);
+    // Dashes, a space, the items, a space, the tail.
+    let room = width.saturating_sub(LEAD + TAIL + 2);
+    let items = items(mode, info);
+    if room == 0 || items.spans.is_empty() {
+        return Line::styled(rule().repeat(width), style);
+    }
+    let items = items.truncate(room);
+    let mut line = Line::styled(
+        rule().repeat(width - items.width() - TAIL - 2) + " ",
+        style.clone(),
+    );
+    line.extend(items);
+    line.push(format!(" {}", rule().repeat(TAIL)), style);
+    line
+}
+
+fn rule() -> &'static str {
+    &ui::get().marks.rule
+}
+
+fn footer() -> &'static ui::Footer {
+    &ui::get().footer
+}
+
+fn items(mode: &Mode, info: &Info<'_>) -> Line {
+    let footer = footer();
+    let mut line = Line::default();
+    for item in &footer.items {
+        let Some(part) = item_line(mode, info, *item) else {
+            continue;
+        };
+        if !line.spans.is_empty() {
+            line.push(&footer.separator, Style::fg("muted"));
+        }
+        line.extend(part);
+    }
+    line
+}
+
+fn item_line(mode: &Mode, info: &Info<'_>, item: FooterItem) -> Option<Line> {
+    let muted = Style::fg("muted");
+    Some(match item {
+        FooterItem::Mode => Line::styled(&mode.label, Style::fg(&mode.color).bold()),
+        FooterItem::Model => {
+            let mut line = Line::styled(info.model, muted.clone());
+            if let Some(id) = info.effort {
+                let color = effort::get(id).map_or("muted", |l| l.color.as_str());
+                line.push(format!(" {id}"), Style::fg(color));
+            }
+            line
+        }
+        FooterItem::Context => {
+            let pct = info.context_pct?.to_string();
+            Line::styled(fill(&footer().context, &[("pct", &pct)]), muted)
+        }
+        FooterItem::Cost => {
+            let cost = units::usd_micros(info.cost_micros);
+            Line::styled(fill(&footer().cost, &[("cost", &cost)]), muted)
+        }
+        FooterItem::Allowance => {
+            let pass = info.account?.pass.as_ref()?;
+            let pct = pass.pct().to_string();
+            let text = fill(&footer().allowance, &[("plan", &pass.label), ("pct", &pct)]);
+            Line::styled(text, muted)
+        }
+        FooterItem::Balance => {
+            let me = info.account?;
+            let balance = units::usd_micros(me.balance_microdollars);
+            let style = if me.can_spend {
+                muted
+            } else {
+                Style::fg("warn")
+            };
+            Line::styled(fill(&footer().balance, &[("balance", &balance)]), style)
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mode;
+
+    fn info() -> Info<'static> {
+        Info {
+            model: "crow-2",
+            effort: Some("high"),
+            context_pct: Some(12),
+            cost_micros: 42_000,
+            account: None,
+        }
+    }
+
+    fn manual() -> &'static Mode {
+        mode::get("manual").unwrap()
+    }
+
+    #[test]
+    fn the_top_rule_is_a_plain_rule_across_the_width() {
+        let line = top(manual(), 30);
+        assert_eq!(line.text(), "─".repeat(30));
+        assert!(line.to_tagged().starts_with("[mode_manual]"));
+    }
+
+    #[test]
+    fn the_bottom_rule_right_aligns_the_items_and_shrinks_its_dashes_first() {
+        let items = "MANUAL · crow-2 high · ctx 12% · $0.042 est";
+        for width in [100, 60] {
+            let line = bottom(manual(), &info(), width);
+            assert_eq!(line.width(), width);
+            assert!(
+                line.text().ends_with(&format!(" {items} ──")),
+                "{}",
+                line.text()
+            );
+            assert!(line.text().starts_with("──"));
+        }
+        let narrow = bottom(manual(), &info(), 30);
+        assert_eq!(narrow.width(), 30);
+        assert!(
+            narrow.text().starts_with("── MANUAL · crow-2"),
+            "{}",
+            narrow.text()
+        );
+        assert!(narrow.text().ends_with(" ──"));
+        assert_eq!(bottom(manual(), &info(), 4).text(), "────");
+    }
+
+    #[test]
+    fn the_frame_is_in_the_mode_colour_and_effort_in_its_level_colour() {
+        let line = bottom(mode::get("plan").unwrap(), &info(), 60);
+        let tagged = line.to_tagged();
+        assert!(tagged.starts_with("[mode_plan]"), "{tagged}");
+        assert!(tagged.contains("[effort_high] high[/]"), "{tagged}");
+        assert!(tagged.contains("[mode_plan+bold]PLAN[/]"), "{tagged}");
+    }
+
+    #[test]
+    fn items_without_a_value_are_skipped() {
+        let i = Info {
+            effort: None,
+            context_pct: None,
+            ..info()
+        };
+        assert!(
+            bottom(manual(), &i, 60)
+                .text()
+                .ends_with(" MANUAL · crow-2 · $0.042 est ──")
+        );
+    }
+
+    #[test]
+    fn the_account_shows_its_allowance_then_its_balance_warned_when_it_cannot_spend() {
+        let pro = Me {
+            balance_microdollars: 12_300_000,
+            can_spend: true,
+            pass: Some(crate::api::account::Pass {
+                label: "Pro".into(),
+                allowance_bp: 6_375,
+                refills: None,
+            }),
+            ..Me::default()
+        };
+        let line = bottom(
+            manual(),
+            &Info {
+                account: Some(&pro),
+                ..info()
+            },
+            100,
+        );
+        assert!(
+            line.text()
+                .ends_with(" $0.042 est · Pro 63% · $12.30 left ──"),
+            "{}",
+            line.text()
+        );
+        let dry = Me {
+            can_spend: false,
+            ..Me::default()
+        };
+        let tagged = bottom(
+            manual(),
+            &Info {
+                account: Some(&dry),
+                ..info()
+            },
+            100,
+        )
+        .to_tagged();
+        assert!(tagged.contains("[warn]$0.00 left[/]"), "{tagged}");
+        assert!(!tagged.contains("Pro"), "{tagged}");
+    }
+}

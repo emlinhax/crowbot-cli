@@ -6,6 +6,8 @@
 #![allow(clippy::disallowed_methods, clippy::disallowed_macros)]
 
 mod cmd;
+#[path = "../common/mod.rs"]
+mod common;
 mod corpus;
 // Shared with the e2e suite, which uses all of it.
 #[allow(dead_code)]
@@ -100,7 +102,15 @@ fn against(fake: &Fake, out: &Path) -> Battery {
 }
 
 fn auto_fix(fake: &Fake) {
-    fake.script((1..=4).map(|i| Reply::sse(&format!("scenarios/auto_fix/{i}.sse"))));
+    fake.script([
+        Reply::call("read", r#"{"path": "src/calc.txt"}"#),
+        Reply::call(
+            "edit",
+            r#"{"path": "src/calc.txt", "edits": [{"old_text": "2 + 2 = 5", "new_text": "2 + 2 = 4"}]}"#,
+        ),
+        Reply::call("bash", r#"{"command": "cat src/calc.txt"}"#),
+        Reply::text("Fixed: 2 + 2 = 4."),
+    ]);
 }
 
 #[tokio::test(flavor = "multi_thread")]

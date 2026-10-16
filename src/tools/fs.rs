@@ -1,29 +1,46 @@
 //! Moving, copying and deleting files and directories, and making directories: the shell's `mv`,
 //! `cp`, `rm` and `mkdir`, asked for under the edit permission like any other change.
 
+use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::many::Many;
-use super::permissions;
 use super::target::{self, Target};
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
+use crate::config::limits;
+use crate::data;
 use crate::io::{self, fs::Kind};
-use crate::limits;
+use crate::permission::catalog;
+use crate::text::template::fill;
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "fs",
-        include_str!("../../data/tools/fs.md"),
-        include_str!("../../data/tools/fs.schema.json"),
-    )
-});
+static SPEC: LazyLock<Spec> = super::spec!("fs");
+
+static TEXT: LazyLock<Text> = data::load!("tools/fs.toml");
 
 #[derive(Deserialize)]
-struct Args {
+#[serde(deny_unknown_fields)]
+struct Text {
+    too_many: String,
+    link: String,
+    holds_cwd: String,
+    is_file: String,
+    full_dir: String,
+    no_to: String,
+    no_name: String,
+    into_file: String,
+    exists: String,
+    into_itself: String,
+    failed: String,
+    with_contents: String,
+    verbs: HashMap<Action, Verbs>,
+}
+
+#[derive(Deserialize)]
+pub struct Args {
     action: Action,
     path: Many<String>,
     #[serde(default)]
@@ -32,7 +49,7 @@ struct Args {
     recursive: bool,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 enum Action {
     Move,
@@ -41,15 +58,17 @@ enum Action {
     Mkdir,
 }
 
+/// How the permission card asks an action, and how the result reports it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Verbs {
+    ask: String,
+    done: String,
+}
+
 impl Action {
-    /// How the permission card asks it, and how the result reports it.
-    fn verbs(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Move => ("move", "Moved"),
-            Self::Copy => ("copy", "Copied"),
-            Self::Delete => ("delete", "Deleted"),
-            Self::Mkdir => ("make", "Made"),
-        }
+    fn verbs(self) -> &'static Verbs {
+        &TEXT.verbs[&self]
     }
 }
 
@@ -63,42 +82,40 @@ struct Step {
 pub struct Fs;
 
 impl Tool for Fs {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: Args = parse(args)?;
-        let steps = plan(cx, &args).map_err(Refusal::Refused)?;
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+        let steps = plan(cx, args)?;
         let mut asks = Vec::new();
         let mut preview = String::new();
         for step in &steps {
             // A copy only reads its source, so copying a secret asks as reading one does.
             let source = match args.action {
-                Action::Copy => permissions::READ.name,
-                _ => permissions::EDIT.name,
+                Action::Copy => catalog::READ.name,
+                _ => catalog::EDIT.name,
             };
             asks.extend(target::asks(source, &step.from));
             if let Some(to) = &step.to {
-                asks.extend(target::asks(permissions::EDIT.name, to));
+                asks.extend(target::asks(catalog::EDIT.name, to));
             }
-            preview.push_str(&format!("{} {}\n", args.action.verbs().0, what(step)));
+            preview.push_str(&format!("{} {}\n", args.action.verbs().ask, what(step)));
         }
         Ok(Check::new(asks).with_preview(preview.trim_end().to_owned()))
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let args: Args = match parse_or_fail(&args) {
-                Ok(args) => args,
-                Err(out) => return out,
-            };
             // Planned again: the files may have changed while the user was asked.
-            let steps = match plan(cx, &args) {
-                Ok(steps) => steps,
-                Err(why) => return Output::error(why),
-            };
-            let (verb, done_verb) = args.action.verbs();
+            let steps = plan(cx, &args)?;
+            let verbs = args.action.verbs();
             let mut lines = Vec::new();
             let mut done = 0;
             for step in &steps {
@@ -106,16 +123,23 @@ impl Tool for Fs {
                 match act(args.action, step) {
                     Ok(()) => {
                         done += 1;
-                        lines.push(format!("{done_verb} {}.", what(step)));
+                        lines.push(format!("{} {}.", verbs.done, what(step)));
                     }
-                    Err(e) => lines.push(format!("Could not {verb} {}: {e}", step.from.shown)),
+                    Err(e) => lines.push(fill(
+                        &TEXT.failed,
+                        &[
+                            ("verb", &verbs.ask),
+                            ("path", &step.from.shown),
+                            ("error", &e.to_string()),
+                        ],
+                    )),
                 }
             }
             let content = lines.join("\n");
             if done == 0 {
-                return Output::error(content);
+                return Err(content);
             }
-            Output::ok(content).with_details(json!({ "paths": done }))
+            Ok(Output::ok(content).with_details(json!({ "paths": done })))
         })
     }
 }
@@ -138,7 +162,7 @@ fn what(step: &Step) -> String {
     let from = &step.from.shown;
     match &step.to {
         Some(to) => format!("{from} → {}", to.shown),
-        None if step.dir => format!("{from} and everything in it"),
+        None if step.dir => fill(&TEXT.with_contents, &[("path", from)]),
         None => from.clone(),
     }
 }
@@ -146,45 +170,36 @@ fn what(step: &Step) -> String {
 /// Each path resolved and checked, or why the call cannot be done, in words for the model.
 fn plan(cx: &ToolCx<'_>, args: &Args) -> Result<Vec<Step>, String> {
     let paths = &cx.app.paths;
-    let given: Vec<String> = match &args.path {
-        Many::One(path) => vec![path.clone()],
-        Many::Set(paths) => paths.clone(),
-    };
+    let given = args.path.all();
     let max = limits::get().tools.fs_batch_max.value;
     if given.len() > max {
-        return Err(format!("At most {max} paths in one call."));
+        return Err(fill(&TEXT.too_many, &[("max", &max.to_string())]));
     }
     let project = io::fs::canonical(&paths.project);
     let mut steps = Vec::new();
-    for raw in &given {
+    for raw in given {
         let from = target::resolve(paths, raw)?;
+        let path = [("path", from.shown.as_str())];
         if from.link {
-            return Err(format!(
-                "{} is a symbolic link; handle links in the shell.",
-                from.shown
-            ));
+            return Err(fill(&TEXT.link, &path));
         }
         if project.starts_with(&from.path) {
-            return Err(format!(
-                "{} holds the working directory; it stays where it is.",
-                from.shown
-            ));
+            return Err(fill(&TEXT.holds_cwd, &path));
         }
         let kind = from.kind()?;
         if args.action != Action::Mkdir && kind == Kind::Missing {
-            return Err(format!("{} does not exist.", from.shown));
+            return Err(fill(&target::TEXT.missing, &path));
         }
         match args.action {
             Action::Mkdir if kind == Kind::File => {
-                return Err(format!("{} is a file.", from.shown));
+                return Err(fill(&TEXT.is_file, &path));
             }
             Action::Delete if kind == Kind::Dir && !args.recursive => {
                 let entries = io::fs::list_dir(&from.path).map_or(0, |e| e.len());
                 if entries > 0 {
-                    return Err(format!(
-                        "{} is a directory holding {entries} entries; pass `recursive: true` \
-                         to delete it and everything in it.",
-                        from.shown
+                    return Err(fill(
+                        &TEXT.full_dir,
+                        &[("path", &from.shown), ("entries", &entries.to_string())],
                     ));
                 }
             }
@@ -209,48 +224,48 @@ fn destination(
     count: usize,
 ) -> Result<Target, String> {
     let paths = &cx.app.paths;
-    let raw = args
-        .to
-        .as_deref()
-        .ok_or("`to` is required to move or copy.")?;
+    let raw = args.to.as_deref().ok_or_else(|| TEXT.no_to.clone())?;
     let to = target::resolve(paths, raw)?;
     let to = if to.kind()? == Kind::Dir {
         let name = from
             .path
             .file_name()
-            .ok_or_else(|| format!("{} has no name to keep.", from.shown))?;
+            .ok_or_else(|| fill(&TEXT.no_name, &[("path", &from.shown)]))?;
         target::resolve(paths, &to.path.join(name).to_string_lossy())?
     } else if count > 1 {
-        return Err(format!(
-            "{} is not a directory; several paths can only go into one.",
-            to.shown
-        ));
+        return Err(fill(&TEXT.into_file, &[("path", &to.shown)]));
     } else {
         to
     };
     if to.kind()? != Kind::Missing {
-        return Err(format!(
-            "{} already exists; delete it first or pick another name.",
-            to.shown
-        ));
+        return Err(fill(&TEXT.exists, &[("path", &to.shown)]));
     }
     if to.path.starts_with(&from.path) {
-        return Err(format!("{} cannot go inside itself.", from.shown));
+        return Err(fill(&TEXT.into_itself, &[("path", &from.shown)]));
     }
     Ok(to)
 }
 
 #[cfg(test)]
 mod tests {
+    use serde_json::Value;
+
     use super::*;
     use crate::tools::testing::Project;
 
     async fn fs(project: &Project, args: Value) -> Output {
-        Fs.run(args, &project.cx()).await
+        project.run(&Fs, args).await
     }
 
     fn exists(project: &Project, path: &str) -> bool {
         io::fs::kind(&project.app.paths.project.join(path)).unwrap() != Kind::Missing
+    }
+
+    #[test]
+    fn every_action_has_its_verbs() {
+        for action in [Action::Move, Action::Copy, Action::Delete, Action::Mkdir] {
+            assert!(!action.verbs().ask.is_empty(), "{action:?}");
+        }
     }
 
     #[tokio::test]
@@ -340,7 +355,7 @@ mod tests {
     fn asks_to_edit_what_changes_and_to_read_what_a_copy_reads() {
         let project = Project::new();
         project.write("a.txt", "a");
-        let check = |args: Value| Fs.check(&args, &project.cx()).ok().unwrap().asks;
+        let check = |args: Value| project.check(&Fs, &args).ok().unwrap().asks;
         let asks = check(json!({"action": "move", "path": "a.txt", "to": "b.txt"}));
         let perms: Vec<(&str, &str)> = asks
             .iter()

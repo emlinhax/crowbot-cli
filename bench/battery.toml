@@ -2,7 +2,9 @@
 # this; the shipped binary never does.
 model = "glm-5.3-flash-crow"
 repeats = 3
-parallel = 4
+# The smoke account's plan runs 2 requests in flight; a third run fails on 429 once crowbot's
+# retries run out (2026-10-14: 84 of 90 runs at 4). Raise it only with a bigger plan.
+parallel = 2
 
 [cap_micros]
 value = 60000000

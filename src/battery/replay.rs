@@ -7,7 +7,7 @@ use super::Counts;
 use super::load::Run;
 use super::shell;
 use crate::mode::Mode;
-use crate::permission::gate::{Ask, Decision, Policy};
+use crate::permission::gate::{Ask, Decision};
 use crate::permission::rule::Rule;
 
 pub struct Replayed {
@@ -32,11 +32,8 @@ pub fn replay(
                 denies: Counts::default(),
             };
             for run in runs {
-                let policy = Policy {
-                    rules,
-                    mode,
-                    plan_file: &run.record.plan_file,
-                };
+                let locks = mode.locks(&run.record.plan_file);
+                let policy = mode.policy(rules, &locks);
                 for result in run.calls.iter().filter_map(|c| c.result.as_ref()) {
                     for (ask, pattern) in patterns(&result.asks) {
                         let one = [Ask::new(&ask.permission, pattern)];
@@ -66,11 +63,8 @@ pub fn refused_live(
         let Some(mode) = crate::mode::get(&run.record.mode) else {
             continue;
         };
-        let policy = Policy {
-            rules,
-            mode,
-            plan_file: &run.record.plan_file,
-        };
+        let locks = mode.locks(&run.record.plan_file);
+        let policy = mode.policy(rules, &locks);
         for result in run.calls.iter().filter_map(|c| c.result.as_ref()) {
             if !matches!(
                 result.refused.as_deref(),
@@ -107,7 +101,7 @@ fn label(permission: &str, pattern: &str, subcommands: &[String]) -> String {
 mod tests {
     use super::*;
     use crate::battery::fixture;
-    use crate::settings;
+    use crate::config::settings;
 
     #[test]
     fn manual_would_ask_what_auto_ran_and_plan_refused_live() {

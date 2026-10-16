@@ -6,10 +6,9 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
-const SRC: &str = include_str!("../../data/command_lists.toml");
+use crate::data;
 
-static LISTS: LazyLock<BTreeMap<String, List>> =
-    LazyLock::new(|| toml::from_str(SRC).expect("data/command_lists.toml is checked by tests"));
+static LISTS: LazyLock<BTreeMap<String, List>> = data::load!("command_lists.toml");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

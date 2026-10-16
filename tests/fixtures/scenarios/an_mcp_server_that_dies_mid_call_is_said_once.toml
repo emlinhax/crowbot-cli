@@ -1,0 +1,29 @@
+description = "A server that dies during a call fails it with what it printed and is said to have stopped; its next call fails at once"
+args = ["--mode", "auto", "-p", "go"]
+home_files = { "config.toml" = "[mcp.fake]\ncommand = '{fake_mcp}'\n" }
+
+[[reply]]
+calls = [{ name = "fake__die", arguments = '{}' }]
+
+[[reply]]
+calls = [{ name = "fake__echo", arguments = '{"text": "anyone there?"}' }]
+
+[[reply]]
+text = "The server is gone."
+
+[expect]
+exit = 0
+stdout = "The server is gone.\n"
+stderr_contains = ["MCP server fake stopped, so its tools fail from here on: it exited. It printed: fake-mcp: dying as asked."]
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "MCP server fake: it exited. It printed: fake-mcp: dying as asked."
+
+[[expect.requests]]
+index = 2
+message = -1
+role = "tool"
+contains = "MCP server fake: it exited."

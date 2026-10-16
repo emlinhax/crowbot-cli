@@ -1,6 +1,11 @@
 description = "A command the model runs does not inherit crowbot's key from the environment"
 args = ["--mode", "auto", "-p", "print the key"]
-replies = ["scenarios/key_hidden/1.sse", "scenarios/key_hidden/2.sse"]
+
+[[reply]]
+calls = [{ name = "bash", arguments = '{"command": "echo key=${CROWBOT_API_KEY-none}"}' }]
+
+[[reply]]
+text = 'No key in sight.'
 
 [expect]
 exit = 0

@@ -18,7 +18,7 @@ async fn pairing_saves_a_device_key_that_chat_then_uses() {
     let stored = std::fs::read_to_string(sandbox.home().join("auth.json")).unwrap();
     assert!(stored.contains("\"device\""));
     let status = sandbox.run(&fake.url, &["login", "--status"], None).await;
-    assert!(status.success().stdout().contains("device key …9999"));
+    status.success().stdout_has("device key …9999");
 
     fake.script([Reply::sse("hello.sse")]);
     let chat = sandbox.run(&fake.url, &["-p", "hi"], None).await;
@@ -35,7 +35,7 @@ async fn pairing_waits_out_a_passing_error_and_stops_at_a_final_one() {
     fake.pair_polls([blip]);
     let sandbox = Sandbox::default();
     let run = sandbox.run(&fake.url, &["login"], None).await;
-    assert!(run.success().stdout().contains("Logged in with device key"));
+    run.success().stdout_has("Logged in with device key");
     assert_eq!(fake.hits("/api/pair/dev1"), 2);
 
     let fake = Fake::start().await;
@@ -77,30 +77,25 @@ async fn logout_removes_the_key() {
         .success();
 
     let out = sandbox.run(&fake.url, &["logout"], None).await;
-    assert!(out.success().stdout().contains("Logged out"));
+    out.success().stdout_has("Logged out");
     assert!(!sandbox.home().join("auth.json").exists());
     let again = sandbox.run(&fake.url, &["logout"], None).await;
-    assert!(again.success().stdout().contains("No key"));
+    again.success().stdout_has("No key");
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_corrupt_key_file_is_explained_and_logout_still_clears_it() {
     let fake = Fake::start().await;
     let sandbox = Sandbox::default();
-    std::fs::create_dir_all(sandbox.home()).unwrap();
-    std::fs::write(sandbox.home().join("auth.json"), "not json").unwrap();
+    sandbox.write_home("auth.json", "not json");
 
     let status = sandbox.run(&fake.url, &["login", "--status"], None).await;
     assert_ne!(status.code(), Some(0));
-    assert!(status.stderr().contains("auth.json"), "{}", status.stderr());
-    assert!(
-        status.stderr().contains("crowbot logout"),
-        "{}",
-        status.stderr()
-    );
+    status.stderr_has("auth.json");
+    status.stderr_has("crowbot logout");
 
     sandbox.run(&fake.url, &["logout"], None).await.success();
     assert!(!sandbox.home().join("auth.json").exists());
     let status = sandbox.run(&fake.url, &["login", "--status"], None).await;
-    assert!(status.success().stdout().contains("Not logged in"));
+    status.success().stdout_has("Not logged in");
 }

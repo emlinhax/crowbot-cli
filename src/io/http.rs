@@ -1,5 +1,3 @@
-#![allow(clippy::disallowed_methods)]
-
 use std::time::Duration;
 
 use futures_util::StreamExt;

@@ -1,13 +1,10 @@
 //! Styled text as the TUI draws it: lines of spans, each span naming theme roles rather than
 //! colours. Width is measured in terminal cells, per grapheme.
 
-use std::fmt::Write as _;
-
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use crate::text::controls;
-use crate::text::theme::{self, Depth, Theme};
+use crate::text::{controls, shorten};
 
 /// Tabs become this many spaces so every cell is accounted for.
 pub const TAB: &str = "    ";
@@ -195,7 +192,7 @@ impl Line {
             }
         }
         if width > 0 {
-            out.push("…", Style::fg("muted"));
+            out.push(shorten::MARK, Style::fg("muted"));
         }
         out
     }
@@ -213,29 +210,10 @@ impl Line {
         self
     }
 
-    /// Terminal output: SGR per span, closed with a reset so nothing leaks to the next line.
-    pub fn to_ansi(&self, theme: &Theme, depth: Depth) -> String {
-        let mut out = String::new();
-        for span in &self.spans {
-            let sgr = sgr(&span.style, theme, depth);
-            if let Some(url) = &span.style.link {
-                let _ = write!(out, "\x1b]8;;{}\x1b\\", controls::osc_url(url));
-            }
-            if sgr.is_empty() {
-                out.push_str(&span.text);
-            } else {
-                let _ = write!(out, "\x1b[{sgr}m{}\x1b[0m", span.text);
-            }
-            if span.style.link.is_some() {
-                out.push_str("\x1b]8;;\x1b\\");
-            }
-        }
-        out
-    }
-
     /// `[role+bold]text[/]` markup, for snapshot tests that must not depend on colours.
     #[cfg(test)]
     pub fn to_tagged(&self) -> String {
+        use std::fmt::Write as _;
         let mut out = String::new();
         for span in &self.spans {
             let s = &span.style;
@@ -310,31 +288,18 @@ fn words(line: &Line) -> Vec<(String, Style)> {
     out
 }
 
-fn sgr(style: &Style, theme: &Theme, depth: Depth) -> String {
-    let mut codes: Vec<String> = Vec::new();
-    for (on, code) in [
-        (style.bold, "1"),
-        (style.dim, "2"),
-        (style.italic, "3"),
-        (style.underline, "4"),
-        (style.reverse, "7"),
-        (style.strike, "9"),
-    ] {
-        if on {
-            codes.push(code.into());
-        }
-    }
-    for (role, base) in [(&style.fg, 38), (&style.bg, 48)] {
-        let Some(color) = role.as_deref().and_then(|r| theme.color(r)) else {
-            continue;
-        };
-        match depth {
-            Depth::TrueColor => codes.push(format!("{base};2;{};{};{}", color.0, color.1, color.2)),
-            Depth::Ansi256 => codes.push(format!("{base};5;{}", theme::to_256(color))),
-            Depth::None => {}
-        }
-    }
-    codes.join(";")
+/// `lines` with `first` before the first and `rest` before each later one, as a list marker
+/// hangs over the item's wrapped text.
+pub fn hang(lines: impl IntoIterator<Item = Line>, first: &Line, rest: &Line) -> Vec<Line> {
+    lines
+        .into_iter()
+        .enumerate()
+        .map(|(i, line)| {
+            let mut out = if i == 0 { first.clone() } else { rest.clone() };
+            out.extend(line);
+            out
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -345,12 +310,6 @@ mod tests {
     fn text_from_outside_cannot_put_escapes_on_the_terminal() {
         let line = Line::plain("done\u{1b}]52;c;cm0gLXJmIH4=\u{7} \u{1b}[2Jok");
         assert_eq!(line.text(), "done ok");
-        let link = Style {
-            link: Some("https://x.dev/\u{1b}\\\u{1b}]0;pwned\u{7}".into()),
-            ..Style::default()
-        };
-        let ansi = Line::styled("x", link).to_ansi(theme::get(), Depth::None);
-        assert_eq!(ansi.matches('\u{1b}').count(), 4, "{ansi:?}");
     }
 
     fn texts(lines: &[Line]) -> Vec<String> {
@@ -398,17 +357,5 @@ mod tests {
     fn truncates_with_an_ellipsis() {
         assert_eq!(Line::plain("hello world").truncate(6).text(), "hello…");
         assert_eq!(Line::plain("hi").truncate(6).text(), "hi");
-    }
-
-    #[test]
-    fn ansi_resets_after_every_styled_span() {
-        let line = Line::styled("ok", Style::fg("accent").bold());
-        let ansi = line.to_ansi(theme::get(), Depth::TrueColor);
-        assert_eq!(ansi, "\x1b[1;38;2;0;220;130mok\x1b[0m");
-        assert_eq!(line.to_ansi(theme::get(), Depth::None), "\x1b[1mok\x1b[0m");
-        assert_eq!(
-            line.to_ansi(theme::get(), Depth::Ansi256),
-            "\x1b[1;38;5;42mok\x1b[0m"
-        );
     }
 }

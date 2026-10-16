@@ -1,43 +1,62 @@
+use std::collections::BTreeMap;
 use std::process::ExitCode;
+use std::sync::LazyLock;
 
 use anyhow::bail;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
+use serde::Deserialize;
 
 use crate::app::App;
 use crate::commands::{self, Ctx, Missing, Scope};
+use crate::config::settings::{self, Overrides};
+use crate::config::trust;
+use crate::data;
 use crate::frontend::print::{self, Format};
+use crate::frontend::tui;
 use crate::io::term;
-use crate::settings::{Overrides, Untrusted};
-use crate::{effort, install, mode, release, trust, tui};
+use crate::release::{self, install};
+use crate::session;
+use crate::text::template::fill;
+use crate::{effort, mode};
 
-/// The help for `--effort`, `--mode` and the commands is filled in from their catalogs by
-/// `command()`, so a new level, mode or command shows up with no edit here.
+static DATA: LazyLock<Data> = data::load!("cli.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Data {
+    /// Each flag's help, by arg id; `command()` fills it in.
+    help: BTreeMap<String, String>,
+    text: Text,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Text {
+    commands: String,
+    misplaced_flag: String,
+    no_session: String,
+}
+
+/// The flags' help and the commands' list are data (data/cli.toml), filled in by `command()`.
 #[derive(Parser)]
 #[command(
-    version,
     about,
     allow_external_subcommands = true,
     subcommand_value_name = "COMMAND|PROMPT"
 )]
 struct Cli {
-    /// Model id for this run (see `crowbot models`).
-    #[arg(long, global = true)]
-    model: Option<String>,
+    #[command(flatten)]
+    flags: Overrides,
 
-    #[arg(long, global = true)]
-    effort: Option<String>,
-
-    #[arg(long, global = true)]
-    mode: Option<String>,
-
-    /// Send the words as a prompt, never a command; print the reply, exit.
     #[arg(short, long)]
     print: bool,
 
-    /// Like --print, but stream every event as a JSON line.
     #[arg(long)]
     json: bool,
+
+    #[arg(short = 'c', long = "continue", id = "continue")]
+    resume: bool,
 
     #[command(subcommand)]
     command: Option<Sub>,
@@ -52,26 +71,22 @@ enum Sub {
 
 /// `Cli`'s shape with the parts that are data filled in.
 fn command() -> clap::Command {
-    let ids = |ids: Vec<&str>| ids.join(", ");
-    let efforts = ids(effort::levels().iter().map(|l| l.id.as_str()).collect());
-    let modes = ids(mode::all().iter().map(|m| m.id.as_str()).collect());
-    let names: Vec<&str> = commands::available(Scope::Cli)
-        .map(|c| c.spec())
-        .filter(|s| !s.hidden)
+    let names: Vec<&str> = commands::listed(Scope::Cli)
         .map(|s| s.name.as_str())
         .collect();
-    Cli::command()
+    let vars = [
+        ("levels", effort::ids().join(", ")),
+        ("modes", mode::ids().join(", ")),
+        ("commands", names.join(", ")),
+    ];
+    let vars: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let mut command = Cli::command()
         .version(release::version())
-        .mut_arg("effort", |a| {
-            a.help(format!("Reasoning effort for this run: {efforts}"))
-        })
-        .mut_arg("mode", |a| {
-            a.help(format!("Permission mode for this run: {modes}"))
-        })
-        .after_help(format!(
-            "Commands: {}. Other words are the prompt.",
-            ids(names)
-        ))
+        .after_help(fill(&DATA.text.commands, &vars));
+    for (id, help) in &DATA.help {
+        command = command.mut_arg(id, |a| a.help(fill(help, &vars)));
+    }
+    command
 }
 
 fn parse() -> Cli {
@@ -86,25 +101,21 @@ pub async fn run() -> ExitCode {
         command()
             .error(
                 ErrorKind::ArgumentConflict,
-                format!("`{flag}` goes before the words; quote a prompt that contains it"),
+                fill(&DATA.text.misplaced_flag, &[("flag", flag)]),
             )
             .exit();
     }
     match dispatch(cli).await {
         Ok(code) => code,
         Err(e) => {
-            term::err(&format!("crowbot: {e:#}\n"));
+            term::warn(&format!("{e:#}"));
             ExitCode::FAILURE
         }
     }
 }
 
 async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
-    let flags = Overrides {
-        model: cli.model,
-        effort: cli.effort,
-        mode: cli.mode,
-    };
+    let flags = cli.flags;
     let mut app = App::load(&flags)?;
     let words = match cli.command {
         Some(Sub::Words(words)) => words,
@@ -115,7 +126,7 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
         Some(name) => match commands::lookup(name, Scope::Cli) {
             Ok(command) => Some(command),
             Err(Missing::Elsewhere(spec)) => {
-                bail!("`{}` only works as {}", spec.name, commands::places(spec))
+                bail!(commands::elsewhere(spec, Scope::Cli))
             }
             Err(Missing::Unknown) => None,
         },
@@ -126,16 +137,10 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
     if session {
         install::offer(&app.paths)?;
     }
-    if let Some(untrusted) = app.settings.untrusted.take() {
-        if !session {
-            term::err(&format!(
-                "crowbot: {}\n",
-                trust::ignored(&untrusted.file, &untrusted.keys)
-            ));
-        } else if confirm_trust(&untrusted)? {
-            trust::trust(&app.paths)?;
-            app = App::load(&flags)?;
-        }
+    if let Some(untrusted) = app.settings.untrusted.take()
+        && trust::settle(&app.paths, &untrusted, session)?
+    {
+        app.settings = settings::load(&app.paths, &flags)?;
     }
     if let Some(command) = command {
         let cx = Ctx {
@@ -153,42 +158,25 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
 
+    let resume = match cli.resume {
+        true => Some(session::list::latest(&app.paths).ok_or_else(|| {
+            let project = app.paths.project.display().to_string();
+            anyhow::anyhow!(fill(&DATA.text.no_session, &[("project", &project)]))
+        })?),
+        false => None,
+    };
     let prompt = words.join(" ");
-    // A person at a terminal gets the session, with any words already typed in for review.
+    // At a terminal: the session, with the words typed in for review.
     if session {
         let initial = (!prompt.trim().is_empty()).then_some(prompt);
-        return tui::run(&app, initial).await;
+        return tui::run(&app, initial, resume.as_deref()).await;
     }
 
-    let mut prompt = prompt;
-    if let Some(piped) = term::piped_stdin()? {
-        prompt = if prompt.is_empty() {
-            piped
-        } else {
-            format!("{prompt}\n\n{piped}")
-        };
-    }
-    if prompt.trim().is_empty() {
-        bail!("nothing to send; pass a prompt or pipe one in");
-    }
     let format = if cli.json { Format::Json } else { Format::Text };
-    print::run(&app, prompt, format).await
+    print::run(&app, prompt, format, resume.as_deref()).await
 }
 
-/// Shows what the project's config would loosen and asks whether to trust the folder.
-fn confirm_trust(untrusted: &Untrusted) -> anyhow::Result<bool> {
-    term::out(&trust::warning(&untrusted.file, &untrusted.keys));
-    term::out(trust::question());
-    let answer = term::read_line()?.unwrap_or_default();
-    let yes = matches!(answer.trim().to_lowercase().as_str(), "y" | "yes");
-    if !yes {
-        term::out(&format!("{}\n", trust::declined()));
-    }
-    Ok(yes)
-}
-
-/// One of crowbot's own flags after the words, where it would silently become prompt text (or
-/// a command's argument) instead of taking effect.
+/// A crowbot flag after the words, which would otherwise become prompt text or a command argument.
 fn misplaced_flag(words: &[String]) -> Option<&str> {
     let command = command();
     let ours = |word: &str| {

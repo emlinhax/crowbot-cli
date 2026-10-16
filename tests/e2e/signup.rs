@@ -26,27 +26,15 @@ async fn an_environment_key_neither_blocks_signup_nor_hides_what_it_shadows() {
     let note = "CROWBOT_API_KEY is set in this environment";
 
     let signup = sandbox.run(&fake.url, &["signup"], WITH_KEY).await;
-    assert!(
-        signup.success().stdout().contains(note),
-        "{}",
-        signup.stdout()
-    );
+    signup.success().stdout_has(note);
     assert!(sandbox.home().join("auth.json").exists());
 
     let args = ["login", "--key", "1234 5678 9012 3456"];
     let login = sandbox.run(&fake.url, &args, WITH_KEY).await;
-    assert!(
-        login.success().stdout().contains(note),
-        "{}",
-        login.stdout()
-    );
+    login.success().stdout_has(note);
 
     let logout = sandbox.run(&fake.url, &["logout"], WITH_KEY).await;
-    assert!(
-        logout.success().stdout().contains(note),
-        "{}",
-        logout.stdout()
-    );
+    logout.success().stdout_has(note);
     let quiet = sandbox.run(&fake.url, &["logout"], None).await;
     assert!(!quiet.success().stdout().contains(note));
 }
@@ -62,10 +50,6 @@ async fn signup_refuses_to_replace_an_existing_key() {
 
     let run = sandbox.run(&fake.url, &["signup"], None).await;
     assert_eq!(run.code(), Some(1));
-    assert!(
-        run.stderr().contains("already logged in"),
-        "{}",
-        run.stderr()
-    );
+    run.stderr_has("already logged in");
     assert_eq!(fake.hits("/api/pow"), 0);
 }

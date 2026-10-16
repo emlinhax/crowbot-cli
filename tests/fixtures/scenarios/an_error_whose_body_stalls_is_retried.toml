@@ -1,0 +1,14 @@
+description = "An error whose body never ends is retried, not waited on"
+args = ["-p", "hi"]
+
+[[reply]]
+stall = { status = 503 }
+
+[[reply]]
+sse = "hello.sse"
+
+[expect]
+exit = 0
+stdout_contains = ["Hello there!"]
+stderr_contains = ["retrying"]
+hits = { "/v1/chat/completions" = 2 }

@@ -1,7 +1,12 @@
 description = "PLAN refuses a command hidden in process substitution behind an allowed `cat`"
 args = ["--mode", "plan", "-p", "look around"]
 project = "calc"
-replies = ["scenarios/plan_procsub/1.sse", "scenarios/plan_procsub/2.sse"]
+
+[[reply]]
+calls = [{ name = "bash", arguments = '{"command": "cat <(sed -i s/5/4/ src/calc.txt)"}' }]
+
+[[reply]]
+text = 'The plan is ready.'
 
 [expect]
 exit = 0

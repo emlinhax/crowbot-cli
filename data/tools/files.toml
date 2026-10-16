@@ -1,0 +1,3 @@
+# Why a file may not be changed yet: the model must have read it, and it must be unchanged since.
+unread = "Read {path} before changing it."
+stale = "{path} changed since you last read it; read it again first."

@@ -1,0 +1,28 @@
+# What both frontends say about a run; {placeholders} are filled in. The session adds its own
+# hints around these (data/ui.toml).
+interrupted = "Interrupted."
+cut_off = "The reply hit its output limit (a low balance lowers it)."
+window_full = "The reply filled the model's context window; earlier turns are summarised before the next request."
+unsaved = "No longer saving this session to {path}: {error}. The conversation goes on unsaved."
+turn_limit = "Stopped after {count} turns."
+retrying = "retrying in"
+model_gone = "This session used {model}, which crowbot no longer serves; going on with {instead}."
+
+# A summary of earlier turns, made by /compact or on its own; {why} is `auto` or `overflow` below
+# when it was not asked for.
+[compact]
+done = "{why}Summarised {count} earlier messages; the last {kept} go on word for word (about {cost})."
+nothing = "Nothing to summarise yet: the whole conversation fits in what is kept word for word."
+failed = "{why}Could not summarise earlier turns: {error}"
+auto = "The conversation neared the model's window. "
+overflow = "crowbot refused the request as too long. "
+
+# Lines only a headless run prints, on stderr beside the reply.
+[print]
+call = "› {tool}"
+# A subagent's call, under the task that started it.
+child_call = "  › {tool}"
+failed = "  ✗ {error}"
+needs_permission = "  ✗ {tool} needs permission ({what}); rerun with --mode {mode} to allow it"
+unconfirmed = "  ✗ {tool} asks every time ({what}); it cannot run headless"
+hint = "  {hint}"

@@ -1,8 +1,16 @@
-# Which file of a release each platform runs, by Rust's names for the OS and CPU
-# (std::env::consts). The release workflow names its assets `crowbot-<target>`; a test holds
-# these to the targets .github/workflows/ci.yml builds. crowbot.sh lists the same files in the
-# website repo's src/crowbot/content/cli.yaml: a new or renamed asset changes both.
+# Release file per platform, keyed by std::env::consts OS and ARCH. Assets are `crowbot-<target>`;
+# a test checks them against ci.yml. The website's src/crowbot/content/cli.yaml lists the same
+# files: change both.
 sums = "SHA256SUMS"
+
+# The checksums are signed with minisign when a release is published (release.yml), and the
+# updater takes no release whose signature fails. `keys`: the public keys any of which may sign; a
+# new one joins beside the old for a release before the old one goes. `comment`: the trusted
+# comment each signature carries, so one release's checksums cannot pass for another's.
+[signature]
+file = "SHA256SUMS.minisig"
+keys = ["RWSNmPrBe2CCfeQes8FVEwo92i2aTq+AFUHjHwv8gMG7Wl4CuSfgXABQ"]
+comment = "crowbot release {tag}"
 
 [[asset]]
 os = "linux"

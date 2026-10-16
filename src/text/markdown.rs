@@ -2,12 +2,12 @@
 
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
+use crate::config::limits;
 use crate::text::highlight;
-use crate::text::styled::{Line, Style, width};
+use crate::text::styled::{Line, Style, hang, width};
 use crate::text::table::{self, Align};
-
-/// Longest a horizontal rule gets, so it reads as a divider rather than a wall.
-const RULE_MAX: usize = 80;
+use crate::text::template::fill;
+use crate::text::theme::{self, Glyphs};
 
 /// The markdown crowbot draws; the stream cut parses with the same, so both see one structure.
 pub fn options() -> Options {
@@ -16,8 +16,7 @@ pub fn options() -> Options {
 
 pub fn render(md: &str, width: usize) -> Vec<Line> {
     let mut r = Renderer {
-        // Narrower than this, prefixes and borders leave no room for a word.
-        width: width.max(8),
+        width: width.max(limits::get().text.min_width.value),
         ..Renderer::default()
     };
     for event in Parser::new_ext(md, options()) {
@@ -37,7 +36,6 @@ struct Renderer {
     containers: Vec<Container>,
     /// A block ended; the next one starts after a blank line.
     gap: bool,
-    heading: Option<HeadingLevel>,
     code: Option<(String, String)>,
     link: Option<String>,
     table: Option<Table>,
@@ -109,12 +107,15 @@ impl Renderer {
             Event::Rule => {
                 self.flush();
                 self.block_start();
-                let rule = "─".repeat(self.width.min(RULE_MAX));
+                let rule = glyphs()
+                    .rule
+                    .repeat(self.width.min(limits::get().text.rule_max.value));
                 self.emit(vec![Line::styled(rule, Style::fg("rule"))]);
                 self.gap = true;
             }
             Event::TaskListMarker(done) => {
-                let mark = if done { "[x] " } else { "[ ] " };
+                let g = glyphs();
+                let mark = if done { &g.task_done } else { &g.task_open };
                 self.inline.push(mark, Style::fg("muted"));
             }
             Event::Html(html) | Event::InlineHtml(html) => {
@@ -130,7 +131,6 @@ impl Renderer {
             Tag::Paragraph => self.block_start(),
             Tag::Heading { level, .. } => {
                 self.block_start();
-                self.heading = Some(level);
                 let style = match level {
                     HeadingLevel::H1 | HeadingLevel::H2 => Style::fg("heading").bold(),
                     _ => Style::default().bold(),
@@ -170,7 +170,7 @@ impl Renderer {
                         *n += 1;
                         m
                     }
-                    _ => "• ".to_owned(),
+                    _ => glyphs().bullet.clone(),
                 };
                 self.containers.push(Container::Item {
                     marker,
@@ -194,8 +194,10 @@ impl Renderer {
                 self.styles.push(style);
             }
             Tag::Image { dest_url, .. } => {
-                self.inline
-                    .push(format!("[image: {dest_url}]"), Style::fg("muted"));
+                self.inline.push(
+                    fill(&glyphs().image, &[("url", &dest_url)]),
+                    Style::fg("muted"),
+                );
                 self.styles.push(Style::fg("muted"));
             }
             Tag::Table(aligns) => {
@@ -224,7 +226,6 @@ impl Renderer {
             TagEnd::Heading(_) => {
                 self.flush();
                 self.styles.pop();
-                self.heading = None;
                 self.gap = true;
             }
             TagEnd::BlockQuote(_) => {
@@ -257,7 +258,8 @@ impl Renderer {
                 if let Some(url) = self.link.take().filter(|_| self.table.is_none()) {
                     let shown = self.inline.text();
                     if !shown.ends_with(&url) {
-                        self.inline.push(format!(" ({url})"), Style::fg("muted"));
+                        let suffix = fill(&glyphs().link, &[("url", &url)]);
+                        self.inline.push(suffix, Style::fg("muted"));
                     }
                 }
             }
@@ -284,25 +286,19 @@ impl Renderer {
             return;
         }
         let inline = std::mem::take(&mut self.inline);
-        let (first, rest) = self.prefixes(true);
-        let avail = self.width.saturating_sub(first.width()).max(1);
+        let avail = self.width.saturating_sub(self.indent()).max(1);
         let wrapped = inline.wrap(avail, &Line::default());
-        let mut lines = Vec::with_capacity(wrapped.len());
-        for (i, line) in wrapped.into_iter().enumerate() {
-            let mut out = if i == 0 { first.clone() } else { rest.clone() };
-            out.extend(line);
-            lines.push(out);
-        }
-        self.out.extend(lines);
+        self.emit(wrapped);
+    }
+
+    /// Cells the current containers' prefixes take.
+    fn indent(&mut self) -> usize {
+        self.prefixes(false).0.width()
     }
 
     fn emit(&mut self, lines: Vec<Line>) {
         let (first, rest) = self.prefixes(true);
-        for (i, line) in lines.into_iter().enumerate() {
-            let mut out = if i == 0 { first.clone() } else { rest.clone() };
-            out.extend(line);
-            self.out.push(out);
-        }
+        self.out.extend(hang(lines, &first, &rest));
     }
 
     /// Prefixes for the first and later lines of a block: quote bars and list markers.
@@ -313,8 +309,8 @@ impl Renderer {
         for c in &mut self.containers {
             match c {
                 Container::Quote => {
-                    first.push("│ ", Style::fg("quote"));
-                    rest.push("│ ", Style::fg("quote"));
+                    first.push(&glyphs().quote, Style::fg("quote"));
+                    rest.push(&glyphs().quote, Style::fg("quote"));
                 }
                 Container::List { .. } => {}
                 Container::Item { marker, used } => {
@@ -334,25 +330,31 @@ impl Renderer {
 
     fn code_lines(&mut self, lang: &str, code: &str) {
         let fence = Style::fg("muted");
-        let mut lines = vec![Line::styled(format!("```{lang}"), fence.clone())];
-        let (first, _) = self.prefixes(false);
-        let avail = self.width.saturating_sub(first.width() + 2).max(1);
+        let g = glyphs();
+        let mut lines = vec![Line::styled(format!("{}{lang}", g.fence), fence.clone())];
+        let avail = self
+            .width
+            .saturating_sub(self.indent() + width(&g.code_indent))
+            .max(1);
         for line in highlight::highlight(code.trim_end_matches('\n'), lang) {
             for part in line.wrap(avail, &Line::default()) {
-                let mut indented = Line::plain("  ");
+                let mut indented = Line::plain(&g.code_indent);
                 indented.extend(part);
                 lines.push(indented);
             }
         }
-        lines.push(Line::styled("```", fence));
+        lines.push(Line::styled(&g.fence, fence));
         self.emit(lines);
     }
 
     fn table_lines(&mut self, table: Table) {
-        let (first, _) = self.prefixes(false);
-        let room = self.width.saturating_sub(first.width());
+        let room = self.width.saturating_sub(self.indent());
         self.emit(table::grid(&table.rows, &table.aligns, room));
     }
+}
+
+fn glyphs() -> &'static Glyphs {
+    &theme::get().glyphs
 }
 
 #[cfg(test)]

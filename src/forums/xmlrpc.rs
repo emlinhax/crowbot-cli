@@ -1,15 +1,14 @@
 //! XML-RPC, just enough for the forum (mobiquo) backend: build a `methodCall`, read a
-//! `methodResponse`. The reader is deliberately lenient — some mobiquo servers emit a struct whose
-//! last `</member>` is dropped before `</struct>` — so it keys off opening tags and container ends
-//! rather than trusting every close tag.
+//! `methodResponse`. The reader is deliberately lenient, since some mobiquo servers drop a close
+//! tag (a struct's last `</member>`): it builds a tree that recovers from any dropped one.
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use quick_xml::Reader;
+use quick_xml::escape::partial_escape;
 use quick_xml::events::Event;
 
-/// A parameter we send. Usernames, passwords and search words go as `<base64>` (the plugin's
-/// convention), so `Bytes` is a first-class arm beside `Str`.
+/// A parameter we send; `Bytes` goes as `<base64>`.
 pub enum Arg {
     Str(String),
     Bytes(Vec<u8>),
@@ -25,13 +24,11 @@ impl Arg {
     }
 }
 
-/// A value we read back. `<base64>` decodes to `Str` (lossy UTF-8); numeric ids arrive as `<string>`
-/// and stay `Str`, so the backend keeps them as the strings the protocol uses them as.
+/// A value we read back. Scalars stay their text (`<base64>` decoded, lossy UTF-8) and are read
+/// as numbers or flags on request; numeric ids arrive as `<string>`, which is what they are used as.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Str(String),
-    Int(i64),
-    Bool(bool),
     Array(Vec<Value>),
     Struct(Vec<(String, Value)>),
 }
@@ -52,20 +49,12 @@ impl Value {
     }
 
     pub fn as_i64(&self) -> Option<i64> {
-        match self {
-            Self::Int(i) => Some(*i),
-            Self::Str(s) => s.trim().parse().ok(),
-            _ => None,
-        }
+        self.as_str().and_then(|s| s.trim().parse().ok())
     }
 
     pub fn as_bool(&self) -> Option<bool> {
-        match self {
-            Self::Bool(b) => Some(*b),
-            Self::Int(i) => Some(*i != 0),
-            Self::Str(s) => Some(s == "1" || s.eq_ignore_ascii_case("true")),
-            _ => None,
-        }
+        let s = self.as_str()?.trim();
+        Some(s == "1" || s.eq_ignore_ascii_case("true"))
     }
 
     pub fn as_array(&self) -> Option<&[Value]> {
@@ -94,7 +83,7 @@ pub enum XmlError {
 pub fn call(method: &str, params: &[Arg]) -> String {
     let mut s =
         String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<methodCall><methodName>");
-    escape_into(&mut s, method);
+    s.push_str(&partial_escape(method));
     s.push_str("</methodName><params>");
     for p in params {
         s.push_str("<param><value>");
@@ -109,7 +98,7 @@ fn write_arg(s: &mut String, arg: &Arg) {
     match arg {
         Arg::Str(v) => {
             s.push_str("<string>");
-            escape_into(s, v);
+            s.push_str(&partial_escape(v));
             s.push_str("</string>");
         }
         Arg::Bytes(v) => {
@@ -127,7 +116,7 @@ fn write_arg(s: &mut String, arg: &Arg) {
             s.push_str("<struct>");
             for (name, value) in members {
                 s.push_str("<member><name>");
-                escape_into(s, name);
+                s.push_str(&partial_escape(*name));
                 s.push_str("</name><value>");
                 write_arg(s, value);
                 s.push_str("</value></member>");
@@ -137,44 +126,13 @@ fn write_arg(s: &mut String, arg: &Arg) {
     }
 }
 
-fn escape_into(s: &mut String, text: &str) {
-    for c in text.chars() {
-        match c {
-            '&' => s.push_str("&amp;"),
-            '<' => s.push_str("&lt;"),
-            '>' => s.push_str("&gt;"),
-            _ => s.push(c),
-        }
-    }
-}
-
 /// Read the single value of a `methodResponse`, or its fault.
 pub fn parse(xml: &[u8]) -> Result<Value, XmlError> {
-    let mut reader = Reader::from_reader(xml);
-    let cfg = reader.config_mut();
-    cfg.check_end_names = false;
-    cfg.expand_empty_elements = true;
-    let mut p = Parser {
-        reader,
-        buf: Vec::new(),
-        peek: None,
-    };
-    let mut in_fault = false;
-    loop {
-        let ev = p.sig()?;
-        if ev.is_start(b"fault") {
-            in_fault = true;
-        } else if ev.is_start(b"value") {
-            let value = p.read_value()?;
-            return if in_fault {
-                Err(fault(&value))
-            } else {
-                Ok(value)
-            };
-        } else if ev.is_eof() {
-            return Err(XmlError::Empty);
-        }
+    let root = tree(xml)?;
+    if let Some(fault_value) = root.find(b"fault").and_then(|f| f.find(b"value")) {
+        return Err(fault(&value(fault_value)));
     }
+    root.find(b"value").map(value).ok_or(XmlError::Empty)
 }
 
 fn fault(value: &Value) -> XmlError {
@@ -188,210 +146,137 @@ fn fault(value: &Value) -> XmlError {
     }
 }
 
-/// An event, owned so the reader can move on and so one can be pushed back.
-enum Ev {
-    Start(Vec<u8>),
-    End(Vec<u8>),
-    Text(String),
-    Eof,
+/// One element of the response: its name, its text, and the elements inside it.
+#[derive(Default)]
+struct Node {
+    name: Vec<u8>,
+    text: String,
+    children: Vec<Node>,
 }
 
-impl Ev {
-    fn is_start(&self, name: &[u8]) -> bool {
-        matches!(self, Ev::Start(n) if n.as_slice() == name)
+impl Node {
+    fn child(&self, name: &[u8]) -> Option<&Node> {
+        self.children.iter().find(|c| c.name == name)
     }
-    fn is_end(&self, name: &[u8]) -> bool {
-        matches!(self, Ev::End(n) if n.as_slice() == name)
+
+    fn all<'a>(&'a self, name: &'a [u8]) -> impl Iterator<Item = &'a Node> {
+        self.children.iter().filter(move |c| c.name == name)
     }
-    fn is_eof(&self) -> bool {
-        matches!(self, Ev::Eof)
+
+    /// The first element called `name`, this one or any inside it, depth first.
+    fn find(&self, name: &[u8]) -> Option<&Node> {
+        if self.name == name {
+            return Some(self);
+        }
+        self.children.iter().find_map(|c| c.find(name))
     }
 }
 
-struct Parser<'a> {
-    reader: Reader<&'a [u8]>,
-    buf: Vec<u8>,
-    peek: Option<Ev>,
-}
-
-impl Parser<'_> {
-    /// The next event, text included; comments and the like are skipped.
-    fn raw(&mut self) -> Result<Ev, XmlError> {
-        if let Some(ev) = self.peek.take() {
-            return Ok(ev);
-        }
-        loop {
-            self.buf.clear();
-            let ev = match self.reader.read_event_into(&mut self.buf) {
-                Ok(e) => e,
-                Err(e) => return Err(XmlError::Parse(e.to_string())),
-            };
-            return Ok(match ev {
-                Event::Start(e) => Ev::Start(e.name().as_ref().to_vec()),
-                Event::End(e) => Ev::End(e.name().as_ref().to_vec()),
-                Event::Text(t) => Ev::Text(
-                    t.unescape()
-                        .map(|c| c.into_owned())
-                        .unwrap_or_else(|_| String::from_utf8_lossy(t.as_ref()).into_owned()),
-                ),
-                Event::CData(c) => Ev::Text(String::from_utf8_lossy(c.as_ref()).into_owned()),
-                Event::Eof => Ev::Eof,
-                _ => continue,
-            });
-        }
-    }
-
-    /// The next event that carries meaning, skipping whitespace between tags.
-    fn sig(&mut self) -> Result<Ev, XmlError> {
-        loop {
-            let ev = self.raw()?;
-            if matches!(&ev, Ev::Text(t) if t.trim().is_empty()) {
-                continue;
+/// The response as a tree, recovering from dropped close tags: a close tag closes up to the
+/// nearest open element of its name (a stray one is ignored), and a start tag matching the open
+/// element (a second `<member>` while one is open) closes that first.
+fn tree(xml: &[u8]) -> Result<Node, XmlError> {
+    let mut reader = Reader::from_reader(xml);
+    let cfg = reader.config_mut();
+    cfg.check_end_names = false;
+    cfg.expand_empty_elements = true;
+    let mut open = vec![Node::default()];
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        let event = reader
+            .read_event_into(&mut buf)
+            .map_err(|e| XmlError::Parse(e.to_string()))?;
+        match event {
+            Event::Start(e) => {
+                let name = e.name().as_ref().to_vec();
+                if open.len() > 1 && open.last().is_some_and(|top| top.name == name) {
+                    close(&mut open);
+                }
+                open.push(Node {
+                    name,
+                    ..Node::default()
+                });
             }
-            return Ok(ev);
-        }
-    }
-
-    fn push(&mut self, ev: Ev) {
-        self.peek = Some(ev);
-    }
-
-    /// The text inside a scalar element, up to its close.
-    fn take_text(&mut self, tag: &[u8]) -> Result<String, XmlError> {
-        let mut out = String::new();
-        loop {
-            match self.raw()? {
-                Ev::Text(t) => out.push_str(&t),
-                Ev::End(n) if n.as_slice() == tag => break,
-                Ev::End(_) | Ev::Eof | Ev::Start(_) => break,
-            }
-        }
-        Ok(out)
-    }
-
-    fn skip_end(&mut self, tag: &[u8]) -> Result<(), XmlError> {
-        loop {
-            match self.raw()? {
-                Ev::End(n) if n.as_slice() == tag => return Ok(()),
-                Ev::Eof => return Ok(()),
-                _ => {}
-            }
-        }
-    }
-
-    /// Positioned just after a `<value>` open.
-    fn read_value(&mut self) -> Result<Value, XmlError> {
-        let ev = self.sig()?;
-        if ev.is_end(b"value") {
-            return Ok(Value::Str(String::new()));
-        }
-        match ev {
-            // An untyped `<value>text</value>` is a string.
-            Ev::Text(mut s) => {
-                loop {
-                    match self.raw()? {
-                        Ev::Text(x) => s.push_str(&x),
-                        Ev::End(n) if n.as_slice() == b"value" => break,
-                        other => {
-                            self.push(other);
-                            break;
-                        }
+            Event::End(e) => {
+                let name = e.name();
+                if let Some(at) = open.iter().rposition(|n| n.name == name.as_ref())
+                    && at > 0
+                {
+                    while open.len() > at {
+                        close(&mut open);
                     }
                 }
-                Ok(Value::Str(s))
             }
-            Ev::Start(name) => {
-                let value = self.read_typed(&name)?;
-                self.skip_end(b"value")?;
-                Ok(value)
+            Event::Text(t) => {
+                let text = t
+                    .unescape()
+                    .map(|c| c.into_owned())
+                    .unwrap_or_else(|_| String::from_utf8_lossy(t.as_ref()).into_owned());
+                push_text(&mut open, &text);
             }
-            _ => Ok(Value::Str(String::new())),
+            Event::CData(c) => push_text(&mut open, &String::from_utf8_lossy(c.as_ref())),
+            Event::Eof => break,
+            _ => {}
         }
     }
+    while open.len() > 1 {
+        close(&mut open);
+    }
+    Ok(open.pop().unwrap_or_default())
+}
 
-    fn read_typed(&mut self, name: &[u8]) -> Result<Value, XmlError> {
-        if name == b"int" || name == b"i4" || name == b"i8" {
-            Ok(Value::Int(
-                self.take_text(name)?.trim().parse().unwrap_or(0),
-            ))
-        } else if name == b"boolean" {
-            let t = self.take_text(name)?;
-            let t = t.trim();
-            Ok(Value::Bool(t == "1" || t.eq_ignore_ascii_case("true")))
-        } else if name == b"base64" {
-            let raw: String = self.take_text(name)?.split_whitespace().collect();
-            let bytes = BASE64.decode(raw).unwrap_or_default();
-            Ok(Value::Str(String::from_utf8_lossy(&bytes).into_owned()))
-        } else if name == b"array" {
-            self.read_array()
-        } else if name == b"struct" {
-            self.read_struct()
+fn close(open: &mut Vec<Node>) {
+    if let Some(node) = open.pop()
+        && let Some(parent) = open.last_mut()
+    {
+        parent.children.push(node);
+    }
+}
+
+fn push_text(open: &mut [Node], text: &str) {
+    if let Some(top) = open.last_mut() {
+        top.text.push_str(text);
+    }
+}
+
+/// A `<value>` element as a Value: a typed child, or its own text when untyped.
+fn value(node: &Node) -> Value {
+    let Some(typed) = node.children.first() else {
+        let text = if node.text.trim().is_empty() {
+            String::new()
         } else {
-            // string, dateTime.iso8601, double, nil or anything unknown: the text as-is.
-            Ok(Value::Str(self.take_text(name)?))
+            node.text.clone()
+        };
+        return Value::Str(text);
+    };
+    match typed.name.as_slice() {
+        b"base64" => {
+            let raw: String = typed.text.split_whitespace().collect();
+            let bytes = BASE64.decode(raw).unwrap_or_default();
+            Value::Str(String::from_utf8_lossy(&bytes).into_owned())
         }
-    }
-
-    /// Positioned just after an `<array>` open.
-    fn read_array(&mut self) -> Result<Value, XmlError> {
-        loop {
-            let ev = self.sig()?;
-            if ev.is_start(b"data") {
-                break;
-            }
-            if ev.is_end(b"array") || ev.is_eof() {
-                return Ok(Value::Array(Vec::new()));
-            }
-        }
-        let mut items = Vec::new();
-        loop {
-            let ev = self.sig()?;
-            if ev.is_start(b"value") {
-                items.push(self.read_value()?);
-            } else if ev.is_end(b"data") {
-                break;
-            } else if ev.is_end(b"array") || ev.is_eof() {
-                return Ok(Value::Array(items));
-            }
-        }
-        self.skip_end(b"array")?;
-        Ok(Value::Array(items))
-    }
-
-    /// Positioned just after a `<struct>` open. Tolerates a member whose `</member>` was dropped.
-    fn read_struct(&mut self) -> Result<Value, XmlError> {
-        let mut members = Vec::new();
-        loop {
-            let ev = self.sig()?;
-            if ev.is_start(b"member") {
-                members.push(self.read_member()?);
-            } else if ev.is_end(b"struct") || ev.is_eof() {
-                break;
-            }
-        }
-        Ok(Value::Struct(members))
-    }
-
-    fn read_member(&mut self) -> Result<(String, Value), XmlError> {
-        let mut key = String::new();
-        let mut value = Value::Str(String::new());
-        loop {
-            let ev = self.sig()?;
-            if ev.is_start(b"name") {
-                key = self.take_text(b"name")?;
-            } else if ev.is_start(b"value") {
-                value = self.read_value()?;
-            } else if ev.is_end(b"member") {
-                break;
-            } else if ev.is_start(b"member") || ev.is_end(b"struct") {
-                // The close tag was dropped: hand this one back to the struct loop.
-                self.push(ev);
-                break;
-            } else if ev.is_eof() {
-                break;
-            }
-        }
-        Ok((key, value))
+        b"array" => Value::Array(
+            typed
+                .child(b"data")
+                .map(|data| data.all(b"value").map(value).collect())
+                .unwrap_or_default(),
+        ),
+        b"struct" => Value::Struct(
+            typed
+                .all(b"member")
+                .map(|member| {
+                    let name = member.child(b"name").map(|n| n.text.clone());
+                    let value = member.child(b"value").map(value);
+                    (
+                        name.unwrap_or_default(),
+                        value.unwrap_or(Value::Str(String::new())),
+                    )
+                })
+                .collect(),
+        ),
+        // string, int, boolean, double, dateTime.iso8601, nil or anything unknown: the text.
+        _ => Value::Str(typed.text.clone()),
     }
 }
 
@@ -461,6 +346,20 @@ mod tests {
         let v = parse(xml).unwrap();
         assert_eq!(v.get("result").and_then(Value::as_bool), Some(false));
         assert_eq!(v.get_str("result_text"), Some("not logged in"));
+    }
+
+    #[test]
+    fn any_dropped_close_tag_is_recovered() {
+        // A member whose </member> is missing, then another member, then an array whose </data>
+        // is missing.
+        let xml = br#"<methodResponse><params><param><value><struct>
+            <member><name>a</name><value><string>1</string></value>
+            <member><name>b</name><value><array><data><value><string>x</string></value></array></value></member>
+          </struct></value></param></params></methodResponse>"#;
+        let v = parse(xml).unwrap();
+        assert_eq!(v.get_str("a"), Some("1"));
+        let b = v.get("b").and_then(Value::as_array).unwrap();
+        assert_eq!(b[0].as_str(), Some("x"));
     }
 
     #[test]

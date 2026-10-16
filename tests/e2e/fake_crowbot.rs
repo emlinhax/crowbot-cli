@@ -11,11 +11,18 @@ use futures_util::StreamExt;
 use serde_json::{Value, json};
 
 const MODELS: &str = include_str!("../fixtures/api/models.json");
+const USAGE: &str = include_str!("../fixtures/api/usage.json");
 
 /// Keys the fake accepts, and what each stands for.
 pub const ENV_KEY: &str = "test-key";
 pub const DEVICE_KEY: &str = "device-key-9999";
 pub const ACCOUNT_NUMBER: &str = "1234567890123456";
+/// Each accepted key as `/api/me/keys` lists it: the key, its reference, name and hint.
+const KEYS: [(&str, &str, &str, &str); 3] = [
+    (ACCOUNT_NUMBER, "000000000001", "account", "•••• 3456"),
+    (DEVICE_KEY, "000000000002", "laptop", "•••• 9999"),
+    (ENV_KEY, "000000000003", "ci", "•••• -key"),
+];
 /// The one password the fake forum's Tapatalk plugin accepts, and the session it hands back.
 pub const FORUM_PASSWORD: &str = "hunter2";
 pub const FORUM_COOKIE: &str = "bbsessionhash=fake; path=/; HttpOnly";
@@ -24,12 +31,16 @@ pub const FORUM_PATH: &str = "/forum";
 
 /// One scripted reply to a chat request.
 pub enum Reply {
-    /// An SSE fixture from tests/fixtures/sse/.
+    /// The model says this and stops.
+    Text(String),
+    /// The model makes these calls, one frame each, and stops for their results.
+    Calls(Vec<Call>),
+    /// A raw SSE fixture from tests/fixtures/sse/, for a stream the template cannot make.
     Sse(String),
     /// A JSON error envelope with this status and `error.type`.
     Error {
         status: u16,
-        kind: &'static str,
+        kind: String,
         retry_after: Option<u64>,
     },
     /// An error that sends its headers (retry at once) and the start of its body, then nothing.
@@ -38,8 +49,7 @@ pub enum Reply {
 
 #[derive(Default)]
 struct Inner {
-    /// The fake's own address, filled into scripted replies as `{base}` so a scripted model
-    /// can point webfetch at this server.
+    /// This server's address, filled in for `{base}` so a scripted model can fetch from it.
     base: String,
     /// The sandbox's crowbot home, filled in as `{home}`, with `/` separators.
     home: String,
@@ -51,6 +61,10 @@ struct Inner {
     pair_collected: bool,
     /// Signups to refuse with 428 before accepting one.
     stale_proofs: usize,
+    /// What `/api/me` answers a known key; `None` is a funded account with no plan.
+    me: Option<Value>,
+    /// Keys revoked through `/api/me/keys/{ref}/revoke`; each is refused from then on.
+    revoked: Vec<&'static str>,
 }
 
 type Shared = Arc<Mutex<Inner>>;
@@ -67,10 +81,61 @@ pub struct Fake {
     inner: Shared,
 }
 
+/// A tool call the scripted model makes.
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Call {
+    pub name: String,
+    /// As the model sends them: JSON text, or not (a model can cut its arguments short).
+    pub arguments: String,
+}
+
 impl Reply {
     pub fn sse(name: &str) -> Self {
         Self::Sse(name.to_owned())
     }
+
+    pub fn text(text: &str) -> Self {
+        Self::Text(text.to_owned())
+    }
+
+    pub fn call(name: &str, arguments: &str) -> Self {
+        Self::Calls(vec![Call {
+            name: name.to_owned(),
+            arguments: arguments.to_owned(),
+        }])
+    }
+}
+
+/// The stream every templated reply makes: its frames, the finish, the usage and the end,
+/// with `fill` applied to what the model says.
+/// CEILING: twin of agent/run.rs's test turns, and the forum replies below of
+/// forums/mobiquo.rs's fake; crowbot is bin-only, so see src/testing.rs for the upgrade.
+fn stream(reply: &Reply, fill: impl Fn(&str) -> String) -> Option<String> {
+    let (mut frames, finish) = match reply {
+        Reply::Text(text) => (
+            vec![json!({"choices": [{"index": 0, "delta": {"content": fill(text)}}]})],
+            "stop",
+        ),
+        Reply::Calls(calls) => (
+            calls
+                .iter()
+                .enumerate()
+                .map(|(i, call)| {
+                    let call = json!({"index": i, "id": format!("c{}", i + 1), "type": "function",
+                        "function": {"name": call.name, "arguments": fill(&call.arguments)}});
+                    json!({"choices": [{"index": 0, "delta": {"tool_calls": [call]}}]})
+                })
+                .collect(),
+            "tool_calls",
+        ),
+        _ => return None,
+    };
+    frames.push(json!({"choices": [{"index": 0, "delta": {}, "finish_reason": finish}]}));
+    frames.push(json!({"choices": [], "usage": {"prompt_tokens": 100, "completion_tokens": 10}}));
+    let mut out: String = frames.iter().map(|f| format!("data: {f}\n\n")).collect();
+    out.push_str("data: [DONE]\n\n");
+    Some(out)
 }
 
 impl Fake {
@@ -80,6 +145,10 @@ impl Fake {
             .route("/v1/models", get(models))
             .route("/v1/chat/completions", post(chat))
             .route("/api/me", get(me))
+            .route("/api/me/keys", get(me_keys))
+            .route("/api/me/usage", get(me_usage))
+            .route("/api/me/balance-fallback", post(me_fallback))
+            .route("/api/me/keys/{reference}/revoke", post(me_key_revoke))
             .route("/api/pair/start", post(pair_start))
             .route("/api/pair/{code}", get(pair_poll))
             .route("/api/pow", get(pow))
@@ -115,6 +184,11 @@ impl Fake {
         self.inner.lock().unwrap().pair_polls.extend(polls);
     }
 
+    /// What `/api/me` answers from now on, as crowbot words it.
+    pub fn set_me(&self, me: Value) {
+        self.inner.lock().unwrap().me = Some(me);
+    }
+
     pub fn stale_proofs(&self, count: usize) {
         self.inner.lock().unwrap().stale_proofs = count;
     }
@@ -138,12 +212,22 @@ async fn record(State(inner): State<Shared>, req: Request, next: Next) -> Respon
     next.run(req).await
 }
 
-fn authorized(headers: &HeaderMap) -> bool {
-    let bearer = headers
+fn bearer(headers: &HeaderMap) -> Option<&str> {
+    headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "));
-    matches!(bearer, Some(ENV_KEY | DEVICE_KEY | ACCOUNT_NUMBER))
+        .and_then(|v| v.strip_prefix("Bearer "))
+}
+
+fn authorized(inner: &Shared, headers: &HeaderMap) -> bool {
+    let bearer = bearer(headers);
+    let revoked = inner
+        .lock()
+        .unwrap()
+        .revoked
+        .iter()
+        .any(|k| Some(*k) == bearer);
+    matches!(bearer, Some(ENV_KEY | DEVICE_KEY | ACCOUNT_NUMBER)) && !revoked
 }
 
 fn error(status: u16, kind: &str, retry_after: Option<u64>) -> Response {
@@ -221,7 +305,7 @@ async fn models() -> impl IntoResponse {
 }
 
 async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> Response {
-    if !authorized(&headers) {
+    if !authorized(&inner, &headers) {
         return error(401, "invalid_api_key", None);
     }
     let (reply, base, home) = {
@@ -235,27 +319,32 @@ async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> 
             inner.home.clone(),
         )
     };
+    let fill = |text: &str| text.replace("{base}", &base).replace("{home}", &home);
+    let sse = |text: String| {
+        (
+            [
+                (header::CONTENT_TYPE, "text/event-stream"),
+                (header::HeaderName::from_static("x-request-id"), "req_fake"),
+            ],
+            text,
+        )
+            .into_response()
+    };
     match reply {
+        Some(reply @ (Reply::Text(_) | Reply::Calls(_))) => {
+            sse(stream(&reply, fill).expect("a templated reply"))
+        }
         Some(Reply::Sse(name)) => {
-            let path = format!("{}/tests/fixtures/sse/{name}", env!("CARGO_MANIFEST_DIR"));
-            let text = std::fs::read_to_string(&path)
-                .unwrap_or_else(|_| panic!("{path}"))
-                .replace("{base}", &base)
-                .replace("{home}", &home);
-            (
-                [
-                    (header::CONTENT_TYPE, "text/event-stream"),
-                    (header::HeaderName::from_static("x-request-id"), "req_fake"),
-                ],
-                text,
-            )
-                .into_response()
+            let path = crate::common::tests_path("fixtures/sse").join(name);
+            let text =
+                std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{}", path.display()));
+            sse(fill(&text))
         }
         Some(Reply::Error {
             status,
             kind,
             retry_after,
-        }) => error(status, kind, retry_after),
+        }) => error(status, &kind, retry_after),
         Some(Reply::Stall { status }) => {
             let start =
                 futures_util::stream::once(async { Ok::<_, std::io::Error>(r#"{"error":"#) });
@@ -271,11 +360,77 @@ async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> 
     }
 }
 
-async fn me(headers: HeaderMap) -> Response {
-    if !authorized(&headers) {
+async fn me(State(inner): State<Shared>, headers: HeaderMap) -> Response {
+    if !authorized(&inner, &headers) {
         return error(401, "invalid_api_key", None);
     }
-    axum::Json(json!({"balance_microdollars": 12_300_000, "can_spend": true})).into_response()
+    let me = inner.lock().unwrap().me.clone();
+    axum::Json(me.unwrap_or_else(|| json!({"balance_microdollars": 12_300_000, "can_spend": true})))
+        .into_response()
+}
+
+async fn me_usage(State(inner): State<Shared>, headers: HeaderMap) -> Response {
+    if !authorized(&inner, &headers) {
+        return error(401, "invalid_api_key", None);
+    }
+    ([(header::CONTENT_TYPE, "application/json")], USAGE).into_response()
+}
+
+/// Sets `spend_balance_when_dry` in what `/api/me` answers from then on.
+async fn me_fallback(State(inner): State<Shared>, headers: HeaderMap, body: String) -> Response {
+    if !authorized(&inner, &headers) {
+        return error(401, "invalid_api_key", None);
+    }
+    let Some(on) = serde_json::from_str::<Value>(&body)
+        .ok()
+        .and_then(|b| b["on"].as_bool())
+    else {
+        return error(400, "bad_request", None);
+    };
+    let mut inner = inner.lock().unwrap();
+    let me = inner
+        .me
+        .get_or_insert_with(|| json!({"balance_microdollars": 12_300_000, "can_spend": true}));
+    me["spend_balance_when_dry"] = json!(on);
+    axum::Json(json!({"ok": true, "spend_balance_when_dry": on})).into_response()
+}
+
+async fn me_keys(State(inner): State<Shared>, headers: HeaderMap) -> Response {
+    if !authorized(&inner, &headers) {
+        return error(401, "invalid_api_key", None);
+    }
+    let revoked = inner.lock().unwrap().revoked.clone();
+    let keys: Vec<Value> = KEYS
+        .iter()
+        .filter(|(key, ..)| !revoked.contains(key))
+        .map(|(key, reference, name, hint)| {
+            json!({"ref": reference, "name": name, "hint": hint,
+                "created_at": "2026-10-01T09:00:00+00:00", "current": bearer(&headers) == Some(key)})
+        })
+        .collect();
+    axum::Json(json!({ "keys": keys })).into_response()
+}
+
+async fn me_key_revoke(
+    State(inner): State<Shared>,
+    Path(reference): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    if !authorized(&inner, &headers) {
+        return error(401, "invalid_api_key", None);
+    }
+    let mut inner = inner.lock().unwrap();
+    let Some((key, ..)) = KEYS
+        .iter()
+        .find(|(key, r, ..)| *r == reference && !inner.revoked.contains(key))
+    else {
+        return error(404, "not_found", None);
+    };
+    if bearer(&headers) == Some(key) {
+        return error(409, "cannot_revoke_current", None);
+    }
+    inner.revoked.push(key);
+    axum::Json(json!({"ok": true})).into_response()
 }
 
 async fn pair_start() -> impl IntoResponse {

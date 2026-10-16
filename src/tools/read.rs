@@ -1,28 +1,38 @@
-use std::fmt::Write as _;
 use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::many::{self, Many};
-use super::permissions;
-use super::truncate;
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx, target};
+use crate::config::limits;
+use crate::data;
 use crate::io::{self, fs::Kind};
-use crate::limits;
+use crate::permission::catalog;
 use crate::text::shorten;
+use crate::text::template::fill;
+use crate::text::truncate;
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "read",
-        include_str!("../../data/tools/read.md"),
-        include_str!("../../data/tools/read.schema.json"),
-    )
-});
+static SPEC: LazyLock<Spec> = super::spec!("read");
+
+static TEXT: LazyLock<Text> = data::load!("tools/read.toml");
 
 #[derive(Deserialize)]
-struct Args {
+#[serde(deny_unknown_fields)]
+struct Text {
+    over_budget: String,
+    binary: String,
+    empty: String,
+    past_end: String,
+    more_lines: String,
+    list_failed: String,
+    empty_dir: String,
+    more_entries: String,
+}
+
+#[derive(Deserialize)]
+pub struct Args {
     path: Many<String>,
     #[serde(default)]
     offset: Option<usize>,
@@ -33,7 +43,7 @@ struct Args {
 }
 
 impl Args {
-    fn paths(self) -> (Vec<String>, Page) {
+    fn paths(&self) -> (&[String], Page) {
         let page = Page {
             offset: self.offset,
             limit: self.limit,
@@ -57,40 +67,41 @@ struct Page {
 pub struct Read;
 
 impl Tool for Read {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let (paths, _) = parse::<Args>(args)?.paths();
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+        let (paths, _) = args.paths();
         let mut asks = Vec::new();
-        for path in &paths {
-            let target = target::resolve(&cx.app.paths, path).map_err(Refusal::Refused)?;
-            asks.extend(target::asks(permissions::READ.name, &target));
+        for path in paths {
+            let target = target::resolve(&cx.app.paths, path)?;
+            asks.extend(target::asks(catalog::READ.name, &target));
         }
         Ok(Check::new(asks))
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let (paths, page) = match parse_or_fail::<Args>(&args) {
-                Ok(args) => args.paths(),
-                Err(out) => return out,
-            };
-            if let [path] = paths.as_slice() {
+            let (paths, page) = args.paths();
+            if let [path] = paths {
                 return one(cx, path, page);
             }
             let budget = limits::get().tools.read_batch_bytes.value;
             let (mut used, mut read) = (0, 0);
             let mut parts = Vec::new();
-            for path in &paths {
+            for path in paths {
                 // A soft cap: the file that crosses it stays whole, and the rest are only named.
                 let out = if used < budget {
-                    one(cx, path, page)
+                    one(cx, path, page).unwrap_or_else(Output::error)
                 } else {
-                    Output::error(format!(
-                        "Not read: this batch already holds {budget} bytes. Read it on its own."
-                    ))
+                    Output::error(fill(&TEXT.over_budget, &[("budget", &budget.to_string())]))
                 };
                 used += out.content.len();
                 read += usize::from(!out.is_error);
@@ -98,29 +109,23 @@ impl Tool for Read {
             }
             let content = many::join(parts);
             if read == 0 {
-                return Output::error(content);
+                return Err(content);
             }
-            Output::ok(content).with_details(json!({ "files": read }))
+            Ok(Output::ok(content).with_details(json!({ "files": read })))
         })
     }
 }
 
 /// One path: a file's numbered lines, or a directory's entries.
-fn one(cx: &ToolCx<'_>, path: &str, page: Page) -> Output {
-    let target = match target::resolve(&cx.app.paths, path) {
-        Ok(target) => target,
-        Err(why) => return Output::error(why),
-    };
-    match target.kind() {
-        Err(why) => Output::error(why),
-        Ok(Kind::Missing) => Output::error(format!("{} does not exist.", target.shown)),
-        Ok(Kind::Dir) => list(&target.path, &target.shown, page.depth.unwrap_or(1)),
-        Ok(Kind::File) => {
-            let out = file(&target.path, &target.shown, page.offset, page.limit);
-            if !out.is_error {
-                cx.files().saw(&target.path);
-            }
-            out
+fn one(cx: &ToolCx<'_>, path: &str, page: Page) -> Result<Output, String> {
+    let target = target::resolve(&cx.app.paths, path)?;
+    match target.kind()? {
+        Kind::Missing => Err(fill(&target::TEXT.missing, &[("path", &target.shown)])),
+        Kind::Dir => list(&target.path, &target.shown, page.depth.unwrap_or(1)),
+        Kind::File => {
+            let out = file(&target.path, &target.shown, page.offset, page.limit)?;
+            cx.files().saw(&target.path);
+            Ok(out)
         }
     }
 }
@@ -130,29 +135,33 @@ fn file(
     shown: &str,
     offset: Option<usize>,
     limit: Option<usize>,
-) -> Output {
+) -> Result<Output, String> {
     let limits = &limits::get().tools;
-    let bytes = match io::fs::read_bytes(path) {
-        Ok(bytes) => bytes,
-        Err(e) => return Output::error(format!("Could not read {shown}: {e}")),
-    };
+    let bytes = io::fs::read_bytes(path).map_err(|e| {
+        fill(
+            &target::TEXT.read_failed,
+            &[("path", shown), ("error", &e.to_string())],
+        )
+    })?;
     let sniff = &bytes[..bytes.len().min(limits.binary_sniff_bytes.value)];
     if sniff.contains(&0) {
-        return Output::error(format!(
-            "{shown} is a binary file; it cannot be shown as text."
-        ));
+        return Err(fill(&TEXT.binary, &[("path", shown)]));
     }
     let text = String::from_utf8_lossy(&bytes);
     let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
     let lines: Vec<&str> = text.lines().collect();
     if lines.is_empty() {
-        return Output::ok(format!("{shown} is empty."));
+        return Ok(Output::ok(fill(&TEXT.empty, &[("path", shown)])));
     }
     let start = offset.unwrap_or(1).max(1);
     if start > lines.len() {
-        return Output::error(format!(
-            "{shown} has {} lines; offset {start} is past the end.",
-            lines.len()
+        return Err(fill(
+            &TEXT.past_end,
+            &[
+                ("path", shown),
+                ("lines", &lines.len().to_string()),
+                ("offset", &start.to_string()),
+            ],
         ));
     }
     let want = limit
@@ -176,25 +185,35 @@ fn file(
     let last = start - 1 + cut.kept_lines.max(1);
     let mut content = cut.text;
     if last < lines.len() {
-        let _ = write!(
-            content,
-            "\n\n[Showing lines {start}-{last} of {}. Use offset={} to continue.]",
-            lines.len(),
-            last + 1
-        );
+        content.push_str("\n\n");
+        content.push_str(&fill(
+            &TEXT.more_lines,
+            &[
+                ("first", &start.to_string()),
+                ("last", &last.to_string()),
+                ("total", &lines.len().to_string()),
+                ("next", &(last + 1).to_string()),
+            ],
+        ));
     }
-    Output::ok(content).with_details(json!({"lines": [start, last], "total": lines.len()}))
+    Ok(Output::ok(content).with_details(json!({"lines": [start, last], "total": lines.len()})))
 }
 
 /// One level is everything in the directory; deeper levels leave out what .gitignore ignores.
-fn list(path: &std::path::Path, shown: &str, depth: usize) -> Output {
+fn list(path: &std::path::Path, shown: &str, depth: usize) -> Result<Output, String> {
     let limits = &limits::get().tools;
     let max = limits.list_entries.value;
     let entries: Vec<(usize, String, bool)> = if depth <= 1 {
-        match io::fs::list_dir(path) {
-            Ok(entries) => entries.into_iter().map(|e| (1, e.name, e.is_dir)).collect(),
-            Err(e) => return Output::error(format!("Could not list {shown}: {e}")),
-        }
+        io::fs::list_dir(path)
+            .map_err(|e| {
+                fill(
+                    &TEXT.list_failed,
+                    &[("path", shown), ("error", &e.to_string())],
+                )
+            })?
+            .into_iter()
+            .map(|e| (1, e.name, e.is_dir))
+            .collect()
     } else {
         io::search::tree(path, depth.min(limits.list_depth_max.value))
             .into_iter()
@@ -210,24 +229,26 @@ fn list(path: &std::path::Path, shown: &str, depth: usize) -> Output {
         })
         .collect();
     if entries.is_empty() {
-        out = format!("{shown} is an empty directory.");
+        out = fill(&TEXT.empty_dir, &[("path", shown)]);
     } else if entries.len() > max {
-        let _ = write!(
-            out,
-            "\n[{} more entries; use glob to search.]",
-            entries.len() - max
-        );
+        out.push('\n');
+        out.push_str(&fill(
+            &TEXT.more_entries,
+            &[("count", &(entries.len() - max).to_string())],
+        ));
     }
-    Output::ok(out.trim_end().to_owned()).with_details(json!({ "entries": entries.len() }))
+    Ok(Output::ok(out.trim_end().to_owned()).with_details(json!({ "entries": entries.len() })))
 }
 
 #[cfg(test)]
 mod tests {
+    use serde_json::Value;
+
     use super::*;
     use crate::tools::testing::Project;
 
     async fn read(project: &Project, args: Value) -> Output {
-        Read.run(args, &project.cx()).await
+        project.run(&Read, args).await
     }
 
     #[tokio::test]

@@ -2,30 +2,20 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 use url::Url;
 
-use super::permissions;
-use super::truncate::{self, Keep};
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
+use crate::config::limits;
+use crate::data;
 use crate::io::fetch::FetchError;
-use crate::limits;
+use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
 
-const TEXT_SRC: &str = include_str!("../../data/tools/webfetch.toml");
+static SPEC: LazyLock<Spec> = super::spec!("webfetch");
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "webfetch",
-        include_str!("../../data/tools/webfetch.md"),
-        include_str!("../../data/tools/webfetch.schema.json"),
-    )
-});
-
-static TEXT: LazyLock<Text> = LazyLock::new(|| {
-    toml::from_str(TEXT_SRC).expect("data/tools/webfetch.toml is checked by tests")
-});
+static TEXT: LazyLock<Text> = data::load!("tools/webfetch.toml");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -36,21 +26,20 @@ struct Text {
     challenge: String,
     browser: String,
     slow: String,
-    cut: String,
     redirect: String,
     invalid: String,
 }
 
 #[derive(Deserialize)]
-struct Args {
+pub struct Args {
     url: String,
 }
 
 pub struct WebFetch;
 
 /// Parsed as the client will parse it, so the host that is asked for is the host fetched.
-fn parse_url(raw: &str) -> Result<Url, Refusal> {
-    let invalid = || Refusal::Refused(fill(&TEXT.invalid, &[("url", raw.trim())]));
+fn parse_url(raw: &str) -> Result<Url, String> {
+    let invalid = || fill(&TEXT.invalid, &[("url", raw.trim())]);
     let url = Url::parse(raw.trim()).map_err(|_| invalid())?;
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
         return Err(invalid());
@@ -106,40 +95,40 @@ fn refusal(url: &str, status: u16, firewall: bool) -> Option<String> {
 }
 
 impl Tool for WebFetch {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: Args = parse(args)?;
+    fn check(&self, args: &Self::Args, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let url = parse_url(&args.url)?;
         Ok(
-            Check::new(vec![Ask::new(permissions::WEBFETCH.name, host(&url))])
+            Check::new(vec![Ask::new(catalog::WEBFETCH.name, host(&url))])
                 .with_preview(url.as_str()),
         )
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let args: Args = match parse_or_fail(&args) {
-                Ok(args) => args,
-                Err(out) => return out,
-            };
             let limits = &limits::get().tools;
-            let parsed = match parse_url(&args.url) {
-                Ok(url) => url,
-                Err(why) => return Output::error(why.to_string()),
-            };
+            let parsed = parse_url(&args.url)?;
             let url = parsed.as_str().to_owned();
-            let page = match cx.app.fetch.get(&url).await {
-                Ok(page) => page,
-                Err(e) => return Output::error(failure(&url, &e)),
-            };
+            let page = cx
+                .app
+                .fetch
+                .get(&url)
+                .await
+                .map_err(|e| failure(&url, &e))?;
             if let Some(moved) = redirect(&parsed, page.status, page.location.as_deref()) {
-                return Output::ok(moved);
+                return Ok(Output::ok(moved));
             }
             if let Some(why) = refusal(&url, page.status, page.firewall) {
-                return Output::error(why);
+                return Err(why);
             }
             let mut body = page.body;
             body.truncate(limits.webfetch_max_bytes.value);
@@ -150,24 +139,12 @@ impl Tool for WebFetch {
             } else {
                 text.into_owned()
             };
-            let cut = truncate::cut(
-                &text,
-                Keep::Head,
-                limits.max_lines.value,
-                limits.max_bytes.value,
-            );
-            let mut content = cut.text.clone();
-            if cut.truncated() {
-                let (kept, total) = (cut.kept_lines.to_string(), cut.total_lines.to_string());
-                content.push_str("\n\n");
-                content.push_str(&fill(&TEXT.cut, &[("kept", &kept), ("total", &total)]));
-            }
-            Output::ok(content).with_details(json!({
+            Ok(Output::head(&text).with_details(json!({
                 "url": url,
                 "final_url": page.url,
                 "status": page.status,
                 "fingerprint": page.fingerprint,
-            }))
+            })))
         })
     }
 }

@@ -1,4 +1,4 @@
 name = "update"
-summary = "Replace crowbot with the newest release now (it also does so by itself once a day)"
+summary = "Update to the newest release now (sessions also do it daily)"
 usage = "update"
 scope = ["cli"]

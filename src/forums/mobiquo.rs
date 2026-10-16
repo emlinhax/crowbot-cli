@@ -4,23 +4,29 @@
 
 use anyhow::{Context, Result, bail};
 
+use crate::config::limits;
 use crate::forums::xmlrpc::{self, Arg, Value};
-use crate::forums::{Forum, Login, Post, Posted, Section, Thread, Topic, TopicList};
+use crate::forums::{self, Forum, Login, Page, Post, Posted, Section, Thread, Topic, TopicList};
 use crate::io::fetch::{self, Fetch};
-use crate::limits;
+use crate::text::template::fill;
+
+/// This backend's name in a forum's `kind`.
+pub const KIND: &str = "mobiquo";
+/// Where the plugin lives and its script's extension when a forum does not say otherwise.
+const DIR: &str = "mobiquo";
+const EXT: &str = "php";
 
 fn endpoint(forum: &Forum) -> String {
     let base = forum.base_url.trim_end_matches('/');
-    let ext = if forum.ext.is_empty() {
-        "php"
-    } else {
-        &forum.ext
+    let or = |value: &'static str, given: &str| -> String {
+        if given.is_empty() {
+            value.to_owned()
+        } else {
+            given.to_owned()
+        }
     };
-    if forum.mobiquo_dir.is_empty() {
-        format!("{base}/mobiquo/mobiquo.{ext}")
-    } else {
-        format!("{base}/{}/mobiquo.{ext}", forum.mobiquo_dir)
-    }
+    let (dir, ext) = (or(DIR, &forum.mobiquo_dir), or(EXT, &forum.ext));
+    format!("{base}/{dir}/mobiquo.{ext}")
 }
 
 /// The `Cookie` header to replay a session: the `name=value` of each stored `Set-Cookie`.
@@ -44,54 +50,55 @@ async fn send(
     let url = endpoint(forum);
     let body = xmlrpc::call(method, params).into_bytes();
     let cookie = cookie_header(&forum.cookies);
-    let resp = fetch
-        .post(fetch::Post {
-            url: &url,
-            body,
-            content_type: "text/xml",
-            cookie: cookie.as_deref(),
-        })
-        .await
-        .with_context(|| format!("reaching {}", forum.name))?;
-    if resp.status >= 400 {
-        let hint = if resp.firewall {
-            " (the forum's firewall refused it)"
-        } else {
-            ""
-        };
-        bail!("{} replied HTTP {}{hint}", forum.name, resp.status);
-    }
-    let value = xmlrpc::parse(&resp.body)
-        .with_context(|| format!("reading {method} from {}", forum.name))?;
+    let request = fetch::Post {
+        url: &url,
+        body,
+        content_type: "text/xml",
+        cookie: cookie.as_deref(),
+    };
+    let resp = forums::post(fetch, &forum.name, request).await?;
+    let value = xmlrpc::parse(&resp.body).with_context(|| {
+        fill(
+            &text().unreadable,
+            &[("method", method), ("forum", &forum.name)],
+        )
+    })?;
     Ok((value, resp.set_cookies))
 }
 
-/// The forum's error convention: a `result` member set false, carrying why in `result_text`.
-fn ok(value: Value) -> Result<Value> {
+fn text() -> &'static forums::Text {
+    &forums::data().text
+}
+
+/// The forum's error convention: a `result` member set false, carrying why in `result_text`;
+/// `why` stands in when the forum gives none.
+fn ok(value: Value, why: &str) -> Result<Value> {
     if value.get("result").and_then(Value::as_bool) == Some(false) {
-        bail!(
-            "{}",
-            value
-                .get_str("result_text")
-                .unwrap_or("the forum refused the request")
-        );
+        bail!("{}", value.get_str("result_text").unwrap_or(why));
     }
     Ok(value)
 }
 
-async fn call(fetch: &Fetch, forum: &Forum, method: &str, params: &[Arg]) -> Result<Value> {
+/// `method` sent and held to the forum's error convention.
+async fn call(
+    fetch: &Fetch,
+    forum: &Forum,
+    method: &str,
+    params: &[Arg],
+    why: &str,
+) -> Result<Value> {
     let (value, _) = send(fetch, forum, method, params).await?;
-    ok(value)
+    ok(value, why)
 }
 
 fn span(page: i64) -> (i64, i64) {
-    let per = limits::get().forums.page_size.value;
+    let per = i64::from(limits::get().forums.page_size.value.get());
     let start = (page.max(1) - 1) * per;
     (start, start + per - 1)
 }
 
 pub async fn sections(fetch: &Fetch, forum: &Forum) -> Result<Vec<Section>> {
-    let value = call(fetch, forum, "get_forum", &[]).await?;
+    let value = call(fetch, forum, "get_forum", &[], &text().refused).await?;
     let mut out = Vec::new();
     flatten(value.as_array().unwrap_or(&[]), 0, &mut out);
     Ok(out)
@@ -125,13 +132,14 @@ pub async fn topics(fetch: &Fetch, forum: &Forum, forum_id: &str, page: i64) -> 
             Arg::Int(start),
             Arg::Int(end),
         ],
+        &text().refused,
     )
     .await?;
     Ok(topic_list(&value))
 }
 
 pub async fn search(fetch: &Fetch, forum: &Forum, query: &str, page: i64) -> Result<TopicList> {
-    let per = limits::get().forums.page_size.value;
+    let per = i64::from(limits::get().forums.page_size.value.get());
     let value = call(
         fetch,
         forum,
@@ -141,6 +149,7 @@ pub async fn search(fetch: &Fetch, forum: &Forum, query: &str, page: i64) -> Res
             ("page", Arg::Int(page.max(1))),
             ("perpage", Arg::Int(per)),
         ])],
+        &text().refused,
     )
     .await?;
     Ok(topic_list(&value))
@@ -168,40 +177,21 @@ fn topic_list(value: &Value) -> TopicList {
     }
 }
 
-/// How many posts a thread has, with a one-post fetch, so a caller can jump to the last page.
-pub async fn thread_total(fetch: &Fetch, forum: &Forum, topic_id: &str) -> Result<i64> {
-    let value = call(
-        fetch,
-        forum,
-        "get_thread",
-        &[
-            Arg::Str(topic_id.to_owned()),
-            Arg::Int(0),
-            Arg::Int(0),
-            Arg::Bool(false),
-        ],
-    )
-    .await?;
-    Ok(value
-        .get("total_post_num")
-        .and_then(Value::as_i64)
-        .unwrap_or(0))
-}
-
-pub async fn thread(fetch: &Fetch, forum: &Forum, topic_id: &str, page: i64) -> Result<Thread> {
-    let (start, end) = span(page);
-    let value = call(
-        fetch,
-        forum,
-        "get_thread",
-        &[
-            Arg::Str(topic_id.to_owned()),
-            Arg::Int(start),
-            Arg::Int(end),
-            Arg::Bool(false),
-        ],
-    )
-    .await?;
+/// A page of a thread; for the last page, a one-post probe learns the length first.
+pub async fn thread(fetch: &Fetch, forum: &Forum, topic_id: &str, page: Page) -> Result<Thread> {
+    let page = match page {
+        Page::Num(n) => n.max(1),
+        Page::Last => {
+            let probe = get_thread(fetch, forum, topic_id, (0, 0)).await?;
+            last_page(
+                probe
+                    .get("total_post_num")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0),
+            )
+        }
+    };
+    let value = get_thread(fetch, forum, topic_id, span(page)).await?;
     let posts = value
         .get("posts")
         .and_then(Value::as_array)
@@ -214,18 +204,40 @@ pub async fn thread(fetch: &Fetch, forum: &Forum, topic_id: &str, page: i64) -> 
             content: p.get_str("post_content").unwrap_or_default().to_owned(),
         })
         .collect();
+    let total = value.get("total_post_num").and_then(Value::as_i64);
     Ok(Thread {
         title: value.get_str("topic_title").unwrap_or_default().to_owned(),
-        total: value.get("total_post_num").and_then(Value::as_i64),
+        total,
+        page,
+        pages: total.map(last_page),
         posts,
     })
 }
 
+async fn get_thread(
+    fetch: &Fetch,
+    forum: &Forum,
+    topic_id: &str,
+    (start, end): (i64, i64),
+) -> Result<Value> {
+    let range = [
+        Arg::Str(topic_id.to_owned()),
+        Arg::Int(start),
+        Arg::Int(end),
+        Arg::Bool(false),
+    ];
+    call(fetch, forum, "get_thread", &range, &text().refused).await
+}
+
+/// The last page number for `total` posts at the forum's page size (at least 1).
+fn last_page(total: i64) -> i64 {
+    let per = i64::from(limits::get().forums.page_size.value.get());
+    if total <= 0 { 1 } else { (total - 1) / per + 1 }
+}
+
 pub async fn login(fetch: &Fetch, forum: &Forum, user: &str, password: &str) -> Result<Login> {
     let (value, set) = send(fetch, forum, "login", &[Arg::b64(user), Arg::b64(password)]).await?;
-    if value.get("result").and_then(Value::as_bool) == Some(false) {
-        bail!("{}", value.get_str("result_text").unwrap_or("login failed"));
-    }
+    let value = ok(value, &text().login_failed)?;
     let cookies = if set.is_empty() {
         forum.cookies.clone()
     } else {
@@ -244,7 +256,7 @@ pub async fn reply(
     topic_id: &str,
     body: &str,
 ) -> Result<Posted> {
-    let (value, _) = send(
+    let value = call(
         fetch,
         forum,
         "reply_post",
@@ -254,9 +266,10 @@ pub async fn reply(
             Arg::b64(""),
             Arg::b64(body),
         ],
+        &text().rejected,
     )
     .await?;
-    posted(value)
+    Ok(posted(&value))
 }
 
 pub async fn new_topic(
@@ -266,7 +279,7 @@ pub async fn new_topic(
     subject: &str,
     body: &str,
 ) -> Result<Posted> {
-    let (value, _) = send(
+    let value = call(
         fetch,
         forum,
         "new_topic",
@@ -275,27 +288,20 @@ pub async fn new_topic(
             Arg::b64(subject),
             Arg::b64(body),
         ],
+        &text().rejected,
     )
     .await?;
-    posted(value)
+    Ok(posted(&value))
 }
 
-fn posted(value: Value) -> Result<Posted> {
-    if value.get("result").and_then(Value::as_bool) == Some(false) {
-        bail!(
-            "{}",
-            value
-                .get_str("result_text")
-                .unwrap_or("the forum rejected the post")
-        );
-    }
-    Ok(Posted {
+fn posted(value: &Value) -> Posted {
+    Posted {
         id: value.get_str("post_id").map(str::to_owned),
         url: value
             .get_str("post_url")
             .or_else(|| value.get_str("topic_url"))
             .map(str::to_owned),
-    })
+    }
 }
 
 #[cfg(test)]
@@ -327,8 +333,6 @@ mod tests {
 
     async fn fake() -> (Forum, Arc<Mutex<Seen>>) {
         let seen = Arc::new(Mutex::new(Seen::default()));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
         let seen_in = seen.clone();
 
         async fn handle(
@@ -427,10 +431,12 @@ mod tests {
                 .unwrap()
         }
 
-        let router = Router::new()
-            .route("/mob/mobiquo.php", post(handle))
-            .with_state(seen_in);
-        tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let base = crate::testing::serve(|_| {
+            Router::new()
+                .route("/mob/mobiquo.php", post(handle))
+                .with_state(seen_in)
+        })
+        .await;
 
         let forum = Forum {
             id: "1".into(),
@@ -462,7 +468,7 @@ mod tests {
     #[tokio::test]
     async fn a_thread_decodes_base64_and_entities_and_sends_the_right_call() {
         let (forum, seen) = fake().await;
-        let t = thread(&client(), &forum, "77", 1).await.unwrap();
+        let t = thread(&client(), &forum, "77", Page::Num(1)).await.unwrap();
         assert_eq!(t.title, "Ümlaut topic");
         assert_eq!(t.posts[0].author, "crow");
         assert_eq!(t.posts[0].content, "hello & <welcome>");
@@ -501,6 +507,14 @@ mod tests {
             body.contains(&format!("<base64>{}</base64>", b64("secret"))),
             "{body}"
         );
+    }
+
+    #[test]
+    fn the_last_page_counts_whole_pages_of_posts() {
+        let per = i64::from(limits::get().forums.page_size.value.get());
+        assert_eq!(last_page(per * 5 + 1), 6);
+        assert_eq!(last_page(per), 1);
+        assert_eq!(last_page(0), 1);
     }
 
     #[test]

@@ -3,13 +3,29 @@ use std::sync::LazyLock;
 use anyhow::bail;
 use futures_util::future::BoxFuture;
 
-use super::{Command, Ctx, Outcome, Spec};
-use crate::api::signup;
-use crate::auth::{self, KeyKind};
-use crate::io::term;
+use serde::Deserialize;
 
-static SPEC: LazyLock<Spec> =
-    LazyLock::new(|| Spec::parse(include_str!("../../data/commands/signup.toml")));
+use super::{Command, Ctx, Effect, Outcome, Scope, Spec};
+use crate::api::endpoints;
+use crate::auth;
+use crate::data;
+use crate::io::term;
+use crate::text::template::fill;
+
+static SPEC: LazyLock<Spec> = super::spec!("signup");
+static TEXT: LazyLock<Text> = data::load!("commands/signup.toml", "text");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Text {
+    logged_in: String,
+    creating: String,
+    number: String,
+    about: String,
+    next: String,
+    confirm: String,
+    mismatch: String,
+}
 
 pub struct Signup;
 
@@ -30,51 +46,88 @@ impl Command for Signup {
                 [flag] if flag == "--force" => true,
                 _ => return Err(cx.usage(&SPEC)),
             };
+            // A session asks in its own card, which runs beside input.
+            if cx.scope == Scope::Session {
+                return Ok(Effect::Signup { force }.into());
+            }
             // A new account would replace the stored key, and an account number has no recovery.
             if !force && auth::stored(&app.paths)?.is_some() {
-                bail!(
-                    "this machine is already logged in; `crowbot logout` first, or pass --force if the current key is saved elsewhere"
-                );
+                let logout = cx.scope.invoke("logout");
+                bail!(fill(&TEXT.logged_in, &[("logout", &logout)]));
             }
-            term::out("Creating a crowbot account (solving a proof-of-work challenge)…\n");
-            let account = signup::register(&app.api).await?;
+            term::out(&format!("{}\n", TEXT.creating));
             // Saved before it is shown, so an interrupted terminal cannot lose the only copy.
-            auth::save(&app.paths, &account.account_number, KeyKind::Account)?;
-            term::out(&format!(
-                "\nYour account number:  {}\n\nThis number is your login and your API key. There is no email and no recovery,\nso store it in a password manager now. A copy is saved in {}.\n",
-                account.formatted,
-                app.paths.auth().display()
+            let account = auth::sign_up(&app.api, &app.paths).await?;
+            let path = app.paths.auth().display().to_string();
+            term::out(&fill(
+                &TEXT.number,
+                &[("number", &account.formatted), ("about", &about(&path))],
             ));
-            confirm(&account.account_number)?;
-            Ok(Outcome::from(format!(
-                "Next: fund it at https://chat.crowbot.sh.{}",
-                super::login::env_note()
-            )))
+            confirm(&account.number)?;
+            Ok(next().into())
         })
     }
 }
 
-/// Asks for the last four digits back, when someone is at the keyboard to answer.
+/// Asks for the number's tail back when stdin is a terminal.
 fn confirm(number: &str) -> anyhow::Result<()> {
     if !term::stdin_is_terminal() {
         return Ok(());
     }
-    let tail: String = number
-        .chars()
-        .rev()
-        .take(4)
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect();
     loop {
-        term::out("Type its last 4 digits to confirm you saved it: ");
+        term::out(&confirm_prompt());
         let Some(line) = term::read_line()? else {
             return Ok(());
         };
-        if line.trim() == tail {
+        if confirms(number, &line) {
             return Ok(());
         }
-        term::out("That does not match; check what you saved.\n");
+        term::out(&format!("{}\n", TEXT.mismatch));
+    }
+}
+
+/// What creating an account says while it works.
+pub fn creating() -> &'static str {
+    &TEXT.creating
+}
+
+/// What the number is, and where its copy is kept.
+pub fn about(path: &str) -> String {
+    fill(&TEXT.about, &[("path", path)])
+}
+
+/// The request for the number's last digits.
+pub fn confirm_prompt() -> String {
+    fill(&TEXT.confirm, &[("n", &auth::HINT_CHARS.to_string())])
+}
+
+pub fn mismatch() -> &'static str {
+    &TEXT.mismatch
+}
+
+/// What to do with the new account.
+pub fn next() -> String {
+    let mut out = fill(&TEXT.next, &[("chat", &endpoints::origin("chat"))]);
+    out.push_str(super::login::env_note());
+    out
+}
+
+/// Whether `typed` is the number's last digits, the proof it was saved somewhere.
+pub fn confirms(number: &str, typed: &str) -> bool {
+    let digits: Vec<char> = number.chars().filter(char::is_ascii_digit).collect();
+    let tail = &digits[digits.len().saturating_sub(auth::HINT_CHARS)..];
+    typed.trim().chars().eq(tail.iter().copied())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_last_digits_confirm() {
+        assert!(confirms("1234567890123456", " 3456\n"));
+        assert!(confirms("1234 5678 9012 3456", "3456"));
+        assert!(!confirms("1234567890123456", "456"));
+        assert!(!confirms("1234567890123456", "1234"));
     }
 }

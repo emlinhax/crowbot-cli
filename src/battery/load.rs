@@ -9,8 +9,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::record::Record;
-use crate::agent::message::{Finish, Message, ToolResult, Usage};
-use crate::api::error::ErrorInfo;
+use crate::conversation::error::ErrorInfo;
+use crate::conversation::message::{Finish, Message, ToolResult, Usage};
 use crate::io;
 use crate::session::reader;
 

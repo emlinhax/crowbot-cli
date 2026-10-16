@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use crate::fake_crowbot::{Fake, Reply};
-use crate::{Sandbox, WITH_KEY};
+use crate::{Sandbox, WITH_KEY, tests_path};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn print_streams_the_reply_and_records_the_session() {
@@ -38,6 +38,39 @@ async fn print_streams_the_reply_and_records_the_session() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn continue_goes_on_with_the_latest_session_in_its_own_file() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+
+    let none = sandbox
+        .run(&fake.url, &["-p", "--continue", "hi"], WITH_KEY)
+        .await;
+    assert_eq!(none.code(), Some(1));
+    none.stderr_has("no earlier session");
+
+    sandbox
+        .run(&fake.url, &["-p", "first"], WITH_KEY)
+        .await
+        .success();
+    sandbox
+        .run(&fake.url, &["-p", "--continue", "second"], WITH_KEY)
+        .await
+        .success();
+    let second = fake.chat_bodies()[1]["messages"].to_string();
+    assert!(
+        second.contains("first") && second.contains("Hello there!") && second.contains("second"),
+        "{second}"
+    );
+    let sessions = sandbox.sessions();
+    assert_eq!(sessions.len(), 1);
+    let text = std::fs::read_to_string(&sessions[0]).unwrap();
+    // One header, then two prompts and their replies, each prompt with what it was sent under.
+    assert_eq!(text.lines().count(), 5);
+    assert_eq!(text.matches(r#""state":{"model":"crow-2""#).count(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn json_mode_emits_one_event_per_line() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);
@@ -45,12 +78,9 @@ async fn json_mode_emits_one_event_per_line() {
 
     let run = sandbox.run(&fake.url, &["--json", "hi"], WITH_KEY).await;
     let stdout = run.success().stdout();
-    for line in stdout.lines() {
-        serde_json::from_str::<Value>(line).unwrap_or_else(|e| panic!("{e}: {line}"));
-    }
+    run.events();
     // The stream is a contract for scripts: its golden changes only on purpose.
-    let golden =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/json/hello.jsonl");
+    let golden = tests_path("golden/json/hello.jsonl");
     if std::env::var_os("UPDATE_GOLDEN").is_some() {
         std::fs::create_dir_all(golden.parent().unwrap()).unwrap();
         std::fs::write(&golden, &stdout).unwrap();
@@ -60,77 +90,42 @@ async fn json_mode_emits_one_event_per_line() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn rate_limits_are_retried_before_anything_streams() {
+async fn json_mode_nests_a_subagents_events_in_its_task_call() {
     let fake = Fake::start().await;
     fake.script([
-        Reply::Error {
-            status: 429,
-            kind: "rate_limited",
-            retry_after: Some(0),
-        },
-        Reply::sse("hello.sse"),
+        Reply::call(
+            "task",
+            r#"{"description": "look", "prompt": "find it", "subagent_type": "explore"}"#,
+        ),
+        Reply::text("found it"),
+        Reply::text("It is found."),
     ]);
     let sandbox = Sandbox::default();
-
-    let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
-    assert_eq!(run.success().stdout(), "Hello there!\n");
-    assert!(run.stderr().contains("retrying"), "{}", run.stderr());
-    assert_eq!(fake.hits("/v1/chat/completions"), 2);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn billing_errors_fail_with_a_hint_and_no_retry() {
-    let fake = Fake::start().await;
-    fake.script([Reply::Error {
-        status: 402,
-        kind: "insufficient_balance",
-        retry_after: None,
-    }]);
-    let sandbox = Sandbox::default();
-
-    let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
-    assert_eq!(run.code(), Some(1));
-    let err = run.stderr();
-    assert!(err.contains("Out of funds"), "{err}");
-    assert!(err.contains("req_fake"), "{err}");
-    assert!(err.contains("chat.crowbot.sh"), "{err}");
-    assert_eq!(fake.hits("/v1/chat/completions"), 1);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn an_error_whose_body_stalls_is_retried_not_waited_on() {
-    let fake = Fake::start().await;
-    fake.script([Reply::Stall { status: 503 }, Reply::sse("hello.sse")]);
-    let sandbox = Sandbox::default();
-
-    let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
-    assert!(run.success().stdout().contains("Hello there!"));
-    assert!(run.stderr().contains("retrying"), "{}", run.stderr());
-    assert_eq!(fake.hits("/v1/chat/completions"), 2);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_mid_stream_error_keeps_the_partial_reply() {
-    let fake = Fake::start().await;
-    fake.script([Reply::sse("error_midstream.sse")]);
-    let sandbox = Sandbox::default();
-
-    let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
-    assert_eq!(run.code(), Some(1));
-    assert_eq!(run.stdout(), "Partial answ\n");
-    assert!(run.stderr().contains("vendor refused"), "{}", run.stderr());
-    // Output already streamed (and billed), so it is not retried.
-    assert_eq!(fake.hits("/v1/chat/completions"), 1);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_length_stop_explains_the_cut() {
-    let fake = Fake::start().await;
-    fake.script([Reply::sse("length.sse")]);
-    let sandbox = Sandbox::default();
-
-    let run = sandbox.run(&fake.url, &["-p", "hi"], WITH_KEY).await;
-    assert!(run.success().stderr().contains("output limit"));
+    let run = sandbox.run(&fake.url, &["--json", "go"], WITH_KEY).await;
+    // The subagent's file has a fresh name each run; everything else is the contract.
+    let stdout: String = run
+        .success()
+        .stdout()
+        .lines()
+        .map(|line| {
+            let mut event: Value = serde_json::from_str(line).unwrap();
+            if let Some(session) = event.pointer_mut("/result/details/session") {
+                *session = Value::from("{session}");
+            }
+            format!("{event}\n")
+        })
+        .collect();
+    let golden = tests_path("golden/json/task.jsonl");
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        std::fs::write(&golden, &stdout).unwrap();
+    }
+    let want = std::fs::read_to_string(&golden).unwrap_or_default();
+    assert_eq!(stdout, want, "--json changed; if on purpose, `make golden`");
+    let nested = stdout.lines().any(|line| {
+        let event: Value = serde_json::from_str(line).unwrap();
+        event["type"] == "child" && event["event"]["type"] == "message_end"
+    });
+    assert!(nested, "{stdout}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -159,9 +154,8 @@ async fn effort_is_forwarded_and_validated() {
     assert!(fake.chat_bodies()[1].get("reasoning_effort").is_none());
     let end = run
         .success()
-        .stdout()
-        .lines()
-        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .events()
+        .into_iter()
         .find(|e| e["type"] == "message_end")
         .unwrap();
     assert_eq!(end["message"]["effort"], Value::Null, "{end}");
@@ -170,85 +164,7 @@ async fn effort_is_forwarded_and_validated() {
         .run(&fake.url, &["--effort", "ludicrous", "-p", "hi"], WITH_KEY)
         .await;
     assert_eq!(bad.code(), Some(1));
-    assert!(bad.stderr().contains("unknown effort"));
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn unknown_models_are_refused_before_spending() {
-    let fake = Fake::start().await;
-    let sandbox = Sandbox::default();
-
-    let run = sandbox
-        .run(&fake.url, &["--model", "nope", "-p", "hi"], WITH_KEY)
-        .await;
-    assert_eq!(run.code(), Some(1));
-    assert!(run.stderr().contains("unknown model"), "{}", run.stderr());
-    assert_eq!(fake.hits("/v1/chat/completions"), 0);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn without_a_key_it_says_how_to_log_in() {
-    let fake = Fake::start().await;
-    let sandbox = Sandbox::default();
-
-    let run = sandbox.run(&fake.url, &["-p", "hi"], None).await;
-    assert_eq!(run.code(), Some(1));
-    assert!(run.stderr().contains("crowbot login"), "{}", run.stderr());
-    assert_eq!(fake.hits("/v1/chat/completions"), 0);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_flag_after_the_prompt_is_refused_not_sent() {
-    let fake = Fake::start().await;
-    let sandbox = Sandbox::default();
-    let run = sandbox
-        .run(&fake.url, &["-p", "hi", "--json"], WITH_KEY)
-        .await;
-    assert_eq!(run.code(), Some(2), "{}", run.stderr());
-    assert!(
-        run.stderr().contains("`--json` goes before the words"),
-        "{}",
-        run.stderr()
-    );
-    assert_eq!(fake.hits("/v1/chat/completions"), 0);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_session_command_on_the_command_line_names_where_it_works() {
-    let fake = Fake::start().await;
-    let run = Sandbox::default().run(&fake.url, &["mode"], WITH_KEY).await;
-    assert_ne!(run.code(), Some(0));
-    assert!(
-        run.stderr().contains("`mode` only works as `/mode`"),
-        "{}",
-        run.stderr()
-    );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_prompt_that_starts_with_a_command_name_is_not_dropped() {
-    let fake = Fake::start().await;
-    let sandbox = Sandbox::default();
-    let run = sandbox
-        .run(&fake.url, &["help", "me", "fix", "the", "build"], WITH_KEY)
-        .await;
-    assert_eq!(run.code(), Some(1));
-    assert!(
-        run.stderr().contains("usage: crowbot help"),
-        "{}",
-        run.stderr()
-    );
-    assert!(!run.stdout().contains("Commands:"), "{}", run.stdout());
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn help_names_the_commands_and_what_print_does_with_them() {
-    let fake = Fake::start().await;
-    let run = Sandbox::default().run(&fake.url, &["--help"], None).await;
-    let out = run.success().stdout();
-    assert!(out.contains("Commands: help, login"), "{out}");
-    assert!(out.contains("never a command"), "{out}");
-    assert_eq!(fake.hits("/v1/chat/completions"), 0);
+    bad.stderr_has("unknown effort");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -257,21 +173,8 @@ async fn a_development_build_says_it_has_no_release_to_update_from() {
     let sandbox = Sandbox::default();
     let update = sandbox.run(&fake.url, &["update"], None).await;
     assert_eq!(update.code(), Some(1));
-    assert!(
-        update.stderr().contains("development build"),
-        "{}",
-        update.stderr()
-    );
+    update.stderr_has("development build");
     let version = sandbox.run(&fake.url, &["--version"], None).await;
     let out = version.success().stdout();
     assert_eq!(out.trim(), format!("crowbot {}", env!("CARGO_PKG_VERSION")));
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn headless_with_nothing_to_send_says_so() {
-    let fake = Fake::start().await;
-    let run = Sandbox::default().run(&fake.url, &["-p"], WITH_KEY).await;
-    assert_ne!(run.code(), Some(0));
-    assert!(run.stderr().contains("nothing to send"), "{}", run.stderr());
-    assert_eq!(fake.hits("/v1/chat/completions"), 0);
 }

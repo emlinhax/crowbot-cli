@@ -1,7 +1,15 @@
 description = "MANUAL asks before editing; a headless run cannot answer, so the edit is declined"
 args = ["-p", "fix the sum"]
 project = "calc"
-replies = ["scenarios/manual_edit/1.sse", "scenarios/manual_edit/2.sse", "scenarios/manual_edit/3.sse"]
+
+[[reply]]
+calls = [{ name = "read", arguments = '{"path": "src/calc.txt"}' }]
+
+[[reply]]
+calls = [{ name = "edit", arguments = '{"path": "src/calc.txt", "edits": [{"old_text": "2 + 2 = 5", "new_text": "2 + 2 = 4"}]}' }]
+
+[[reply]]
+text = 'I could not edit it without permission.'
 
 [expect]
 exit = 0

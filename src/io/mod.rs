@@ -1,14 +1,18 @@
-//! The only code that touches the network, files, terminal or clock; clippy.toml bans the raw
-//! calls everywhere else, so a transport change, retry or cache is one edit here.
+//! The only code that touches the network, files, processes, terminal or clock; clippy.toml bans
+//! the raw calls elsewhere.
+#![allow(clippy::disallowed_methods)]
 
 pub mod clipboard;
 pub mod clock;
+pub mod env;
+pub mod exe;
 pub mod fetch;
 pub mod fs;
 pub mod http;
 pub mod proc;
+pub mod registry;
 pub mod search;
 pub mod secret;
-pub mod shell;
 pub mod term;
-pub mod user_path;
+#[cfg(windows)]
+mod win;

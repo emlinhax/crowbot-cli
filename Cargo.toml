@@ -13,12 +13,17 @@ rust-version = "1.98"
 description = "Terminal coding agent for crowbot.sh"
 license = "MIT OR Apache-2.0"
 publish = false
+# `cargo run` runs crowbot, not the test server below.
+default-run = "crowbot"
+# Every test target is listed below; tests/fake_mcp/ is a program, not a test.
+autotests = false
 
 [dependencies]
 anyhow = "1.0.104"
 arboard = { version = "3.6.1", default-features = false }
 base64 = "0.23.1"
-# webfetch only: browser TLS (wreq/BoringSSL), challenge detection. The API stays on reqwest.
+# The web (webfetch, forums): browser TLS (wreq/BoringSSL), challenge detection. The API stays on
+# reqwest.
 cffetch = { path = "crates/cffetch" }
 clap = { version = "4.6.7", features = ["derive"] }
 crossterm = { version = "0.29.0", features = ["event-stream"] }
@@ -26,12 +31,13 @@ dirs = "7.0.0"
 fastrand = "2.5.0"
 futures-util = "0.3.34"
 globset = "0.4.20"
-grep-matcher = "0.1.9"
 grep-regex = "0.1.14"
 grep-searcher = "0.1.17"
 htmd = "0.5.5"
 ignore = "0.4.33"
 jiff = { version = "0.2.37", features = ["serde"] }
+# Checks a release's signature before the updater trusts it.
+minisign-verify = "0.3.0"
 pulldown-cmark = { version = "0.13.4", default-features = false }
 quick-xml = "0.37.5"
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "stream", "http2", "rustls", "system-proxy"] }
@@ -42,7 +48,7 @@ similar = "3.2.0"
 syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "parsing", "regex-fancy"] }
 thiserror = "2.0.21"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "signal", "process"] }
-tokio-util = "0.7.19"
+tokio-util = { version = "0.7.19", features = ["codec"] }
 toml = "1.1.6"
 unicode-segmentation = "1.13.3"
 unicode-width = "0.2.2"
@@ -51,10 +57,19 @@ url = "2.5.8"
 [dev-dependencies]
 axum = "0.8.9"
 insta = "1.48.0"
+# Signs stand-in releases for the updater's tests.
+minisign = "0.10.0"
 portable-pty = "0.9.0"
 tempfile = "3.27.0"
-tokio = { version = "1.53.1", features = ["net", "process"] }
+tokio = { version = "1.53.1", features = ["net"] }
 vt100 = "0.16.2"
+
+# A stand-in MCP server for the e2e suite; release builds ship only `crowbot`.
+[[bin]]
+name = "crowbot-fake-mcp"
+path = "tests/fake_mcp/main.rs"
+test = false
+doc = false
 
 [[test]]
 name = "e2e"
@@ -67,6 +82,14 @@ path = "tests/smoke.rs"
 [[test]]
 name = "battery"
 path = "tests/battery/main.rs"
+
+# Debug info is most of target/ (9 GB with full info): line tables keep backtraces' file and line
+# for crowbot's own code, and dependencies carry none.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
 
 [profile.release]
 lto = "fat"

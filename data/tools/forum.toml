@@ -2,7 +2,31 @@
 no_forums = "No forums have been added yet. The user can add one with /forums."
 unknown = "No forum matches {forum}. Call forum_sections with no arguments to see the forums you can browse."
 no_subject = "A new topic needs a subject."
-not_confirmed = "The user did not confirm the post, so nothing was sent."
-needs_user = "Posting needs the user to confirm, which a headless run cannot do."
 posted = "Posted to {forum}.{extra}"
-cut = "[Cut at {kept} of {total} lines.]"
+posted_url = " {url}"
+posted_id = " (post {id})"
+reply_preview = "Reply to topic {topic} on {forum} as {user}:\n\n{body}"
+topic_preview = "New topic on {forum} as {user}\nSubject: {subject}\n\n{body}"
+
+# The forum list, here and in the system prompt: a `line` per forum with its `hint` under it.
+heading = "Forums you can browse:"
+line = "- {name} ({host})"
+logged_in = " — logged in as {user}"
+guest = " — guest"
+hint = "  {hint}"
+
+no_sections = "No sections."
+section = "[{id}] {name}"
+sub_only = "  (heading)"
+no_topics = "No topics."
+total_topics = "{total} topics in total."
+topic = "[{id}] {title} — {author} ({replies} replies)"
+# A thread's head; posts are oldest first, so a page before the last nudges toward the end.
+pages = " — page {page} of {pages}, {total} posts"
+newest = "(oldest first; for the newest posts read page \"last\")"
+post = "── #{id} {author} {time}"
+
+# Each item's label in a batched reply.
+section_label = "Section {id}:"
+topic_label = "Topic {id}:"
+query_label = "\"{query}\":"

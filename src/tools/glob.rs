@@ -1,25 +1,29 @@
-use std::fmt::Write as _;
 use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 
-use super::permissions;
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail, target};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx, target};
+use crate::config::limits;
+use crate::data;
 use crate::io::{self, fs::Kind};
-use crate::limits;
+use crate::permission::catalog;
+use crate::text::template::fill;
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "glob",
-        include_str!("../../data/tools/glob.md"),
-        include_str!("../../data/tools/glob.schema.json"),
-    )
-});
+static SPEC: LazyLock<Spec> = super::spec!("glob");
+
+static TEXT: LazyLock<Text> = data::load!("tools/glob.toml");
 
 #[derive(Deserialize)]
-struct Args {
+#[serde(deny_unknown_fields)]
+struct Text {
+    none: String,
+    more: String,
+}
+
+#[derive(Deserialize)]
+pub struct Args {
     pattern: String,
     #[serde(default)]
     path: Option<String>,
@@ -28,43 +32,34 @@ struct Args {
 pub struct Glob;
 
 impl Tool for Glob {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let args: Args = parse(args)?;
-        let root = target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or("."))
-            .map_err(Refusal::Refused)?;
-        Ok(Check::new(target::asks(permissions::SEARCH.name, &root)))
+    fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+        let root = target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or("."))?;
+        Ok(Check::new(target::asks(catalog::SEARCH.name, &root)))
     }
 
-    fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let args: Args = match parse_or_fail(&args) {
-                Ok(args) => args,
-                Err(out) => return out,
-            };
-            let root = match target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or(".")) {
-                Ok(root) => root,
-                Err(why) => return Output::error(why),
-            };
-            let base = io::fs::canonical(&cx.app.paths.project);
-            match root.kind() {
-                Ok(Kind::Dir) => {}
-                Ok(_) => return Output::error(format!("{} is not a directory.", root.shown)),
-                Err(why) => return Output::error(why),
+            let root = target::search_root(&cx.app.paths, args.path.as_deref())?;
+            if root.kind()? != Kind::Dir {
+                return Err(fill(&target::TEXT.not_dir, &[("path", &root.shown)]));
             }
-            let (dir, pattern) = (root.path.clone(), args.pattern.clone());
-            let found = tokio::task::spawn_blocking(move || io::search::glob(&dir, &pattern)).await;
-            let mut found = match found {
-                Ok(Ok(found)) => found,
-                Ok(Err(e)) => return Output::error(format!("Bad pattern: {e}")),
-                Err(e) => return Output::error(e.to_string()),
-            };
+            let base = io::fs::canonical(&cx.app.paths.project);
+            let mut found = io::search::glob(root.path.clone(), args.pattern.clone())
+                .await
+                .map_err(|e| e.to_string())?;
             if found.is_empty() {
-                return Output::ok(format!("No files match {}.", args.pattern))
-                    .with_details(json!({"files": 0}));
+                return Ok(Output::ok(fill(&TEXT.none, &[("pattern", &args.pattern)]))
+                    .with_details(json!({"files": 0})));
             }
             // Newest first: the file being worked on is usually the one changed last.
             found.sort_by_key(|f| std::cmp::Reverse(f.modified));
@@ -75,9 +70,13 @@ impl Tool for Glob {
                 .map(|f| format!("{}\n", target::show(&base, &f.path).0))
                 .collect();
             if found.len() > max {
-                let _ = write!(out, "\n[{} more; narrow the pattern.]", found.len() - max);
+                out.push('\n');
+                out.push_str(&fill(
+                    &TEXT.more,
+                    &[("count", &(found.len() - max).to_string())],
+                ));
             }
-            Output::ok(out.trim_end().to_owned()).with_details(json!({"files": found.len()}))
+            Ok(Output::ok(out.trim_end().to_owned()).with_details(json!({"files": found.len()})))
         })
     }
 }
@@ -94,7 +93,7 @@ mod tests {
         project.write("src/a.rs", "");
         project.write("src/deep/b.rs", "");
         project.write("c.txt", "");
-        let out = Glob.run(json!({"pattern": "*.rs"}), &project.cx()).await;
+        let out = project.run(&Glob, json!({"pattern": "*.rs"})).await;
         let mut lines: Vec<&str> = out.content.lines().collect();
         lines.sort();
         assert_eq!(lines, vec!["src/a.rs", "src/deep/b.rs"]);

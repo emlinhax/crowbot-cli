@@ -3,11 +3,32 @@
 //! The upgrade is opening each component without following links (openat2 RESOLVE_BENEATH).
 
 use std::path::{Component, Path, PathBuf};
+use std::sync::LazyLock;
 
-use super::permissions;
+use serde::Deserialize;
+
+use crate::config::paths::Paths;
+use crate::data;
 use crate::io;
-use crate::paths::Paths;
+use crate::permission::catalog;
 use crate::permission::gate::Ask;
+use crate::text::template::fill;
+
+pub static TEXT: LazyLock<Text> = data::load!("tools/target.toml");
+
+/// What the path tools say about a path; `{path}` is always the path as shown.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Text {
+    look_failed: String,
+    tilde: String,
+    stream: String,
+    pub missing: String,
+    pub is_dir: String,
+    pub not_dir: String,
+    pub read_failed: String,
+    pub write_failed: String,
+}
 
 pub struct Target {
     /// The real path, with links resolved: what the tool reads or writes.
@@ -23,7 +44,12 @@ pub struct Target {
 impl Target {
     /// What the path is, or why that cannot be told, in words for the model.
     pub fn kind(&self) -> Result<io::fs::Kind, String> {
-        io::fs::kind(&self.path).map_err(|e| format!("Could not look at {}: {e}", self.shown))
+        io::fs::kind(&self.path).map_err(|e| {
+            fill(
+                &TEXT.look_failed,
+                &[("path", &self.shown), ("error", &e.to_string())],
+            )
+        })
     }
 }
 
@@ -34,14 +60,14 @@ pub fn resolve(paths: &Paths, raw: &str) -> Result<Target, String> {
     let raw = msys_to_windows(raw.trim());
     let raw = Path::new(&raw);
     if raw.components().next() == Some(Component::Normal(std::ffi::OsStr::new("~"))) {
-        return Err("`~` is not expanded here; use an absolute path.".into());
+        return Err(TEXT.tilde.clone());
     }
     if cfg!(windows)
         && raw
             .components()
             .any(|c| matches!(c, Component::Normal(part) if part.to_string_lossy().contains(':')))
     {
-        return Err("`:` names a stream, not a file; use a plain path.".into());
+        return Err(TEXT.stream.clone());
     }
     let joined = if raw.is_absolute() {
         raw.to_path_buf()
@@ -62,12 +88,28 @@ pub fn resolve(paths: &Paths, raw: &str) -> Result<Target, String> {
     })
 }
 
+/// Where a search starts (`.` when no path is given), which must exist.
+pub fn search_root(paths: &Paths, raw: Option<&str>) -> Result<Target, String> {
+    let root = resolve(paths, raw.unwrap_or("."))?;
+    match root.kind()? {
+        io::fs::Kind::Missing => Err(fill(&TEXT.missing, &[("path", &root.shown)])),
+        _ => Ok(root),
+    }
+}
+
+/// This session's plan file, spelled as `target::resolve` spells it, so PLAN's lock matches the
+/// write tool's ask.
+pub fn plan_file(paths: &Paths, session: &str) -> String {
+    let file = paths.plan_file(session);
+    resolve(paths, &file.to_string_lossy()).map_or_else(|_| io::fs::slashed(&file), |t| t.shown)
+}
+
 /// How `path` is shown and matched, given the resolved project root, and whether it lies outside.
 pub fn show(base: &Path, path: &Path) -> (String, bool) {
     match path.strip_prefix(base) {
         Ok(rel) if rel.as_os_str().is_empty() => (".".to_owned(), false),
-        Ok(rel) => (slashes(rel), false),
-        Err(_) => (slashes(path), true),
+        Ok(rel) => (io::fs::slashed(rel), false),
+        Err(_) => (io::fs::slashed(path), true),
     }
 }
 
@@ -76,7 +118,7 @@ pub fn asks(permission: &str, target: &Target) -> Vec<Ask> {
     let mut asks = vec![Ask::new(permission, target.shown.clone())];
     if target.outside {
         asks.push(Ask::new(
-            permissions::EXTERNAL_DIRECTORY.name,
+            catalog::EXTERNAL_DIRECTORY.name,
             target.shown.clone(),
         ));
     }
@@ -96,10 +138,6 @@ fn msys_to_windows(raw: &str) -> String {
         }
     }
     raw.to_owned()
-}
-
-fn slashes(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
 }
 
 #[cfg(test)]

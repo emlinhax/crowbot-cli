@@ -1,0 +1,13 @@
+name = "account"
+summary = "See where the account stands and what it spent, set balance fallback, revoke keys"
+usage = "account"
+scope = ["session"]
+
+# How the account stands, here and wherever login and /status report it; {placeholders} are
+# filled in.
+[text]
+balance = "Balance {balance}."
+plan = " Plan {plan}: {pct}% of its allowance left{refill}."
+refill = ", full in {refills}"
+fallback_off = " Balance fallback is off, so the balance does not pay once the allowance is spent."
+cannot_spend = "The account cannot spend yet; top it up at {chat}."

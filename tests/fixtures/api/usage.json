@@ -1,0 +1,10 @@
+{
+  "days": 30,
+  "models": [
+    {"model": "crow-2", "label": "Crow 2", "requests": 40, "prompt_tokens": 81000,
+     "completion_tokens": 9000, "cached_tokens": 0, "spent_usd": 1.2},
+    {"model": "fake-coder", "label": "Fake Coder", "requests": 2, "prompt_tokens": 900,
+     "completion_tokens": 100, "cached_tokens": 0, "spent_usd": 0.03}
+  ],
+  "series": [{"day": "2026-10-15", "requests": 42, "spent_usd": 1.23}]
+}

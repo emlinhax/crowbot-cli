@@ -2,22 +2,29 @@ use std::sync::LazyLock;
 
 use futures_util::future::BoxFuture;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::json;
 
-use super::permissions;
-use super::{Check, Output, Refusal, Spec, Tool, ToolCx, parse, parse_or_fail};
+use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
+use crate::data;
+use crate::permission::catalog;
 use crate::permission::gate::Ask;
+use crate::text::template::fill;
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    Spec::load(
-        "todowrite",
-        include_str!("../../data/tools/todowrite.md"),
-        include_str!("../../data/tools/todowrite.schema.json"),
-    )
-});
+static SPEC: LazyLock<Spec> = super::spec!("todowrite");
+
+static TEXT: LazyLock<Text> = data::load!("tools/todowrite.toml");
 
 #[derive(Deserialize)]
-struct Args {
+#[serde(deny_unknown_fields)]
+struct Text {
+    pending: String,
+    in_progress: String,
+    completed: String,
+    open: String,
+}
+
+#[derive(Deserialize)]
+pub struct Args {
     todos: Vec<Todo>,
 }
 
@@ -39,29 +46,30 @@ enum Status {
 pub struct TodoWrite;
 
 impl Tool for TodoWrite {
+    type Args = Args;
+
     fn spec(&self) -> &Spec {
         &SPEC
     }
 
-    fn check(&self, args: &Value, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let _: Args = parse(args)?;
-        Ok(Check::new(vec![Ask::new(permissions::TODO.name, "*")]))
+    fn check(&self, _args: &Self::Args, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+        Ok(Check::new(vec![Ask::new(catalog::TODO.name, "*")]))
     }
 
-    fn run<'a>(&'a self, args: Value, _cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output> {
+    fn run<'a>(
+        &'a self,
+        args: Self::Args,
+        _cx: &'a ToolCx<'a>,
+    ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let args: Args = match parse_or_fail(&args) {
-                Ok(args) => args,
-                Err(out) => return out,
-            };
             let lines: Vec<String> = args
                 .todos
                 .iter()
                 .map(|t| {
                     let mark = match t.status {
-                        Status::Pending => "[ ]",
-                        Status::InProgress => "[>]",
-                        Status::Completed => "[x]",
+                        Status::Pending => &TEXT.pending,
+                        Status::InProgress => &TEXT.in_progress,
+                        Status::Completed => &TEXT.completed,
                     };
                     format!("{mark} {}", t.content)
                 })
@@ -71,8 +79,27 @@ impl Tool for TodoWrite {
                 .iter()
                 .filter(|t| t.status != Status::Completed)
                 .count();
-            Output::ok(format!("{}\n\n{open} open.", lines.join("\n")))
-                .with_details(json!({"todos": args.todos}))
+            let open = fill(&TEXT.open, &[("open", &open.to_string())]);
+            Ok(Output::ok(format!("{}\n\n{open}", lines.join("\n")))
+                .with_details(json!({"todos": args.todos})))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::testing::Project;
+
+    #[tokio::test]
+    async fn lists_the_todos_back_with_marks_and_the_open_count() {
+        let project = Project::new();
+        let todos = json!({"todos": [
+            {"content": "a", "status": "completed"},
+            {"content": "b", "status": "in_progress"},
+            {"content": "c", "status": "pending"},
+        ]});
+        let out = project.run(&TodoWrite, todos).await;
+        assert_eq!(out.content, "[x] a\n[>] b\n[ ] c\n\n2 open.");
     }
 }

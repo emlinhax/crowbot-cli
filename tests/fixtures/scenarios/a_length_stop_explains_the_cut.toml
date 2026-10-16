@@ -1,0 +1,9 @@
+description = "A reply stopped at the output limit says why it was cut"
+args = ["-p", "hi"]
+
+[[reply]]
+sse = "length.sse"
+
+[expect]
+exit = 0
+stderr_contains = ["output limit"]

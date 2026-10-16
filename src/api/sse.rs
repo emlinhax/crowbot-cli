@@ -7,7 +7,9 @@ use std::time::Duration;
 use futures_util::stream::{self, BoxStream};
 use futures_util::{Stream, StreamExt};
 
-use crate::api::error::{ApiError, ErrorInfo};
+use crate::api::error::ApiError;
+use crate::conversation::error::ErrorInfo;
+use crate::io;
 use crate::io::http::HttpError;
 
 /// Each event's data from `body`, until `[DONE]` or the end. Silence longer than `idle`, no event
@@ -27,7 +29,7 @@ pub fn events(
     stream::unfold(state, move |mut st| async move {
         // Keepalives restart the idle bound but not this one: crowbot can keep sending them after
         // upstream has stopped.
-        match tokio::time::timeout(stall, next(&mut st, idle)).await {
+        match io::clock::timeout(stall, next(&mut st, idle)).await {
             Ok(item) => item.map(|item| (item, st)),
             Err(_) => {
                 st.ended = true;
@@ -50,7 +52,7 @@ async fn next(st: &mut State, idle: Duration) -> Option<Result<String, ErrorInfo
             return None;
         }
         // Any bytes, keepalives included, restart the idle bound.
-        let failed = match tokio::time::timeout(idle, st.body.next()).await {
+        let failed = match io::clock::timeout(idle, st.body.next()).await {
             Err(_) => Some(ErrorInfo::local(
                 "idle_timeout",
                 format!("no data for {}s", idle.as_secs()),
@@ -265,7 +267,7 @@ mod tests {
     #[tokio::test]
     async fn keepalives_alone_stall_the_stream() {
         let keepalives = stream::unfold((), |()| async {
-            tokio::time::sleep(Duration::from_millis(5)).await;
+            io::clock::sleep(Duration::from_millis(5)).await;
             Some((Ok(b": keepalive\n\n".to_vec()), ()))
         });
         let body = body(&["data: a\n\n"]).chain(keepalives).boxed();

@@ -13,7 +13,7 @@ async fn lists_live_models_then_serves_them_from_cache() {
     assert!(sandbox.home().join("cache/models.json").exists());
 
     let second = sandbox.run(&fake.url, &["models"], None).await;
-    assert!(second.success().stdout().contains("Cached list"));
+    second.success().stdout_has("Cached list");
     assert_eq!(fake.hits("/v1/models"), 1);
 }
 
@@ -23,7 +23,7 @@ async fn refresh_bypasses_a_fresh_cache() {
     let sandbox = Sandbox::default();
     sandbox.run(&fake.url, &["models"], None).await.success();
     let out = sandbox.run(&fake.url, &["models", "--refresh"], None).await;
-    assert!(out.success().stdout().contains("Live list"));
+    out.success().stdout_has("Live list");
     assert_eq!(fake.hits("/v1/models"), 2);
 }
 

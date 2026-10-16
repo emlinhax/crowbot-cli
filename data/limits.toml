@@ -20,6 +20,10 @@ reason = "error envelopes are well under 1 KiB, and only their start is shown"
 value = 200
 reason = "a server's own words past this crowd a one-line notice"
 
+[http.fetch_timeout_secs]
+value = 30
+reason = "a page or forum call slower than this is not worth waiting for"
+
 [models.fetch_timeout_ms]
 value = 2500
 reason = "on the startup path a stale model list beats a slow start (same bound as crowbot's opencode plugin)"
@@ -74,7 +78,7 @@ reason = "the same cadence crowbot's own installer uses; approval is a human act
 
 [pair.backoff_ms]
 value = 5000
-reason = "pause after crowbot rate-limits the polling"
+reason = "pause after a polling error worth retrying"
 
 [signup.max_attempts]
 value = 3
@@ -84,17 +88,101 @@ reason = "crowbot raises the difficulty per address; a third stale challenge mea
 value = 30
 reason = "the most work a person waits for on one machine; crowbot itself caps signup at 28 bits"
 
+[account.usage_days]
+value = 30
+reason = "/account sums this many days of usage, the window crowbot's own statement opens on"
+
+[account.usage_models]
+value = 3
+reason = "the models /account names by spend; the total above them covers the rest"
+
+[compaction.keep_tokens]
+value = 20000
+reason = "the latest turns a summary keeps word for word, enough for the work in hand and its last tool results"
+
+[subagent.max_turns]
+value = 30
+reason = "a subagent's job is one search or one change; past this many requests it is wandering"
+
+[subagent.parallel]
+value = 2
+reason = "subagents of one run that ask crowbot at once; the smoke account's plan answers two requests at a time and a third fails on 429"
+
+[subagent.max_depth]
+value = 1
+reason = "subagents start no subagents of their own: a tree of them spends fast and is hard to follow"
+
+[compaction.threshold_pct]
+value = 85
+reason = "a request past this share of the window, after the model's room to reply, summarises first: the rest is for the next tool results"
+
+[compaction.length_overflow_pct]
+value = 95
+reason = "a reply cut off with prompt and output this close to the window ran out of window, not of output"
+
+[compaction.bytes_per_token]
+value = 4
+reason = "a rough count with no tokenizer: English and code average about four bytes a token"
+
+[mcp.start_secs]
+value = 30
+reason = "a server started through npx may fetch its package first; past this it is not coming"
+
+[mcp.stop_ms]
+value = 2000
+reason = "time a server gets to finish once its stdin closes, before it is ended, and to close stderr once it is gone"
+
+[mcp.line_bytes]
+value = 8388608
+reason = "the longest message a server may send, as for a chat stream's event"
+
+[mcp.stderr_bytes]
+value = 4096
+reason = "the end of what a server printed, kept to say why it failed"
+
+[mcp.list_pages]
+value = 20
+reason = "pages of tools a server may list; more means it is looping"
+
+[mcp.server_name_chars]
+value = 24
+reason = "a server's name starts each of its tools' names, which may be 64 characters in all"
+
+[mcp.name_chars]
+value = 64
+reason = "the longest tool name a chat request takes; a server's tool past it is cut to fit"
+
+[mcp.call_secs]
+value = 120
+reason = "a tool call a server has not answered by then is not coming; `timeout_secs` per server"
+
+[snapshot.timeout_secs]
+value = 30
+reason = "the first snapshot hashes every file git does not ignore; past this the project is too big and snapshots stop for the session"
+
+[snapshot.args_bytes]
+value = 24000
+reason = "paths given to one git call, well under Windows' 32,767-character command line"
+
 [agent.max_turns]
 value = 100
 reason = "a runaway loop on crow-2 costs real money; a run that needs more should be continued deliberately"
+
+[agent.doom_loop_repeats]
+value = 3
+reason = "the same call three times in a row is a loop, not persistence (opencode's threshold)"
 
 [agent.instructions_bytes]
 value = 32768
 reason = "a project's AGENTS.md is a few KiB; more would crowd every request it rides on"
 
-[agent.doom_loop_repeats]
-value = 3
-reason = "the same call three times in a row is a loop, not persistence (opencode's threshold)"
+[session.slug_chars]
+value = 96
+reason = "a project's session folder is named from its path; this keeps the name well under filesystem limits"
+
+[session.resume_list]
+value = 50
+reason = "/resume lists this many of a project's sessions, newest first; older ones are rarely the one"
 
 [tools.max_lines]
 value = 2000
@@ -120,31 +208,13 @@ reason = "lines grep shows around each match; past this, read the file at that l
 value = 500
 reason = "a match line is context, not content; read the file for the rest"
 
-[update.check_interval_secs]
-value = 86400
-reason = "a day: releases come a few times a week, and a check costs a request to GitHub, which allows 60 an hour per address"
-
-[update.download_timeout_secs]
-value = 300
-reason = "a release binary is about 16 MB; five minutes allows a slow link without hanging forever"
-
-
-[forums.page_size]
-value = 20
-reason = "topics or posts fetched per page, matching what the Tapatalk app requests"
-
-
-[tools.question_max]
-value = 4
-reason = "a card of tabs a person answers in one go; more is a form, not a question"
-
 [tools.read_batch_max]
 value = 8
 reason = "files one read call returns; each keeps its own line cap, and past this a turn fills with files skimmed, not read"
 
 [tools.read_batch_bytes]
 value = 153600
-reason = "a batched read stops adding files past three single reads' worth (~37k tokens); the rest are named so they can be read on their own"
+reason = "three single reads' worth (~37k tokens); files past it are named, not read"
 
 [tools.list_depth_max]
 value = 5
@@ -157,6 +227,14 @@ reason = "paths one fs call moves, copies or deletes; the permission card lists 
 [tools.list_entries]
 value = 500
 reason = "a directory listing past this is better explored with glob"
+
+[tools.question_max]
+value = 4
+reason = "a card of tabs a person answers in one go; more is a form, not a question"
+
+[tools.question_options_max]
+value = 8
+reason = "the card picks by digit, 1 to 9, and adds its own Other row after the options; eight leave every row a digit"
 
 [tools.binary_sniff_bytes]
 value = 8192
@@ -176,23 +254,39 @@ reason = "after the shell exits, output still in flight gets this long before th
 
 [tools.bash_memory_bytes]
 value = 262144
-reason = "output held in memory before the rest goes to a spill file; a few max_bytes, since escapes and redrawn progress lines shrink it"
-
-[tools.bash_spill_keep_days]
-value = 7
-reason = "a spill is read in the turn that made it; older ones only fill the disk"
+reason = "held in memory before spilling to a file; a few max_bytes, since cleaning shrinks it"
 
 [tools.bash_spill_max_bytes]
 value = 67108864
 reason = "a spill the model can page through; a command printing forever stops filling the disk here"
 
+[tools.bash_spill_keep_days]
+value = 7
+reason = "a spill is read in the turn that made it; older ones only fill the disk"
+
 [tools.webfetch_max_bytes]
 value = 5242880
 reason = "larger pages are rarely text a model can use"
 
-[tools.webfetch_timeout_secs]
-value = 30
-reason = "a page slower than this is not worth holding the turn for"
+[update.check_interval_secs]
+value = 86400
+reason = "a day: releases come a few times a week, and a check costs a request to GitHub, which allows 60 an hour per address"
+
+[update.download_timeout_secs]
+value = 300
+reason = "a release binary is about 16 MB; five minutes allows a slow link without hanging forever"
+
+[forums.page_size]
+value = 20
+reason = "topics or posts fetched per page, matching what the Tapatalk app requests"
+
+[forums.batch_max]
+value = 8
+reason = "fetches one batched forum call runs at once; useful without hammering the forum"
+
+[forums.directory_results]
+value = 10
+reason = "forums a directory search offers; more means the words need narrowing"
 
 [edit.anchor_similarity_pct]
 value = 65
@@ -213,6 +307,18 @@ reason = "edit-distance cells the closest-line hint may spend over the whole fil
 [edit.hint_similarity_pct]
 value = 50
 reason = "a closest line less alike than this points the model at the wrong place"
+
+[text.rule_max]
+value = 80
+reason = "a horizontal rule this long reads as a divider; longer, a wall"
+
+[text.min_width]
+value = 8
+reason = "markdown narrower than this leaves prefixes and borders no room for a word"
+
+[text.min_column]
+value = 3
+reason = "a table column shrunk past this loses what it held; a letter and the … still say it"
 
 [tui.frame_ms]
 value = 16
@@ -254,18 +360,6 @@ reason = "prompts kept for Up/Down in one session"
 value = 16
 reason = "a permission preview shows this much of a diff before cutting it short"
 
-[tui.status_frame_ms]
-value = 90
-reason = "eight frames carry the flock through one rise and fall in about three quarters of a second, calm but alive"
-
-[tui.shimmer_ms]
-value = 70
-reason = "the glint crosses a ten-letter verb in about a second"
-
-[tui.scroll_lines]
-value = 3
-reason = "rows one wheel notch scrolls the transcript; terminals scroll their own buffers by three"
-
 [tui.palette_rows]
 value = 8
 reason = "the command popup lists this many before it scrolls; the editor stays in view"
@@ -278,10 +372,42 @@ reason = "long enough to read one word, gone before it hides anything for long"
 value = 2
 reason = "blank columns on each side of the session keep text off the window's edge"
 
-[forums.directory_results]
-value = 10
-reason = "forums a directory search offers to pick from; past this the search words need narrowing, not a longer list"
+[tui.scroll_lines]
+value = 3
+reason = "rows one wheel notch scrolls the transcript; terminals scroll their own buffers by three"
 
-[forums.batch_max]
-value = 8
-reason = "threads, topic pages or searches fetched in one batched forum tool call, run at once; enough to be useful without hammering the forum"
+[tui.status_frame_ms]
+value = 90
+reason = "eight frames make one rise and fall in about 0.7 s"
+
+[tui.shimmer_ms]
+value = 70
+reason = "the glint crosses a ten-letter verb in about a second"
+
+[tui.glint_rest]
+value = 6
+reason = "steps the glint spends off the word before its next pass, so it reads as a glint, not a scroll"
+
+[tui.editor_min_rows]
+value = 3
+reason = "the editor keeps room for a few lines however short the terminal"
+
+[tui.field_rows]
+value = 3
+reason = "a card's text field (a question's own words, a login) shows a few lines, like a small editor"
+
+[tui.account_refresh_secs]
+value = 60
+reason = "mid-run, the bar's balance is asked for at most this often; a run's end always asks"
+
+[tui.welcome_gutter]
+value = 3
+reason = "columns between the raven and the text beside it"
+
+[tui.welcome_min_text]
+value = 28
+reason = "narrowest text column worth putting beside the raven rather than under it"
+
+[print.note_chars]
+value = 100
+reason = "a stderr note is one line; a longer argument or error crowds the reply"

@@ -1,0 +1,9 @@
+# What the path tools say about a path argument; {path} is the path as the user sees it.
+look_failed = "Could not look at {path}: {error}"
+tilde = "`~` is not expanded here; use an absolute path."
+stream = "`:` names a stream, not a file; use a plain path."
+missing = "{path} does not exist."
+is_dir = "{path} is a directory."
+not_dir = "{path} is not a directory."
+read_failed = "Could not read {path}: {error}"
+write_failed = "Could not write {path}: {error}"

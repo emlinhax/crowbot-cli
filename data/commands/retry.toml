@@ -1,0 +1,4 @@
+name = "retry"
+summary = "Take back the last prompt and everything after it, then send it again"
+usage = "retry"
+scope = ["session"]

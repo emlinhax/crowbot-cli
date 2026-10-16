@@ -1,7 +1,5 @@
-#![allow(clippy::disallowed_methods)]
-//! The rest of the web, for webfetch: pages fetched the way a browser fetches them (real browser
-//! TLS through cffetch, another profile when one is challenged), with Cloudflare challenges told
-//! apart from real pages. crowbot's own API stays on `io::http`.
+//! The web beyond crowbot's API, fetched as a browser would (cffetch TLS, another profile when
+//! challenged); Cloudflare challenges are told apart from pages. crowbot's API stays on `io::http`.
 
 use std::time::Duration;
 
@@ -31,8 +29,7 @@ pub struct Fetched {
     pub set_cookies: Vec<String>,
 }
 
-/// A POST, for an API that speaks over the browser transport (the forum XML-RPC and directory).
-/// A page fetch stays on `get`.
+/// A POST over the browser transport, for an API behind the same checks as pages.
 pub struct Post<'a> {
     pub url: &'a str,
     pub body: Vec<u8>,
@@ -179,10 +176,8 @@ mod tests {
                 .unwrap()
         }
 
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let url = format!("http://{}/echo", listener.local_addr().unwrap());
-        let router = axum::Router::new().route("/echo", post(echo));
-        tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let base = crate::testing::serve(|_| axum::Router::new().route("/echo", post(echo))).await;
+        let url = format!("{base}/echo");
 
         let fetch = Fetch::new(Duration::from_secs(5)).unwrap();
         let got = fetch

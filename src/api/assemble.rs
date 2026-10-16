@@ -2,9 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use crate::agent::message::{Finish, Part, ToolCall};
-use crate::api::error::ErrorInfo;
 use crate::api::wire::{Chunk, WireUsage};
+use crate::conversation::error::ErrorInfo;
+use crate::conversation::message::{Finish, Part, ToolCall};
 
 /// What just arrived, for live display.
 #[derive(Debug, PartialEq)]

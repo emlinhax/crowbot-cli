@@ -1,0 +1,8 @@
+description = "One of crowbot's flags after the words is refused, not sent as prompt text"
+args = ["-p", "hi", "--json"]
+reply = []
+
+[expect]
+exit = 2
+stderr_contains = ["`--json` goes before the words"]
+hits = { "/v1/chat/completions" = 0 }

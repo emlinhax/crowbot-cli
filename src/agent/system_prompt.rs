@@ -4,18 +4,16 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
-use crate::api::models::Model;
-use crate::paths::Paths;
+use crate::config::limits;
+use crate::config::paths::Paths;
+use crate::data;
+use crate::io;
 use crate::text::template;
-use crate::{io, limits};
 
-const BASE: &str = include_str!("../../data/prompts/system.md");
-const ENV: &str = include_str!("../../data/prompts/env.md");
+const BASE: &str = data::raw!("prompts/system.md");
+const ENV: &str = data::raw!("prompts/env.md");
 
-static PROJECT: LazyLock<Project> = LazyLock::new(|| {
-    toml::from_str(include_str!("../../data/prompts/project.toml"))
-        .expect("data/prompts/project.toml is checked by tests")
-});
+static PROJECT: LazyLock<Project> = data::load!("prompts/project.toml");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -25,24 +23,16 @@ struct Project {
     cut: String,
 }
 
-static FORUMS: LazyLock<Forums> = LazyLock::new(|| {
-    toml::from_str(include_str!("../../data/prompts/forums.toml"))
-        .expect("data/prompts/forums.toml is checked by tests")
-});
+static FORUMS: LazyLock<Forums> = data::load!("prompts/forums.toml");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Forums {
     frame: String,
-    line: String,
-    hint: String,
 }
 
 /// Reminders a mode can name in data/modes/*.toml; one line per prompt file.
-const REMINDERS: &[(&str, &str)] =
-    &[("plan_mode", include_str!("../../data/prompts/plan_mode.md"))];
-
-pub fn build(paths: &Paths, model: &Model) -> String {
+pub fn build(paths: &Paths, model: &str) -> String {
     let cwd = paths.project.display().to_string();
     let date = io::clock::today();
     let env = template::fill(
@@ -51,7 +41,7 @@ pub fn build(paths: &Paths, model: &Model) -> String {
             ("cwd", &cwd),
             ("platform", std::env::consts::OS),
             ("date", &date),
-            ("model", &model.id),
+            ("model", model),
         ],
     );
     let parts = [
@@ -70,24 +60,9 @@ fn forums(paths: &Paths) -> Option<String> {
     if list.is_empty() {
         return None;
     }
-    let lines: Vec<String> = list
-        .iter()
-        .map(|forum| {
-            let line = template::fill(
-                &FORUMS.line,
-                &[("name", &forum.name), ("host", &forum.host())],
-            );
-            match forum.hint.as_str() {
-                "" => line,
-                hint => format!(
-                    "{line}\n{}",
-                    template::fill(&FORUMS.hint, &[("hint", hint)])
-                ),
-            }
-        })
-        .collect();
+    let lines = crate::tools::forum::list(&list, false);
     Some(
-        template::fill(&FORUMS.frame, &[("forums", &lines.join("\n"))])
+        template::fill(&FORUMS.frame, &[("forums", &lines)])
             .trim()
             .to_owned(),
     )
@@ -104,11 +79,7 @@ fn project(paths: &Paths) -> Option<String> {
     let max = limits::get().agent.instructions_bytes.value;
     let mut text = text.trim_end().to_owned();
     if text.len() > max {
-        let end = (0..=max)
-            .rev()
-            .find(|&i| text.is_char_boundary(i))
-            .unwrap_or(0);
-        text.truncate(end);
+        text.truncate(text.floor_char_boundary(max));
         let cut = template::fill(&PROJECT.cut, &[("file", file), ("max", &max.to_string())]);
         text = format!("{text}\n{cut}");
     }
@@ -119,33 +90,9 @@ fn project(paths: &Paths) -> Option<String> {
     )
 }
 
-pub fn reminder(name: &str) -> Option<&'static str> {
-    REMINDERS
-        .iter()
-        .find(|(n, _)| *n == name)
-        .map(|(_, text)| text.trim_end())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::models::{Capabilities, Pricing};
-
-    fn model() -> Model {
-        Model {
-            id: "m".into(),
-            display_name: String::new(),
-            description: String::new(),
-            context_window: 1000,
-            max_output_tokens: 100,
-            pricing: Pricing {
-                input_per_1m_usd: 1.0,
-                cached_input_per_1m_usd: 0.1,
-                output_per_1m_usd: 2.0,
-            },
-            capabilities: Capabilities::default(),
-        }
-    }
 
     #[test]
     fn the_projects_instructions_join_the_prompt_before_the_environment() {
@@ -159,12 +106,12 @@ mod tests {
             )
             .unwrap();
         };
-        let bare = build(&paths, &model());
+        let bare = build(&paths, "m");
         assert!(!bare.contains("<project-instructions"));
         write("CLAUDE.md", "Use tabs.");
-        assert!(build(&paths, &model()).contains("file=\"CLAUDE.md\">\nUse tabs."));
+        assert!(build(&paths, "m").contains("file=\"CLAUDE.md\">\nUse tabs."));
         write("AGENTS.md", "Run make test.");
-        let prompt = build(&paths, &model());
+        let prompt = build(&paths, "m");
         assert!(
             prompt.contains("Run make test.") && !prompt.contains("Use tabs."),
             "{prompt}"
@@ -172,7 +119,7 @@ mod tests {
         assert!(prompt.find("Run make test.") < prompt.find("<env>"));
         let max = limits::get().agent.instructions_bytes.value;
         write("AGENTS.md", &"é".repeat(max));
-        let prompt = build(&paths, &model());
+        let prompt = build(&paths, "m");
         assert!(prompt.contains("is left out"), "the cut is not said");
         assert!(prompt.len() < bare.len() + max + 1000);
     }
@@ -183,7 +130,7 @@ mod tests {
         let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
         // With no store yet, the seed is what there is to browse.
         let seed = &crate::forums::data().seed[0];
-        let prompt = build(&paths, &model());
+        let prompt = build(&paths, "m");
         assert!(
             prompt.contains(&format!(
                 "- {} ({})\n  {}",
@@ -194,7 +141,7 @@ mod tests {
             "{prompt}"
         );
         assert!(prompt.find("<forums>") < prompt.find("<env>"));
-        crate::forums::store::remove(&paths, &seed.name).unwrap();
-        assert!(!build(&paths, &model()).contains("<forums>"));
+        crate::forums::store::remove(&paths, seed).unwrap();
+        assert!(!build(&paths, "m").contains("<forums>"));
     }
 }

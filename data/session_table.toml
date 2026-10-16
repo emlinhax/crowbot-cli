@@ -1,0 +1,21 @@
+# This project's sessions as `/resume` lists them, newest first.
+# A narrow picker leaves these columns out first, in this order, before cutting any.
+drop = ["prompts"]
+
+# The columns, in order; `right` aligns numbers.
+[[column]]
+id = "when"
+title = "when"
+
+[[column]]
+id = "prompts"
+title = "prompts"
+align = "right"
+
+[[column]]
+id = "prompt"
+title = "first prompt"
+
+[text]
+# The last time it was written to, on the user's clock.
+time = "%Y-%m-%d %H:%M"

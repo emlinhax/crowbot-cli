@@ -1,16 +1,17 @@
 //! The crowbot key on this machine: `CROWBOT_API_KEY`, else `~/.crowbot/auth.json`.
 
 use anyhow::Context;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
+use crate::api::Api;
 use crate::api::account::{self, Me};
-use crate::app::App;
+use crate::api::error::ApiError;
+use crate::api::pair::{self, Started};
+use crate::api::signup;
+use crate::config::paths::Paths;
 use crate::io::{self, fs::Access};
-use crate::paths::Paths;
-use crate::settings;
+use crate::text::shorten;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -35,17 +36,13 @@ pub enum Origin {
 
 #[derive(Serialize, Deserialize)]
 struct Stored {
-    #[serde(default = "version")]
+    #[serde(default = "io::secret::version")]
     v: u32,
     kind: KeyKind,
     hint: String,
     created: Timestamp,
     scheme: String,
     secret: String,
-}
-
-fn version() -> u32 {
-    1
 }
 
 /// The key this process uses: the environment's, else the stored one.
@@ -59,9 +56,27 @@ pub fn load(paths: &Paths) -> anyhow::Result<Option<Key>> {
 /// The variable a key in the environment comes from.
 pub const ENV_VAR: &str = "CROWBOT_API_KEY";
 
-/// `CROWBOT_API_KEY`, which wins over a stored key while it is set.
-pub fn from_env() -> Option<Key> {
-    settings::env(ENV_VAR).map(|secret| Key {
+static HIDDEN: std::sync::LazyLock<Hidden> = crate::data::load!("hidden_env.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Hidden {
+    names: Vec<String>,
+}
+
+/// Variables no program crowbot starts may inherit (data/hidden_env.toml): its key among them.
+pub fn hidden_env() -> &'static [String] {
+    &HIDDEN.names
+}
+
+/// Whether `CROWBOT_API_KEY` is set, and so used over any stored key.
+pub fn env_shadows() -> bool {
+    from_env().is_some()
+}
+
+/// `CROWBOT_API_KEY`, if set.
+fn from_env() -> Option<Key> {
+    io::env::var(ENV_VAR).map(|secret| Key {
         secret: normalize(&secret),
         origin: Origin::Env,
     })
@@ -73,15 +88,15 @@ pub fn stored(paths: &Paths) -> anyhow::Result<Option<Key>> {
     let Some(text) = io::fs::read_string(&path)? else {
         return Ok(None);
     };
+    // The reason first: the welcome card cuts a long line, and a home path can be long.
     let unreadable = || {
         format!(
-            "{} is unreadable; `crowbot logout` removes it",
+            "The stored key is unreadable; `crowbot logout` removes {}",
             path.display()
         )
     };
     let stored: Stored = serde_json::from_str(&text).with_context(unreadable)?;
-    let sealed = BASE64.decode(&stored.secret).with_context(unreadable)?;
-    let opened = io::secret::open(&stored.scheme, &sealed).with_context(unreadable)?;
+    let opened = io::secret::open_b64(&stored.scheme, &stored.secret).with_context(unreadable)?;
     let secret = String::from_utf8(opened).with_context(unreadable)?;
     Ok(Some(Key {
         secret,
@@ -92,16 +107,24 @@ pub fn stored(paths: &Paths) -> anyhow::Result<Option<Key>> {
     }))
 }
 
+/// What a new key would replace: the stored key's kind and hint, never its secret.
+pub fn held(paths: &Paths) -> anyhow::Result<Option<(KeyKind, String)>> {
+    Ok(stored(paths)?.and_then(|key| match key.origin {
+        Origin::File { kind, hint } => Some((kind, hint)),
+        Origin::Env => None,
+    }))
+}
+
 pub fn save(paths: &Paths, secret: &str, kind: KeyKind) -> anyhow::Result<()> {
     let secret = normalize(secret);
-    let (scheme, sealed) = io::secret::seal(secret.as_bytes())?;
+    let (scheme, sealed) = io::secret::seal_b64(secret.as_bytes())?;
     let stored = Stored {
-        v: version(),
+        v: io::secret::version(),
         kind,
         hint: hint(&secret),
         created: io::clock::now(),
         scheme: scheme.to_owned(),
-        secret: BASE64.encode(sealed),
+        secret: sealed,
     };
     io::fs::write_atomic(
         &paths.auth(),
@@ -111,20 +134,75 @@ pub fn save(paths: &Paths, secret: &str, kind: KeyKind) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Checks `secret` with crowbot, stores it, and makes it the key this process uses from now on.
-pub async fn adopt(app: &App, secret: &str, kind: KeyKind) -> anyhow::Result<Me> {
+/// Checks `secret` with crowbot, stores it, and switches this process to it.
+pub async fn adopt(
+    api: &Api,
+    paths: &Paths,
+    secret: &str,
+    kind: KeyKind,
+) -> anyhow::Result<LoggedIn> {
     let secret = normalize(secret);
-    let me = account::me(&app.api.with_key(secret.clone()))
+    let me = account::me(&api.with_key(secret.clone()))
         .await
+        .map_err(unknown_key)
         .context("checking that key with crowbot")?;
-    save(&app.paths, &secret, kind)?;
-    app.api.set_key(Some(secret));
-    Ok(me)
+    save(paths, &secret, kind)?;
+    let hint = hint(&secret);
+    api.set_key(Some(secret));
+    Ok(LoggedIn { kind, hint, me })
 }
 
-/// `Ok(false)` when there was no stored key.
-pub fn remove(paths: &Paths) -> anyhow::Result<bool> {
-    Ok(io::fs::remove(&paths.auth())?)
+/// A key refused while it is being checked was never accepted, so "it may have been revoked"
+/// would mislead: it reads as a key crowbot does not know.
+fn unknown_key(mut e: ApiError) -> ApiError {
+    if e.info.kind == "invalid_api_key" {
+        e.info.kind = "key_unknown".to_owned();
+    }
+    e
+}
+
+/// A login that went through: the kind of key, its hint, and the account it opens. The secret
+/// stays in auth.
+pub struct LoggedIn {
+    pub kind: KeyKind,
+    pub hint: String,
+    pub me: Me,
+}
+
+/// A new account, saved here. No `Debug`: it holds the account number.
+pub struct SignedUp {
+    pub number: String,
+    /// The number grouped for reading.
+    pub formatted: String,
+}
+
+/// Creates an account, stores its number and switches this process to it.
+pub async fn sign_up(api: &Api, paths: &Paths) -> anyhow::Result<SignedUp> {
+    let account = signup::register(api).await?;
+    // Nothing awaits between creating and saving, so dropping this future can never lose the
+    // only copy of the number.
+    save(paths, &account.account_number, KeyKind::Account)?;
+    api.set_key(Some(normalize(&account.account_number)));
+    Ok(SignedUp {
+        number: account.account_number,
+        formatted: account.formatted,
+    })
+}
+
+/// Pairs this machine once the user has the code `started` gives: opens the page, waits for the
+/// approval, and keeps the device key.
+pub async fn pair(api: &Api, paths: &Paths, started: &Started) -> anyhow::Result<LoggedIn> {
+    io::proc::open_url(&pair::page());
+    let key = pair::wait(api, started).await?;
+    adopt(api, paths, &key, KeyKind::Device).await
+}
+
+/// Removes the stored key, and has `api` go on with the environment's key if there is one;
+/// `false` when no key was stored.
+pub fn forget(api: &Api, paths: &Paths) -> anyhow::Result<bool> {
+    let removed = io::fs::remove(&paths.auth())?;
+    api.set_key(from_env().map(|key| key.secret));
+    Ok(removed)
 }
 
 /// How many trailing characters of a key are ever shown.
@@ -132,19 +210,11 @@ pub const HINT_CHARS: usize = 4;
 
 /// The last few characters, enough to tell keys apart without revealing them.
 pub fn hint(secret: &str) -> String {
-    let tail: String = secret
-        .chars()
-        .rev()
-        .take(HINT_CHARS)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
-    format!("…{tail}")
+    shorten::tail(secret, HINT_CHARS)
 }
 
 /// Account numbers are shown grouped with spaces; people paste them that way.
-pub fn normalize(secret: &str) -> String {
+fn normalize(secret: &str) -> String {
     secret.split_whitespace().collect()
 }
 
@@ -153,7 +223,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn save_load_remove_round_trip() {
+    fn save_load_forget_round_trip() {
         let home = tempfile::tempdir().unwrap();
         let paths = Paths::at(home.path().into(), home.path().into());
         save(&paths, "4192 0837 5561 2094", KeyKind::Account).unwrap();
@@ -165,8 +235,12 @@ mod tests {
         assert!(
             matches!(key.origin, Origin::File { kind: KeyKind::Account, ref hint } if hint == "…2094")
         );
-        assert!(remove(&paths).unwrap());
+        let http = crate::io::http::Http::new(std::time::Duration::from_secs(1)).unwrap();
+        let api = Api::new(http, Some(key.secret));
+        assert!(forget(&api, &paths).unwrap());
         assert!(stored(&paths).unwrap().is_none());
+        // What is left is whatever the environment holds.
+        assert_eq!(api.has_key(), from_env().is_some());
     }
 
     #[test]
@@ -190,5 +264,10 @@ mod tests {
             assert!(err.contains(&paths.auth().display().to_string()), "{err}");
             assert!(err.contains("crowbot logout"), "{err}");
         }
+    }
+
+    #[test]
+    fn no_program_crowbot_starts_inherits_its_key() {
+        assert!(hidden_env().iter().any(|v| v == ENV_VAR));
     }
 }

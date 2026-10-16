@@ -6,14 +6,13 @@ use futures_util::{Stream, StreamExt};
 use serde::Deserialize;
 
 use super::{Command, Ctx, Outcome, Spec};
+use crate::data;
 use crate::io;
 use crate::io::term::{self, Input, KeyEvent};
+use crate::text::choices;
 
-const SRC: &str = include_str!("../../data/commands/keytest.toml");
-
-static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec::parse(SRC));
-static STEPS: LazyLock<Steps> =
-    LazyLock::new(|| toml::from_str(SRC).expect("keytest steps are checked by tests"));
+static SPEC: LazyLock<Spec> = super::spec!("keytest");
+static STEPS: LazyLock<Steps> = data::load!("commands/keytest.toml");
 
 /// Silence that ends a paste burst; generous, since this only measures.
 const BURST_END: Duration = Duration::from_millis(400);
@@ -48,17 +47,17 @@ impl Command for KeyTest {
             if args.len() > 1 {
                 return Err(cx.usage(&SPEC));
             }
-            let only = args.first().cloned();
-            if let Some(label) = &only
-                && !STEPS
-                    .step
-                    .iter()
-                    .any(|s| s.label.eq_ignore_ascii_case(label))
-            {
-                let labels: Vec<&str> = STEPS.step.iter().map(|s| s.label.as_str()).collect();
-                anyhow::bail!("no step `{label}`; the steps are {}", labels.join(", "));
+            let only = args.first();
+            let steps: Vec<&Step> = STEPS
+                .step
+                .iter()
+                .filter(|s| only.is_none_or(|o| s.label.eq_ignore_ascii_case(o)))
+                .collect();
+            if let (Some(label), []) = (only, steps.as_slice()) {
+                let known = STEPS.step.iter().map(|s| (s.label.as_str(), None));
+                return Err(choices::unknown("step", label, known));
             }
-            let report = probe(only.as_deref()).await?;
+            let report = probe(&steps).await?;
             Ok(format!(
                 "Report (paste this back):\n\n```\n{}\n```",
                 report.join("\n")
@@ -68,15 +67,11 @@ impl Command for KeyTest {
     }
 }
 
-/// Runs every step, or only the one labelled `only`.
-async fn probe(only: Option<&str>) -> std::io::Result<Vec<String>> {
+/// Runs `steps` in order and reports what each one got.
+async fn probe(steps: &[&Step]) -> std::io::Result<Vec<String>> {
     let raw = term::Raw::enter()?;
     let mut inputs = std::pin::pin!(term::inputs());
     let mut report = vec![format!("keyboard enhancement: {}", raw.enhanced())];
-    let steps = STEPS
-        .step
-        .iter()
-        .filter(|s| only.is_none_or(|o| s.label.eq_ignore_ascii_case(o)));
     for step in steps {
         term::out(&format!("\r\n{}\r\n", step.prompt));
         if let Some(sample) = &step.sample {
@@ -135,7 +130,7 @@ async fn burst(inputs: &mut (impl Stream<Item = Input> + Unpin)) -> std::io::Res
             Input::Paste(_) => pastes += 1,
             _ => {}
         }
-        match tokio::time::timeout(BURST_END, inputs.next()).await {
+        match io::clock::timeout(BURST_END, inputs.next()).await {
             Ok(Some(next)) => input = next,
             _ => break,
         }

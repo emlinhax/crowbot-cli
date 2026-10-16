@@ -1,0 +1,14 @@
+description = "A 429 before anything streams is retried, and the reply comes through"
+args = ["-p", "hi"]
+
+[[reply]]
+error = { status = 429, kind = "rate_limited", retry_after = 0 }
+
+[[reply]]
+sse = "hello.sse"
+
+[expect]
+exit = 0
+stdout = "Hello there!\n"
+stderr_contains = ["retrying"]
+hits = { "/v1/chat/completions" = 2 }

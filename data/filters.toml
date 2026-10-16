@@ -1,13 +1,13 @@
-# Commands that, given only these flags, read nothing but standard input and write nothing but
-# standard output: the end of a pipe, as in `cargo test 2>&1 | tail -30`. While another command
-# feeds one, it asks for nothing of its own; the command feeding it still asks. Any other word (a
-# file, an unlisted flag, a redirect, an unquoted glob or `$`) makes it an ordinary command again.
+# Pipe filters: with only these flags they read stdin and write stdout
+# (`cargo test 2>&1 | tail -30`). Fed by another command, a filter asks nothing; the feeder still
+# asks. Any other word (a file, an unlisted flag, a redirect, an unquoted glob or `$`) makes it an
+# ordinary command.
 #
 # `flags` take no value and may be bundled (`-in`). `valued` take the next word or carry it
 # (`-n 30`, `-n30`, `--lines=30`). `numeric` accepts a bare count (`-30`). `positional` is how many
 # plain words are arguments rather than files; a `replaces_positional` flag takes one's place, so
 # `grep -e foo x` reads the file x and is no filter. With `files`, the plain words past those are
-# files it only reads: given them it is a reader, and asks as a read of each (src/tools/bash.rs).
+# files it only reads: given them it is a reader, and asks as a read of each (src/permission/bash/).
 
 [[filter]]
 name = "cat"

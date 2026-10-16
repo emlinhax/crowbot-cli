@@ -1,6 +1,7 @@
-# How the client treats each error. Keys are crowbot's `error.type`, plus our own kinds for
-# failures that never reached crowbot. `retry` says whether an error is worth trying again
-# automatically; without it the HTTP status decides (429 and 5xx are, other statuses are not).
+# How the client treats each error. Keys are crowbot's `error.type`, plus our own kinds for failures
+# that never reached crowbot. A hint's {api} and {chat} are the configured sites. `retry`: whether
+# to retry automatically; without it, 429 and 5xx retry and other statuses do not. `session`: what
+# a session does next: `login` opens the login card, `account` shows where the account stands.
 
 [unknown]
 title = "Request failed"
@@ -11,7 +12,7 @@ title = "crowbot answered with an error"
 
 [network]
 title = "Could not reach crowbot"
-hint = "Check your connection; crowbot is at https://api.crowbot.sh."
+hint = "Check your connection; crowbot is at {api}."
 retry = true
 
 [timeout]
@@ -32,6 +33,7 @@ title = "crowbot sent something unreadable"
 [not_logged_in]
 title = "Not logged in"
 hint = "Run `crowbot login` (or /login in a session) to pair this machine, or set CROWBOT_API_KEY."
+session = "login"
 
 [bad_request]
 title = "crowbot rejected the request"
@@ -39,6 +41,12 @@ title = "crowbot rejected the request"
 [invalid_api_key]
 title = "Your key was not accepted"
 hint = "It may have been revoked. Log in again: `crowbot login`, or /login in a session."
+session = "login"
+
+# Our own: a key refused while login checks it, so it was never in use here.
+[key_unknown]
+title = "crowbot does not know that key"
+hint = "Check the account number, or pair this device instead."
 
 [account_disabled]
 title = "This account is frozen"
@@ -46,11 +54,25 @@ hint = "A card refund or chargeback froze it. Contact admin@crowbot.sh."
 
 [insufficient_balance]
 title = "Out of funds"
-hint = "Top up at chat.crowbot.sh."
+hint = "Top up at {chat}."
+session = "account"
 
 [plan_allowance_spent]
 title = "Your plan's allowance is used up for now"
-hint = "It refills over the day, or turn balance fallback back on at chat.crowbot.sh."
+hint = "It refills over the day, or turn balance fallback back on: /account in a session, or at {chat}."
+session = "account"
+
+# Our own: a summary of earlier turns came back with no text (the model called a tool instead).
+[summary_empty]
+title = "The summary came back empty"
+hint = "Try /compact again; the conversation is unchanged."
+
+[cannot_revoke_current]
+title = "That is the key this session uses"
+hint = "Revoke it from another device, or /logout here."
+
+[not_found]
+title = "crowbot has no such thing"
 
 [model_not_found]
 title = "That model is not being served"
@@ -58,7 +80,7 @@ hint = "Pick a live one from `crowbot models`."
 
 [body_too_large]
 title = "The request is over crowbot's 16 MiB limit"
-hint = "Start a new session; this one has grown too long to send."
+hint = "/compact summarises earlier turns; if it is still too long, start a new session."
 
 [rate_limited]
 title = "Too many requests at once"

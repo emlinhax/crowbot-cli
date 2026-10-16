@@ -1,0 +1,4 @@
+# What any tool says about its own output; {placeholders} are filled in.
+cut = "[Cut at {kept} of {total} lines.]"
+item_failed = "could not read {item}: {error}"
+cancelled = "Cancelled by the user before it finished."

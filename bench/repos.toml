@@ -7,8 +7,8 @@ id = "semver"
 url = "https://github.com/dtolnay/semver"
 commit = "280ebcb6edac3aa4cdc545dbff8a26c5ac4861fe"
 setup = "cargo fetch"
-# Shared, so a run builds only semver itself and not criterion's tree again.
-env = { CARGO_TARGET_DIR = "{cache}.target" }
+# Each copy builds into its own target/ (about 11 s). A shared CARGO_TARGET_DIR tested another
+# run's binary: a copy's untouched files carry the commit's time, so cargo took any later build as fresh.
 test = "cargo test --quiet"
 
 [[repo]]

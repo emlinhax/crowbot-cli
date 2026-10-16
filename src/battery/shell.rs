@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use super::Counts;
 use super::load::Run;
-use crate::permission::{filter, shell_split};
+use crate::permission::bash::{filter, split};
 
 /// A shell command that does what a tool does. It matches a command that starts with `words` and
 /// contains `contains`, of those it gives; the first smell that matches wins.
@@ -48,7 +48,7 @@ pub fn tally(runs: &[Run], smells: &[Smell], subcommands: &[String]) -> Shell {
             continue;
         };
         out.calls += 1;
-        let split = shell_split::split(line);
+        let split = split::split(line);
         if split.complex {
             out.complex += 1;
         }

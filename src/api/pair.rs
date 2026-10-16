@@ -5,10 +5,12 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::api::error::{ApiError, ErrorInfo};
+use crate::api::error::{self, ApiError};
 use crate::api::{Api, Call};
 use crate::api::{endpoints, retry};
-use crate::{io, limits};
+use crate::config::limits;
+use crate::conversation::error::ErrorInfo;
+use crate::io;
 
 /// No `Debug`: it holds the device code.
 #[derive(Deserialize)]
@@ -32,17 +34,14 @@ struct Ready {
 /// Asks for a code under this machine's name, which the key list shows once it is approved.
 pub async fn start(api: &Api) -> Result<Started, ApiError> {
     let body = serde_json::json!({ "hostname": io::proc::hostname() });
-    let resp = api
-        .call(
-            "pair_start",
-            Call {
-                body: Some(&body),
-                ..Call::default()
-            },
-            limits::get().http.request_timeout_ms.ms(),
-        )
-        .await?;
-    serde_json::from_slice(&resp.body).map_err(|e| unreadable(&e))
+    api.call_json(
+        "pair_start",
+        Call {
+            body: Some(&body),
+            ..Call::default()
+        },
+    )
+    .await
 }
 
 pub async fn poll(api: &Api, device_code: &str) -> Result<Poll, ApiError> {
@@ -53,32 +52,31 @@ pub async fn poll(api: &Api, device_code: &str) -> Result<Poll, ApiError> {
                 args: &[("code", device_code)],
                 ..Call::default()
             },
-            limits::get().http.request_timeout_ms.ms(),
         )
         .await?;
     if resp.head.status == 202 {
         return Ok(Poll::Pending);
     }
-    let ready: Ready = serde_json::from_slice(&resp.body).map_err(|e| unreadable(&e))?;
+    let ready: Ready = error::json(&resp.body)?;
     Ok(Poll::Ready(ready.api_key))
 }
 
-/// Polls until the code is approved, backing off on any error worth retrying, until it expires.
+/// Polls until approved or expired, backing off on any error worth retrying.
 pub async fn wait(api: &Api, started: &Started) -> Result<String, ApiError> {
     let limits = &limits::get().pair;
     let collect = async {
         loop {
             match poll(api, &started.device_code).await {
                 Ok(Poll::Ready(key)) => return Ok(key),
-                Ok(Poll::Pending) => tokio::time::sleep(limits.poll_interval_ms.ms()).await,
+                Ok(Poll::Pending) => io::clock::sleep(limits.poll_interval_ms.ms()).await,
                 Err(e) if retry::retryable(&e.info) => {
-                    tokio::time::sleep(limits.backoff_ms.ms()).await;
+                    io::clock::sleep(limits.backoff_ms.ms()).await;
                 }
                 Err(e) => return Err(e),
             }
         }
     };
-    tokio::time::timeout(Duration::from_secs(started.ttl), collect)
+    io::clock::timeout(Duration::from_secs(started.ttl), collect)
         .await
         .unwrap_or_else(
             |_| Err(ErrorInfo::local("pair_expired", "the pairing code expired").into()),
@@ -88,8 +86,4 @@ pub async fn wait(api: &Api, started: &Started) -> Result<String, ApiError> {
 /// Where a signed-in person approves the code.
 pub fn page() -> String {
     endpoints::url(endpoints::get("pair_page"), &[])
-}
-
-fn unreadable(e: &serde_json::Error) -> ApiError {
-    crate::api::error::ErrorInfo::local("bad_response", e.to_string()).into()
 }

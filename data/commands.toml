@@ -1,0 +1,5 @@
+# What is said about any command; {command} is the name as it was typed, in backticks, and
+# {places} where the command does work.
+elsewhere = "{command} only works as {places}."
+# Joins the places a command works.
+or = " or "

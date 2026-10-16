@@ -5,23 +5,25 @@ mod auth;
 mod battery;
 mod cli;
 mod commands;
+mod config;
+mod conversation;
+mod data;
 mod effort;
 mod forums;
 mod frontend;
-mod install;
 mod io;
-mod limits;
+mod live;
+mod mcp;
 mod mode;
-mod paths;
+mod models;
 mod permission;
 mod release;
 mod session;
-mod settings;
+mod snapshot;
+#[cfg(test)]
+mod testing;
 mod text;
 mod tools;
-mod trust;
-mod tui;
-mod update;
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {

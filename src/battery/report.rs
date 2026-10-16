@@ -11,7 +11,7 @@ use super::sequences;
 use super::shell::{self, Shell, Smell};
 use super::tools::{self, Tools};
 use super::{Count, Counts};
-use crate::api::error::ErrorInfo;
+use crate::conversation::error::ErrorInfo;
 use crate::mode;
 use crate::permission::rule::Rule;
 use crate::text::shorten;
@@ -509,7 +509,7 @@ fn short_rev(rev: &str) -> &str {
 mod tests {
     use super::*;
     use crate::battery::fixture;
-    use crate::settings;
+    use crate::config::settings;
 
     #[test]
     fn the_report_ranks_what_the_counts_say() {

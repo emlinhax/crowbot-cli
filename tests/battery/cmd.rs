@@ -14,7 +14,7 @@ pub struct Ran {
 
 // CEILING: a line runs under `sh` and only `sh` is ended on a timeout; what it started may
 // outlive it. Windows needs Git Bash's `sh` on PATH. Upgrade: run lines through crowbot's own
-// process-group shell (src/io/shell.rs) once the battery can link against it.
+// process-group shell (src/io/proc/) once the battery can link against it.
 pub async fn sh(line: &str, cwd: &Path, env: &[(String, String)], limit: Duration) -> Ran {
     let mut command = tokio::process::Command::new("sh");
     command

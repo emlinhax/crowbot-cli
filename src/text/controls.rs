@@ -40,6 +40,16 @@ pub fn for_terminal(text: &str) -> Cow<'_, str> {
         .into()
 }
 
+/// Command output as a terminal would have left it on screen: escapes gone, and each line as
+/// its last `\r` redraw showed it (a progress bar keeps only its final state).
+pub fn as_printed(text: &str) -> String {
+    strip_escapes(text)
+        .lines()
+        .map(|line| line.rsplit('\r').find(|s| !s.is_empty()).unwrap_or(""))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// A URL safe inside an OSC 8 hyperlink: control characters and spaces percent-encoded.
 pub fn osc_url(url: &str) -> Cow<'_, str> {
     if !url.chars().any(|c| c.is_control() || c == ' ') {
@@ -84,6 +94,14 @@ fn skip_escape(chars: &mut Peekable<Chars<'_>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_reads_as_printed() {
+        assert_eq!(
+            as_printed("\u{1b}[31mred\u{1b}[0m\n10%\r50%\r100%"),
+            "red\n100%"
+        );
+    }
 
     #[test]
     fn escape_sequences_never_pass() {

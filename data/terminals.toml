@@ -1,0 +1,15 @@
+# How terminals advertise what they can show. A terminal that is not listed gets 256 colours,
+# and on Windows no braille unless something here says a modern terminal hosts it.
+
+[truecolor]
+# COLORTERM values that mean 24-bit colour.
+colorterm = ["truecolor", "24bit"]
+# Variables only a truecolor terminal sets (Windows Terminal).
+env = ["WT_SESSION"]
+term_program = ["iTerm.app", "WezTerm", "vscode", "ghostty", "Hyper"]
+# Substrings of TERM.
+term_contains = ["kitty", "direct"]
+
+[braille]
+# Variables a terminal with a braille-capable font sets; Windows' own console has none.
+env = ["WT_SESSION", "TERM_PROGRAM"]

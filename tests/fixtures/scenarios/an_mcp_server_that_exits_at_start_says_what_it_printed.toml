@@ -1,0 +1,10 @@
+description = "An MCP server that fails at start is reported with the end of what it printed"
+args = ["-p", "hi"]
+home_files = { "config.toml" = "[mcp.fake]\ncommand = '{fake_mcp}'\nargs = ['--exit']\n" }
+
+[[reply]]
+text = "Hello."
+
+[expect]
+exit = 0
+stderr_contains = ["MCP server fake is not running: it exited. It printed: fake-mcp: told to fail at start."]

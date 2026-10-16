@@ -1,73 +1,87 @@
 use std::collections::BTreeMap;
-use std::fmt;
 use std::sync::LazyLock;
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
+use crate::api::endpoints;
+use crate::config::limits;
+use crate::conversation::error::ErrorInfo;
+use crate::data;
 use crate::io::http::{HttpError, Response};
-use crate::limits;
+use crate::text::template;
 
-const CATALOG_SRC: &str = include_str!("../../data/errors.toml");
-
-static CATALOG: LazyLock<BTreeMap<String, Entry>> =
-    LazyLock::new(|| toml::from_str(CATALOG_SRC).expect("data/errors.toml is checked by tests"));
+static CATALOG: LazyLock<BTreeMap<String, Entry>> = data::load!("errors.toml");
 
 /// How the client treats one `error.type`; see data/errors.toml.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Entry {
     pub title: String,
+    /// What to do about it; `{api}` and `{chat}` name crowbot's sites (endpoints.toml).
     #[serde(default)]
-    pub hint: Option<String>,
+    hint: Option<String>,
     /// Whether it is worth trying again; `None` leaves that to the status.
     #[serde(default)]
     pub retry: Option<bool>,
+    /// What a session does next.
+    #[serde(default)]
+    pub session: Option<Follow>,
 }
 
-/// An error as stored in sessions and shown to the user. `kind` is crowbot's `error.type`, or
-/// one of our own for failures that never reached crowbot (see data/errors.toml).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ErrorInfo {
-    #[serde(rename = "type", default)]
-    pub kind: String,
-    #[serde(default)]
-    pub message: String,
-    #[serde(default)]
-    pub status: Option<u16>,
-    #[serde(default)]
-    pub request_id: Option<String>,
+/// What follows an error in a session, beyond showing it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Follow {
+    /// Offer the login card.
+    Login,
+    /// Ask where the account stands and say it.
+    Account,
 }
 
-impl ErrorInfo {
-    pub fn local(kind: &str, message: impl Into<String>) -> Self {
-        Self {
-            kind: kind.to_owned(),
-            message: message.into(),
-            status: None,
-            request_id: None,
-        }
+/// How an error reads on one line: its kind's title, then what crowbot said.
+pub fn headline(info: &ErrorInfo) -> String {
+    format!("{}: {info}", Entry::of(info).title)
+}
+
+/// How a failed step reads where there is room for one notice: an error from crowbot gets its
+/// headline and hint, anything else its chain of causes.
+pub fn said(e: &anyhow::Error) -> String {
+    let Some(api) = e.chain().find_map(|c| c.downcast_ref::<ApiError>()) else {
+        return format!("{e:#}");
+    };
+    let mut out = headline(&api.info);
+    if let Some(hint) = Entry::of(&api.info).hint() {
+        out.push_str(". ");
+        out.push_str(&hint);
     }
+    out
+}
 
-    pub fn entry(&self) -> &'static Entry {
+impl Entry {
+    /// How the client treats `info`'s kind; an unknown kind reads as `unknown`.
+    pub fn of(info: &ErrorInfo) -> &'static Self {
         CATALOG
-            .get(&self.kind)
+            .get(&info.kind)
             .unwrap_or_else(|| &CATALOG["unknown"])
     }
+
+    /// The hint, naming the sites this build talks to.
+    pub fn hint(&self) -> Option<String> {
+        let sites = [
+            ("api", endpoints::origin("api")),
+            ("chat", endpoints::origin("chat")),
+        ];
+        let sites: Vec<(&str, &str)> = sites.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        self.hint
+            .as_deref()
+            .map(|hint| template::fill(hint, &sites))
+    }
 }
 
-impl fmt::Display for ErrorInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ({}", self.message, self.kind)?;
-        if let Some(status) = self.status {
-            write!(f, ", HTTP {status}")?;
-        }
-        // The request id is what crowbot support needs to find the call.
-        if let Some(id) = &self.request_id {
-            write!(f, ", request {id}")?;
-        }
-        write!(f, ")")
-    }
+/// A reply's body read as JSON; one that is not what was expected is a `bad_response`.
+pub fn json<T: serde::de::DeserializeOwned>(body: &[u8]) -> Result<T, ApiError> {
+    serde_json::from_slice(body).map_err(|e| ErrorInfo::local("bad_response", e.to_string()).into())
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -129,6 +143,23 @@ impl From<HttpError> for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_hint_fills_its_placeholders() {
+        for (kind, entry) in CATALOG.iter() {
+            if let Some(hint) = entry.hint() {
+                assert!(!hint.contains('{'), "{kind}: {hint}");
+            }
+        }
+        let low = Entry::of(&ErrorInfo::local("insufficient_balance", ""));
+        assert_eq!(
+            low.hint().as_deref(),
+            Some("Top up at https://chat.crowbot.sh.")
+        );
+        assert_eq!(low.session, Some(Follow::Account));
+        let refused = Entry::of(&ErrorInfo::local("invalid_api_key", ""));
+        assert_eq!(refused.session, Some(Follow::Login));
+    }
     use crate::io::http::Head;
 
     fn response(status: u16, body: &str) -> Response {
@@ -143,10 +174,23 @@ mod tests {
     }
 
     #[test]
+    fn said_names_the_kind_and_its_hint_and_falls_back_to_the_causes() {
+        let refused = ApiError::from(ErrorInfo::local("key_unknown", "Invalid API key"));
+        let said = said(&anyhow::Error::new(refused).context("checking that key with crowbot"));
+        assert!(
+            said.starts_with("crowbot does not know that key: Invalid API key (key_unknown)."),
+            "{said}"
+        );
+        assert!(said.ends_with("or pair this device instead."), "{said}");
+        let other = anyhow::anyhow!("disk full").context("saving the key");
+        assert_eq!(super::said(&other), "saving the key: disk full");
+    }
+
+    #[test]
     fn catalog_parses_and_has_a_fallback() {
         assert!(CATALOG.contains_key("unknown"));
         assert_eq!(
-            ErrorInfo::local("no_such_kind", "x").entry().title,
+            Entry::of(&ErrorInfo::local("no_such_kind", "x")).title,
             CATALOG["unknown"].title
         );
     }

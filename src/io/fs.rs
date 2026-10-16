@@ -1,5 +1,3 @@
-#![allow(clippy::disallowed_methods)]
-
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 
@@ -18,6 +16,27 @@ pub fn read_string(path: &Path) -> io::Result<Option<String>> {
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e),
     }
+}
+
+pub fn exists(path: &Path) -> bool {
+    path.exists()
+}
+
+/// A JSON file as `T`; `Ok(None)` when it does not exist. Errors name the file.
+pub fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> io::Result<Option<T>> {
+    let named = |e: io::Error| io::Error::new(e.kind(), format!("{}: {e}", path.display()));
+    let Some(text) = read_string(path).map_err(named)? else {
+        return Ok(None);
+    };
+    serde_json::from_str(&text)
+        .map(Some)
+        .map_err(|e| named(e.into()))
+}
+
+pub fn write_json<T: serde::Serialize>(path: &Path, value: &T, access: Access) -> io::Result<()> {
+    let json = serde_json::to_vec_pretty(value)?;
+    write_atomic(path, &json, access)
+        .map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", path.display())))
 }
 
 /// Writes a sibling temp file and renames it over the target, so a crash never leaves half a file.
@@ -65,6 +84,11 @@ fn ensure_parent(path: &Path) -> io::Result<()> {
         Some(dir) => std::fs::create_dir_all(dir),
         None => Ok(()),
     }
+}
+
+/// `path` with `/` separators, as tools show and match paths on every OS.
+pub fn slashed(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 /// `path` with links, `.` and `..` resolved as far as it exists on disk; the part that does not
@@ -188,17 +212,6 @@ pub fn append_line(path: &Path, line: &str) -> io::Result<()> {
     file.write_all(format!("{line}\n").as_bytes())
 }
 
-/// Writes `bytes` as a program (mode 0755 on Unix), over any file already there.
-pub fn write_executable(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    std::fs::write(path, bytes)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))?;
-    }
-    Ok(())
-}
-
 pub fn make_dir(dir: &Path) -> io::Result<()> {
     std::fs::create_dir_all(dir)
 }
@@ -238,65 +251,6 @@ pub fn remove_all(path: &Path) -> io::Result<()> {
         std::fs::remove_dir_all(path)
     } else {
         std::fs::remove_file(path)
-    }
-}
-
-/// Removes `dir` and all it holds; absent is fine. Only Windows installs into a folder of
-/// crowbot's own.
-#[cfg(windows)]
-pub fn remove_dir(dir: &Path) -> io::Result<()> {
-    match std::fs::remove_dir_all(dir) {
-        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
-        _ => Ok(()),
-    }
-}
-
-/// Whether a file can be made in `dir`.
-pub fn writable(dir: &Path) -> bool {
-    let probe = dir.join(format!(".crowbot-probe-{}", std::process::id()));
-    let made = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&probe)
-        .is_ok();
-    if made {
-        let _ = std::fs::remove_file(&probe);
-    }
-    made
-}
-
-/// Puts the program `new` where `current` is, though `current` may be running. Unix renames over
-/// it (a running process keeps its image). Windows cannot replace a running exe but can rename
-/// it, so the old one moves aside and is swept on a later start.
-pub fn replace_executable(new: &Path, current: &Path) -> io::Result<()> {
-    #[cfg(windows)]
-    {
-        if !current.exists() {
-            return std::fs::rename(new, current);
-        }
-        let aside = current.with_extension(format!("old-{}", std::process::id()));
-        std::fs::rename(current, &aside)?;
-        if let Err(e) = std::fs::rename(new, current) {
-            let _ = std::fs::rename(&aside, current);
-            return Err(e);
-        }
-        Ok(())
-    }
-    #[cfg(not(windows))]
-    std::fs::rename(new, current)
-}
-
-/// Removes what earlier replacements of `current` left beside it: renamed-aside programs (some
-/// may still run, and stay) and staged downloads.
-pub fn sweep_replaced(current: &Path) {
-    let (Some(dir), Some(stem)) = (current.parent(), current.file_stem()) else {
-        return;
-    };
-    let old = format!("{}.old-", stem.to_string_lossy());
-    for entry in list_dir(dir).unwrap_or_default() {
-        if entry.name.starts_with(&old) {
-            let _ = std::fs::remove_file(dir.join(&entry.name));
-        }
     }
 }
 
@@ -364,39 +318,21 @@ mod tests {
     }
 
     #[test]
-    fn a_program_is_replaced_where_it_stands_and_its_leftovers_swept() {
-        let dir = tempfile::tempdir().unwrap();
-        let current = dir.path().join(if cfg!(windows) {
-            "crowbot.exe"
-        } else {
-            "crowbot"
-        });
-        write_executable(&current, b"old").unwrap();
-        let new = dir.path().join(".crowbot.new");
-        write_executable(&new, b"new").unwrap();
-        assert!(writable(dir.path()));
-        replace_executable(&new, &current).unwrap();
-        assert_eq!(read_bytes(&current).unwrap(), b"new");
-        assert!(!new.exists());
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(&current).unwrap().permissions().mode();
-            assert_eq!(mode & 0o777, 0o755);
-        }
-        sweep_replaced(&current);
-        let left: Vec<String> = list_dir(dir.path())
-            .unwrap()
-            .into_iter()
-            .map(|e| e.name)
-            .collect();
-        assert_eq!(left.len(), 1, "{left:?}");
-    }
-
-    #[test]
     fn missing_file_reads_as_none() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(read_string(&dir.path().join("nope.txt")).unwrap(), None);
+    }
+
+    #[test]
+    fn json_files_round_trip_and_a_corrupt_one_names_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.json");
+        assert_eq!(read_json::<Vec<u32>>(&path).unwrap(), None);
+        write_json(&path, &vec![1, 2], Access::Shared).unwrap();
+        assert_eq!(read_json::<Vec<u32>>(&path).unwrap(), Some(vec![1, 2]));
+        write_atomic(&path, b"{not json", Access::Shared).unwrap();
+        let err = read_json::<Vec<u32>>(&path).unwrap_err().to_string();
+        assert!(err.contains("state.json"), "{err}");
     }
 
     #[test]

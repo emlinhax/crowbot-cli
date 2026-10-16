@@ -1,31 +1,29 @@
-//! Headless mode: one prompt in, the agent runs to completion, the reply (or a JSON event
-//! stream) out. Permission prompts cannot be answered here, so they are declined.
+//! Headless run: one prompt in, the reply (or one JSON event per line) out. Nobody can answer a
+//! prompt here.
 
+use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use anyhow::anyhow;
+use anyhow::bail;
 
-use crate::agent::event::{AgentEvent, DeltaKind, Outcome};
-use crate::agent::message::{Assistant, Finish, Part, ToolResult};
-use crate::agent::prompt::{Prompt, Reply};
-use crate::agent::run::{self, RunCtx};
-use crate::agent::state::Shared;
+use crate::agent::setup::{Continue, Setup};
 use crate::agent::system_prompt;
-use crate::api::models;
+use crate::agent::{RunCtx, run};
+use crate::api::error::{self, Entry};
 use crate::app::App;
+use crate::config::limits;
+use crate::conversation::message::{Assistant, Finish, Part, ToolResult};
+use crate::frontend::{tool_card, words};
 use crate::io::term;
-use crate::limits;
+use crate::live::event::{AgentEvent, DeltaKind, Ended, Outcome};
+use crate::live::prompt::{Prompt, Reply};
+use crate::live::state::Shared;
 use crate::mode;
 use crate::permission::gate;
-use crate::session::store::Store;
-use crate::session::transcript::Transcript;
 use crate::text::shorten;
-use crate::tools::{self, Registry};
-
-/// How much of an argument or error a one-line note shows.
-const NOTE_CHARS: usize = 100;
+use crate::text::template::fill;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Format {
@@ -33,38 +31,65 @@ pub enum Format {
     Json,
 }
 
-pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<ExitCode> {
-    let catalog = models::load(app, false).await;
-    // crowbot silently swaps an unknown model id for its default, so refuse it here instead.
-    let model = catalog.get(&app.settings.model).ok_or_else(|| {
-        anyhow!(
-            "unknown model `{}`; see `crowbot models`",
-            app.settings.model
-        )
-    })?;
-    let mode = mode::get(&app.settings.mode).ok_or_else(|| anyhow!("mode was validated"))?;
-    let system = system_prompt::build(&app.paths, model);
-    let registry = Registry::builtin(app);
-    let mut transcript = Transcript::new(Some(Store::create(&app.paths)));
-    let shared = Shared::new(mode);
-    let plan_file = tools::plan_file(&app.paths, &transcript.id());
+/// Runs `prompt` (the words given, then any piped stdin) without a session, and exits; going on
+/// with the session in `resume` when given.
+pub async fn run(
+    app: &App,
+    mut prompt: String,
+    format: Format,
+    resume: Option<&Path>,
+) -> anyhow::Result<ExitCode> {
+    if let Some(piped) = term::piped_stdin()? {
+        prompt = if prompt.is_empty() {
+            piped
+        } else {
+            format!("{prompt}\n\n{piped}")
+        };
+    }
+    if prompt.trim().is_empty() {
+        bail!("nothing to send; pass a prompt or pipe one in");
+    }
+    let from = resume.map(|path| Continue { path, mode: false });
+    let Setup {
+        model,
+        effort,
+        tools,
+        shared,
+        mut transcript,
+        gone,
+        shadow,
+        mcp,
+        ..
+    } = Setup::load(app, from).await?;
+    if let Some(gone) = gone {
+        term::warn(&words::model_gone(&gone, &model.id));
+    }
+    let system = system_prompt::build(&app.paths, &model.id);
 
     let out = Printer {
         format,
         shared: &shared,
+        window: model.context_window,
+        compacting: Mutex::new((false, false)),
         at_line_start: AtomicBool::new(true),
         last: Mutex::new(None),
         declined: Mutex::new(Vec::new()),
     };
     let emit = |event: AgentEvent| out.event(event);
+    for (server, note) in mcp.notes() {
+        emit(AgentEvent::Mcp {
+            server: server.clone(),
+            note: note.clone(),
+        });
+    }
     let cx = RunCtx {
         app,
-        model,
-        effort: app.settings.effort.as_deref(),
+        model: &model,
+        effort: effort.as_deref(),
         system: &system,
-        tools: &registry,
-        plan_file,
+        tools: &tools,
         emit: &emit,
+        shadow: &shadow,
     };
 
     let interrupt = async {
@@ -73,16 +98,21 @@ pub async fn run(app: &App, prompt: String, format: Format) -> anyhow::Result<Ex
         std::future::pending::<()>().await;
     };
     let prompt = vec![Part::Text { text: prompt }];
-    let outcome = tokio::select! {
-        outcome = run::run(&cx, &mut transcript, &shared, prompt) => outcome,
+    let ended = tokio::select! {
+        ended = run::run(&cx, &mut transcript, &shared, prompt) => ended,
         () = interrupt => unreachable!("the interrupt future never finishes"),
     };
-    Ok(out.finish(outcome))
+    mcp.stop().await;
+    Ok(out.finish(ended))
 }
 
 struct Printer<'a> {
     format: Format,
     shared: &'a Shared,
+    /// The model's context window, to tell a reply cut off by it from one out of output.
+    window: u64,
+    /// Why the summary in progress was made, for its end to say.
+    compacting: Mutex<(bool, bool)>,
     /// Whether stdout ends at a line start, so stderr notes do not land mid-sentence.
     at_line_start: AtomicBool,
     last: Mutex<Option<Assistant>>,
@@ -92,9 +122,9 @@ struct Printer<'a> {
 
 impl Printer<'_> {
     fn event(&self, event: AgentEvent) {
-        // Nobody can answer a prompt here; decline it so the model hears why and carries on.
-        if let AgentEvent::Prompt { id, .. } = &event {
-            self.shared.answer(*id, Reply::Unavailable);
+        // Declined at once, so the model hears why and carries on; a subagent's too.
+        if let AgentEvent::Prompt { id, .. } = event.innermost() {
+            self.shared.prompts.answer(*id, Reply::Unavailable);
         }
         if let AgentEvent::MessageEnd { message } = &event {
             *self.last.lock().unwrap() = Some(message.clone());
@@ -126,76 +156,124 @@ impl Printer<'_> {
             } if self.declined.lock().unwrap().contains(call_id) => {}
             AgentEvent::ToolStart {
                 name, arguments, ..
-            } => self.note(&format!("› {name} {}", summary(arguments))),
+            } => self.note(&call_line(&words::get().print.call, name, arguments)),
+            // Only a subagent's calls and what it found of a server show; its words are its
+            // parent's to pass on.
+            AgentEvent::Child { event, .. } => match event.innermost() {
+                AgentEvent::ToolStart {
+                    name, arguments, ..
+                } => self.note(&call_line(&words::get().print.child_call, name, arguments)),
+                AgentEvent::Mcp { note, .. } => self.warn(note),
+                _ => {}
+            },
             AgentEvent::ToolEnd { result } if result.is_error => {
                 let first = result.content.lines().next().unwrap_or_default();
-                self.note(&format!("  ✗ {}", shorten::line(first, NOTE_CHARS)));
+                let error = shorten::line(first, note_chars());
+                self.note(&fill(&words::get().print.failed, &[("error", &error)]));
             }
             AgentEvent::Prompt {
-                prompt: Prompt::Permission { tool, asks, .. },
+                prompt:
+                    Prompt::Permission {
+                        tool,
+                        asks,
+                        confirm,
+                        ..
+                    },
                 call_id,
                 ..
             } => {
                 self.declined.lock().unwrap().push(call_id.clone());
-                self.note(&format!(
-                    "  ✗ {tool} needs permission ({}); rerun with --mode auto to allow it",
-                    shorten::line(&gate::describe(asks), NOTE_CHARS)
+                let what = shorten::line(&gate::describe(asks), note_chars());
+                let print = &words::get().print;
+                let line = if *confirm {
+                    &print.unconfirmed
+                } else {
+                    &print.needs_permission
+                };
+                self.note(&fill(
+                    line,
+                    &[
+                        ("tool", tool),
+                        ("what", &what),
+                        ("mode", &mode::unattended().id),
+                    ],
                 ));
             }
             AgentEvent::Retry {
                 delay_ms, error, ..
             } => self.note(&format!(
-                "{}; retrying in {:.1}s",
-                error.entry().title,
+                "{}; {} {:.1}s",
+                Entry::of(error).title,
+                words::get().retrying,
                 *delay_ms as f64 / 1000.0
             )),
+            AgentEvent::Mcp { note, .. } => self.warn(note),
             AgentEvent::Unsaved { path, error } => {
-                self.note(&format!(
-                    "crowbot: no longer saving this session to {path}: {error}"
+                self.warn(&fill(
+                    &words::get().unsaved,
+                    &[("path", path), ("error", error)],
                 ));
+            }
+            AgentEvent::CompactionStart { auto, overflow } => {
+                *self.compacting.lock().unwrap() = (*auto, *overflow);
+            }
+            AgentEvent::CompactionEnd { .. } => {
+                let why = *self.compacting.lock().unwrap();
+                if let Some((text, _)) = words::compaction(event, why) {
+                    self.note(&text);
+                }
             }
             _ => {}
         }
     }
 
     fn note(&self, line: &str) {
-        if !self.at_line_start.swap(true, Ordering::Relaxed) {
-            term::out("\n");
-        }
+        self.break_line();
         term::err(&format!("{line}\n"));
     }
 
-    fn finish(&self, outcome: Outcome) -> ExitCode {
+    fn warn(&self, line: &str) {
+        self.break_line();
+        term::warn(line);
+    }
+
+    /// Ends a reply's half-written line, so what goes to stderr starts on its own.
+    fn break_line(&self) {
+        if !self.at_line_start.swap(true, Ordering::Relaxed) {
+            term::out("\n");
+        }
+    }
+
+    fn finish(&self, Ended { outcome, turns }: Ended) -> ExitCode {
         if self.format == Format::Text && !self.at_line_start.load(Ordering::Relaxed) {
             term::out("\n");
         }
         let last = self.last.lock().unwrap().take();
         match outcome {
             Outcome::Aborted => {
-                term::err("crowbot: cancelled\n");
+                term::warn(&words::get().interrupted);
                 ExitCode::from(130)
             }
             Outcome::Failed => {
                 if let Some(error) = last.and_then(|m| m.error) {
-                    let entry = error.entry();
-                    term::err(&format!("crowbot: {}: {error}\n", entry.title));
-                    if let Some(hint) = &entry.hint {
-                        term::err(&format!("  {hint}\n"));
+                    let entry = Entry::of(&error);
+                    term::warn(&error::headline(&error));
+                    if let Some(hint) = entry.hint() {
+                        let hint = fill(&words::get().print.hint, &[("hint", &hint)]);
+                        term::err(&format!("{hint}\n"));
                     }
                 }
                 ExitCode::FAILURE
             }
             Outcome::TurnLimit => {
-                let limit = limits::get().agent.max_turns.value;
-                term::err(&format!("crowbot: stopped after {limit} turns\n"));
+                let count = turns.to_string();
+                term::warn(&fill(&words::get().turn_limit, &[("count", &count)]));
                 ExitCode::FAILURE
             }
             Outcome::Rejected => ExitCode::FAILURE,
             Outcome::Done => {
-                if last.is_some_and(|m| m.finish == Finish::Length) {
-                    term::err(
-                        "crowbot: the reply hit its output limit (a low balance lowers that limit)\n",
-                    );
+                if let Some(cut) = last.filter(|m| m.finish == Finish::Length) {
+                    term::warn(words::cut_off(&cut, self.window));
                 }
                 ExitCode::SUCCESS
             }
@@ -203,12 +281,16 @@ impl Printer<'_> {
     }
 }
 
-/// The argument a person recognises a call by: its path, command, pattern, URL or query.
-fn summary(arguments: &str) -> String {
-    let args: serde_json::Value = serde_json::from_str(arguments).unwrap_or_default();
-    let found = ["path", "command", "pattern", "url", "query"]
-        .iter()
-        .find_map(|key| args[key].as_str())
-        .unwrap_or_default();
-    shorten::line(found.lines().next().unwrap_or_default(), NOTE_CHARS)
+/// A call as `template` words it, with its card's title.
+fn call_line(template: &str, name: &str, arguments: &str) -> String {
+    let mut line = fill(template, &[("tool", name)]);
+    if let Some(title) = tool_card::title(name, arguments) {
+        line.push(' ');
+        line.push_str(&shorten::line(&title, note_chars()));
+    }
+    line
+}
+
+fn note_chars() -> usize {
+    limits::get().print.note_chars.value
 }

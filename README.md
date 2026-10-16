@@ -8,28 +8,33 @@ Read `AGENTS.md` before changing anything; `NEXT_PLAN.md` tracks the phases.
 
 | Platform | Do |
 |---|---|
-| Windows | Download [crowbot-x86_64-pc-windows-msvc.exe](https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-x86_64-pc-windows-msvc.exe) and double-click it; it offers to install itself for you and puts `crowbot` on your PATH. |
-| macOS (Apple silicon) | `curl -fsSL -o crowbot https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-aarch64-apple-darwin && chmod +x crowbot && ./crowbot install` |
-| Linux (x86_64) | `curl -fsSL -o crowbot https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-x86_64-unknown-linux-musl && chmod +x crowbot && ./crowbot install` |
+| macOS (Apple silicon), Linux (x86_64) | `curl -fsSL https://github.com/emlinhax/crowbot-cli/releases/latest/download/install.sh \| sh` |
+| Windows (x64, PowerShell) | `irm https://github.com/emlinhax/crowbot-cli/releases/latest/download/install.ps1 \| iex` |
 
-`crowbot install` copies the program to a folder of your own (`%LOCALAPPDATA%\Programs\crowbot`
-on Windows, `~/.local/bin` elsewhere) and puts it on your PATH: on Windows itself, with an
-Apps & Features entry; elsewhere it tells you the line for your shell's profile. `crowbot
-uninstall` takes it away again and leaves `~/.crowbot` (keys, sessions) alone. The binaries are
-unsigned: on Windows the first start asks for "More info → Run anyway"; on macOS a copy saved by a
-browser (not by `curl`) is blocked until System Settings → Privacy & Security → Open Anyway.
+The script (`install/`) picks the release file for the machine, checks it against `SHA256SUMS`
+and runs `crowbot install`. By hand: download `crowbot-<target>` from the
+[latest release](https://github.com/emlinhax/crowbot-cli/releases/latest), then
+`chmod +x` it and run `./crowbot install`; on Windows, double-click the `.exe` and it offers to
+install itself. `crowbot install` copies the program to `%LOCALAPPDATA%\Programs\crowbot`
+(Windows) or `~/.local/bin` and puts it on PATH: on Windows directly, with an Apps & Features
+entry; elsewhere it prints the line for your shell profile. `crowbot uninstall` undoes it and
+keeps `~/.crowbot`. Binaries carry no Apple or Windows code signature: a browser download asks
+for "More info → Run anyway" on Windows and Privacy & Security → Open Anyway on macOS, while the
+scripts' downloads are not flagged.
 
-Once a day, an interactive session checks for a newer release in the background, checks the
-download against the release's SHA256SUMS and swaps it in; the next start says it updated.
-`crowbot update` does it on demand. `auto_update = false` in `~/.crowbot/config.toml`, or
-`CROWBOT_NO_UPDATE=1`, turns that off; development builds never update themselves.
+Sessions check for a new release daily and swap it in once its `SHA256SUMS` carries crowbot's
+minisign signature for that release and the file matches it; the next start says so.
+`crowbot update` does it now. `auto_update = false` or `CROWBOT_NO_UPDATE=1` turns it off;
+development builds never update.
 
 ## Commands
 
 ```sh
 crowbot                          # interactive session
 crowbot "fix the failing test"   # the same, with the prompt typed in for you to review
+crowbot --continue               # go on with this project's latest session (with -p too)
 crowbot login                    # pair this machine (or: login --key <account number>)
+crowbot logout                   # forget this machine's key
 crowbot signup                   # create an account: no email, no password, no recovery
 crowbot -p "explain this repo"   # headless: one prompt, reply on stdout (pipe input works too)
 crowbot --json "..."             # headless, one JSON event per line (fields stable; additions only)
@@ -59,28 +64,25 @@ password), log out or remove it, or add one from Tapatalk's directory through th
 `/forums login <forum>` opens it straight at that forum's login. Only the resulting session cookie
 is kept, sealed in `~/.crowbot/forums.json` (DPAPI on Windows, 0600 elsewhere) — never the password.
 
-The system prompt names each added forum with its hint (what it covers, from
-`data/forums.toml` for the seeded ones), so the agent goes to the forum first for those topics
-without being told; the wording is `data/prompts/forums.toml`. It gets read tools
-(`forum_sections`, `forum_topics`, `forum_thread`, `forum_search`) that are allowed without asking, and a `forum_post` tool that shows you the exact text and waits for a
-yes every time, even in AUTO; a headless run never posts. Guests can read; most forums only allow
-search once you are logged in. Forum content is treated as untrusted information, never as
-instructions to the agent. Lock either down with a rule, e.g. `permission = "forum_post",
-pattern = "*", action = "deny"`.
+The system prompt names each added forum and its hint (seeded ones from `data/forums.toml`;
+wording in `data/prompts/forums.toml`), so the agent checks there first. Read tools
+(`forum_sections`, `forum_topics`, `forum_thread`, `forum_search`) run unasked; `forum_post` shows
+the exact text and asks every time, even in AUTO, and never runs headless. Guests can read; most
+forums need a login to search. Forum content is untrusted data, never instructions. Deny with a
+rule, e.g. `permission = "forum_post", pattern = "*", action = "deny"`.
 
-`--model <id>`, `--effort <level>` and `--mode <mode>` go before the prompt or command;
-`crowbot --help` lists their values. A first word that names a command runs it, except with `-p`
-or `--json`, where every word is prompt text. Otherwise the session opens when stdin and stdout
-are both terminals, and the prompt runs headless when they are not. Piped stdin is read to its
-end and appended to the words (`< /dev/null` when stdin is an open pipe with nothing coming). Exit codes: `0` done, `1` error, rejection or turn limit, `2` bad usage, `130`
+Flags (`--model`, `--effort`, `--mode`; values in `crowbot --help`) go before the prompt or
+command. A first word naming a command runs it, except after `-p`/`--json`, where every word is
+prompt. Otherwise a session opens when stdin and stdout are terminals, else the prompt runs
+headless. Piped stdin is read to its end and appended to the words (`< /dev/null` if the pipe
+never closes). Exit codes: `0` done, `1` error, rejection or turn limit, `2` bad usage, `130`
 interrupted.
 
 MANUAL asks before edits, commands and fetches; AUTO allows everything, deny rules included.
-PLAN locks out edits outside its plan file and runs, unasked, only the commands its allowlist
-names (`data/modes/plan.toml`): git's read commands, listings, and builds, tests and linters,
-which run the project's own code. It fetches without asking, and a filter at the end of a pipe
-(`| tail -30`, `data/filters.toml`) needs nothing of its own. The allowlist is not a sandbox. It
-ends by handing the plan over.
+PLAN edits only its plan file, fetches freely, and runs unasked only the commands in
+`data/modes/plan.toml` (git reads, listings, builds, tests, linters; these run project code, so it
+is not a sandbox) plus trailing pipe filters (`data/filters.toml`). It ends by handing over the
+plan.
 A headless run declines every prompt: allow what it needs with `[[permission]]` rules, or use
 `--mode auto`. The key comes from `CROWBOT_API_KEY`, else
 `~/.crowbot/auth.json` (DPAPI-sealed on Windows, 0600 elsewhere).
@@ -90,10 +92,31 @@ A headless run declines every prompt: allow what it needs with `[[permission]]` 
 The session takes over the whole terminal (the alternate screen) and gives it back on exit. The
 conversation scrolls above; the message bar is pinned to the bottom, between two rules in the
 mode's colour, and the bottom one carries the status on its right: the mode, the model and effort,
-context use and cost. While crowbot works, a murmuration of crows ripples above the bar beside the time and tokens so far.
-Right-click copies a message whole (yours, a reply, a tool's output, the pairing code), with a
-"Copied" note at the top right; Shift+drag selects any text, since the mouse otherwise belongs to
-crowbot. The session file under `~/.crowbot/sessions/` keeps the whole conversation.
+context use, cost, the plan's allowance left and the balance (orange when the account cannot
+spend). The account is asked at the start, on a new key, at the end of each run and at most
+every `tui.account_refresh_secs` mid-run; an idle session never asks. While crowbot works, a murmuration of crows ripples above the bar beside the
+time and tokens so far. Right-click copies a message whole (yours, a reply, a tool's output, the
+pairing code), with a "Copied" note at the top right; Shift+drag selects any text, since the mouse
+otherwise belongs to crowbot. The session file under `~/.crowbot/sessions/` keeps the whole
+conversation, branches taken back included; `--continue` and `/resume` go on with one, with the
+model, effort and mode it last used (a headless run keeps the mode it is given).
+
+In a git work tree, crowbot snapshots the files before a prompt's first change into a shadow git
+under `~/.crowbot/snapshots/` (the project's `.gitignore` applies; its own `.git` is never
+touched), so `/undo` and `/retry` put back what that prompt changed; a file edited since is left
+alone. Outside one, they take back the conversation only. When a request nears the model's window
+(`compaction.threshold_pct`), or crowbot refuses one as too long, earlier turns are summarised by
+the model and sent ahead of the last ones (`compaction.keep_tokens`), word for word; `/compact`
+does it by hand.
+
+The model can hand a self-contained job to a subagent with the `task` tool: `explore` reads and
+searches and changes nothing, `general` has the same tools as the session. Kinds are files in
+`data/agents/`. A subagent runs under the session's mode and asks through its permission cards; a
+plain No to one of its calls stops the whole run. Its reply is the tool's result (its card shows
+its latest call while it works), its cost is the session's, and its edits are the prompt's for
+`/undo`. Its conversation is saved beside the session's, in a folder named for it, so `/resume`
+lists sessions only. `--json` wraps a subagent's events in `{"type":"child","call_id":…}`; add up
+cost from `message_end` events at any depth, or from the task's `tool_end` usage, not both.
 
 | Key | Does |
 |---|---|
@@ -118,103 +141,143 @@ session, `/help` lists the commands:
 |---|---|
 | `/new` (or `/clear`) | a fresh conversation in a new session file; the last one stays saved |
 | `/models`, `/effort [level]`, `/mode [id]` | model, reasoning effort or permission mode for the rest of the session |
-| `/status` | account and balance, model, mode, context use, cost so far, session file |
+| `/resume` | go on with an earlier session in this project |
+| `/undo`, `/retry` | take back the last prompt and what followed it, files too; `/retry` then sends it again |
+| `/compact [focus]` | summarise earlier turns now, keeping `focus` in mind |
+| `/status` | account and balance, model, mode, context use, what `/undo` restores, MCP servers, cost so far, session file |
+| `/account` | balance and plan, the last `account.usage_days` of spend by model, balance fallback on or off, the account's keys (revoke any but this session's own) |
 | `/copy` | the last reply to the clipboard, as markdown |
 | `/init` | crowbot studies the project and writes its `AGENTS.md` |
 | `/login`, `/logout` | pair this device or take an account number (shown masked), or forget the key |
+| `/signup` | create an account in a card; its number shows once and its last digits are typed back |
+| `/forums` | the forums the agent can browse: log in, log out, remove, add |
 | `/quit` (or `/exit`) | leave |
 
-`/models` lists the models to pick from (↑↓, then → or Enter); `/login` takes effect without a
-restart. The project's `AGENTS.md` (or else `CLAUDE.md`) joins the system prompt when a
-conversation starts, up to `agent.instructions_bytes`. Pasting works everywhere; on Windows,
-where a paste arrives as keystrokes, a burst of keys is recognised as a paste so its Enters add
-lines instead of sending.
+`/login` and `/signup` take effect without a restart, and ask first before they would replace a
+stored account number (signup asks about any stored key). A refused key in a session opens
+`/login`; running out of funds or allowance says where the account stands. The project's `AGENTS.md` (else `CLAUDE.md`) joins the
+system prompt at conversation start, up to `agent.instructions_bytes`. On Windows a paste arrives
+as keystrokes; a key burst counts as a paste, so its Enters add lines.
+
+## MCP servers
+
+crowbot can use the tools of local MCP servers: programs it starts and speaks to over stdin and
+stdout. Name each in `~/.crowbot/config.toml`, or in a trusted project's `.crowbot/config.toml`:
+
+```toml
+[mcp.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+env = { GITHUB_PERSONAL_ACCESS_TOKEN = "…" }
+tools = ["get_*", "search_*"]   # optional: offer only these, by the server's names
+timeout_secs = 300              # optional: how long a call may take (else `mcp.call_secs`)
+```
+
+A later layer changes one key of a server, or turns it off with `enabled = false`. Servers start
+with the session, all at once, each within `mcp.start_secs`; one that does not is named once with
+what it printed, and the run goes on. A project's servers start only once the folder is trusted;
+until then they are listed without their `env` values. No server sees `CROWBOT_API_KEY`
+(`data/hidden_env.toml`).
+
+Their tools follow crowbot's own as `<server>__<tool>`, described as the server describes them,
+and ask like bash: MANUAL asks (`permission = "mcp"`, `pattern = "github__*"`,
+`action = "allow"` lets a server's tools run), AUTO runs them, and PLAN refuses them unless the
+server marks a tool read-only (`readOnlyHint`), as `/undo` snapshots before any it does not. The
+model is sent the text of an answer; images, audio and binary resources are named, not sent. A
+call past its limit, or interrupted, is cancelled at the server. A server that stops fails its
+calls at once and is said once; it is not started again. `/status` lists every server, how many
+tools it offers, and whether it stopped. Remote (HTTP) servers, resources and prompts are not
+supported yet (`grep -rn CEILING: src/mcp src/tools/mcp`).
+
+## Environment
+
+| Variable | Does |
+|---|---|
+| `CROWBOT_HOME` | moves `~/.crowbot` (keys, sessions, settings, caches) |
+| `CROWBOT_API_KEY` | the key to use, over any stored one |
+| `CROWBOT_NO_UPDATE` | turns the daily self-update off, as `auto_update = false` does |
+| `CROWBOT_API_URL`, `CROWBOT_CHAT_URL` | point crowbot's API and its chat site elsewhere (`data/endpoints.toml`) |
+| `CROWBOT_RELEASES_URL` | where the updater lists releases (GitHub's API by default) |
 
 ## Layout
 
 | Path | What lives there |
 |---|---|
-| `data/` | Every number, prompt, catalog, key and colour, embedded with `include_str!`. Change behaviour here first. |
+| `data/` | Every number, prompt, catalog, key, word and colour, embedded with `include_str!`; one file (or folder) per concern, each opening with what it holds. Change behaviour here first. |
 | `data/limits.toml` | Every limit, each with its reason. |
-| `data/endpoints.toml` | crowbot's origins and endpoints; `CROWBOT_API_URL` / `CROWBOT_CHAT_URL` override origins. |
-| `data/commands/` | One spec per command (name, summary, usage, where it works). |
-| `data/errors.toml` | Every error kind: title, hint, and whether it is retried (else its status decides). |
-| `data/prompts/` | System prompt pieces and mode reminders. |
-| `data/modes/` | One file per permission mode (MANUAL, PLAN, AUTO): colour, verdicts, locked rules. |
-| `data/tools/` | Each tool's description (`.md`) and argument schema (`.schema.json`). |
-| `data/model_text.toml` | Everything crowbot tells the model on the user's behalf (declines, answers, errors). |
-| `data/shells.toml` | Which shell runs commands, per OS, and its environment (what is set, and what is never inherited: crowbot's key). |
-| `data/filters.toml` | Pipe filters (`tail -30`, `grep -c ok`): which flags keep a command reading only its input. |
-| `data/theme.toml` | Colours by role, and syntax scopes mapped to roles. |
-| `data/keybinds.toml`, `data/ui.toml` | Keys; the session's words, spinner, bottom-rule items, prompt choices, login card. |
-| `data/tool_cards.toml` | How each tool call looks in the transcript. |
-| `data/code_aliases.toml` | Code-fence languages mapped onto the bundled grammars. |
-| `src/io/` | The only code that touches network, files, processes, terminal or clock (enforced by `clippy.toml`). `http.rs` is crowbot's API (reqwest); `fetch.rs` is the rest of the web, for webfetch (cffetch). |
-| `crates/cffetch/` | The user's Cloudflare-aware HTTP client, vendored unchanged (why it is outside the workspace: `Cargo.toml`). Re-sync by copying `src/`, `tests/`, `examples/` and `Cargo.toml` over; its own suite runs from that directory (it hits the network). |
-| `src/api/` | crowbot endpoints, errors, SSE parsing, chat streaming, retry, pairing, signup. |
-| `src/agent/` | The loop (`run.rs`), tool batches, prompts, context repair, doom-loop guard, shared run state. |
-| `src/tools/` | One file per tool behind the `Tool` trait, registered in `tools/mod.rs`; `edit_match.rs` is the fuzzy matcher. |
-| `src/permission/` | Rules (last match wins), the gate that layers them with the mode, shell splitting. |
-| `src/tui/` | The session: `app.rs` loop, `layout.rs` + `screen.rs` (frame, row diff), `feed.rs` transcript blocks, `view.rs` scrolling, `status.rs` working line, editor, `frame.rs` rules, `boxed.rs` cards, `choice.rs` prompts, `palette.rs` popup, `picker.rs` models, `login.rs`. |
-| `src/text/` | Styled lines, theme, markdown, tables, highlighting, diffs; shared by the TUI and the CLI. |
-| `src/session/` | Append-only JSONL session files under `~/.crowbot/sessions/<project>/`, and their reader. |
-| `src/battery/` | The hidden `crowbot battery report <dir> [--against <dir>]`: a battery's runs counted by tool, shell command, stand-in, sequence and replayed gate verdict, then candidate changes ranked by count. Its smells and words are in `data/commands/battery.toml`. |
-| `src/frontend/` | Headless `-p` / `--json` output. |
-| `src/commands/` | One file per command, registered in `commands/mod.rs`. |
-| `src/{app,cli,settings,paths,limits,mode}.rs` | Startup, routing, layered settings, locations, limits, modes. |
-| `tests/e2e/` | The real binary against an in-process fake crowbot; `pty.rs` drives real sessions. |
-| `tests/fixtures/` | Data the fake serves (`sse/*.sse`, `api/*.json`), sample `projects/`, `scenarios/*.toml`. |
-| `tests/golden/edit/` | Edit-matcher cases: `before.txt` + `args.json` → `after.txt` or `error.txt`. |
-| `tests/smoke.rs` | A real API round trip (`make smoke`). |
-| `tests/battery/` | The tool-use battery's runner: each task headless in a fresh one-commit copy of its repo, stopped by its turn limit or the caps, then checked and recorded. Its own tests drive it against the fake. |
-| `bench/` | The battery's corpus: `battery.toml` (model, repeats, caps), `repos.toml` (repos pinned by commit), `tasks/*.toml` (prompt, mode, turn limit, check), `patches/` (planted bugs), `checks/` (tests the model never sees), `baseline/` (the first full run's report and results, to compare a re-run with). `cache/` and `runs/` are gitignored. |
-| `reference/` | Gitignored clones of opencode and pi plus crowbot's docs; designs are ported from here. |
+| `data/endpoints.toml` | crowbot's origins and endpoints, and the variables that override them. |
+| `src/io/` | The only code that touches the network, files, processes, terminal or clock; `clippy.toml` bans the raw calls elsewhere. crowbot's API goes through reqwest, the rest of the web (webfetch, forums) through cffetch. |
+| `src/api/` | crowbot's endpoints, errors, streaming chat, retries, pairing and signup. |
+| `src/agent/` | The run loop, tool batches, what the model is sent, subagents (`child.rs`, kinds in `kinds.rs`), and the session setup both frontends share. |
+| `src/live/` | What a run shares with its tools and frontend while it is going: events, prompts, state, files read. |
+| `src/conversation/` | Messages, parts and errors as a conversation holds them. |
+| `src/tools/` | One file or folder per tool behind the `Tool` trait, registered in `tools/mod.rs`. |
+| `src/permission/` | Rules (last match wins), the gate that layers them with the mode, the bash command split. |
+| `src/forums/` | Forums: the directory, the sealed store, accounts and the Tapatalk backend. |
+| `src/mcp/` | MCP servers: their config, JSON-RPC over a pair of line channels, the handshake, calls. Their tools as crowbot's are `src/tools/mcp/`. |
+| `src/models/` | The model catalog (live, cached or bundled) and its table. |
+| `src/commands/` | One file per command (effect-only ones share `fixed.rs`), registered in `commands/mod.rs`. |
+| `src/frontend/` | What drives a run: `print` (headless) and `tui/` (the session), and the words and tool cards both share. |
+| `src/text/` | Styled lines, theme, markdown, tables, highlighting, diffs. |
+| `src/session/` | Append-only JSONL session files under `~/.crowbot/sessions/<project>/`: their entries, the tree reader that finds the current branch, the list `/resume` shows, undo. |
+| `src/snapshot/` | The shadow git `/undo` restores files from. |
+| `src/battery/` | The hidden `crowbot battery report`: a battery's runs counted by tool, shell command, stand-in, sequence and replayed gate verdict, then candidate changes ranked by count. |
+| `src/config/` | Layered settings, locations, limits and the trusted-folder list. |
+| `src/release/` | Release identity, install and self-update. |
+| `src/*.rs` | Startup (`app`), routing (`cli`), the key (`auth`), data loading, efforts and modes. |
+| `crates/cffetch/` | The user's Cloudflare-aware HTTP client, vendored unchanged (outside the workspace: see `Cargo.toml`). Re-sync: copy `src/`, `tests/`, `examples/`, `Cargo.toml`. Its networked suite runs from that directory. |
+| `install/` | The install scripts each release publishes: `install.sh` (macOS, Linux) and `install.ps1` (Windows). |
+| `tests/e2e/` | The real binary against an in-process fake crowbot; `pty/` drives real sessions. |
+| `tests/fake_mcp/` | A stand-in MCP server, a test-only binary the scenarios configure as `{fake_mcp}`. |
+| `tests/fixtures/` | What the fake serves (`sse/`, `api/`), sample `projects/`, `scenarios/*.toml`, frozen `session/` files. |
+| `tests/golden/` | Edit-matcher cases (`edit/`) and the `--json` stream (`json/`). |
+| `tests/smoke.rs` | The only tests that touch the real API (`make smoke`). |
+| `tests/battery/` | The tool-use battery's runner: each task headless in a fresh copy of its repo, then checked and recorded; its own tests drive it against the fake. |
+| `bench/` | The battery's corpus: pinned repos, tasks, planted bugs, hidden checks, and the baseline run to compare a re-run with. `cache/` and `runs/` are gitignored. |
+| `reference/` | Clones of opencode and pi plus crowbot's docs; local only, see AGENTS.md. |
 
-Settings layer in this order, later wins: `data/defaults.toml`, `~/.crowbot/config.toml`,
-`.crowbot/config.toml` in the start directory, then flags; `[[permission]]` rules append instead.
-Permanent allowances go in `~/.crowbot/config.toml`, e.g. `permission = "bash"`,
-`pattern = "cargo *"`, `action = "allow"`. A folder's own `.crowbot/config.toml` may set `model`,
-`effort` and deny rules; anything else (mode, shell, allow or ask rules) needs the folder trusted.
-A session started there shows what the file asks for and asks first, and remembers a yes in
-`~/.crowbot/trusted.json`; a headless run ignores those settings and says so on stderr.
-`CROWBOT_HOME` moves `~/.crowbot`.
+Settings layer, later wins: `data/defaults.toml`, `~/.crowbot/config.toml`,
+`./.crowbot/config.toml`, flags; `[[permission]]` rules append. A project config may set `model`,
+`effort` and deny rules; anything else needs the folder trusted (a session shows what it asks for
+and remembers a yes in `~/.crowbot/trusted.json`; a headless run ignores those settings, with a
+note on stderr). Permanent allowances go in `~/.crowbot/config.toml`, e.g. `permission = "bash"`,
+`pattern = "cargo *"`, `action = "allow"`.
 
 ## Checks
 
-GNU make, run from Git Bash on Windows (`winget install ezwinports.make`).
+GNU make (see the Makefile's first line).
 
-webfetch fetches through cffetch, whose BoringSSL is built from source, so a build also needs
-CMake and libclang (`LIBCLANG_PATH` pointing at LLVM's `bin` when it is not found on its own),
-plus NASM on Windows (`winget install Kitware.CMake LLVM.LLVM NASM.NASM`). CI installs them
-through `.github/actions/setup`. The binary carries two TLS stacks: rustls for crowbot's API,
-BoringSSL for the web.
+webfetch goes through cffetch, which builds BoringSSL from source: a build needs CMake and
+libclang (`LIBCLANG_PATH` = LLVM's `bin` if not found), plus NASM on Windows
+(`winget install Kitware.CMake LLVM.LLVM NASM.NASM`); CI installs them in `.github/actions/setup`.
+TLS: rustls for crowbot's API, BoringSSL for the web.
 
-| Target | Runs | When |
-|---|---|---|
-| `make lint` | `cargo fmt --check`, `clippy -D warnings` (includes the io-wrapper rule) | before every push |
-| `make test` | unit, snapshot, renderer and data-integrity tests | before every push |
-| `make e2e` | binary vs fake crowbot, including PTY sessions and the battery's runner | CI on every push to `main`; locally only for critical changes |
-| `make golden` | rewrite failing goldens and snapshots | only for a deliberate change |
-| `make smoke` | real API round trip, needs `CROWBOT_SMOKE_KEY` (costs a fraction of a cent) | by hand, never in CI |
-| `make battery-setup` | clone the battery's repos into `bench/cache/`, install their dependencies, and check every planted bug fails its check (runs the repos' code) | once, and after `bench/repos.toml` changes |
-| `make battery` | every task × repeats against the real model, records in `bench/runs/<stamp>/`; needs `CROWBOT_SMOKE_KEY`, stops at `cap_micros`. `TASKS=a,b REPEATS=1` runs a pilot | by hand, never in CI |
-| `make build` | static release binary | as needed |
+| Target | Runs |
+|---|---|
+| `make lint` | `cargo fmt --check`, `clippy -D warnings` (includes the io-wrapper rule) |
+| `make test` | unit, snapshot, renderer and data-integrity tests |
+| `make e2e` | binary vs fake crowbot, including PTY sessions and the battery's runner |
+| `make golden` | rewrite failing goldens and snapshots |
+| `make smoke` | real API round trip, needs `CROWBOT_SMOKE_KEY` (costs a fraction of a cent) |
+| `make battery-setup` | clone the battery's repos into `bench/cache/`, install their dependencies, check every planted bug fails its check (runs the repos' code) |
+| `make battery` | every task against the real model into `bench/runs/<stamp>/`; needs `CROWBOT_SMOKE_KEY`, stops at `cap_micros`; `TASKS=a,b REPEATS=1` runs a pilot |
+| `make build` | static release binary |
+
+When to run each: AGENTS.md.
 
 ## Releases
 
-Pushing `prod` (on an explicit go only) runs `.github/workflows/release.yml`: the full CI checks,
-then a GitHub release tagged `v<version>-<run>` holding one binary per target and `SHA256SUMS`.
-The binaries are built with that tag (`CROWBOT_RELEASE`), which `--version` and the updater read.
-Asset names never change, so these always serve the newest release:
+Pushing `prod` runs `.github/workflows/release.yml`: the CI checks, then a release tagged
+`v<version>-<run>` with one binary per target, `SHA256SUMS`, its signature `SHA256SUMS.minisig`
+and the install scripts, built with that tag (`CROWBOT_RELEASE`) for `--version` and the updater.
+Asset names are fixed, so `releases/latest/download/<asset>` (the Install lines) always serves
+the newest. Adding a target: see `data/release.toml`'s header.
 
-| Platform | Download |
-|---|---|
-| Linux x86_64 (static) | `https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-x86_64-unknown-linux-musl` |
-| macOS Apple silicon | `https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-aarch64-apple-darwin` |
-| Windows x86_64 | `https://github.com/emlinhax/crowbot-cli/releases/latest/download/crowbot-x86_64-pc-windows-msvc.exe` |
-
-A target is one entry in `ci.yml`'s matrix. The binaries are unsigned, so macOS Gatekeeper and
-Windows SmartScreen warn about a copy downloaded by a browser; `curl` downloads are not flagged.
+The signature's trusted comment is `crowbot release <tag>`, made with the repository secret
+`MINISIGN_SECRET_KEY`; a release without it fails before building. The public keys are
+`data/release.toml` `[signature] keys`. To change the key: release once with the new public key
+beside the old (still signed by the old), then put the new secret key in place and drop the old
+public key, since crowbots in the field know only the keys they were built with.
 
 ## Licence
 

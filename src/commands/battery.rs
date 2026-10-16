@@ -6,15 +6,13 @@ use futures_util::future::BoxFuture;
 
 use super::{Command, Ctx, Outcome, Spec};
 use crate::battery::{load, report};
+use crate::config::settings;
+use crate::data;
 use crate::io::{self, fs::Access};
-use crate::settings;
 use crate::text::template::fill;
 
-const SRC: &str = include_str!("../../data/commands/battery.toml");
-
-static SPEC: LazyLock<Spec> = LazyLock::new(|| Spec::parse(SRC));
-static WORDS: LazyLock<report::Words> =
-    LazyLock::new(|| toml::from_str(SRC).expect("the battery's words are checked by tests"));
+static SPEC: LazyLock<Spec> = super::spec!("battery");
+static WORDS: LazyLock<report::Words> = data::load!("commands/battery.toml");
 
 pub struct Battery;
 

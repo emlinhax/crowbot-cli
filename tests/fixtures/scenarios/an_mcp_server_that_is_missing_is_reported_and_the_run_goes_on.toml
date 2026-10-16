@@ -1,0 +1,11 @@
+description = "A configured MCP server that cannot be found is named once on stderr, and the run goes on"
+args = ["-p", "hi"]
+home_files = { "config.toml" = "[mcp.gone]\ncommand = 'no-such-mcp-server'\n" }
+
+[[reply]]
+text = "Hello."
+
+[expect]
+exit = 0
+stdout = "Hello.\n"
+stderr_contains = ["MCP server gone is not running: no-such-mcp-server was not found."]

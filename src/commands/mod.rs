@@ -1,113 +1,31 @@
-//! Commands: `crowbot <name>` on the command line, `/name` inside a session. One file per
+//! Commands: `crowbot <name>` on the command line, `/name` inside a session. One spec per
 //! command, one line in `COMMANDS`; where each works is data (`scope` in its spec).
 
+pub mod account;
 mod battery;
-mod copy;
+mod compact;
 mod effort;
+mod fixed;
 pub mod forums;
 mod help;
-mod init;
 mod install;
 mod keytest;
 pub mod login;
 mod logout;
 mod mode;
 pub mod models;
-mod new;
-mod quit;
-mod signup;
+pub mod signup;
+mod spec;
 mod status;
 mod uninstall;
 mod update;
 
 use futures_util::future::BoxFuture;
-use serde::Deserialize;
+
+pub(crate) use spec::spec;
+pub use spec::{Scope, Spec, elsewhere};
 
 use crate::app::App;
-use crate::auth;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Scope {
-    Cli,
-    Session,
-}
-
-impl Scope {
-    /// How a command is typed here: `crowbot login`, `/login`.
-    pub fn prefix(self) -> &'static str {
-        match self {
-            Self::Cli => "crowbot ",
-            Self::Session => "/",
-        }
-    }
-
-    pub fn invoke(self, rest: &str) -> String {
-        format!("{}{rest}", self.prefix())
-    }
-}
-
-/// A command's user-facing metadata, from `data/commands/<name>.toml`. A command may keep
-/// its own extra data in the same file, so unknown fields are allowed here.
-#[derive(Debug, Deserialize)]
-pub struct Spec {
-    pub name: String,
-    /// Other names it answers to (`/clear` for `/new`).
-    #[serde(default)]
-    pub aliases: Vec<String>,
-    pub summary: String,
-    pub usage: String,
-    #[serde(default)]
-    pub hidden: bool,
-    #[serde(default = "everywhere")]
-    pub scope: Vec<Scope>,
-    /// Flags whose values are secrets: echoed and remembered only as a hint.
-    #[serde(default)]
-    pub secret: Vec<String>,
-}
-
-fn everywhere() -> Vec<Scope> {
-    vec![Scope::Cli, Scope::Session]
-}
-
-impl Spec {
-    pub fn parse(src: &str) -> Self {
-        toml::from_str(src).expect("command specs are checked by tests")
-    }
-
-    /// Its name and its aliases.
-    pub fn names(&self) -> impl Iterator<Item = &str> {
-        std::iter::once(self.name.as_str()).chain(self.aliases.iter().map(String::as_str))
-    }
-
-    /// `args` as they may be shown and remembered: a secret flag's value becomes a hint.
-    pub fn redact(&self, args: &[String]) -> String {
-        let mut out = Vec::new();
-        let mut hidden: Option<String> = None;
-        for arg in args {
-            if arg.starts_with("--") {
-                out.extend(hidden.take().map(|h| auth::hint(&h)));
-                match arg.split_once('=') {
-                    Some((flag, value)) if self.secret.iter().any(|s| s == flag) => {
-                        out.push(format!("{flag}={}", auth::hint(value)));
-                    }
-                    _ => {
-                        out.push(arg.clone());
-                        if self.secret.contains(arg) {
-                            hidden = Some(String::new());
-                        }
-                    }
-                }
-            } else if let Some(h) = hidden.as_mut() {
-                h.push_str(arg);
-            } else {
-                out.push(arg.clone());
-            }
-        }
-        out.extend(hidden.filter(|h| !h.is_empty()).map(|h| auth::hint(&h)));
-        out.join(" ")
-    }
-}
 
 pub struct Ctx<'a> {
     pub app: &'a App,
@@ -126,6 +44,10 @@ pub struct Session {
     pub cost_micros: u64,
     /// Where the conversation is saved, from its first message on.
     pub file: String,
+    /// Why /undo cannot put files back; `None` when it can.
+    pub snapshots_off: Option<String>,
+    /// Each MCP server config.toml names, and how it stands.
+    pub mcp: Vec<(String, crate::mcp::State)>,
 }
 
 impl Ctx<'_> {
@@ -157,6 +79,16 @@ pub enum Effect {
     },
     /// Start a fresh conversation with a new session file.
     NewConversation,
+    /// Open the session's picker of this project's earlier sessions.
+    Resume,
+    /// Take back the last prompt and what followed it.
+    Undo,
+    /// `Undo`, then send the prompt again.
+    Retry,
+    /// Summarise earlier turns, keeping `focus` in mind.
+    Compact {
+        focus: Option<String>,
+    },
     /// Ask for this reasoning effort from the next turn on.
     SetEffort(String),
     /// Put the model's last reply on the clipboard.
@@ -167,8 +99,13 @@ pub enum Effect {
     PickModel {
         refresh: bool,
     },
-    /// Open the session's forums card, at the login for the forum with this base URL when one
-    /// was named.
+    /// Open the session's account card.
+    Account,
+    /// Open the session's signup card; `force` skips asking about a stored key.
+    Signup {
+        force: bool,
+    },
+    /// Open the forums card; at the login of the forum with this base URL, if given.
     Forums {
         login: Option<String>,
     },
@@ -196,6 +133,15 @@ impl From<&str> for Outcome {
     }
 }
 
+impl From<Effect> for Outcome {
+    fn from(effect: Effect) -> Self {
+        Self {
+            text: String::new(),
+            effects: vec![effect],
+        }
+    }
+}
+
 pub trait Command: Sync {
     fn spec(&self) -> &Spec;
     fn run<'a>(
@@ -211,6 +157,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &logout::Logout,
     &signup::Signup,
     &status::Status,
+    &account::Account,
     &update::Update,
     &install::Install,
     &uninstall::Uninstall,
@@ -218,10 +165,14 @@ pub static COMMANDS: &[&dyn Command] = &[
     &forums::Forums,
     &mode::Mode,
     &effort::Effort,
-    &copy::Copy,
-    &init::Init,
-    &new::New,
-    &quit::Quit,
+    &fixed::COPY,
+    &fixed::INIT,
+    &fixed::NEW,
+    &fixed::RESUME,
+    &fixed::UNDO,
+    &fixed::RETRY,
+    &compact::Compact,
+    &fixed::QUIT,
     &keytest::KeyTest,
     &battery::Battery,
 ];
@@ -250,32 +201,30 @@ pub fn lookup(name: &str, scope: Scope) -> Result<&'static dyn Command, Missing>
     }
 }
 
+/// A typed command line, `name args…`, as its name and arguments; `None` when it is blank.
+pub fn split(line: &str) -> Option<(String, Vec<String>)> {
+    let mut words = line.split_whitespace().map(str::to_owned);
+    let name = words.next()?;
+    Some((name, words.collect()))
+}
+
 /// A typed command line, `name args…`, with its secret values replaced by hints.
 pub fn redact_line(line: &str) -> String {
-    let words: Vec<String> = line.split_whitespace().map(str::to_owned).collect();
-    match words.split_first() {
-        Some((name, args)) if !args.is_empty() => match find(name) {
-            Some(command) => format!("{name} {}", command.spec().redact(args)),
+    match split(line) {
+        Some((name, args)) if !args.is_empty() => match find(&name) {
+            Some(command) => format!("{name} {}", command.spec().redact(&args)),
             None => line.trim().to_owned(),
         },
         _ => line.trim().to_owned(),
     }
 }
 
-/// Where a command works, as it is typed there: `` `crowbot signup` ``.
-pub fn places(spec: &Spec) -> String {
-    spec.scope
-        .iter()
-        .map(|s| format!("`{}`", s.invoke(&spec.name)))
-        .collect::<Vec<_>>()
-        .join(" or ")
-}
-
-pub fn available(scope: Scope) -> impl Iterator<Item = &'static dyn Command> {
+/// The specs of the commands `scope` offers and lists (hidden ones still run when typed).
+pub fn listed(scope: Scope) -> impl Iterator<Item = &'static Spec> {
     COMMANDS
         .iter()
-        .copied()
-        .filter(move |c| c.spec().scope.contains(&scope))
+        .map(|c| c.spec())
+        .filter(move |s| s.scope.contains(&scope) && !s.hidden)
 }
 
 #[cfg(test)]
@@ -289,10 +238,13 @@ mod tests {
             lookup("nope", Scope::Session),
             Err(Missing::Unknown)
         ));
-        let Err(Missing::Elsewhere(spec)) = lookup("signup", Scope::Session) else {
-            panic!("signup works in the session");
+        let Err(Missing::Elsewhere(spec)) = lookup("update", Scope::Session) else {
+            panic!("update works in the session");
         };
-        assert_eq!(places(spec), "`crowbot signup`");
+        assert_eq!(
+            elsewhere(spec, Scope::Session),
+            "`/update` only works as `crowbot update`."
+        );
     }
 
     #[tokio::test]

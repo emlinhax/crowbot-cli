@@ -1,0 +1,17 @@
+# How a request refused as too long for the model's window looks, whichever vendor refused it:
+# an error of one of these kinds whose message says one of `says` (in any case), or of a kind
+# marked `always`, whatever it says. Such a refusal is summarised away and sent once more.
+says = ["prompt is too long", "context length", "context window", "maximum context",
+  "too many tokens", "input is too long", "context_length_exceeded",
+  "model_context_window_exceeded", "reduce the length", "exceeds the context"]
+
+[[kind]]
+id = "upstream_error"
+
+[[kind]]
+id = "bad_request"
+
+# crowbot's own 16 MiB limit on a request.
+[[kind]]
+id = "body_too_large"
+always = true

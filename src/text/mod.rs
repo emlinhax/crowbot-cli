@@ -1,3 +1,4 @@
+pub mod choices;
 pub mod controls;
 pub mod diff;
 pub mod highlight;
@@ -8,4 +9,6 @@ pub mod styled;
 pub mod table;
 pub mod template;
 pub mod theme;
+pub mod truncate;
 pub mod units;
+pub mod wildcard;

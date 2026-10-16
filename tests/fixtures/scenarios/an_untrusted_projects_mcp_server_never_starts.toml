@@ -1,0 +1,17 @@
+description = "An untrusted project's MCP server is named without its secrets and never started, so its tools are not offered"
+args = ["-p", "hi"]
+project_files = { ".crowbot/config.toml" = "[mcp.proj]\ncommand = '{fake_mcp}'\nenv = { TOKEN = 's3cret' }\n" }
+
+[[reply]]
+text = "Hello."
+
+[expect]
+exit = 0
+stdout = "Hello.\n"
+stderr_contains = ["isn't trusted", "TOKEN"]
+stderr_lacks = ["s3cret"]
+
+[[expect.tools]]
+index = 0
+has = ["read"]
+lacks = ["proj__echo"]

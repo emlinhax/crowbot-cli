@@ -1,0 +1,8 @@
+description = "A headless run with no words and nothing piped says so and sends nothing"
+args = ["-p"]
+reply = []
+
+[expect]
+exit = 1
+stderr_contains = ["nothing to send"]
+hits = { "/v1/chat/completions" = 0 }

@@ -1,0 +1,3 @@
+# What glob tells the model; {placeholders} are filled in.
+none = "No files match {pattern}."
+more = "[{count} more; narrow the pattern.]"

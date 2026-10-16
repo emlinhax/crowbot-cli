@@ -1,12 +1,38 @@
-//! What the model is sent: the transcript, with interrupted turns repaired so the request is one
-//! crowbot's vendors accept (every tool call answered, no half-written calls).
+//! What the model is sent: a summary of earlier turns, if there is one, then the transcript, with
+//! interrupted turns repaired so the request is one crowbot's vendors accept (every tool call
+//! answered, no half-written calls).
 
 use std::collections::HashSet;
 
-use crate::agent::message::{Assistant, Finish, Message, Part, ToolResult};
 use crate::agent::model_text;
+use crate::conversation::message::{Assistant, Finish, Message, Part, ToolResult};
+use crate::text::template::fill;
 
-pub fn build(messages: &[Message]) -> Vec<Message> {
+pub fn build(summary: Option<&str>, messages: &[Message]) -> Vec<Message> {
+    let mut out = repaired(messages);
+    if let Some(summary) = summary {
+        lead_with(&mut out, summary);
+    }
+    out
+}
+
+/// The summary goes first, as context crowbot adds, so the system prompt never changes: in front
+/// of the first prompt, or as a message of its own when the kept turns open with a reply.
+fn lead_with(out: &mut Vec<Message>, summary: &str) {
+    let text = fill(&model_text::get().compacted, &[("summary", summary.trim())]);
+    let reminder = Part::Reminder { text };
+    match out.first_mut() {
+        Some(Message::User { parts }) => parts.insert(0, reminder),
+        _ => out.insert(
+            0,
+            Message::User {
+                parts: vec![reminder],
+            },
+        ),
+    }
+}
+
+fn repaired(messages: &[Message]) -> Vec<Message> {
     let mut out = Vec::with_capacity(messages.len());
     // Calls from the latest assistant turn still waiting for a result.
     let mut open: Vec<(String, String)> = Vec::new();
@@ -57,12 +83,13 @@ fn answer_open(out: &mut Vec<Message>, open: &mut Vec<(String, String)>) {
             details: None,
             asks: Vec::new(),
             refused: None,
+            usage: None,
         }));
     }
 }
 
-/// A reply cut off at the output limit may end in a call whose JSON stops halfway; it was never
-/// run (its result says so), and it goes back as `{}` so the history is one a vendor accepts.
+/// A reply cut at the output limit may end in half-written JSON. That call never ran (its result
+/// says so); it is replayed as `{}` so vendors accept the history.
 fn whole_arguments(a: &Assistant) -> Assistant {
     let mut a = a.clone();
     for part in &mut a.parts {
@@ -93,18 +120,10 @@ fn completed_text(a: &Assistant) -> Option<Assistant> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::message::ToolCall;
+    use crate::conversation::message::ToolCall;
 
     fn assistant(finish: Finish, parts: Vec<Part>) -> Message {
-        Message::Assistant(Assistant {
-            parts,
-            model: "m".into(),
-            effort: None,
-            usage: None,
-            finish,
-            error: None,
-            request_id: None,
-        })
+        Message::Assistant(Assistant::stub(finish, parts))
     }
 
     fn call(id: &str) -> Part {
@@ -124,6 +143,7 @@ mod tests {
             details: None,
             asks: Vec::new(),
             refused: None,
+            usage: None,
         })
     }
 
@@ -145,10 +165,13 @@ mod tests {
             name: "write".into(),
             arguments: r#"{"path": "x.txt", "content": "half"#.into(),
         });
-        let out = build(&[
-            Message::user_text("go"),
-            assistant(Finish::Length, vec![call("b"), cut]),
-        ]);
+        let out = build(
+            None,
+            &[
+                Message::user_text("go"),
+                assistant(Finish::Length, vec![call("b"), cut]),
+            ],
+        );
         let Message::Assistant(a) = &out[1] else {
             panic!("{out:?}");
         };
@@ -158,12 +181,15 @@ mod tests {
 
     #[test]
     fn unanswered_calls_get_a_synthetic_result_before_the_next_turn() {
-        let out = build(&[
-            Message::user_text("go"),
-            assistant(Finish::ToolCalls, vec![call("a"), call("b")]),
-            result("a"),
-            Message::user_text("next"),
-        ]);
+        let out = build(
+            None,
+            &[
+                Message::user_text("go"),
+                assistant(Finish::ToolCalls, vec![call("a"), call("b")]),
+                result("a"),
+                Message::user_text("next"),
+            ],
+        );
         let no_result = &model_text::get().no_result;
         assert_eq!(
             roles(&out),
@@ -179,21 +205,24 @@ mod tests {
 
     #[test]
     fn cut_off_turns_keep_only_their_text() {
-        let out = build(&[
-            Message::user_text("go"),
-            assistant(
-                Finish::Aborted,
-                vec![
-                    Part::Reasoning { text: "hm".into() },
-                    Part::Text {
-                        text: "partial".into(),
-                    },
-                    call("x"),
-                ],
-            ),
-            result("x"),
-            assistant(Finish::Error, vec![]),
-        ]);
+        let out = build(
+            None,
+            &[
+                Message::user_text("go"),
+                assistant(
+                    Finish::Aborted,
+                    vec![
+                        Part::Reasoning { text: "hm".into() },
+                        Part::Text {
+                            text: "partial".into(),
+                        },
+                        call("x"),
+                    ],
+                ),
+                result("x"),
+                assistant(Finish::Error, vec![]),
+            ],
+        );
         assert_eq!(roles(&out), vec!["user", "assistant"]);
         let Message::Assistant(kept) = &out[1] else {
             unreachable!()
@@ -203,6 +232,30 @@ mod tests {
             vec![Part::Text {
                 text: "partial".into()
             }]
+        );
+    }
+
+    #[test]
+    fn a_summary_leads_the_first_prompt_or_comes_on_its_own() {
+        let prompt = Message::User {
+            parts: vec![Part::Text {
+                text: "next".into(),
+            }],
+        };
+        let out = build(Some("they fixed the parser"), std::slice::from_ref(&prompt));
+        let Message::User { parts } = &out[0] else {
+            panic!("a prompt first");
+        };
+        assert!(
+            matches!(&parts[0], Part::Reminder { text } if text.contains("they fixed the parser"))
+        );
+        assert_eq!(out.len(), 1);
+
+        let reply = assistant(Finish::Done, vec![Part::Text { text: "ok".into() }]);
+        let out = build(Some("earlier"), &[reply, prompt]);
+        assert_eq!(out.len(), 3);
+        assert!(
+            matches!(&out[0], Message::User { parts } if matches!(&parts[0], Part::Reminder { .. }))
         );
     }
 }

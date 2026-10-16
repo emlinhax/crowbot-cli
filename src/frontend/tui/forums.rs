@@ -1,0 +1,677 @@
+//! `/forums` card: the forums the agent can browse. Each opens a menu (log in, log out, remove);
+//! the last row adds one from Tapatalk's directory. Its jobs run beside input; closing the card
+//! drops them.
+
+use futures_util::future::BoxFuture;
+
+use crate::app::App;
+use crate::commands::Scope;
+use crate::commands::forums::{self as said, added, logged_in, logged_out, removed};
+use crate::config::limits;
+use crate::config::paths::Paths;
+use crate::forums::{Forum, account, directory, store};
+use crate::frontend::tui::boxed::{self, boxed};
+use crate::frontend::tui::card::{self, Card, Next};
+use crate::frontend::tui::choice::{Choice, Opt};
+use crate::frontend::tui::editor::{Editor, Field};
+use crate::frontend::tui::keymap::Action;
+use crate::frontend::tui::rows;
+use crate::frontend::tui::ui;
+use crate::io::term::KeyEvent;
+use crate::live::prompt::Reply;
+use crate::text::styled::{Line, Style};
+use crate::text::table::{self, Align, GAP};
+use crate::text::template::fill;
+
+pub struct Forums {
+    forums: Vec<Forum>,
+    /// The highlighted row of the list; one past the last forum is the row that adds one.
+    selected: usize,
+    stage: Stage,
+}
+
+enum Stage {
+    List,
+    /// What can be done with the highlighted forum, in its menu's order.
+    Menu {
+        choice: Choice,
+        acts: Vec<Act>,
+    },
+    /// Suggested searches from `data/forums.toml`, then a line for the user's own words.
+    Add {
+        choice: Choice,
+        queries: Vec<String>,
+    },
+    Found {
+        query: String,
+        results: Vec<Forum>,
+        selected: usize,
+    },
+    Username(Editor),
+    Password {
+        user: String,
+        input: Editor,
+    },
+    /// Waiting on a job: what it is doing, and where a failure goes back to.
+    Working {
+        doing: String,
+        back: Back,
+    },
+}
+
+#[derive(Clone, Copy)]
+enum Act {
+    LogIn,
+    LogOut,
+    Remove,
+}
+
+enum Back {
+    List,
+    Add,
+    /// The username step, with the name already typed.
+    Username(String),
+}
+
+/// Work for the session loop; what it comes to goes back through `Forums::finished`.
+pub enum Job {
+    Search(String),
+    Add(Forum),
+    Login {
+        forum: Forum,
+        user: String,
+        password: String,
+    },
+    Logout(Forum),
+    Remove(Forum),
+}
+
+pub enum Done {
+    Found {
+        query: String,
+        results: Vec<Forum>,
+    },
+    /// The store changed: what to say, the forums as they now are, and which to highlight.
+    Changed {
+        message: String,
+        forums: Vec<Forum>,
+        focus: Option<String>,
+    },
+    Failed(String),
+}
+
+pub fn run(app: &App, job: Job) -> BoxFuture<'_, Done> {
+    Box::pin(async move {
+        let (said, focus) = match job {
+            Job::Search(query) => {
+                let limit = limits::get().forums.directory_results.value;
+                return match directory::search(&app.fetch, &query, limit).await {
+                    Ok(results) => Done::Found { query, results },
+                    Err(e) => Done::Failed(format!("{e:#}")),
+                };
+            }
+            Job::Add(forum) => (
+                store::add(&app.paths, forum.clone()).map(|()| added(Scope::Session, &forum)),
+                Some(forum.base_url),
+            ),
+            Job::Login {
+                forum,
+                user,
+                password,
+            } => (
+                account::sign_in(&app.fetch, &app.paths, &forum, &user, &password)
+                    .await
+                    .map(|user| logged_in(&forum, &user)),
+                Some(forum.base_url),
+            ),
+            Job::Logout(forum) => (
+                store::logout(&app.paths, &forum).map(|()| logged_out(&forum)),
+                Some(forum.base_url),
+            ),
+            Job::Remove(forum) => (
+                store::remove(&app.paths, &forum).map(|()| removed(&forum)),
+                None,
+            ),
+        };
+        match said.and_then(|message| Ok((message, store::load(&app.paths)?))) {
+            Ok((message, forums)) => Done::Changed {
+                message,
+                forums,
+                focus,
+            },
+            Err(e) => Done::Failed(format!("{e:#}")),
+        }
+    })
+}
+
+impl Forums {
+    /// The stored forums' card, at the login for the one with base URL `login` when named.
+    pub fn open(paths: &Paths, login: Option<&str>) -> anyhow::Result<Self> {
+        Ok(Self::new(store::load(paths)?, login))
+    }
+
+    /// The list, or the login for the forum with base URL `login` when one was named.
+    pub fn new(forums: Vec<Forum>, login: Option<&str>) -> Self {
+        let at = login.and_then(|url| forums.iter().position(|f| f.base_url == url));
+        Self {
+            forums,
+            selected: at.unwrap_or(0),
+            stage: match at {
+                Some(_) => username(""),
+                None => Stage::List,
+            },
+        }
+    }
+
+    fn stage_key(&mut self, action: Option<Action>, key: &KeyEvent) -> Next {
+        match &mut self.stage {
+            Stage::List => return self.list_key(action),
+            Stage::Menu { choice, acts } => match choice.key(action, key) {
+                Next::Answer(Reply::Choice(i)) => {
+                    let act = acts[i];
+                    return self.act(act);
+                }
+                Next::Answer(_) => self.stage = Stage::List,
+                _ => {}
+            },
+            Stage::Add { choice, queries } => match choice.key(action, key) {
+                Next::Answer(Reply::Choice(i)) => {
+                    let query = queries[i].clone();
+                    return self.search(query);
+                }
+                Next::Answer(Reply::Text(words)) => return self.search(words),
+                Next::Answer(_) => self.stage = Stage::List,
+                _ => {}
+            },
+            Stage::Found {
+                results, selected, ..
+            } => match action {
+                Some(step @ (Action::Up | Action::Down)) => {
+                    *selected = rows::step(*selected, step, results.len(), false);
+                }
+                Some(Action::Right | Action::Submit) => {
+                    let forum = results[*selected].clone();
+                    let doing = fill(&ui::get().forums.adding, &[("name", &forum.name)]);
+                    return self.work(doing, Back::Add, Job::Add(forum));
+                }
+                Some(Action::Left | Action::Escape) => self.stage = add(&self.forums),
+                _ => {}
+            },
+            Stage::Username(input) => match input.field_key(action, key) {
+                Field::Submit(user) => {
+                    let user = user.trim().to_owned();
+                    if !user.is_empty() {
+                        self.stage = Stage::Password {
+                            user,
+                            // Dots only: unlike an account number's, a password's tail stays hidden.
+                            input: Editor::new().masked(0),
+                        };
+                    }
+                }
+                Field::Cancel => self.stage = Stage::List,
+                Field::Edited => {}
+            },
+            Stage::Password { user, input } => match input.field_key(action, key) {
+                Field::Submit(password) => {
+                    // A paste that ended in a newline still means just the password.
+                    let password = password.trim_end_matches(['\r', '\n']).to_owned();
+                    if password.is_empty() {
+                        return Next::Stay;
+                    }
+                    let user = user.clone();
+                    let forum = self.forums[self.selected].clone();
+                    let doing = fill(
+                        &ui::get().forums.logging_in,
+                        &[("name", &forum.name), ("user", &user)],
+                    );
+                    let back = Back::Username(user.clone());
+                    return self.work(
+                        doing,
+                        back,
+                        Job::Login {
+                            forum,
+                            user,
+                            password,
+                        },
+                    );
+                }
+                Field::Cancel => self.stage = username(&user.clone()),
+                Field::Edited => {}
+            },
+            // Only cancelling is left once the forum is being asked, and the session does that.
+            Stage::Working { .. } => {}
+        }
+        Next::Stay
+    }
+
+    fn list_key(&mut self, action: Option<Action>) -> Next {
+        match action {
+            // The last row adds a forum.
+            Some(step @ (Action::Up | Action::Down)) => {
+                self.selected = rows::step(self.selected, step, self.forums.len() + 1, false);
+            }
+            Some(Action::Right | Action::Submit) => {
+                self.stage = match self.forums.get(self.selected) {
+                    Some(forum) => menu(forum),
+                    None => add(&self.forums),
+                };
+            }
+            Some(Action::Left | Action::Escape) => return Next::Close(None),
+            _ => {}
+        }
+        Next::Stay
+    }
+
+    fn act(&mut self, act: Act) -> Next {
+        let forum = self.forums[self.selected].clone();
+        let saving = ui::get().forums.saving.clone();
+        match act {
+            Act::LogIn => {
+                self.stage = username("");
+                Next::Stay
+            }
+            Act::LogOut => self.work(saving, Back::List, Job::Logout(forum)),
+            Act::Remove => self.work(saving, Back::List, Job::Remove(forum)),
+        }
+    }
+
+    fn search(&mut self, query: String) -> Next {
+        let doing = fill(&ui::get().forums.searching, &[("query", &query)]);
+        self.work(doing, Back::Add, Job::Search(query))
+    }
+
+    fn work(&mut self, doing: String, back: Back, job: Job) -> Next {
+        self.stage = Stage::Working { doing, back };
+        Next::Run(card::Job::Forums(Box::new(job)))
+    }
+
+    /// Typed or pasted text, for whichever line is open.
+    fn stage_insert(&mut self, text: &str) {
+        match &mut self.stage {
+            Stage::Username(input) | Stage::Password { input, .. } => input.insert(text),
+            Stage::Menu { choice, .. } | Stage::Add { choice, .. } => choice.insert(text),
+            _ => {}
+        }
+    }
+
+    fn stage_finished(&mut self, done: Done) -> Next {
+        let text = &ui::get().forums;
+        let back = match std::mem::replace(&mut self.stage, Stage::List) {
+            Stage::Working { back, .. } => back,
+            other => {
+                self.stage = other;
+                return Next::Stay;
+            }
+        };
+        match done {
+            Done::Found { query, results } if results.is_empty() => {
+                self.stage = add(&self.forums);
+                Next::Error(fill(&text.no_match, &[("query", &query)]))
+            }
+            Done::Found { query, results } => {
+                self.stage = Stage::Found {
+                    query,
+                    results,
+                    selected: 0,
+                };
+                Next::Stay
+            }
+            Done::Changed {
+                message,
+                forums,
+                focus,
+            } => {
+                self.forums = forums;
+                self.selected = focus
+                    .and_then(|url| self.forums.iter().position(|f| f.base_url == url))
+                    .unwrap_or(self.selected)
+                    .min(self.forums.len());
+                Next::Note(message)
+            }
+            Done::Failed(error) => {
+                self.stage = match back {
+                    Back::List => Stage::List,
+                    Back::Add => add(&self.forums),
+                    Back::Username(user) => username(&user),
+                };
+                Next::Error(fill(&text.failed, &[("error", &error)]))
+            }
+        }
+    }
+
+    fn draw(&self, width: usize) -> Vec<Line> {
+        let text = &ui::get().forums;
+        let muted = Style::fg("muted");
+        let forum = || &self.forums[self.selected];
+        let login_title = || fill(&text.login_title, &[("name", &forum().name)]);
+        let (title, body, hint) = match &self.stage {
+            Stage::Menu { choice, .. } | Stage::Add { choice, .. } => return choice.render(width),
+            Stage::List => {
+                let mut rows: Vec<Line> = rows(&self.forums, width);
+                rows.push(Line::styled(&text.add, Style::fg("accent")));
+                let mut body = rows::marked(rows, self.selected);
+                body.extend(hint_of(self.forums.get(self.selected)));
+                (text.title.clone(), body, &text.hint)
+            }
+            Stage::Found {
+                query,
+                results,
+                selected,
+            } => {
+                let mut body = rows::marked(rows(results, width), *selected);
+                body.extend(hint_of(results.get(*selected)));
+                let title = fill(&text.found_title, &[("query", query)]);
+                (title, body, &text.found_hint)
+            }
+            Stage::Username(input) => (login_title(), login(None, input, width), &text.input_hint),
+            Stage::Password { user, input } => (
+                login_title(),
+                login(Some(user), input, width),
+                &text.input_hint,
+            ),
+            Stage::Working { doing, .. } => (
+                text.title.clone(),
+                vec![Line::styled(doing, muted.clone())],
+                &text.cancel_hint,
+            ),
+        };
+        let mut lines = boxed(Line::styled(title, Style::default().bold()), &body, width);
+        lines.push(boxed::hint(hint, width));
+        lines
+    }
+}
+
+impl Card for Forums {
+    fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Next {
+        self.stage_key(action, key)
+    }
+
+    fn insert(&mut self, text: &str) {
+        self.stage_insert(text);
+    }
+
+    fn render(&self, width: usize) -> Vec<Line> {
+        self.draw(width)
+    }
+
+    fn finished(&mut self, done: card::Done) -> Next {
+        let card::Done::Forums(done) = done else {
+            return Next::Stay;
+        };
+        self.stage_finished(done)
+    }
+}
+
+fn username(typed: &str) -> Stage {
+    let mut input = Editor::new();
+    input.set_text(typed);
+    Stage::Username(input)
+}
+
+fn menu(forum: &Forum) -> Stage {
+    let text = &ui::get().forums;
+    let acts = match forum.username {
+        Some(_) => vec![Act::LogIn, Act::LogOut, Act::Remove],
+        None => vec![Act::LogIn, Act::Remove],
+    };
+    let options = acts
+        .iter()
+        .enumerate()
+        .map(|(i, act)| {
+            let label = match (act, &forum.username) {
+                (Act::LogIn, None) => &text.log_in,
+                (Act::LogIn, Some(_)) => &text.log_in_again,
+                (Act::LogOut, _) => &text.log_out,
+                (Act::Remove, _) => &text.remove,
+            };
+            Opt::index(label.clone(), i)
+        })
+        .collect();
+    let mut body = vec![status(forum)];
+    body.extend(hint_of(Some(forum)));
+    let choice = Choice::new(forum.name.clone(), body, options).with_hint(&text.menu_hint);
+    Stage::Menu { choice, acts }
+}
+
+/// The searches `data/forums.toml` suggests, less the forums already added.
+fn add(forums: &[Forum]) -> Stage {
+    let text = &ui::get().forums;
+    let queries: Vec<String> = account::suggestions(forums)
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    let mut options: Vec<Opt> = queries
+        .iter()
+        .enumerate()
+        .map(|(i, q)| Opt::index(q.clone(), i))
+        .collect();
+    options.push(Opt::text(text.search.clone()));
+    let body = vec![Line::styled(&text.add_note, Style::fg("muted"))];
+    let choice = Choice::new(text.add_title.clone(), body, options).with_hint(&text.menu_hint);
+    Stage::Add { choice, queries }
+}
+
+/// One aligned row per forum: its name, host and whether it is logged in.
+fn rows(forums: &[Forum], width: usize) -> Vec<Line> {
+    let cells: Vec<Vec<Line>> = forums
+        .iter()
+        .map(|f| {
+            vec![
+                Line::plain(&f.name),
+                Line::styled(f.host(), Style::fg("muted")),
+                status(f),
+            ]
+        })
+        .collect();
+    // The host goes first when the row does not fit.
+    let inner = boxed::inner(width).saturating_sub(rows::MARK);
+    table::plain(&cells, &[Align::Left; 3], &[1], inner, GAP)
+}
+
+fn status(forum: &Forum) -> Line {
+    let role = if forum.username.is_some() {
+        "done"
+    } else {
+        "muted"
+    };
+    Line::styled(said::status(forum), Style::fg(role))
+}
+
+/// What the forum is about, under the list, cut to one line.
+fn hint_of(forum: Option<&Forum>) -> Vec<Line> {
+    match forum {
+        Some(f) if !f.hint.is_empty() => {
+            vec![Line::default(), Line::styled(&f.hint, Style::fg("muted"))]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The login steps: the username once given, then the line being typed.
+fn login(user: Option<&str>, input: &Editor, width: usize) -> Vec<Line> {
+    let text = &ui::get().forums;
+    let inner = boxed::inner(width);
+    let mut body = vec![
+        Line::styled(&text.login_note, Style::fg("muted")),
+        Line::default(),
+    ];
+    let label = match user {
+        Some(user) => {
+            let mut line = Line::plain(&text.username);
+            line.push(user, Style::default().bold());
+            body.push(line);
+            &text.password
+        }
+        None => &text.username,
+    };
+    body.extend(input.render(inner, 1, &Line::plain(label), ""));
+    body
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frontend::tui::keymap::press;
+    use crate::io::term::KeyCode;
+
+    fn key(card: &mut Forums, action: Action) -> Next {
+        card.key(Some(action), &press(KeyCode::Null))
+    }
+
+    fn digit(card: &mut Forums, n: char) -> Next {
+        card.key(None, &press(KeyCode::Char(n)))
+    }
+
+    fn finished(forums: &mut Forums, done: Done) -> Next {
+        forums.finished(card::Done::Forums(done))
+    }
+
+    /// The forum job a step asked the session for.
+    fn job(next: Next) -> Option<Job> {
+        match next {
+            Next::Run(card::Job::Forums(job)) => Some(*job),
+            _ => None,
+        }
+    }
+
+    fn shown(card: &Forums) -> String {
+        card.render(80)
+            .iter()
+            .map(Line::text)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn forum(name: &str, user: Option<&str>) -> Forum {
+        Forum {
+            name: name.into(),
+            base_url: format!("https://{}.example/forum", name.to_lowercase()),
+            hint: format!("All about {name}."),
+            kind: "mobiquo".into(),
+            username: user.map(str::to_owned),
+            ..Forum::default()
+        }
+    }
+
+    #[test]
+    fn the_list_shows_each_forum_and_whether_it_is_logged_in() {
+        let card = Forums::new(
+            vec![forum("Alpha", None), forum("Beta", Some("crow"))],
+            None,
+        );
+        let text = shown(&card);
+        assert!(text.starts_with("╭ Forums"), "{text}");
+        assert!(text.contains("› Alpha"), "{text}");
+        assert!(text.contains("alpha.example"), "{text}");
+        assert!(text.contains("logged in as crow"), "{text}");
+        assert!(text.contains("+ Add a forum"), "{text}");
+        assert!(text.contains("All about Alpha."), "{text}");
+        assert!(card.render(40).iter().all(|l| l.width() <= 40));
+    }
+
+    #[test]
+    fn logging_in_asks_a_name_then_a_hidden_password_and_retries_a_refusal() {
+        let mut card = Forums::new(vec![forum("Alpha", None)], None);
+        key(&mut card, Action::Submit);
+        assert!(shown(&card).contains("1 Log in"));
+        assert!(matches!(digit(&mut card, '1'), Next::Stay));
+        card.insert("crow");
+        key(&mut card, Action::Submit);
+        card.insert("hunter2");
+        let text = shown(&card);
+        assert!(text.contains("Username: crow"), "{text}");
+        assert!(text.contains("•••••••"), "{text}");
+        assert!(!text.contains("hunter2"), "{text}");
+        match job(key(&mut card, Action::Submit)) {
+            Some(Job::Login { user, password, .. }) => {
+                assert_eq!((user.as_str(), password.as_str()), ("crow", "hunter2"));
+            }
+            _ => panic!("expected a login"),
+        }
+        assert!(shown(&card).contains("Logging in to Alpha as crow"));
+        match finished(&mut card, Done::Failed("Wrong password".into())) {
+            Next::Error(error) => assert!(error.contains("Wrong password"), "{error}"),
+            _ => panic!("expected the refusal"),
+        }
+        // Back at the name, already typed, so a second try is Enter and the password.
+        key(&mut card, Action::Submit);
+        assert!(shown(&card).contains("Username: crow"));
+    }
+
+    #[test]
+    fn a_change_returns_to_the_list_as_it_now_is() {
+        let mut card = Forums::new(
+            vec![forum("Alpha", None)],
+            Some("https://alpha.example/forum"),
+        );
+        assert!(shown(&card).contains("Log in to Alpha"));
+        card.insert("crow");
+        key(&mut card, Action::Submit);
+        card.insert("pw");
+        key(&mut card, Action::Submit);
+        let next = finished(
+            &mut card,
+            Done::Changed {
+                message: "Logged in to Alpha as crow.".into(),
+                forums: vec![forum("Alpha", Some("crow"))],
+                focus: Some("https://alpha.example/forum".into()),
+            },
+        );
+        assert!(matches!(next, Next::Note(m) if m.contains("Logged in")));
+        let text = shown(&card);
+        assert!(
+            text.contains("› Alpha") && text.contains("logged in as crow"),
+            "{text}"
+        );
+        // A logged-in forum can be logged out of.
+        key(&mut card, Action::Submit);
+        assert!(matches!(job(digit(&mut card, '2')), Some(Job::Logout(_))));
+    }
+
+    #[test]
+    fn adding_offers_suggestions_not_yet_added_and_picks_from_what_a_search_found() {
+        let mut card = Forums::new(vec![forum("UnknownCheats", None)], None);
+        key(&mut card, Action::Down);
+        key(&mut card, Action::Submit);
+        let text = shown(&card);
+        assert!(text.contains("Add a forum"), "{text}");
+        assert!(!text.contains("unknowncheats"), "{text}");
+        assert!(text.contains("1 mpgh"), "{text}");
+        assert!(matches!(job(digit(&mut card, '1')), Some(Job::Search(q)) if q == "mpgh"));
+        finished(
+            &mut card,
+            Done::Found {
+                query: "mpgh".into(),
+                results: vec![forum("MPGH", None), forum("Other", None)],
+            },
+        );
+        assert!(shown(&card).contains("Forums matching “mpgh”"));
+        key(&mut card, Action::Down);
+        match job(key(&mut card, Action::Submit)) {
+            Some(Job::Add(found)) => assert_eq!(found.name, "Other"),
+            _ => panic!("expected an add"),
+        }
+    }
+
+    #[test]
+    fn a_search_that_finds_nothing_says_so_and_escape_walks_back_out() {
+        let mut card = Forums::new(Vec::new(), None);
+        key(&mut card, Action::Submit);
+        let search = (account::suggestions(&[]).len() + 1).to_string();
+        digit(&mut card, search.chars().next().unwrap());
+        card.insert("nowhere");
+        assert!(
+            matches!(job(key(&mut card, Action::Submit)), Some(Job::Search(q)) if q == "nowhere")
+        );
+        let next = finished(
+            &mut card,
+            Done::Found {
+                query: "nowhere".into(),
+                results: Vec::new(),
+            },
+        );
+        assert!(matches!(next, Next::Error(e) if e.contains("nowhere")));
+        assert!(matches!(key(&mut card, Action::Escape), Next::Stay));
+        assert!(matches!(key(&mut card, Action::Escape), Next::Close(None)));
+    }
+}

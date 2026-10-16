@@ -1,0 +1,19 @@
+description = "A permission rule for `mcp` allows a server's tools by pattern, so MANUAL runs them headless"
+args = ["-p", "echo something"]
+home_files = { "config.toml" = "[mcp.fake]\ncommand = '{fake_mcp}'\n\n[[permission]]\npermission = 'mcp'\npattern = 'fake__*'\naction = 'allow'\n" }
+
+[[reply]]
+calls = [{ name = "fake__echo", arguments = '{"text": "allowed through"}' }]
+
+[[reply]]
+text = "It echoed."
+
+[expect]
+exit = 0
+stdout = "It echoed.\n"
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "allowed through"
