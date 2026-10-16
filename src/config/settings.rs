@@ -37,7 +37,7 @@ pub struct Settings {
 
 /// Values from command-line flags: the last and strongest layer. One that is not given leaves
 /// the layers before it alone. Declared here once, for the CLI to parse (help: data/cli.toml).
-#[derive(Debug, Default, Serialize, clap::Args)]
+#[derive(Clone, Debug, Default, Serialize, clap::Args)]
 pub struct Overrides {
     #[arg(long, global = true)]
     #[serde(skip_serializing_if = "Option::is_none")]

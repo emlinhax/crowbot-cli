@@ -3,6 +3,7 @@
 //! still in flight is drawn fresh after them.
 
 mod render;
+mod replay;
 
 use std::time::Instant;
 
@@ -38,7 +39,8 @@ pub enum Block {
     },
     Thinking {
         text: String,
-        secs: u64,
+        /// How long it took; `None` for thinking read back from a session file.
+        secs: Option<u64>,
     },
     Error(ErrorInfo),
 }
@@ -399,7 +401,10 @@ impl Feed {
         let secs = self.reasoning_secs(now);
         let text = std::mem::take(&mut self.reasoning);
         self.reasoning_since = None;
-        self.push(Block::Thinking { text, secs });
+        self.push(Block::Thinking {
+            text,
+            secs: Some(secs),
+        });
     }
 
     /// How long the reasoning in flight has run.
@@ -408,6 +413,7 @@ impl Feed {
             .map_or(0, |since| now.duration_since(since).as_secs())
     }
 
+    /// What a finished reply came to, beyond its text: its error, or that it was cut off.
     fn outcome_of(&mut self, message: &Assistant) {
         if let Some(error) = &message.error {
             self.push(Block::Error(error.clone()));

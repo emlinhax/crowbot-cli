@@ -227,7 +227,7 @@ long is compacted and sent once more. The format stays v1: new line types and op
 only, and a running head decides the branch.
 - [x] 5.1 session tree: the reader follows parents and `rewind` markers to the current branch;
       64-bit ids; a frozen fixture with branches
-- [ ] 5.2 `crowbot --continue` (TUI and headless): reopen the latest session, its recorded
+- [x] 5.2 `crowbot --continue` (TUI and headless): reopen the latest session, its recorded
       model, effort and (in the TUI) mode, and the conversation replayed
 - [ ] 5.3 `/resume`: a picker over this project's sessions, the `/models` picker made one table
       picker

@@ -16,6 +16,7 @@ use crate::frontend::print::{self, Format};
 use crate::frontend::tui;
 use crate::io::term;
 use crate::release::{self, install};
+use crate::session;
 use crate::text::template::fill;
 use crate::{effort, mode};
 
@@ -34,6 +35,7 @@ struct Data {
 struct Text {
     commands: String,
     misplaced_flag: String,
+    no_session: String,
 }
 
 /// The flags' help and the commands' list are data (data/cli.toml), filled in by `command()`.
@@ -52,6 +54,9 @@ struct Cli {
 
     #[arg(long)]
     json: bool,
+
+    #[arg(short = 'c', long = "continue", id = "continue")]
+    resume: bool,
 
     #[command(subcommand)]
     command: Option<Sub>,
@@ -153,15 +158,22 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
 
+    let resume = match cli.resume {
+        true => Some(session::list::latest(&app.paths).ok_or_else(|| {
+            let project = app.paths.project.display().to_string();
+            anyhow::anyhow!(fill(&DATA.text.no_session, &[("project", &project)]))
+        })?),
+        false => None,
+    };
     let prompt = words.join(" ");
     // At a terminal: the session, with the words typed in for review.
     if session {
         let initial = (!prompt.trim().is_empty()).then_some(prompt);
-        return tui::run(&app, initial).await;
+        return tui::run(&app, initial, resume.as_deref()).await;
     }
 
     let format = if cli.json { Format::Json } else { Format::Text };
-    print::run(&app, prompt, format).await
+    print::run(&app, prompt, format, resume.as_deref()).await
 }
 
 /// A crowbot flag after the words, which would otherwise become prompt text or a command argument.

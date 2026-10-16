@@ -201,6 +201,7 @@ pub struct ThinkingText {
     pub closed: String,
     pub open: String,
     pub done: String,
+    pub untimed: String,
     pub live: String,
     pub gutter: String,
 }
@@ -280,6 +281,7 @@ pub struct Text {
     pub request: String,
     pub not_logged_in: String,
     pub key_rejected: String,
+    pub resumed: String,
     pub declined: String,
     pub ctrl_c_again: String,
     pub unknown_command: String,

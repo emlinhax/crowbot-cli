@@ -8,7 +8,9 @@ effort = "Reasoning effort for this run: {levels}"
 mode = "Permission mode for this run: {modes}"
 print = "Send the words as a prompt, never a command; print the reply, exit"
 json = "Like --print, but stream every event as a JSON line"
+continue = "Go on with this project's latest session"
 
 [text]
 commands = "Commands: {commands}. Other words are the prompt."
 misplaced_flag = "`{flag}` goes before the words; quote a prompt that contains it"
+no_session = "no earlier session in {project} to go on with"

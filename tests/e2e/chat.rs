@@ -38,6 +38,39 @@ async fn print_streams_the_reply_and_records_the_session() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn continue_goes_on_with_the_latest_session_in_its_own_file() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+
+    let none = sandbox
+        .run(&fake.url, &["-p", "--continue", "hi"], WITH_KEY)
+        .await;
+    assert_eq!(none.code(), Some(1));
+    none.stderr_has("no earlier session");
+
+    sandbox
+        .run(&fake.url, &["-p", "first"], WITH_KEY)
+        .await
+        .success();
+    sandbox
+        .run(&fake.url, &["-p", "--continue", "second"], WITH_KEY)
+        .await
+        .success();
+    let second = fake.chat_bodies()[1]["messages"].to_string();
+    assert!(
+        second.contains("first") && second.contains("Hello there!") && second.contains("second"),
+        "{second}"
+    );
+    let sessions = sandbox.sessions();
+    assert_eq!(sessions.len(), 1);
+    let text = std::fs::read_to_string(&sessions[0]).unwrap();
+    // One header, then two prompts and their replies, each prompt with what it was sent under.
+    assert_eq!(text.lines().count(), 5);
+    assert_eq!(text.matches(r#""state":{"model":"crow-2""#).count(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn json_mode_emits_one_event_per_line() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse")]);

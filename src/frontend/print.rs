@@ -1,13 +1,14 @@
 //! Headless run: one prompt in, the reply (or one JSON event per line) out. Nobody can answer a
 //! prompt here.
 
+use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::bail;
 
-use crate::agent::setup::Setup;
+use crate::agent::setup::{Continue, Setup};
 use crate::agent::system_prompt;
 use crate::agent::{RunCtx, run};
 use crate::api::error::{self, Entry};
@@ -30,8 +31,14 @@ pub enum Format {
     Json,
 }
 
-/// Runs `prompt` (the words given, then any piped stdin) without a session, and exits.
-pub async fn run(app: &App, mut prompt: String, format: Format) -> anyhow::Result<ExitCode> {
+/// Runs `prompt` (the words given, then any piped stdin) without a session, and exits; going on
+/// with the session in `resume` when given.
+pub async fn run(
+    app: &App,
+    mut prompt: String,
+    format: Format,
+    resume: Option<&Path>,
+) -> anyhow::Result<ExitCode> {
     if let Some(piped) = term::piped_stdin()? {
         prompt = if prompt.is_empty() {
             piped
@@ -42,13 +49,19 @@ pub async fn run(app: &App, mut prompt: String, format: Format) -> anyhow::Resul
     if prompt.trim().is_empty() {
         bail!("nothing to send; pass a prompt or pipe one in");
     }
+    let from = resume.map(|path| Continue { path, mode: false });
     let Setup {
         model,
+        effort,
         tools,
         shared,
         mut transcript,
+        gone,
         ..
-    } = Setup::load(app).await?;
+    } = Setup::load(app, from).await?;
+    if let Some(gone) = gone {
+        term::warn(&words::model_gone(&gone, &model.id));
+    }
     let system = system_prompt::build(&app.paths, &model.id);
 
     let out = Printer {
@@ -62,7 +75,7 @@ pub async fn run(app: &App, mut prompt: String, format: Format) -> anyhow::Resul
     let cx = RunCtx {
         app,
         model: &model,
-        effort: app.settings.effort.as_deref(),
+        effort: effort.as_deref(),
         system: &system,
         tools: &tools,
         emit: &emit,

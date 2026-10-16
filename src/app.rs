@@ -10,6 +10,8 @@ use crate::io::http::Http;
 pub struct App {
     pub paths: Paths,
     pub settings: Settings,
+    /// What the command line set, which beats what a resumed session recorded.
+    pub flags: Overrides,
     /// The transport crowbot's API and the release listing share.
     pub http: Http,
     /// crowbot's endpoints.
@@ -25,7 +27,9 @@ impl App {
         // An unreadable auth.json leaves the run keyless, so `logout` and `login --status` still
         // work.
         let key = auth::load(&paths).ok().flatten().map(|k| k.secret);
-        Self::assemble(paths, settings, key)
+        let mut app = Self::assemble(paths, settings, key)?;
+        app.flags = flags.clone();
+        Ok(app)
     }
 
     /// Defaults only, rooted in `project`, with no key: for tests that never reach the network.
@@ -46,6 +50,7 @@ impl App {
             fetch: Fetch::new(limits.fetch_timeout_secs.secs())?,
             paths,
             settings,
+            flags: Overrides::default(),
         })
     }
 }

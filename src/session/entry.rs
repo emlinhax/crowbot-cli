@@ -30,6 +30,10 @@ pub enum Entry {
         parent: Option<String>,
         ts: Timestamp,
         message: Message,
+        /// On a prompt: what it was sent under, so a resumed session carries on the same way.
+        /// Kept beside the message, which is what the model sees.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        state: Option<State>,
     },
     /// Moves the head back to `to` (`None`: before the first message); what came after stays in
     /// the file as a branch.
@@ -39,6 +43,17 @@ pub enum Entry {
         /// The head it moved from.
         from: Option<String>,
     },
+}
+
+/// The settings a prompt went out with.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct State {
+    pub model: String,
+    #[serde(default)]
+    pub effort: Option<String>,
+    /// `None` where it was never recorded, as for a state read off an old file's last reply.
+    #[serde(default)]
+    pub mode: Option<String>,
 }
 
 /// Random ids, readable in a file. A reader resolves a repeat to the nearest earlier entry, so

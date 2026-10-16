@@ -4,15 +4,15 @@ use crate::config::paths::Paths;
 use crate::conversation::message::Message;
 use crate::io;
 use crate::release;
-use crate::session::entry::{self, Entry, FORMAT_VERSION};
+use crate::session::entry::{self, Entry, FORMAT_VERSION, State};
 
 /// Append-only JSONL session file and its only writer. Nothing is written before the first message.
 pub struct Store {
     /// `{stamp}_{id}`: the file's name without its extension, unique per session.
     name: String,
     path: PathBuf,
-    header: Entry,
-    written: bool,
+    /// Written with the first message; `None` once it is in the file.
+    header: Option<Entry>,
     /// The entry the next message follows.
     head: Option<String>,
 }
@@ -25,21 +25,34 @@ impl Store {
         Self {
             path: paths.sessions_dir().join(format!("{name}.jsonl")),
             name,
-            header: Entry::Session {
+            header: Some(Entry::Session {
                 v: FORMAT_VERSION,
                 id,
                 created,
                 cwd: paths.project.display().to_string(),
                 crowbot: release::package().to_owned(),
-            },
-            written: false,
+            }),
             head: None,
+        }
+    }
+
+    /// An existing file, to go on from `head`, the last entry of its current branch.
+    pub fn open(path: PathBuf, head: Option<String>) -> Self {
+        let name = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        Self {
+            name,
+            path,
+            header: None,
+            head,
         }
     }
 
     /// Whether the file exists yet: the header goes out with the first message.
     pub fn written(&self) -> bool {
-        self.written
+        self.header.is_none()
     }
 
     pub fn name(&self) -> &str {
@@ -51,10 +64,10 @@ impl Store {
         &self.path
     }
 
-    pub fn append(&mut self, message: &Message) -> anyhow::Result<()> {
-        if !self.written {
-            self.write(&self.header)?;
-            self.written = true;
+    pub fn append(&mut self, message: &Message, state: Option<State>) -> anyhow::Result<()> {
+        if let Some(header) = &self.header {
+            self.write(header)?;
+            self.header = None;
         }
         let id = entry::new_id();
         // CEILING: the parent is always the last entry written. Upgrade: undo/retry (M5) passes it in.
@@ -64,6 +77,7 @@ impl Store {
             parent,
             ts: io::clock::now(),
             message: message.clone(),
+            state,
         })?;
         self.head = Some(id);
         Ok(())
@@ -88,8 +102,8 @@ mod tests {
             !io::fs::exists(store.path()),
             "a session that has said nothing has no file"
         );
-        store.append(&Message::user_text("one")).unwrap();
-        store.append(&Message::user_text("two")).unwrap();
+        store.append(&Message::user_text("one"), None).unwrap();
+        store.append(&Message::user_text("two"), None).unwrap();
         let text = io::fs::read_string(store.path()).unwrap().unwrap();
         let entries = entry::parse(&text);
         assert!(matches!(entries[0], Entry::Session { .. }));

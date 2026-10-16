@@ -271,9 +271,20 @@ pub async fn in_session<T: Send + 'static>(
     key: Option<&'static str>,
     body: impl FnOnce(&mut Session) -> T + Send + 'static,
 ) -> Ended<T> {
+    in_session_with(fake, sandbox, key, &[], body).await
+}
+
+/// `in_session`, started with `args` on the command line.
+pub async fn in_session_with<T: Send + 'static>(
+    fake: &Fake,
+    sandbox: Sandbox,
+    key: Option<&'static str>,
+    args: &'static [&'static str],
+    body: impl FnOnce(&mut Session) -> T + Send + 'static,
+) -> Ended<T> {
     let url = fake.url.clone();
     tokio::task::spawn_blocking(move || {
-        let mut s = Session::start_as(&sandbox, &url, key, &[]);
+        let mut s = Session::start_as(&sandbox, &url, key, args);
         s.wait_for("crowbot v");
         // The bar names the mode and the model once the session is ready for keys.
         s.wait_bar(" · ");

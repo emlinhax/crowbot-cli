@@ -23,7 +23,10 @@ pub fn render(block: &Block, open: bool, width: usize) -> Vec<Line> {
         }
         Block::Thinking { text, secs } => {
             let words = &ui::get().thinking;
-            let header = fill(&words.done, &[("secs", &secs.to_string())]);
+            let header = match secs {
+                Some(secs) => fill(&words.done, &[("secs", &secs.to_string())]),
+                None => words.untimed.clone(),
+            };
             let mark = if open { &words.open } else { &words.closed };
             let mut lines = thinking_lines(mark, &header, text, width);
             if !open {

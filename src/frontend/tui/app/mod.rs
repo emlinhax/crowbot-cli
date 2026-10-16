@@ -10,6 +10,7 @@ mod turn;
 
 use std::collections::VecDeque;
 use std::future::Future;
+use std::path::Path;
 use std::pin::Pin;
 use std::process::ExitCode;
 use std::time::Instant;
@@ -19,11 +20,12 @@ use futures_util::future::BoxFuture;
 use futures_util::stream::FuturesUnordered;
 use tokio::sync::mpsc;
 
-use crate::agent::setup::Setup;
+use crate::agent::setup::{Continue, Setup};
 use crate::api::models::Model;
 use crate::app::App;
 use crate::commands::Session;
 use crate::config::limits;
+use crate::conversation::message::Message;
 use crate::frontend::tui::card::{self, Card};
 use crate::frontend::tui::command::Work;
 use crate::frontend::tui::editor::Editor;
@@ -36,13 +38,14 @@ use crate::frontend::tui::screen::Screen;
 use crate::frontend::tui::toast::Toast;
 use crate::frontend::tui::view::View;
 use crate::frontend::tui::{ui, welcome};
+use crate::frontend::words;
 use crate::io::clock;
 use crate::io::term;
 use crate::live::event::{AgentEvent, Ended};
 use crate::live::state::Shared;
 use crate::models::Catalog;
 use crate::release::{self, update};
-use crate::session::transcript::Transcript;
+use crate::session::transcript::{Resumed, Transcript};
 use crate::text::template;
 use crate::text::theme;
 use crate::text::units;
@@ -72,14 +75,23 @@ enum Step<'a> {
     Work(BoxFuture<'a, Work>),
 }
 
-pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode> {
+/// The session; going on with the one in `resume` when given, its mode included.
+pub async fn run(
+    app: &App,
+    initial: Option<String>,
+    resume: Option<&Path>,
+) -> anyhow::Result<ExitCode> {
+    let from = resume.map(|path| Continue { path, mode: true });
     let Setup {
         catalog,
         model,
+        effort,
         tools,
         shared,
         transcript,
-    } = Setup::load(app).await?;
+        resumed,
+        gone,
+    } = Setup::load(app, from).await?;
     let session_file = transcript.file().display().to_string();
     let (tx, rx) = mpsc::unbounded_channel();
     let emit = move |event: AgentEvent| {
@@ -91,7 +103,17 @@ pub async fn run(app: &App, initial: Option<String>) -> anyhow::Result<ExitCode>
     };
 
     let raw = term::Raw::fullscreen()?;
-    let mut tui = Tui::new(app, catalog, model, &shared, initial, session_file);
+    let mut tui = Tui::new(
+        app,
+        catalog,
+        (model, effort),
+        &shared,
+        initial,
+        session_file,
+    );
+    if let Some(resumed) = &resumed {
+        tui.resumed(&transcript.messages, resumed, gone.as_deref());
+    }
     if let Some(change) = update::on_start(&app.http, &app.paths, app.settings.auto_update) {
         tui.feed.notice(&change.say(), "done");
     }
@@ -161,7 +183,7 @@ impl<'a> Tui<'a> {
     fn new(
         app: &'a App,
         catalog: Catalog,
-        model: Model,
+        (model, effort): (Model, Option<String>),
         shared: &'a Shared,
         initial: Option<String>,
         session_file: String,
@@ -175,7 +197,7 @@ impl<'a> Tui<'a> {
         let mut tui = Self {
             app,
             catalog,
-            next: NextTurn::new(&app.paths, model, app.settings.effort.clone()),
+            next: NextTurn::new(&app.paths, model, effort),
             shared,
             screen: Screen::new(width, height, theme::get(), term::color_depth()),
             feed: Feed::new(),
@@ -232,6 +254,25 @@ impl<'a> Tui<'a> {
             mode_color: mode.color.clone(),
             warning: self.account_warning(),
             braille: self.braille,
+        }
+    }
+
+    /// A conversation read back from its file: shown as it was, with where it stood.
+    fn resumed(&mut self, messages: &[Message], resumed: &Resumed, gone: Option<&str>) {
+        self.feed.replay(messages);
+        self.context_tokens = messages.iter().rev().find_map(|m| match m {
+            Message::Assistant(reply) => reply.usage.map(|u| u.input),
+            _ => None,
+        });
+        let cost = units::usd_micros(resumed.spent_micros);
+        let text = template::fill(
+            &ui::get().text.resumed,
+            &[("path", &self.session_file), ("cost", &cost)],
+        );
+        self.feed.notice(&text, "muted");
+        if let Some(gone) = gone {
+            let text = words::model_gone(gone, &self.next.model.id);
+            self.feed.notice(&text, "warn");
         }
     }
 

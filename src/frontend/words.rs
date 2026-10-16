@@ -5,6 +5,7 @@ use std::sync::LazyLock;
 use serde::Deserialize;
 
 use crate::data;
+use crate::text::template;
 
 static WORDS: LazyLock<Words> = data::load!("frontend.toml");
 
@@ -16,6 +17,7 @@ pub struct Words {
     pub unsaved: String,
     pub turn_limit: String,
     pub retrying: String,
+    pub model_gone: String,
     pub print: PrintWords,
 }
 
@@ -31,6 +33,11 @@ pub struct PrintWords {
 
 pub fn get() -> &'static Words {
     &WORDS
+}
+
+/// That a resumed session's model is no longer served, and what it goes on with instead.
+pub fn model_gone(model: &str, instead: &str) -> String {
+    template::fill(&WORDS.model_gone, &[("model", model), ("instead", instead)])
 }
 
 #[cfg(test)]

@@ -9,17 +9,20 @@
 use std::collections::HashMap;
 
 use crate::conversation::message::Message;
-use crate::session::entry::Entry;
+use crate::session::entry::{Entry, State};
 
 /// The conversation on the current branch, each message with its entry id.
 pub struct Loaded {
     pub branch: Vec<(String, Message)>,
+    /// What the branch's last prompt was sent under, where the file recorded it.
+    pub state: Option<State>,
 }
 
 struct Node {
     id: String,
     parent: Option<usize>,
     message: Message,
+    state: Option<State>,
 }
 
 pub fn read(text: &str) -> Loaded {
@@ -36,6 +39,7 @@ pub fn read(text: &str) -> Loaded {
                 id,
                 parent,
                 message,
+                state,
                 ..
             } => {
                 let parent = parent.and_then(|p| by_id.get(&p).copied()).or(head);
@@ -45,6 +49,7 @@ pub fn read(text: &str) -> Loaded {
                     id,
                     parent,
                     message,
+                    state,
                 });
             }
             Entry::Rewind { to: None, .. } => head = None,
@@ -63,6 +68,7 @@ pub fn read(text: &str) -> Loaded {
         chain.push(i);
         at = nodes[i].parent;
     }
+    let state = chain.iter().find_map(|&i| nodes[i].state.clone());
     let mut nodes: Vec<Option<Node>> = nodes.into_iter().map(Some).collect();
     let branch = chain
         .into_iter()
@@ -70,7 +76,7 @@ pub fn read(text: &str) -> Loaded {
         .filter_map(|i| nodes[i].take())
         .map(|n| (n.id, n.message))
         .collect();
-    Loaded { branch }
+    Loaded { branch, state }
 }
 
 /// The messages of the current branch.

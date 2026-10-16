@@ -10,7 +10,8 @@ use crate::config::limits;
 use crate::conversation::message::{Finish, Message, Part, ToolCall};
 use crate::live::event::{AgentEvent, Ended, Outcome};
 use crate::live::state::{Reminder, Shared};
-use crate::session::transcript::Transcript;
+use crate::session::entry::State;
+use crate::session::transcript::{Transcript, Unsaved};
 use crate::text::template::fill;
 use crate::tools;
 
@@ -109,7 +110,11 @@ pub async fn run(
 /// Keeps `message`; a session file that can no longer be written is reported once, and the
 /// run goes on without it.
 fn record(cx: &RunCtx<'_>, transcript: &mut Transcript, message: Message) {
-    if let Err(unsaved) = transcript.push(message) {
+    reported(cx, transcript.push(message));
+}
+
+fn reported(cx: &RunCtx<'_>, kept: Result<(), Unsaved>) {
+    if let Err(unsaved) = kept {
         (cx.emit)(AgentEvent::Unsaved {
             path: unsaved.path.display().to_string(),
             error: unsaved.error,
@@ -124,10 +129,19 @@ fn deliver(run: &Run<'_>, transcript: &mut Transcript, parts: Vec<Part>) {
     say(run, transcript, parts);
 }
 
-/// Records a user message, with any reminder that is due in front of it.
+/// Records a user message, with any reminder that is due in front of it and what it is sent
+/// under.
 fn say(run: &Run<'_>, transcript: &mut Transcript, parts: Vec<Part>) {
     let parts = with_reminder(run, parts);
-    record(run.cx, transcript, Message::User { parts });
+    let state = State {
+        model: run.cx.model.id.clone(),
+        effort: run.cx.effort.map(str::to_owned),
+        mode: Some(run.shared.mode().id.clone()),
+    };
+    reported(
+        run.cx,
+        transcript.push_prompt(Message::User { parts }, state),
+    );
 }
 
 /// Mode changes reach the model as a reminder on the next user message, so the system prompt

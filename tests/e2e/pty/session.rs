@@ -1,6 +1,6 @@
 //! Chatting, switching mode, thinking blocks and the context share.
 
-use super::harness::{CTRL_T, DOWN, ENTER, SHIFT_TAB, in_session};
+use super::harness::{CTRL_T, DOWN, ENTER, SHIFT_TAB, in_session, in_session_with};
 use crate::Sandbox;
 use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
 
@@ -73,4 +73,28 @@ async fn the_context_share_follows_a_switch_of_model_at_once() {
         s.wait_bar("ctx 76%");
     })
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn continue_reopens_the_last_conversation_with_its_mode() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse"), Reply::text("The second answer.")]);
+    let first = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.send(SHIFT_TAB);
+        s.wait_bar("PLAN");
+        s.submit("the first question");
+        s.wait_for("Hello there!");
+    })
+    .await;
+    let ended = in_session_with(&fake, first.sandbox, Some(ENV_KEY), &["--continue"], |s| {
+        s.wait_for("the first question");
+        s.wait_for("Going on with");
+        s.wait_bar("PLAN");
+        s.submit("the second question");
+        s.wait_for("The second answer.");
+    })
+    .await;
+    let second = fake.chat_bodies()[1]["messages"].to_string();
+    assert!(second.contains("the first question"), "{second}");
+    assert_eq!(ended.sandbox.sessions().len(), 1);
 }
