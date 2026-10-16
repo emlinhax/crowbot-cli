@@ -211,3 +211,35 @@ async fn retry_sends_the_last_prompt_again_without_its_first_reply() {
     let session = std::fs::read_to_string(&ended.sandbox.sessions()[0]).unwrap();
     assert!(session.contains("A first try.") && session.contains(r#""type":"rewind""#));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn undo_puts_back_what_a_subagent_changed() {
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::call(
+            "task",
+            r#"{"description": "make it", "prompt": "write b.txt", "subagent_type": "general"}"#,
+        ),
+        Reply::call("write", r#"{"path": "b.txt", "content": "new"}"#),
+        Reply::text("wrote b.txt"),
+        Reply::text("The subagent made it."),
+    ]);
+    let sandbox = Sandbox::default();
+    sandbox.write_home("config.toml", "mode = \"auto\"\n");
+    let git = std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(sandbox.project())
+        .status();
+    if !git.is_ok_and(|s| s.success()) {
+        return;
+    }
+    let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
+        s.submit("make b");
+        s.wait_for("The subagent made it.");
+        s.submit("/undo");
+        s.wait_for("1 file it changed is back as it was.");
+        s.send(CTRL_C);
+    })
+    .await;
+    assert!(!ended.sandbox.project().join("b.txt").exists());
+}

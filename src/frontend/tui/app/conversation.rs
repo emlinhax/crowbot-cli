@@ -162,8 +162,7 @@ impl Tui<'_> {
             .await;
         match restored {
             Ok(restored) => {
-                let files = restored.files.to_string();
-                let text = template::fill(&words.restored, &[("files", &files)]);
+                let text = words.restored.of(restored.files);
                 self.feed.notice(&text, "done");
                 if !restored.kept.is_empty() {
                     let paths = restored.kept.join(", ");

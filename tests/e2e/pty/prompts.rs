@@ -166,3 +166,20 @@ fn cost(bar: &str) -> f64 {
     let start = bar[..at].rfind('$').unwrap() + 1;
     bar[start..at].parse().unwrap()
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn turning_down_a_subagents_call_stops_the_run() {
+    for decline in ["2", "\x1b"] {
+        let fake = Fake::start().await;
+        task_fetching(&fake, &[Reply::text("never")]);
+        in_session(&fake, Sandbox::default(), Some(ENV_KEY), move |s| {
+            s.submit("fetch it for me");
+            s.wait_for("╭ webfetch");
+            s.send(decline);
+            s.wait_for("The user turned down one of the subagent's calls");
+        })
+        .await;
+        assert_eq!(fake.hits("/v1/chat/completions"), 2, "{decline:?}");
+        assert_eq!(fake.hits("/web/ok"), 0);
+    }
+}

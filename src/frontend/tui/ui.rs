@@ -190,7 +190,7 @@ pub struct TaskText {
 #[serde(deny_unknown_fields)]
 pub struct UndoText {
     pub done: String,
-    pub restored: String,
+    pub restored: Plural,
     pub not_restored: String,
     pub failed: String,
     pub kept: String,

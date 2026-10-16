@@ -1,0 +1,30 @@
+description = "In AUTO a general subagent reads and edits a file; the parent passes on its answer"
+args = ["--mode", "auto", "-p", "fix the sum"]
+project = "calc"
+
+[[reply]]
+calls = [{ name = "task", arguments = '{"description": "fix the sum", "prompt": "Fix the sum in src/calc.txt and say what you changed.", "subagent_type": "general"}' }]
+
+[[reply]]
+calls = [{ name = "read", arguments = '{"path": "src/calc.txt"}' }]
+
+[[reply]]
+calls = [{ name = "edit", arguments = '{"path": "src/calc.txt", "edits": [{"old_text": "2 + 2 = 5", "new_text": "2 + 2 = 4"}]}' }]
+
+[[reply]]
+text = "Changed 2 + 2 = 5 to 2 + 2 = 4 in src/calc.txt."
+
+[[reply]]
+text = "The subagent fixed it."
+
+[expect]
+exit = 0
+stdout = "The subagent fixed it.\n"
+stderr_contains = ["› task fix the sum", "  › read src/calc.txt", "  › edit src/calc.txt"]
+files = { "src/calc.txt" = "2 + 2 = 4\n" }
+
+[[expect.requests]]
+index = 4
+message = -1
+role = "tool"
+contains = "Changed 2 + 2 = 5 to 2 + 2 = 4"

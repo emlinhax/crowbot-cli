@@ -120,7 +120,7 @@ step = "  └ {call}"
 # `/undo` inside a session.
 [undo]
 done = "Took back the last prompt and what followed it; it is in the editor to change or send again."
-restored = "{files} files it changed are back as they were."
+restored = { one = "{n} file it changed is back as it was.", many = "{n} files it changed are back as they were." }
 not_restored = "Files it changed were not restored: {why}."
 failed = "Could not restore {what}"
 kept = "Left as they are, since they changed after that reply: {paths}"
