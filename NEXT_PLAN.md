@@ -232,7 +232,7 @@ only, and a running head decides the branch.
 - [x] 5.3 `/resume`: a picker over this project's sessions, the `/models` picker made one table
       picker
 - [x] 5.4 `/undo`, the conversation: a `rewind` marker, the prompt back in the editor
-- [ ] 5.5 shadow git (`io::proc::exec`, `src/snapshot/`): a snapshot before a prompt's first
+- [x] 5.5 shadow git (`io::proc::exec`, `src/snapshot/`): a snapshot before a prompt's first
       change, files restored on `/undo`; only inside a git work tree
 - [ ] 5.6 files changed after the turn are left alone and named; `/status` says whether `/undo`
       restores files

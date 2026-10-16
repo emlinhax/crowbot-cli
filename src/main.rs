@@ -18,6 +18,7 @@ mod models;
 mod permission;
 mod release;
 mod session;
+mod snapshot;
 #[cfg(test)]
 mod testing;
 mod text;

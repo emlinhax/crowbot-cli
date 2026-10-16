@@ -22,7 +22,8 @@ impl<'a> Tui<'a> {
         self.last_verb = Some(progress.verb());
         self.progress = Some(progress);
         let parts = vec![Part::Text { text }];
-        let (app, shared, tools, emit) = (self.app, self.shared, turns.tools, turns.emit);
+        let (app, shared, shadow) = (self.app, self.shared, self.shadow);
+        let (tools, emit) = (turns.tools, turns.emit);
         let next = self.next.clone();
         Box::pin(async move {
             let cx = RunCtx {
@@ -32,6 +33,7 @@ impl<'a> Tui<'a> {
                 system: &next.system,
                 tools,
                 emit,
+                shadow,
             };
             let outcome = run::run(&cx, &mut owned, shared, parts).await;
             (owned, outcome)

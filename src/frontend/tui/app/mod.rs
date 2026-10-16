@@ -45,6 +45,7 @@ use crate::live::state::Shared;
 use crate::models::Catalog;
 use crate::release::{self, update};
 use crate::session::transcript::Transcript;
+use crate::snapshot::Shadow;
 use crate::text::template;
 use crate::text::theme;
 use crate::text::units;
@@ -93,6 +94,7 @@ pub async fn run(
         transcript,
         resumed,
         gone,
+        shadow,
     } = Setup::load(app, from).await?;
     let session_file = transcript.file().display().to_string();
     let (tx, rx) = mpsc::unbounded_channel();
@@ -109,7 +111,7 @@ pub async fn run(
         app,
         catalog,
         (model, effort),
-        &shared,
+        (&shared, &shadow),
         initial,
         session_file,
     );
@@ -150,6 +152,8 @@ struct Tui<'a> {
     catalog: Catalog,
     next: NextTurn,
     shared: &'a Shared,
+    /// Keeps the files as they were before each prompt changed them, for /undo.
+    shadow: &'a Shadow,
     screen: Screen,
     feed: Feed,
     view: View,
@@ -186,7 +190,7 @@ impl<'a> Tui<'a> {
         app: &'a App,
         catalog: Catalog,
         (model, effort): (Model, Option<String>),
-        shared: &'a Shared,
+        (shared, shadow): (&'a Shared, &'a Shadow),
         initial: Option<String>,
         session_file: String,
     ) -> Self {
@@ -201,6 +205,7 @@ impl<'a> Tui<'a> {
             catalog,
             next: NextTurn::new(&app.paths, model, effort),
             shared,
+            shadow,
             screen: Screen::new(width, height, theme::get(), term::color_depth()),
             feed: Feed::new(),
             view: View::default(),
@@ -319,8 +324,10 @@ impl<'a> Tui<'a> {
                     Some(owned) => turn = Some(self.send(text, owned, &turns)),
                     None => self.feed.notice(&ui::get().text.busy, "warn"),
                 },
+                // CEILING: the restore runs in the loop, so a huge one holds the screen up to
+                // `snapshot.timeout_secs`. Upgrade: run it as `Work` and hold sends meanwhile.
                 Step::Undo => match transcript.as_mut() {
-                    Some(owned) => self.take_back(owned),
+                    Some(owned) => self.take_back(owned).await,
                     None => self.feed.notice(&ui::get().text.busy, "warn"),
                 },
                 // A turn holds the transcript while it runs.
@@ -351,6 +358,10 @@ impl<'a> Tui<'a> {
                 self.account_reply_ended();
             }
             AgentEvent::RunEnd(_) => self.account_run_ended(),
+            AgentEvent::SnapshotOff { why } => {
+                let text = template::fill(&ui::get().undo.off, &[("why", why)]);
+                self.feed.notice(&text, "warn");
+            }
             AgentEvent::Delivered { text } => {
                 if let Some(i) = self.queue.iter().position(|(_, t)| t == text) {
                     self.queue.remove(i);

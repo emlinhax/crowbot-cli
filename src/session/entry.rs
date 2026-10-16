@@ -35,6 +35,14 @@ pub enum Entry {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         state: Option<State>,
     },
+    /// The project's files before prompt `of` first changed them, and once its run ended, as
+    /// shadow git trees (src/snapshot/). The last line for a prompt wins.
+    Snapshot {
+        ts: Timestamp,
+        of: String,
+        #[serde(flatten)]
+        trees: Snap,
+    },
     /// Moves the head back to `to` (`None`: before the first message); what came after stays in
     /// the file as a branch.
     Rewind {
@@ -43,6 +51,14 @@ pub enum Entry {
         /// The head it moved from.
         from: Option<String>,
     },
+}
+
+/// A prompt's two snapshots: before its first change, and when its run ended (`None` until then).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Snap {
+    pub before: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<String>,
 }
 
 /// The settings a prompt went out with.

@@ -80,9 +80,34 @@ pub(super) async fn run<'a>(run: &'a Run<'a>, history: &[Message], calls: &'a [T
         }
         cleared.push(slot);
     }
+    let changes = cleared.iter().flatten().any(|c| {
+        c.asks
+            .iter()
+            .any(|a| catalog::changes_things(&a.permission))
+    });
+    if changes && run.before.get().is_none() {
+        snapshot(run).await;
+    }
     Batch {
         results: settle(run, calls, cleared).await,
         stop,
+    }
+}
+
+/// Keeps the files as they are, before the first call that may change them runs. When the
+/// shadow fails here, the frontend hears it once.
+async fn snapshot(run: &Run<'_>) {
+    let shadow = run.cx.shadow;
+    let was_on = shadow.off().is_none();
+    match shadow.take().await {
+        Some(tree) => {
+            let _ = run.before.set(tree);
+        }
+        None => {
+            if let Some(why) = shadow.off().filter(|_| was_on) {
+                (run.cx.emit)(AgentEvent::SnapshotOff { why });
+            }
+        }
     }
 }
 

@@ -11,8 +11,6 @@ pub enum Effect {
 
 pub struct Permission {
     pub name: &'static str,
-    /// Read only by the tests.
-    #[cfg_attr(not(test), expect(dead_code))]
     pub effect: Effect,
 }
 
@@ -25,9 +23,16 @@ macro_rules! permissions {
             pub const $name: Permission = Permission { name: $id, effect: Effect::$effect };
         )+
 
-        #[cfg(test)]
         const ALL: &[Permission] = &[$($name),+];
     };
+}
+
+/// Whether permission `name` lets a call change files or run commands, which may change them:
+/// what the run snapshots the project before.
+pub fn changes_things(name: &str) -> bool {
+    ALL.iter()
+        .find(|p| p.name == name)
+        .is_some_and(|p| matches!(p.effect, Effect::ChangesFiles | Effect::RunsCommands))
 }
 
 permissions! {

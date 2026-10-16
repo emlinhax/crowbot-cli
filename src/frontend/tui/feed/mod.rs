@@ -283,8 +283,11 @@ impl Feed {
                 }
             }
             AgentEvent::Delivered { text } => self.user(text),
-            // The working line shows a retry; a prompt is a card.
-            AgentEvent::Retry { .. } | AgentEvent::Prompt { .. } => {}
+            // The working line shows a retry; a prompt is a card; the session words a stopped
+            // snapshot with what /undo can no longer do.
+            AgentEvent::Retry { .. }
+            | AgentEvent::Prompt { .. }
+            | AgentEvent::SnapshotOff { .. } => {}
         }
     }
 

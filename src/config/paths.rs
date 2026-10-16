@@ -80,6 +80,11 @@ impl Paths {
     pub fn sessions_dir(&self) -> PathBuf {
         self.home.join("sessions").join(slug(&self.project))
     }
+
+    /// The shadow git that keeps work tree `work` as it was before each prompt changed it.
+    pub fn snapshots_dir(&self, work: &Path) -> PathBuf {
+        self.home.join("snapshots").join(slug(work))
+    }
 }
 
 // CEILING: keeping the head lets long paths that share it land in one folder. Keeping the tail, or

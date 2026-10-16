@@ -1,6 +1,8 @@
 //! The agent loop (after pi's agent-loop): ask the model, run what it calls, feed the results
 //! back, until it stops calling tools. Messages queued meanwhile are delivered at safe points.
 
+use std::sync::OnceLock;
+
 use crate::agent::batch::{self, Batch};
 use crate::agent::context;
 use crate::agent::model_text;
@@ -10,7 +12,7 @@ use crate::config::limits;
 use crate::conversation::message::{Finish, Message, Part, ToolCall};
 use crate::live::event::{AgentEvent, Ended, Outcome};
 use crate::live::state::{Reminder, Shared};
-use crate::session::entry::State;
+use crate::session::entry::{Snap, State};
 use crate::session::transcript::{Transcript, Unsaved};
 use crate::text::template::fill;
 use crate::tools;
@@ -26,9 +28,12 @@ pub async fn run(
         shared,
         cancel: shared.begin_run(),
         plan_file: tools::plan_file(&cx.app.paths, transcript.id()),
+        before: OnceLock::new(),
     };
     let cancel = &run.cancel;
     say(&run, transcript, prompt);
+    let prompt_id = transcript.last_id().unwrap_or_default().to_owned();
+    let mut snapped = false;
     let tools = cx.tools.wire();
     let max_turns = limits::get().agent.max_turns.value;
     let mut turns = 0;
@@ -72,6 +77,15 @@ pub async fn run(
                     batch::run(&run, history, &calls).await
                 };
                 let Batch { results, stop } = batch;
+                // The snapshot goes in the file before the changes it lets /undo take back.
+                if let Some(before) = run.before.get().filter(|_| !snapped) {
+                    snapped = true;
+                    let trees = Snap {
+                        before: before.clone(),
+                        after: None,
+                    };
+                    reported(cx, transcript.snapshot(&prompt_id, trees));
+                }
                 for result in results {
                     record(cx, transcript, Message::Tool(result));
                 }
@@ -102,6 +116,13 @@ pub async fn run(
             deliver(&run, transcript, parts);
         }
     };
+    if let Some(before) = run.before.get() {
+        let trees = Snap {
+            before: before.clone(),
+            after: cx.shadow.take().await,
+        };
+        reported(cx, transcript.snapshot(&prompt_id, trees));
+    }
     let ended = Ended { outcome, turns };
     (cx.emit)(AgentEvent::RunEnd(ended));
     ended
@@ -181,6 +202,7 @@ mod tests {
     use crate::io::http::Http;
     use crate::live::prompt::{Answer, Prompt, Reply};
     use crate::mode;
+    use crate::snapshot::Shadow;
     use crate::tools::Registry;
 
     type Script = Arc<Mutex<(VecDeque<String>, Vec<Value>)>>;
@@ -212,6 +234,7 @@ mod tests {
         app: App,
         script: Script,
         model: Model,
+        shadow: Shadow,
     }
 
     impl Harness {
@@ -244,7 +267,27 @@ mod tests {
                 app,
                 script,
                 model,
+                shadow: Shadow::none("no git in these tests".into()),
             }
+        }
+
+        /// The project made a git work tree with snapshots on; `None` on a machine without git.
+        async fn with_git(mut self) -> Option<Self> {
+            let program = crate::io::proc::which("git")?;
+            let init = crate::io::proc::exec(&crate::io::proc::Program {
+                program: &program,
+                args: &["init".into(), "--quiet".into()],
+                cwd: &self.app.paths.project,
+                env: &[],
+                unset: &[],
+                timeout: std::time::Duration::from_secs(30),
+            })
+            .await
+            .ok()?;
+            assert!(init.ok());
+            self.shadow = Shadow::open(&self.app.paths).await;
+            assert_eq!(self.shadow.off(), None);
+            Some(self)
         }
 
         fn write(&self, path: &str, text: &str) {
@@ -291,6 +334,7 @@ mod tests {
                 system: "sys",
                 tools: &registry,
                 emit: &emit,
+                shadow: &self.shadow,
             };
             let prompt = vec![Part::Text { text: "go".into() }];
             let ended = run(&cx, &mut transcript, shared, prompt).await;
@@ -686,6 +730,64 @@ mod tests {
             third["content"].as_str().unwrap().contains("3 times"),
             "{third}"
         );
+    }
+
+    #[tokio::test]
+    async fn a_run_that_changes_files_is_snapshotted_once_and_a_reading_one_never() {
+        let write = |path: &str| {
+            reply(
+                "",
+                &[("c1", "write", json!({"path": path, "content": "x"}))],
+                "tool_calls",
+            )
+        };
+        let read = reply(
+            "",
+            &[("c1", "read", json!({"path": "a.txt"}))],
+            "tool_calls",
+        );
+        let replies = vec![
+            write("one.txt"),
+            write("two.txt"),
+            text("done"),
+            read,
+            text("read"),
+        ];
+        let Some(h) = Harness::new(replies).await.with_git().await else {
+            return;
+        };
+        h.write("a.txt", "a");
+        let (_, transcript, _) = h.run(&shared("auto"), |_, _| {}).await;
+        let path = transcript.path().unwrap().to_path_buf();
+        let text = crate::io::fs::read_string(&path).unwrap().unwrap();
+        let lines: Vec<Value> = text
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        let snaps: Vec<&Value> = lines.iter().filter(|l| l["type"] == "snapshot").collect();
+        // One before the first write, then the same one again with the run's end.
+        assert_eq!(snaps.len(), 2, "{text}");
+        assert_eq!(snaps[0]["before"], snaps[1]["before"]);
+        assert!(snaps[0]["after"].is_null() && snaps[1]["after"].is_string());
+        assert_ne!(snaps[1]["before"], snaps[1]["after"]);
+        let first_snapshot = lines.iter().position(|l| l["type"] == "snapshot").unwrap();
+        let first_result = lines
+            .iter()
+            .position(|l| l["message"]["role"] == "tool")
+            .unwrap();
+        assert!(first_snapshot < first_result);
+
+        let (_, transcript, _) = h
+            .run_in(
+                Transcript::open(&path).unwrap().0,
+                &shared("auto"),
+                |_, _| {},
+            )
+            .await;
+        let text = crate::io::fs::read_string(transcript.path().unwrap())
+            .unwrap()
+            .unwrap();
+        assert_eq!(text.matches(r#""type":"snapshot""#).count(), 2, "{text}");
     }
 
     #[tokio::test]

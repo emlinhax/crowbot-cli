@@ -182,7 +182,10 @@ pub struct ForumsText {
 #[serde(deny_unknown_fields)]
 pub struct UndoText {
     pub done: String,
-    pub files_kept: String,
+    pub restored: String,
+    pub not_restored: String,
+    pub failed: String,
+    pub off: String,
     pub nothing: String,
 }
 

@@ -13,6 +13,7 @@ use crate::mode::{self, Mode};
 use crate::models::{self, Catalog};
 use crate::session::entry::State;
 use crate::session::transcript::{Resumed, Transcript};
+use crate::snapshot::Shadow;
 use crate::tools::Registry;
 
 pub struct Setup {
@@ -27,6 +28,8 @@ pub struct Setup {
     pub resumed: Option<Resumed>,
     /// The model the resumed session used, when crowbot no longer serves it.
     pub gone: Option<String>,
+    /// The project's files before each prompt changed them, for /undo.
+    pub shadow: Shadow,
 }
 
 /// A session that goes on from a file.
@@ -68,6 +71,7 @@ impl Setup {
             transcript,
             resumed,
             gone: going.gone,
+            shadow: Shadow::open(&app.paths).await,
         })
     }
 }

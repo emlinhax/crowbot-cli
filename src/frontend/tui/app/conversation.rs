@@ -10,6 +10,7 @@ use crate::frontend::tui::feed::Feed;
 use crate::frontend::tui::ui;
 use crate::frontend::tui::view::View;
 use crate::frontend::words;
+use crate::session::entry::Snap;
 use crate::session::transcript::{Resumed, Transcript};
 use crate::session::undo;
 use crate::text::template;
@@ -104,8 +105,9 @@ impl Tui<'_> {
         transcript
     }
 
-    /// Takes back the last prompt and what followed it, and puts the prompt in the editor.
-    pub(super) fn take_back(&mut self, transcript: &mut Transcript) {
+    /// Takes back the last prompt and what followed it, files included, and puts the prompt in
+    /// the editor.
+    pub(super) async fn take_back(&mut self, transcript: &mut Transcript) {
         let words = &ui::get().undo;
         let Some(undone) = undo::undo(transcript) else {
             self.feed.notice(&words.nothing, "muted");
@@ -124,8 +126,10 @@ impl Tui<'_> {
             false => format!("{}\n{draft}", undone.prompt),
         };
         self.editor.set_text(&text);
-        self.feed
-            .notice(&format!("{} {}", words.done, words.files_kept), "done");
+        self.feed.notice(&words.done, "done");
+        if let Some(snapshot) = &undone.snapshot {
+            self.restore(snapshot).await;
+        }
         if let Some(unsaved) = undone.unsaved {
             let text = template::fill(
                 &words::get().unsaved,
@@ -135,6 +139,32 @@ impl Tui<'_> {
                 ],
             );
             self.feed.notice(&text, "warn");
+        }
+    }
+}
+
+impl Tui<'_> {
+    /// Puts back the files the taken-back prompt changed, and says how that went.
+    async fn restore(&mut self, snapshot: &Snap) {
+        let words = &ui::get().undo;
+        let restored = self
+            .shadow
+            .restore(&snapshot.before, snapshot.after.as_deref())
+            .await;
+        match restored {
+            Ok(restored) => {
+                let files = restored.files.to_string();
+                let text = template::fill(&words.restored, &[("files", &files)]);
+                self.feed.notice(&text, "done");
+                for failed in restored.failed {
+                    let text = template::fill(&words.failed, &[("what", &failed)]);
+                    self.feed.notice(&text, "warn");
+                }
+            }
+            Err(why) => {
+                let text = template::fill(&words.not_restored, &[("why", &why)]);
+                self.feed.notice(&text, "warn");
+            }
         }
     }
 }

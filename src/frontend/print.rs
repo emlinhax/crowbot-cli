@@ -57,6 +57,7 @@ pub async fn run(
         shared,
         mut transcript,
         gone,
+        shadow,
         ..
     } = Setup::load(app, from).await?;
     if let Some(gone) = gone {
@@ -79,6 +80,7 @@ pub async fn run(
         system: &system,
         tools: &tools,
         emit: &emit,
+        shadow: &shadow,
     };
 
     let interrupt = async {

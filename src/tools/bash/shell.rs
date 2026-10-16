@@ -1,6 +1,5 @@
 //! Which shell the bash tool runs commands in, chosen from data/shells.toml.
 
-use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
@@ -93,21 +92,15 @@ pub fn resolve(configured: Option<&str>) -> Shell {
     }
 
     for entry in &entries {
-        for candidate in &entry.candidates {
-            let path = template::fill_with(candidate, |name| io::env::var(name).map(Cow::Owned));
-            if path.contains('{') {
-                continue;
-            }
-            if let Some(program) = io::proc::which(&path) {
-                return Shell {
-                    name: entry.name.clone(),
-                    program: Some(program),
-                    args: entry.args.clone(),
-                    note: entry.note.clone(),
-                    env,
-                    unset,
-                };
-            }
+        if let Some(program) = io::proc::find(&entry.candidates) {
+            return Shell {
+                name: entry.name.clone(),
+                program: Some(program),
+                args: entry.args.clone(),
+                note: entry.note.clone(),
+                env,
+                unset,
+            };
         }
     }
     Shell {

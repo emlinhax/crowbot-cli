@@ -1,12 +1,15 @@
 //! Taking back the last prompt: it and everything after it leave the current branch.
 
 use crate::conversation::message::{Message, Part};
+use crate::session::entry::Snap;
 use crate::session::transcript::{Transcript, Unsaved};
 
 /// What was taken back.
 pub struct Undone {
     /// The prompt's words, for the editor.
     pub prompt: String,
+    /// The files before and after it, when its run changed any.
+    pub snapshot: Option<Snap>,
     /// The session file could not record it; the conversation is rewound in memory only.
     pub unsaved: Option<Unsaved>,
 }
@@ -21,8 +24,13 @@ pub fn undo(transcript: &mut Transcript) -> Option<Undone> {
         return None;
     };
     let prompt = Part::text_of(parts);
+    let snapshot = transcript.snapshot_at(at).cloned();
     let unsaved = transcript.rewind(at).err();
-    Some(Undone { prompt, unsaved })
+    Some(Undone {
+        prompt,
+        snapshot,
+        unsaved,
+    })
 }
 
 #[cfg(test)]

@@ -9,13 +9,15 @@
 use std::collections::HashMap;
 
 use crate::conversation::message::Message;
-use crate::session::entry::{Entry, State};
+use crate::session::entry::{Entry, Snap, State};
 
 /// The conversation on the current branch, each message with its entry id.
 pub struct Loaded {
     pub branch: Vec<(String, Message)>,
     /// What the branch's last prompt was sent under, where the file recorded it.
     pub state: Option<State>,
+    /// Each prompt's snapshots, by its id.
+    pub snapshots: HashMap<String, Snap>,
 }
 
 struct Node {
@@ -30,6 +32,7 @@ pub fn read(text: &str) -> Loaded {
     // The latest node with each id, which is what a later line naming it means.
     let mut by_id: HashMap<String, usize> = HashMap::new();
     let mut head: Option<usize> = None;
+    let mut snapshots = HashMap::new();
     for entry in text
         .lines()
         .filter_map(|line| serde_json::from_str::<Entry>(line).ok())
@@ -59,6 +62,9 @@ pub fn read(text: &str) -> Loaded {
                     head = Some(i);
                 }
             }
+            Entry::Snapshot { of, trees, .. } => {
+                snapshots.insert(of, trees);
+            }
             Entry::Session { .. } => {}
         }
     }
@@ -76,7 +82,11 @@ pub fn read(text: &str) -> Loaded {
         .filter_map(|i| nodes[i].take())
         .map(|n| (n.id, n.message))
         .collect();
-    Loaded { branch, state }
+    Loaded {
+        branch,
+        state,
+        snapshots,
+    }
 }
 
 /// The messages of the current branch.

@@ -3,8 +3,10 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+mod exec;
 mod tree;
 
+pub use exec::{Captured, Program, exec};
 pub use tree::{Ended, ShellCommand, run};
 
 /// Opens `url` in the default browser, unless `CROWBOT_NO_BROWSER` is set (tests, headless
@@ -73,6 +75,20 @@ pub fn after_exit(command: &str) -> io::Result<()> {
         .stderr(std::process::Stdio::null())
         .spawn()
         .map(drop)
+}
+
+/// The first of `candidates` found, each a name on PATH or a path, with `{NAME}` filled from the
+/// environment; one naming a variable that is not set is skipped.
+pub fn find(candidates: &[String]) -> Option<PathBuf> {
+    candidates.iter().find_map(|candidate| {
+        let path = crate::text::template::fill_with(candidate, |name| {
+            super::env::var(name).map(std::borrow::Cow::Owned)
+        });
+        if path.contains('{') {
+            return None;
+        }
+        which(&path)
+    })
 }
 
 /// The first `name` on PATH (trying PATHEXT extensions on Windows), or `name` itself when it is

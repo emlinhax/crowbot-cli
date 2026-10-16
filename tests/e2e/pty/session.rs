@@ -140,3 +140,52 @@ async fn undo_takes_back_the_last_prompt_for_good() {
     );
     assert!(!third.contains("second"), "{third}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn undo_puts_back_the_files_the_prompt_changed() {
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::Calls(vec![
+            crate::fake_crowbot::Call {
+                name: "bash".into(),
+                arguments: r#"{"command": "printf two > a.txt"}"#.into(),
+            },
+            crate::fake_crowbot::Call {
+                name: "write".into(),
+                arguments: r#"{"path": "b.txt", "content": "new"}"#.into(),
+            },
+        ]),
+        Reply::text("Changed them."),
+    ]);
+    let sandbox = Sandbox::default();
+    sandbox.write_home("config.toml", "mode = \"auto\"\n");
+    sandbox.write_project("a.txt", "one");
+    let git = std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(sandbox.project())
+        .status();
+    if !git.is_ok_and(|s| s.success()) {
+        return;
+    }
+    let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
+        s.submit("change things");
+        s.wait_for("Changed them.");
+        s.submit("/undo");
+        s.wait_for("2 files it changed are back as they were.");
+        // The prompt is back in the editor; clear it to quit.
+        s.send(CTRL_C);
+    })
+    .await;
+    let project = ended.sandbox.project();
+    assert_eq!(
+        std::fs::read_to_string(project.join("a.txt")).unwrap(),
+        "one"
+    );
+    assert!(!project.join("b.txt").exists());
+    let session = std::fs::read_to_string(&ended.sandbox.sessions()[0]).unwrap();
+    assert_eq!(
+        session.matches(r#""type":"snapshot""#).count(),
+        2,
+        "{session}"
+    );
+}

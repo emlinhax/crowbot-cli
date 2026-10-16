@@ -72,6 +72,7 @@ pub struct Limits {
     pub pair: PairLimits,
     pub signup: SignupLimits,
     pub account: AccountLimits,
+    pub snapshot: SnapshotLimits,
     pub agent: AgentLimits,
     pub session: SessionLimits,
     pub tools: ToolLimits,
@@ -126,6 +127,13 @@ pub struct RetryLimits {
 pub struct PairLimits {
     pub poll_interval_ms: Limit<u64>,
     pub backoff_ms: Limit<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SnapshotLimits {
+    pub timeout_secs: Limit<u64>,
+    pub args_bytes: Limit<usize>,
 }
 
 #[derive(Debug, Deserialize)]

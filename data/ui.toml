@@ -116,7 +116,10 @@ saved = "The last conversation is saved in {path}."
 # `/undo` inside a session.
 [undo]
 done = "Took back the last prompt and what followed it; it is in the editor to change or send again."
-files_kept = "Files it changed were not restored."
+restored = "{files} files it changed are back as they were."
+not_restored = "Files it changed were not restored: {why}."
+failed = "Could not restore {what}"
+off = "/undo will not restore files from here on: {why}."
 nothing = "Nothing to take back yet."
 
 # The popup listing commands while a `/name` is typed.

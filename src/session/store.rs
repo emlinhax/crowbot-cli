@@ -4,7 +4,7 @@ use crate::config::paths::Paths;
 use crate::conversation::message::Message;
 use crate::io;
 use crate::release;
-use crate::session::entry::{self, Entry, FORMAT_VERSION, State};
+use crate::session::entry::{self, Entry, FORMAT_VERSION, Snap, State};
 
 /// Append-only JSONL session file and its only writer. Nothing is written before the first message.
 pub struct Store {
@@ -82,6 +82,15 @@ impl Store {
             ts: io::clock::now(),
             message: message.clone(),
             state,
+        })
+    }
+
+    /// Records prompt `of`'s snapshots; the head stays where it is.
+    pub fn snapshot(&mut self, of: &str, trees: &Snap) -> anyhow::Result<()> {
+        self.write(&Entry::Snapshot {
+            ts: io::clock::now(),
+            of: of.to_owned(),
+            trees: trees.clone(),
         })
     }
 

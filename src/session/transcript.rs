@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
@@ -5,7 +6,7 @@ use anyhow::Context;
 use crate::config::paths::Paths;
 use crate::conversation::message::Message;
 use crate::io;
-use crate::session::entry::{self, State};
+use crate::session::entry::{self, Snap, State};
 use crate::session::reader;
 use crate::session::store::Store;
 
@@ -14,6 +15,8 @@ pub struct Transcript {
     pub messages: Vec<Message>,
     /// Each message's entry id in the file, in step with `messages`.
     ids: Vec<String>,
+    /// Each prompt's snapshots, by its entry id.
+    snapshots: HashMap<String, Snap>,
     store: Store,
     /// A write failed; the file stopped being written and no longer holds everything.
     unsaved: bool,
@@ -41,6 +44,7 @@ impl Transcript {
         Self {
             messages: Vec::new(),
             ids: Vec::new(),
+            snapshots: HashMap::new(),
             store: Store::create(paths),
             unsaved: false,
         }
@@ -74,6 +78,7 @@ impl Transcript {
         let transcript = Self {
             messages,
             ids,
+            snapshots: loaded.snapshots,
             store: Store::open(path.to_path_buf(), head),
             unsaved: false,
         };
@@ -118,6 +123,23 @@ impl Transcript {
         self.messages.push(message);
         self.ids.push(id);
         written
+    }
+
+    /// The entry id of the last message, the run's prompt right after it is said.
+    pub fn last_id(&self) -> Option<&str> {
+        self.ids.last().map(String::as_str)
+    }
+
+    /// Records prompt `of`'s snapshots, in memory and in the file.
+    pub fn snapshot(&mut self, of: &str, trees: Snap) -> Result<(), Unsaved> {
+        let written = self.saved(|store| store.snapshot(of, &trees));
+        self.snapshots.insert(of.to_owned(), trees);
+        written
+    }
+
+    /// The snapshots of the message at `index`, when it is a prompt that changed files.
+    pub fn snapshot_at(&self, index: usize) -> Option<&Snap> {
+        self.snapshots.get(self.ids.get(index)?)
     }
 
     /// Takes back every message from `len` on; the file keeps them off its current branch.

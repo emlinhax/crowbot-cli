@@ -1,0 +1,26 @@
+# The shadow git that keeps a project's files as they were before each prompt changed them, so
+# /undo can put them back. It lives under ~/.crowbot/snapshots/, never in the project's own .git,
+# and only inside a git work tree, whose .gitignore keeps build output and dependencies out.
+
+# git, tried in order: a name on PATH, or a path; `{NAME}` is that environment variable.
+candidates = ["git", "{ProgramFiles}/Git/cmd/git.exe", "{LOCALAPPDATA}/Programs/Git/cmd/git.exe"]
+
+# Passed as `-c` to every call, so the user's own git config cannot change what is kept: files
+# byte for byte, paths unquoted, no background gc, any owner. Hooks are pointed at the shadow's
+# own empty hooks folder in code, since only it knows where that is.
+config = ["core.autocrlf=false", "core.safecrlf=false", "core.quotepath=false",
+  "core.longpaths=true", "core.fsmonitor=false", "gc.auto=0", "safe.directory=*",
+  "advice.addEmbeddedRepo=false"]
+
+# Never asks for a password, whatever a credential helper would do.
+env = [["GIT_TERMINAL_PROMPT", "0"]]
+
+# Inherited variables that would point git at another repository than the shadow one.
+unset = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CEILING_DIRECTORIES"]
+
+# Why /undo cannot put files back; {project} is the project folder, {error} what git said.
+[text]
+no_git = "git was not found"
+not_a_repo = "{project} is not inside a git work tree"
+failed = "snapshots stopped for this session: {error}"
