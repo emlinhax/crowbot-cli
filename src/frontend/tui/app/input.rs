@@ -1,7 +1,7 @@
 //! What a key, a click or a paste does in the session: cards first, then the command popup,
 //! then the editor and its actions.
 
-use super::{Step, Tui};
+use super::{Step, Switch, Tui};
 use crate::commands::{self, Scope};
 use crate::config::limits;
 use crate::conversation::message::Part;
@@ -178,6 +178,10 @@ impl<'a> Tui<'a> {
             Next::UseModel(id) => {
                 self.panel = None;
                 self.switch_model(&id);
+            }
+            Next::Resume(path) => {
+                self.panel = None;
+                return Step::Session(Switch::Resume(path));
             }
         }
         Step::Continue

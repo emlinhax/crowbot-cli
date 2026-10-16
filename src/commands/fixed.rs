@@ -45,6 +45,11 @@ pub static NEW: Fixed = Fixed {
     effect: || Effect::NewConversation,
 };
 
+pub static RESUME: Fixed = Fixed {
+    spec: super::spec!("resume"),
+    effect: || Effect::Resume,
+};
+
 pub static QUIT: Fixed = Fixed {
     spec: super::spec!("quit"),
     effect: || Effect::Quit,

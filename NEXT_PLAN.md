@@ -229,7 +229,7 @@ only, and a running head decides the branch.
       64-bit ids; a frozen fixture with branches
 - [x] 5.2 `crowbot --continue` (TUI and headless): reopen the latest session, its recorded
       model, effort and (in the TUI) mode, and the conversation replayed
-- [ ] 5.3 `/resume`: a picker over this project's sessions, the `/models` picker made one table
+- [x] 5.3 `/resume`: a picker over this project's sessions, the `/models` picker made one table
       picker
 - [ ] 5.4 `/undo`, the conversation: a `rewind` marker, the prompt back in the editor
 - [ ] 5.5 shadow git (`io::proc::exec`, `src/snapshot/`): a snapshot before a prompt's first

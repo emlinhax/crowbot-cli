@@ -15,6 +15,11 @@ pub fn today() -> String {
     now().to_zoned(TimeZone::system()).date().to_string()
 }
 
+/// `at` on the user's clock, in strftime `format`.
+pub fn local(at: Timestamp, format: &str) -> String {
+    at.to_zoned(TimeZone::system()).strftime(format).to_string()
+}
+
 /// Whether something stored `at` is younger than `ttl`. A time ahead of `now` (written while the
 /// clock ran ahead) is not fresh, so it never holds off a refresh.
 pub fn fresh(at: Timestamp, now: Timestamp, ttl: SignedDuration) -> bool {

@@ -10,7 +10,7 @@ mod turn;
 
 use std::collections::VecDeque;
 use std::future::Future;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::ExitCode;
 use std::time::Instant;
@@ -20,7 +20,7 @@ use futures_util::future::BoxFuture;
 use futures_util::stream::FuturesUnordered;
 use tokio::sync::mpsc;
 
-use crate::agent::setup::{Continue, Setup};
+use crate::agent::setup::{Continue, Setup, going_on};
 use crate::api::models::Model;
 use crate::app::App;
 use crate::commands::Session;
@@ -62,6 +62,14 @@ struct Turns<'a> {
     emit: &'a (dyn Fn(AgentEvent) + Send + Sync),
 }
 
+/// Which conversation a switch goes to.
+enum Switch {
+    /// A fresh one, with a new session file.
+    New,
+    /// The session in this file, from where it stopped.
+    Resume(PathBuf),
+}
+
 /// What the loop should do after an input.
 enum Step<'a> {
     Continue,
@@ -69,8 +77,8 @@ enum Step<'a> {
     Quit,
     /// Start network work for the card on screen.
     Job(BoxFuture<'a, card::Done>),
-    /// Put the conversation away and start a fresh one.
-    NewConversation,
+    /// Put the conversation away and start another.
+    Session(Switch),
     /// Run beside input: a session command, or what one of them asked for.
     Work(BoxFuture<'a, Work>),
 }
@@ -276,14 +284,41 @@ impl<'a> Tui<'a> {
         }
     }
 
-    /// A new conversation: a new session file, a clean screen, nothing the model was told.
-    fn fresh(&mut self, old: Transcript) -> Transcript {
-        let transcript = Transcript::create(&self.app.paths);
+    /// Puts the conversation away and starts the one `to` names: a clean screen and nothing the
+    /// model was told, then a new session file or an earlier one read back. A file that cannot
+    /// be read leaves `old` as it was.
+    fn switch_to(&mut self, old: Transcript, to: Switch) -> Transcript {
+        let (transcript, resumed) = match to {
+            Switch::New => (Transcript::create(&self.app.paths), None),
+            Switch::Resume(path) => match Transcript::open(&path) {
+                Ok((transcript, resumed)) => (transcript, Some(resumed)),
+                Err(e) => {
+                    self.feed.notice(&format!("{e:#}"), "error");
+                    return old;
+                }
+            },
+        };
         let put_away = std::mem::replace(
             &mut self.session_file,
             transcript.file().display().to_string(),
         );
+        // Going on with a session put away earlier: it is saved once, as the last one.
+        self.earlier.retain(|path| *path != self.session_file);
         self.shared.start_over();
+        let mut gone = None;
+        if let Some(resumed) = &resumed {
+            match going_on(self.app, &self.catalog, resumed.state.as_ref(), true) {
+                Ok(going) => {
+                    if going.model.id != self.next.model.id {
+                        self.next.switch(&self.app.paths, going.model);
+                    }
+                    self.next.asked = going.effort;
+                    self.shared.set_mode(going.mode);
+                    gone = going.gone;
+                }
+                Err(e) => self.feed.notice(&format!("{e:#}"), "error"),
+            }
+        }
         // AGENTS.md may have changed (/init writes it), and the prompt is read at a start.
         self.next.reload(&self.app.paths);
         self.feed = Feed::new();
@@ -291,15 +326,23 @@ impl<'a> Tui<'a> {
         self.view = View::default();
         self.queue.clear();
         self.context_tokens = None;
+        let saved = old.path().is_some();
+        if saved {
+            self.earlier.push(put_away.clone());
+        }
         let text = &ui::get().text;
-        match old.path() {
-            Some(_) => {
-                self.feed.notice(
-                    &template::fill(&text.new_saved, &[("path", &put_away)]),
-                    "muted",
-                );
-                self.earlier.push(put_away);
+        match &resumed {
+            Some(resumed) => {
+                self.resumed(&transcript.messages, resumed, gone.as_deref());
+                if saved {
+                    let said = template::fill(&ui::get().resume.saved, &[("path", &put_away)]);
+                    self.feed.notice(&said, "muted");
+                }
             }
+            None if saved => self.feed.notice(
+                &template::fill(&text.new_saved, &[("path", &put_away)]),
+                "muted",
+            ),
             None => self.feed.notice(&text.new_conversation, "muted"),
         }
         transcript
@@ -366,8 +409,8 @@ impl<'a> Tui<'a> {
                     None => self.feed.notice(&ui::get().text.busy, "warn"),
                 },
                 // A turn holds the transcript while it runs.
-                Step::NewConversation => match transcript.take() {
-                    Some(old) => transcript = Some(self.fresh(old)),
+                Step::Session(to) => match transcript.take() {
+                    Some(old) => transcript = Some(self.switch_to(old, to)),
                     None => self.feed.notice(&ui::get().text.busy, "warn"),
                 },
             }

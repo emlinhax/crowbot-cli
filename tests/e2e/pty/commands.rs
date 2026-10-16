@@ -180,3 +180,49 @@ async fn the_command_popup_floats_over_the_conversation_without_moving_it() {
     })
     .await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn slash_resume_goes_on_with_an_earlier_session_and_keeps_this_one() {
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::sse("hello.sse"),
+        Reply::text("A second session."),
+        Reply::text("Back in the first."),
+    ]);
+    let first = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.submit("/resume");
+        s.wait_for("No earlier session");
+        s.submit("the first question");
+        s.wait_for("Hello there!");
+    })
+    .await;
+    let ended = in_session(&fake, first.sandbox, Some(ENV_KEY), |s| {
+        s.submit("another question");
+        s.wait_for("A second session.");
+        s.submit("/resume");
+        s.wait_for("╭ Sessions");
+        s.wait_for("the first question");
+        s.send(ENTER);
+        s.wait_gone("╭ Sessions");
+        s.wait_for("Going on with");
+        s.wait_for("The last conversation is saved in");
+        assert!(
+            !s.contents().contains("another question"),
+            "{}",
+            s.contents()
+        );
+        s.submit("and now");
+        s.wait_for("Back in the first.");
+    })
+    .await;
+    let third = fake.chat_bodies()[2]["messages"].to_string();
+    assert!(third.contains("the first question"), "{third}");
+    assert!(!third.contains("another question"), "{third}");
+    assert_eq!(ended.sandbox.sessions().len(), 2);
+    assert_eq!(
+        ended.exited.matches("Session saved").count(),
+        2,
+        "{}",
+        ended.exited
+    );
+}

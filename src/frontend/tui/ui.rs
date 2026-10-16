@@ -32,6 +32,7 @@ pub struct Ui {
     pub thinking: ThinkingText,
     pub status: StatusText,
     pub picker: PickerText,
+    pub resume: ResumeText,
     pub login: LoginText,
     pub replace: ReplaceText,
     pub signup: SignupText,
@@ -174,6 +175,15 @@ pub struct ForumsText {
     pub saving: String,
     pub cancel_hint: String,
     pub failed: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResumeText {
+    pub title: String,
+    pub hint: String,
+    pub none: String,
+    pub saved: String,
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,0 +1,4 @@
+name = "resume"
+summary = "Go on with an earlier session in this project; the current one stays in its file"
+usage = "resume"
+scope = ["session"]

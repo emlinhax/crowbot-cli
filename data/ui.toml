@@ -106,6 +106,13 @@ title = "Models"
 hint = "↑↓ move · → or enter select · esc close"
 switched = "Model: {model} for this session."
 
+# `/resume` inside a session: this project's earlier sessions.
+[resume]
+title = "Sessions"
+hint = "↑↓ move · → or enter go on with it · esc close"
+none = "No earlier session in this project to go on with."
+saved = "The last conversation is saved in {path}."
+
 # The popup listing commands while a `/name` is typed.
 [palette]
 title = "commands"

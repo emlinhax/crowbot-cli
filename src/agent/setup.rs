@@ -9,7 +9,7 @@ use crate::api::models::Model;
 use crate::app::App;
 use crate::config::settings::{Overrides, Settings};
 use crate::live::state::Shared;
-use crate::mode;
+use crate::mode::{self, Mode};
 use crate::models::{self, Catalog};
 use crate::session::entry::State;
 use crate::session::transcript::{Resumed, Transcript};
@@ -37,6 +37,15 @@ pub struct Continue<'a> {
     pub mode: bool,
 }
 
+/// What a session goes on with.
+pub struct Going {
+    pub model: Model,
+    pub effort: Option<String>,
+    pub mode: &'static Mode,
+    /// The model the session recorded, when crowbot no longer serves it.
+    pub gone: Option<String>,
+}
+
 impl Setup {
     pub async fn load(app: &App, from: Option<Continue<'_>>) -> anyhow::Result<Self> {
         let catalog = models::load(&app.api, &app.paths, false).await;
@@ -49,32 +58,49 @@ impl Setup {
         };
         let recorded = resumed.as_ref().and_then(|r| r.state.as_ref());
         let mode_too = from.as_ref().is_some_and(|f| f.mode);
-        let mut wanted = chosen(&app.settings, &app.flags, recorded, mode_too);
-        // A recorded model crowbot stopped serving gives way to the setting; a typed one is an
-        // error below.
-        let gone = (recorded.is_some() && catalog.get(&wanted.model).is_none())
-            .then(|| std::mem::replace(&mut wanted.model, app.settings.model.clone()))
-            .filter(|_| app.flags.model.is_none());
-        // crowbot silently swaps an unknown model id for its default, so refuse it here instead.
-        let model = catalog
-            .get(&wanted.model)
-            .cloned()
-            .ok_or_else(|| anyhow!("unknown model `{}`; see `crowbot models`", wanted.model))?;
-        let mode_id = wanted.mode.as_deref().unwrap_or(&app.settings.mode);
-        let mode = mode::get(mode_id)
-            .or_else(|| mode::get(&app.settings.mode))
-            .ok_or_else(|| anyhow!("mode was validated"))?;
+        let going = going_on(app, &catalog, recorded, mode_too)?;
         Ok(Self {
             catalog,
-            model,
-            effort: wanted.effort,
+            model: going.model,
+            effort: going.effort,
             tools: Registry::builtin(app.settings.shell.as_deref()),
-            shared: Shared::new(mode),
+            shared: Shared::new(going.mode),
             transcript,
             resumed,
-            gone,
+            gone: going.gone,
         })
     }
+}
+
+/// The model, effort and mode to go on with, from the command line, then what the session
+/// `recorded`, then the settings; the recorded mode only when `mode_too`.
+pub fn going_on(
+    app: &App,
+    catalog: &Catalog,
+    recorded: Option<&State>,
+    mode_too: bool,
+) -> anyhow::Result<Going> {
+    let mut wanted = chosen(&app.settings, &app.flags, recorded, mode_too);
+    // A recorded model crowbot stopped serving gives way to the setting; a typed one is an error
+    // below.
+    let gone = (recorded.is_some() && catalog.get(&wanted.model).is_none())
+        .then(|| std::mem::replace(&mut wanted.model, app.settings.model.clone()))
+        .filter(|_| app.flags.model.is_none());
+    // crowbot silently swaps an unknown model id for its default, so refuse it here instead.
+    let model = catalog
+        .get(&wanted.model)
+        .cloned()
+        .ok_or_else(|| anyhow!("unknown model `{}`; see `crowbot models`", wanted.model))?;
+    let mode_id = wanted.mode.as_deref().unwrap_or(&app.settings.mode);
+    let mode = mode::get(mode_id)
+        .or_else(|| mode::get(&app.settings.mode))
+        .ok_or_else(|| anyhow!("mode was validated"))?;
+    Ok(Going {
+        model,
+        effort: wanted.effort,
+        mode,
+        gone,
+    })
 }
 
 /// What to go on with: the command line's choice, else what the session recorded, else the

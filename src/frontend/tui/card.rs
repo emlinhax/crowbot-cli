@@ -35,6 +35,8 @@ pub enum Next {
     Close(Option<String>),
     /// Use this model from the next turn on; the card closes.
     UseModel(String),
+    /// Go on with the session in this file; the card closes.
+    Resume(std::path::PathBuf),
 }
 
 /// Network or store work a card waits on, run beside input so the screen stays live.

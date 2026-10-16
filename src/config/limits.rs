@@ -180,6 +180,7 @@ pub struct ToolLimits {
 #[serde(deny_unknown_fields)]
 pub struct SessionLimits {
     pub slug_chars: Limit<usize>,
+    pub resume_list: Limit<usize>,
 }
 
 #[derive(Debug, Deserialize)]

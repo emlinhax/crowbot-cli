@@ -112,6 +112,10 @@ reason = "a project's AGENTS.md is a few KiB; more would crowd every request it 
 value = 96
 reason = "a project's session folder is named from its path; this keeps the name well under filesystem limits"
 
+[session.resume_list]
+value = 50
+reason = "/resume lists this many of a project's sessions, newest first; older ones are rarely the one"
+
 [tools.max_lines]
 value = 2000
 reason = "about what a model can use from one read; more is noise that costs input tokens"

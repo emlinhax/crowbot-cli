@@ -1,6 +1,8 @@
 //! What a finished command asks the session to do, and the changes it makes for one.
 
-use super::{Step, Tui};
+use std::path::Path;
+
+use super::{Step, Switch, Tui};
 use crate::api::error::said;
 use crate::commands::{Effect, Outcome as CommandOutcome};
 use crate::frontend::tui::account::Account;
@@ -13,6 +15,7 @@ use crate::frontend::tui::toast::Toast;
 use crate::frontend::tui::ui;
 use crate::io::{clipboard, clock};
 use crate::mode;
+use crate::session;
 use crate::text::template;
 
 impl<'a> Tui<'a> {
@@ -21,7 +24,7 @@ impl<'a> Tui<'a> {
         let outcome: CommandOutcome = match done {
             Work::Catalog(catalog) => {
                 self.catalog = catalog;
-                self.panel = Some(Box::new(Picker::new(&self.catalog, &self.next.model.id)));
+                self.panel = Some(Box::new(Picker::models(&self.catalog, &self.next.model.id)));
                 return Step::Continue;
             }
             Work::Command(Err(e)) => {
@@ -65,13 +68,24 @@ impl<'a> Tui<'a> {
                     return Step::Work(command::refresh_catalog(self.app));
                 }
                 Effect::PickModel { refresh: false } => {
-                    self.panel = Some(Box::new(Picker::new(&self.catalog, &self.next.model.id)));
+                    self.panel = Some(Box::new(Picker::models(&self.catalog, &self.next.model.id)));
                 }
                 Effect::Forums { login } => match Forums::open(&self.app.paths, login.as_deref()) {
                     Ok(card) => self.panel = Some(Box::new(card)),
                     Err(e) => self.feed.notice(&format!("{e:#}"), "error"),
                 },
-                Effect::NewConversation => return Step::NewConversation,
+                Effect::NewConversation => return Step::Session(Switch::New),
+                Effect::Resume => {
+                    let current = Path::new(&self.session_file);
+                    let list: Vec<_> = session::list::list(&self.app.paths)
+                        .into_iter()
+                        .filter(|s| s.path != current)
+                        .collect();
+                    match list.is_empty() {
+                        true => self.feed.notice(&ui::get().resume.none, "muted"),
+                        false => self.panel = Some(Box::new(Picker::sessions(list))),
+                    }
+                }
                 Effect::SetEffort(id) => self.set_effort(id),
                 Effect::Send(text) => return Step::Send(text),
                 Effect::CopyLastReply => match self.feed.last_reply() {
