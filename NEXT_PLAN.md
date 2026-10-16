@@ -170,7 +170,37 @@ interstitial passed off as the article. The API stays on reqwest.
 - BoringSSL builds against musl too, so the Linux release is the static musl binary and glibc
   stays the CI check target.
 
-## M4 — Account UX in the TUI
+## M4 — Account UX in the TUI (planned 2026-10-16)
+Plan: the session shows where the account stands and handles every account step itself. Signup
+becomes a card. The bar carries the balance and the plan's allowance. The welcome follows the
+key. A rejected key offers the login card, and running out of funds says where the account
+stands. Login asks before it replaces a stored account number. An `/account` card lists and
+revokes keys, sums recent usage and toggles balance fallback. Buying plans, payments and deleting
+the account stay on the web. Each new `Me` field, endpoint or fake route lands with its first
+reader, since unread fields fail `-D warnings`.
+- [ ] 4.1 standing: `Me` reads `pass` and `spend_balance_when_dry` (optional; the two-field reply
+      still parses); one `standing()` worded in `data/commands/account.toml`, used by login,
+      `/status` and a first `/account`; the fake's `/api/me` is scriptable
+- [ ] 4.2 bar: balance and allowance items (`data/ui.toml [footer]`), refreshed at start, on a
+      key change (a counter beside the key in `Api`), at run end and at most every
+      `tui.account_refresh_secs` mid-run; never on an idle timer
+- [ ] 4.3 welcome: replaced in place when the account changes; says not logged in, key file
+      unreadable, key rejected or cannot spend
+- [ ] 4.4 login: asks before replacing a stored account number or an unreadable key file; its
+      errors go through `data/errors.toml` like the feed's
+- [ ] 4.5 errors say what follows (`session` in `data/errors.toml`): a 401 opens the login card,
+      a 402 or a spent allowance refreshes the account and shows its standing; the key is never
+      dropped on a 401
+- [ ] 4.6 signup core shared by `crowbot signup` and the session: the number is saved before
+      anything can drop it, and the proof of work stops when its job is dropped
+- [ ] 4.7 `/signup` card: asks before replacing a stored key, shows the number, confirms its last
+      four digits
+- [ ] 4.8 `/account` card: overview and keys; revoke any key but the session's own
+- [ ] 4.9 `/account`: the last `account.usage_days` of usage by model, and the balance fallback
+      toggle
+- [ ] 4.10 README and Learned
+- e2e (auth and billing flows): one local batch after 4.5, one after 4.9.
+
 ## M5 — Context + sessions (compaction, shadow-git /undo)
 ## M6 — Subagents + MCP
 ## M7 — Release (`prod` → GitHub Releases, installers)
