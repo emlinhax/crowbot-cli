@@ -1,6 +1,7 @@
 # How the client treats each error. Keys are crowbot's `error.type`, plus our own kinds for failures
 # that never reached crowbot. A hint's {api} and {chat} are the configured sites. `retry`: whether
-# to retry automatically; without it, 429 and 5xx retry and other statuses do not.
+# to retry automatically; without it, 429 and 5xx retry and other statuses do not. `session`: what
+# a session does next: `login` opens the login card, `account` shows where the account stands.
 
 [unknown]
 title = "Request failed"
@@ -32,6 +33,7 @@ title = "crowbot sent something unreadable"
 [not_logged_in]
 title = "Not logged in"
 hint = "Run `crowbot login` (or /login in a session) to pair this machine, or set CROWBOT_API_KEY."
+session = "login"
 
 [bad_request]
 title = "crowbot rejected the request"
@@ -39,6 +41,7 @@ title = "crowbot rejected the request"
 [invalid_api_key]
 title = "Your key was not accepted"
 hint = "It may have been revoked. Log in again: `crowbot login`, or /login in a session."
+session = "login"
 
 # Our own: a key refused while login checks it, so it was never in use here.
 [key_unknown]
@@ -52,10 +55,12 @@ hint = "A card refund or chargeback froze it. Contact admin@crowbot.sh."
 [insufficient_balance]
 title = "Out of funds"
 hint = "Top up at {chat}."
+session = "account"
 
 [plan_allowance_spent]
 title = "Your plan's allowance is used up for now"
 hint = "It refills over the day, or turn balance fallback back on at {chat}."
+session = "account"
 
 [model_not_found]
 title = "That model is not being served"

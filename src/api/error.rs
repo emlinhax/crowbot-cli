@@ -24,6 +24,19 @@ pub struct Entry {
     /// Whether it is worth trying again; `None` leaves that to the status.
     #[serde(default)]
     pub retry: Option<bool>,
+    /// What a session does next.
+    #[serde(default)]
+    pub session: Option<Follow>,
+}
+
+/// What follows an error in a session, beyond showing it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Follow {
+    /// Offer the login card.
+    Login,
+    /// Ask where the account stands and say it.
+    Account,
 }
 
 /// How an error reads on one line: its kind's title, then what crowbot said.
@@ -143,6 +156,9 @@ mod tests {
             low.hint().as_deref(),
             Some("Top up at https://chat.crowbot.sh.")
         );
+        assert_eq!(low.session, Some(Follow::Account));
+        let refused = Entry::of(&ErrorInfo::local("invalid_api_key", ""));
+        assert_eq!(refused.session, Some(Follow::Login));
     }
     use crate::io::http::Head;
 

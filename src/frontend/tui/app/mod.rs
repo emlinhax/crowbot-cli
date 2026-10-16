@@ -346,6 +346,9 @@ impl<'a> Tui<'a> {
                     self.cost_micros += usage.cost_micros;
                     self.context_tokens = Some(usage.input);
                 }
+                if let Some(error) = &message.error {
+                    self.account_follow(error);
+                }
                 self.account_reply_ended();
             }
             AgentEvent::RunEnd(_) => self.account_run_ended(),

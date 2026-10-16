@@ -1,6 +1,6 @@
 //! `/login` in a session, and a command typed while a turn runs.
 
-use super::harness::{ENTER, in_session};
+use super::harness::{ENTER, ESC, in_session};
 use crate::Sandbox;
 use crate::fake_crowbot::{ACCOUNT_NUMBER, ENV_KEY, Fake, Reply};
 
@@ -147,7 +147,11 @@ async fn slash_login_asks_before_replacing_a_stored_account_number() {
     let ended = in_session(&fake, sandbox, None, |s| {
         s.submit("/login");
         s.wait_for("Replace the stored key?");
-        assert!(s.contents().contains("account number …3456"), "{}", s.contents());
+        assert!(
+            s.contents().contains("account number …3456"),
+            "{}",
+            s.contents()
+        );
         s.send("2");
         s.wait_gone("Replace the stored key?");
         s.submit("/login");
@@ -160,4 +164,50 @@ async fn slash_login_asks_before_replacing_a_stored_account_number() {
     .await;
     let stored = std::fs::read_to_string(ended.sandbox.home().join("auth.json")).unwrap();
     assert!(stored.contains("\"device\""), "{stored}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_rejected_key_mid_session_offers_the_login_card() {
+    let fake = Fake::start().await;
+    fake.script([Reply::Error {
+        status: 401,
+        kind: "invalid_api_key".into(),
+        retry_after: None,
+    }]);
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.submit("hi");
+        s.wait_for("Your key was not accepted");
+        s.wait_for("Log in to crowbot");
+        s.wait_for("Pair this device");
+        s.send(ESC);
+        s.wait_gone("Log in to crowbot");
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn out_of_funds_and_a_spent_allowance_say_where_the_account_stands() {
+    let fake = Fake::start().await;
+    let refused = |kind: &str| Reply::Error {
+        status: 402,
+        kind: kind.into(),
+        retry_after: None,
+    };
+    fake.script([
+        refused("insufficient_balance"),
+        refused("plan_allowance_spent"),
+    ]);
+    fake.set_me(
+        serde_json::json!({"balance_microdollars": 0, "can_spend": false,
+        "pass": {"label": "Pro", "allowance_bp": 0, "refills": "5 hours"}}),
+    );
+    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.submit("hi");
+        s.wait_for("Out of funds");
+        s.wait_for("Balance $0.00. Plan Pro: 0% of its allowance left, full in 5 hours.");
+        s.wait_bar("Pro 0%");
+        s.submit("again");
+        s.wait_for("allowance is used up");
+    })
+    .await;
 }

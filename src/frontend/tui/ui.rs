@@ -233,6 +233,7 @@ pub struct Text {
     pub steering: String,
     pub request: String,
     pub not_logged_in: String,
+    pub key_rejected: String,
     pub declined: String,
     pub ctrl_c_again: String,
     pub unknown_command: String,

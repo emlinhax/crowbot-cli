@@ -1,5 +1,5 @@
-//! What the session knows of the account, and when it asks again. Every refresh lands here,
-//! whatever started it.
+//! What the session knows of the account, when it asks again, and what follows an account
+//! error. Every refresh lands here, whatever started it.
 
 use std::time::Instant;
 
@@ -7,11 +7,13 @@ use futures_util::future::BoxFuture;
 
 use super::Tui;
 use crate::api::account::Me;
-use crate::api::error::ApiError;
+use crate::api::error::{ApiError, Entry, Follow};
 use crate::auth;
 use crate::commands::account;
 use crate::config::limits;
+use crate::conversation::error::ErrorInfo;
 use crate::frontend::tui::command::{self, Work};
+use crate::frontend::tui::login::Login;
 use crate::frontend::tui::ui;
 use crate::io::clock;
 
@@ -26,6 +28,10 @@ pub(super) struct AccountView {
     busy: bool,
     /// When the last refresh started, for the pace mid-run.
     at: Option<Instant>,
+    /// crowbot refused the key; cleared by a refresh it accepts, or a new key.
+    rejected: bool,
+    /// The next refresh to land is shown in the conversation, not only in the bar.
+    say: bool,
 }
 
 impl AccountView {
@@ -47,6 +53,7 @@ impl<'a> Tui<'a> {
         if changes != view.changes {
             view.changes = changes;
             view.me = None;
+            view.rejected = false;
             view.due = true;
             self.feed.set_welcome(self.welcome());
         }
@@ -72,11 +79,48 @@ impl<'a> Tui<'a> {
             view.due = true;
             return;
         }
-        // A failed refresh keeps the last standing rather than blanking the bar.
-        if let Ok(me) = result {
-            view.me = Some(me);
-            self.feed.set_welcome(self.welcome());
+        let say = std::mem::take(&mut view.say);
+        match result {
+            Ok(me) => {
+                if say {
+                    self.feed.markdown(&account::standing(&me));
+                }
+                self.account.me = Some(me);
+                self.account.rejected = false;
+            }
+            Err(e) if Entry::of(&e.info).session == Some(Follow::Login) => self.reject(),
+            // Any other failure keeps the last standing rather than blanking the bar.
+            Err(_) => return,
         }
+        self.feed.set_welcome(self.welcome());
+    }
+
+    /// What follows `error` in this session: the login card for a key that does not work, where
+    /// the account stands when it ran out.
+    pub(super) fn account_follow(&mut self, error: &ErrorInfo) {
+        match Entry::of(error).session {
+            Some(Follow::Login) => {
+                self.reject();
+                self.feed.set_welcome(self.welcome());
+                if self.panel.is_none() && self.cards.is_empty() {
+                    // Opened without a number, the card has no work to start.
+                    let (card, _) = Login::open(&self.app.paths, None, self.draw_width());
+                    self.panel = Some(Box::new(card));
+                }
+            }
+            Some(Follow::Account) => {
+                self.account.due = true;
+                self.account.say = true;
+            }
+            None => {}
+        }
+    }
+
+    /// The key stays, in memory and on disk: a wrong CROWBOT_API_URL or a fault at crowbot must
+    /// not cost the only copy of an account number. A new login replaces both.
+    fn reject(&mut self) {
+        self.account.rejected = true;
+        self.account.me = None;
     }
 
     /// What the welcome warns of, if anything stands in the way of chatting.
@@ -87,6 +131,9 @@ impl<'a> Tui<'a> {
                 Err(e) => format!("{e}"),
                 Ok(_) => ui::get().text.not_logged_in.clone(),
             });
+        }
+        if self.account.rejected {
+            return Some(ui::get().text.key_rejected.clone());
         }
         let me = self.account.me.as_ref()?;
         (!me.can_spend).then(account::cannot_spend)

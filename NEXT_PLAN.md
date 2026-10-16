@@ -188,7 +188,7 @@ reader, since unread fields fail `-D warnings`.
       unreadable, key rejected or cannot spend
 - [x] 4.4 login: asks before replacing a stored account number or an unreadable key file; its
       errors go through `data/errors.toml` like the feed's
-- [ ] 4.5 errors say what follows (`session` in `data/errors.toml`): a 401 opens the login card,
+- [x] 4.5 errors say what follows (`session` in `data/errors.toml`): a 401 opens the login card,
       a 402 or a spent allowance refreshes the account and shows its standing; the key is never
       dropped on a 401
 - [ ] 4.6 signup core shared by `crowbot signup` and the session: the number is saved before
