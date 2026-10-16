@@ -156,6 +156,11 @@ impl Tui<'_> {
                 let files = restored.files.to_string();
                 let text = template::fill(&words.restored, &[("files", &files)]);
                 self.feed.notice(&text, "done");
+                if !restored.kept.is_empty() {
+                    let paths = restored.kept.join(", ");
+                    let text = template::fill(&words.kept, &[("paths", &paths)]);
+                    self.feed.notice(&text, "warn");
+                }
                 for failed in restored.failed {
                     let text = template::fill(&words.failed, &[("what", &failed)]);
                     self.feed.notice(&text, "warn");

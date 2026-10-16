@@ -185,6 +185,7 @@ pub struct UndoText {
     pub restored: String,
     pub not_restored: String,
     pub failed: String,
+    pub kept: String,
     pub off: String,
     pub nothing: String,
 }

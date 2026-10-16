@@ -43,6 +43,8 @@ pub struct Session {
     pub cost_micros: u64,
     /// Where the conversation is saved, from its first message on.
     pub file: String,
+    /// Why /undo cannot put files back; `None` when it can.
+    pub snapshots_off: Option<String>,
 }
 
 impl Ctx<'_> {

@@ -247,6 +247,7 @@ impl<'a> Tui<'a> {
             context_pct: self.context_pct(),
             cost_micros: self.cost_micros,
             file: self.session_file.clone(),
+            snapshots_off: self.shadow.off(),
         }
     }
 

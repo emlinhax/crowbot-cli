@@ -23,6 +23,8 @@ struct Text {
     effort: String,
     context: String,
     no_context: String,
+    undo_files: String,
+    undo_conversation: String,
 }
 
 pub struct Status;
@@ -76,6 +78,10 @@ fn render(
         ),
         None => session.model.clone(),
     };
+    let undo = match &session.snapshots_off {
+        None => TEXT.undo_files.clone(),
+        Some(why) => fill(&TEXT.undo_conversation, &[("why", why)]),
+    };
     let context = match session.context_pct {
         Some(pct) => fill(&TEXT.context, &[("pct", &pct.to_string())]),
         None => TEXT.no_context.clone(),
@@ -87,6 +93,7 @@ fn render(
             ("model", &model),
             ("mode", &session.mode),
             ("context", &context),
+            ("undo", &undo),
             ("cost", &units::usd_micros(session.cost_micros)),
             ("file", &session.file),
             ("project", project),
@@ -106,6 +113,7 @@ mod tests {
             context_pct: Some(12),
             cost_micros: 42_000,
             file: "/home/u/.crowbot/sessions/s.jsonl".into(),
+            snapshots_off: Some("git was not found".into()),
         }
     }
 
@@ -128,6 +136,7 @@ mod tests {
             "Mode: MANUAL",
             "Context: 12% of the window",
             "This session: about $0.042",
+            "Undo: takes back a prompt, not its files: git was not found",
             "`/home/u/.crowbot/sessions/s.jsonl`",
         ] {
             assert!(text.contains(want), "{want} missing from:\n{text}");

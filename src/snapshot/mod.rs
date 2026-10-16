@@ -1,6 +1,9 @@
 //! The project's files as they were before a prompt changed them, kept in a shadow git under
 //! crowbot's home so `/undo` can put them back (data/snapshot.toml). Only inside a git work tree:
 //! its .gitignore keeps build output and dependencies out of the copy.
+//! CEILING: the work tree only (not what bash writes elsewhere, nor nested repositories), one
+//! shadow index shared by sessions in the same project, and nothing is ever pruned. Upgrade: a
+//! per-session index file, and `git gc --prune` once a day.
 
 mod git;
 
@@ -46,6 +49,8 @@ pub struct Shadow {
 #[derive(Debug, Default)]
 pub struct Restored {
     pub files: usize,
+    /// Files changed again since the run ended, so someone else's work: left as they are.
+    pub kept: Vec<String>,
     /// Each file it could not, with why.
     pub failed: Vec<String>,
 }
@@ -113,22 +118,29 @@ impl Shadow {
         }
     }
 
-    /// Puts every file that differs between snapshots `before` and `after` (now, when `None`)
-    /// back as it was in `before`; a file `after` added is removed.
+    /// Puts every file that differs between snapshots `before` and `after` back as it was in
+    /// `before`, removing those `after` added. A file changed again since `after` is someone
+    /// else's work now and is left alone; without `after` (a run that never ended) every file
+    /// that differs from now goes back.
     pub async fn restore(&self, before: &str, after: Option<&str>) -> Result<Restored, String> {
         let git = self.on().ok_or_else(|| self.off().unwrap_or_default())?;
-        let after = match after {
-            Some(after) => after.to_owned(),
-            None => self
-                .take()
-                .await
-                .ok_or_else(|| self.off().unwrap_or_default())?,
+        let now = self
+            .take()
+            .await
+            .ok_or_else(|| self.off().unwrap_or_default())?;
+        let (changes, since) = match after {
+            Some(after) => (
+                changes(git, before, after).await?,
+                changes(git, after, &now).await?,
+            ),
+            None => (changes(git, before, &now).await?, Vec::new()),
         };
-        let changes = changes(git, before, &after).await?;
         let mut restored = Restored::default();
         let mut back = Vec::new();
         for change in changes {
-            if change.added {
+            if since.iter().any(|c| c.path == change.path) {
+                restored.kept.push(change.path);
+            } else if change.added {
                 match io::fs::remove(&git.work.join(&change.path)) {
                     Ok(_) => restored.files += 1,
                     Err(e) => restored.failed.push(format!("{}: {e}", change.path)),
@@ -289,13 +301,16 @@ mod tests {
         .unwrap();
         let after = shadow.take().await.unwrap();
 
+        // Someone edits one of them after the run: theirs now, so it stays.
+        write(&paths, "with space *.txt", b"edited by hand");
         let restored = shadow.restore(&before, Some(&after)).await.unwrap();
-        assert_eq!((restored.files, restored.failed.len()), (4, 0));
+        assert_eq!((restored.files, restored.failed.len()), (3, 0));
+        assert_eq!(restored.kept, ["with space *.txt"]);
         assert_eq!(
             read(&paths, "kept.txt").unwrap(),
             b"line one\r\nline two\r\n"
         );
-        assert_eq!(read(&paths, "with space *.txt").unwrap(), b"odd name");
+        assert_eq!(read(&paths, "with space *.txt").unwrap(), b"edited by hand");
         assert_eq!(read(&paths, "gone.txt").unwrap(), b"to be deleted");
         assert_eq!(read(&paths, "new.txt"), None);
         assert!(io::fs::exists(&paths.home.join("auth.json")));

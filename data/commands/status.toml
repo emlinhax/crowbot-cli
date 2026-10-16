@@ -11,6 +11,7 @@ body = """
 - Mode: {mode}
 - Context: {context}
 - This session: about {cost}
+- Undo: {undo}
 - Session file: `{file}`
 - Project: `{project}`"""
 balance = "{login} {standing}"
@@ -18,3 +19,5 @@ balance_failed = "{login} The balance did not load: {error}"
 effort = "{model}, effort {effort}"
 context = "{pct}% of the window, as of the last request"
 no_context = "nothing sent yet"
+undo_files = "takes back a prompt and the files it changed"
+undo_conversation = "takes back a prompt, not its files: {why}"

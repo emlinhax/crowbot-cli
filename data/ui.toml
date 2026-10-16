@@ -119,6 +119,7 @@ done = "Took back the last prompt and what followed it; it is in the editor to c
 restored = "{files} files it changed are back as they were."
 not_restored = "Files it changed were not restored: {why}."
 failed = "Could not restore {what}"
+kept = "Left as they are, since they changed after that reply: {paths}"
 off = "/undo will not restore files from here on: {why}."
 nothing = "Nothing to take back yet."
 
