@@ -252,7 +252,7 @@ async fn slash_compact_sends_a_summary_and_the_recent_turns_word_for_word() {
         s.submit("/compact");
         s.wait_for("Nothing to summarise yet");
         s.submit("read the files");
-        s.wait_for("Read all three.");
+        s.wait_done("Read all three.");
         s.submit("/compact");
         s.wait_for("Summarised 3 earlier messages");
         s.submit("go on");

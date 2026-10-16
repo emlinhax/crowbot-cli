@@ -205,6 +205,15 @@ impl Session {
         assert!(sent, "no OSC 52 carrying {text:?}");
     }
 
+    /// Until `text` shows and the run that wrote it has ended: its working line goes only once
+    /// the turn has handed the conversation back (its last snapshot taken), and a command sent
+    /// before then finds the session busy.
+    #[track_caller]
+    pub fn wait_done(&mut self, text: &str) {
+        self.wait_for(text);
+        self.wait_gone("esc to interrupt");
+    }
+
     /// Until one poll interval passes with no new output: the screen has settled.
     #[track_caller]
     pub fn wait_quiet(&mut self) {

@@ -113,7 +113,7 @@ async fn undo_takes_back_the_last_prompt_for_good() {
         s.submit("first");
         s.wait_for("The first answer.");
         s.submit("second");
-        s.wait_for("An answer to take back.");
+        s.wait_done("An answer to take back.");
         s.submit("/undo");
         s.wait_for("Took back the last prompt");
         assert!(
@@ -169,7 +169,7 @@ async fn undo_puts_back_the_files_the_prompt_changed() {
     }
     let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.submit("change things");
-        s.wait_for("Changed them.");
+        s.wait_done("Changed them.");
         s.submit("/undo");
         s.wait_for("2 files it changed are back as they were.");
         // The prompt is back in the editor; clear it to quit.
@@ -196,7 +196,7 @@ async fn retry_sends_the_last_prompt_again_without_its_first_reply() {
     fake.script([Reply::text("A first try."), Reply::text("A second try.")]);
     let ended = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.submit("try this");
-        s.wait_for("A first try.");
+        s.wait_done("A first try.");
         s.submit("/retry");
         s.wait_for("A second try.");
         assert!(!s.contents().contains("A first try."), "{}", s.contents());
@@ -235,7 +235,7 @@ async fn undo_puts_back_what_a_subagent_changed() {
     }
     let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.submit("make b");
-        s.wait_for("The subagent made it.");
+        s.wait_done("The subagent made it.");
         s.submit("/undo");
         s.wait_for("1 file it changed is back as it was.");
         s.send(CTRL_C);
