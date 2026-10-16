@@ -181,7 +181,10 @@ impl Shadow {
             io::fs::make_dir(&git.dir).map_err(|e| e.to_string())?;
             git.run(&args(&["init", "--quiet"])).await?;
         }
-        if let Ok(home) = paths.home.strip_prefix(&git.work) {
+        // git names the work tree resolved (macOS's /private/var, Windows' long names), which
+        // the home as configured may not be.
+        let (home, work) = (io::fs::canonical(&paths.home), io::fs::canonical(&git.work));
+        if let Ok(home) = home.strip_prefix(&work) {
             let exclude = format!("/{}/\n", io::fs::slashed(home));
             io::fs::write_atomic(
                 &git.dir.join("info").join("exclude"),
@@ -281,14 +284,14 @@ mod tests {
             return;
         };
         write(&paths, "kept.txt", b"line one\r\nline two\r\n");
-        write(&paths, "with space *.txt", b"odd name");
+        write(&paths, "with space [x].txt", b"odd name");
         write(&paths, "gone.txt", b"to be deleted");
         let shadow = Shadow::open(&paths).await;
         assert_eq!(shadow.off(), None);
         let before = shadow.take().await.unwrap();
 
         write(&paths, "kept.txt", b"changed");
-        write(&paths, "with space *.txt", b"changed too");
+        write(&paths, "with space [x].txt", b"changed too");
         write(&paths, "new.txt", b"added");
         io::fs::remove(&paths.project.join("gone.txt")).unwrap();
         // The home inside the project is never part of a snapshot.
@@ -302,20 +305,56 @@ mod tests {
         let after = shadow.take().await.unwrap();
 
         // Someone edits one of them after the run: theirs now, so it stays.
-        write(&paths, "with space *.txt", b"edited by hand");
+        write(&paths, "with space [x].txt", b"edited by hand");
         let restored = shadow.restore(&before, Some(&after)).await.unwrap();
         assert_eq!((restored.files, restored.failed.len()), (3, 0));
-        assert_eq!(restored.kept, ["with space *.txt"]);
+        assert_eq!(restored.kept, ["with space [x].txt"]);
         assert_eq!(
             read(&paths, "kept.txt").unwrap(),
             b"line one\r\nline two\r\n"
         );
-        assert_eq!(read(&paths, "with space *.txt").unwrap(), b"edited by hand");
+        assert_eq!(
+            read(&paths, "with space [x].txt").unwrap(),
+            b"edited by hand"
+        );
         assert_eq!(read(&paths, "gone.txt").unwrap(), b"to be deleted");
         assert_eq!(read(&paths, "new.txt"), None);
         assert!(io::fs::exists(&paths.home.join("auth.json")));
         let shadow_dir = paths.snapshots_dir(&paths.project);
         assert!(io::fs::exists(&shadow_dir.join("info/exclude")));
+    }
+
+    /// macOS's temp folders sit behind a link (/var is /private/var) and Windows' behind short
+    /// names, while git names the work tree resolved: crowbot's home inside it stays out all
+    /// the same.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_project_reached_through_a_link_still_keeps_the_home_out() {
+        let Some((dir, real)) = project().await else {
+            return;
+        };
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&real.project, &link).unwrap();
+        let paths = Paths::at(link.join(".crowbot-home"), link);
+        write(&paths, "a.txt", b"one");
+        let shadow = Shadow::open(&paths).await;
+        let before = shadow.take().await.unwrap();
+        io::fs::make_dir(&paths.home).unwrap();
+        io::fs::write_atomic(
+            &paths.home.join("auth.json"),
+            b"{}",
+            io::fs::Access::Private,
+        )
+        .unwrap();
+        write(&paths, "a.txt", b"two");
+        let after = shadow.take().await.unwrap();
+        let restored = shadow.restore(&before, Some(&after)).await.unwrap();
+        assert_eq!(
+            (restored.files, restored.failed.len()),
+            (1, 0),
+            "{restored:?}"
+        );
+        assert!(io::fs::exists(&paths.home.join("auth.json")));
     }
 
     #[tokio::test]
