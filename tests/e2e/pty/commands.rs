@@ -1,5 +1,7 @@
 //! Session commands and the command popup.
 
+use serde_json::json;
+
 use super::harness::{BACKSPACE, DOWN, ENTER, LEFT, TAB, in_session};
 use crate::Sandbox;
 use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
@@ -63,12 +65,17 @@ async fn slash_clear_starts_a_fresh_conversation_in_a_new_file() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn slash_status_shows_the_balance_model_and_mode() {
+async fn slash_status_shows_the_balance_plan_model_and_mode() {
     let fake = Fake::start().await;
+    fake.set_me(
+        json!({"balance_microdollars": 12_300_000, "can_spend": true,
+        "pass": {"label": "Pro", "allowance_bp": 6375, "refills": "3 hours"}}),
+    );
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.submit("/status");
         s.wait_for("Balance $12.30");
         let screen = s.contents();
+        assert!(screen.contains("Plan Pro: 63%"), "{screen}");
         assert!(screen.contains("Model: crow-2"), "{screen}");
         assert!(screen.contains("Mode: MANUAL"), "{screen}");
         assert!(screen.contains("nothing sent yet"), "{screen}");

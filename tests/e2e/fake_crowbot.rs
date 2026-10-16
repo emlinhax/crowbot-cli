@@ -54,6 +54,8 @@ struct Inner {
     pair_collected: bool,
     /// Signups to refuse with 428 before accepting one.
     stale_proofs: usize,
+    /// What `/api/me` answers a known key; `None` is a funded account with no plan.
+    me: Option<Value>,
 }
 
 type Shared = Arc<Mutex<Inner>>;
@@ -167,6 +169,11 @@ impl Fake {
     /// Polls answer these, in order, before the pairing is approved.
     pub fn pair_polls(&self, polls: impl IntoIterator<Item = PairPoll>) {
         self.inner.lock().unwrap().pair_polls.extend(polls);
+    }
+
+    /// What `/api/me` answers from now on, as crowbot words it.
+    pub fn set_me(&self, me: Value) {
+        self.inner.lock().unwrap().me = Some(me);
     }
 
     pub fn stale_proofs(&self, count: usize) {
@@ -330,11 +337,13 @@ async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> 
     }
 }
 
-async fn me(headers: HeaderMap) -> Response {
+async fn me(State(inner): State<Shared>, headers: HeaderMap) -> Response {
     if !authorized(&headers) {
         return error(401, "invalid_api_key", None);
     }
-    axum::Json(json!({"balance_microdollars": 12_300_000, "can_spend": true})).into_response()
+    let me = inner.lock().unwrap().me.clone();
+    axum::Json(me.unwrap_or_else(|| json!({"balance_microdollars": 12_300_000, "can_spend": true})))
+        .into_response()
 }
 
 async fn pair_start() -> impl IntoResponse {

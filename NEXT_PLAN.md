@@ -178,7 +178,7 @@ stands. Login asks before it replaces a stored account number. An `/account` car
 revokes keys, sums recent usage and toggles balance fallback. Buying plans, payments and deleting
 the account stay on the web. Each new `Me` field, endpoint or fake route lands with its first
 reader, since unread fields fail `-D warnings`.
-- [ ] 4.1 standing: `Me` reads `pass` and `spend_balance_when_dry` (optional; the two-field reply
+- [x] 4.1 standing: `Me` reads `pass` and `spend_balance_when_dry` (optional; the two-field reply
       still parses); one `standing()` worded in `data/commands/account.toml`, used by login,
       `/status` and a first `/account`; the fake's `/api/me` is scriptable
 - [ ] 4.2 bar: balance and allowance items (`data/ui.toml [footer]`), refreshed at start, on a

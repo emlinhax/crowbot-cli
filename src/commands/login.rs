@@ -3,15 +3,13 @@ use std::sync::LazyLock;
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
-use super::{Command, Ctx, Effect, Outcome, Scope, Spec};
-use crate::api::endpoints;
+use super::{Command, Ctx, Effect, Outcome, Scope, Spec, account};
 use crate::api::pair;
 use crate::app::App;
 use crate::auth::{self, KeyKind, LoggedIn, Origin};
 use crate::data;
 use crate::io::term;
 use crate::text::template::fill;
-use crate::text::units;
 
 static SPEC: LazyLock<Spec> = super::spec!("login");
 static TEXT: LazyLock<Text> = data::load!("commands/login.toml", "text");
@@ -21,7 +19,6 @@ static TEXT: LazyLock<Text> = data::load!("commands/login.toml", "text");
 struct Text {
     pair: String,
     logged_in: String,
-    cannot_spend: String,
     status: String,
     from_env: String,
     env_note: String,
@@ -81,21 +78,14 @@ async fn pair_here(app: &App) -> anyhow::Result<String> {
 
 /// What a successful login says, on the command line and in a session alike.
 pub fn logged_in(done: &LoggedIn) -> String {
-    let balance = units::usd_micros(done.me.balance_microdollars);
     let mut out = fill(
         &TEXT.logged_in,
         &[
             ("what", what(done.kind)),
             ("hint", &done.hint),
-            ("balance", &balance),
+            ("standing", &account::standing(&done.me)),
         ],
     );
-    if !done.me.can_spend {
-        out.push_str(&fill(
-            &TEXT.cannot_spend,
-            &[("chat", &endpoints::origin("chat"))],
-        ));
-    }
     out.push_str(env_note());
     out
 }
@@ -139,6 +129,7 @@ mod tests {
         let me = Me {
             balance_microdollars: 12_300_000,
             can_spend: false,
+            ..Me::default()
         };
         let done = LoggedIn {
             kind: KeyKind::Device,

@@ -1,6 +1,7 @@
 //! Commands: `crowbot <name>` on the command line, `/name` inside a session. One spec per
 //! command, one line in `COMMANDS`; where each works is data (`scope` in its spec).
 
+pub mod account;
 mod battery;
 mod effort;
 mod fixed;
@@ -135,6 +136,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &logout::Logout,
     &signup::Signup,
     &status::Status,
+    &account::Account,
     &update::Update,
     &install::Install,
     &uninstall::Uninstall,

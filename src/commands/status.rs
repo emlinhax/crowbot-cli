@@ -3,6 +3,7 @@ use std::sync::LazyLock;
 use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
+use super::account::standing;
 use super::{Command, Ctx, Outcome, Session, Spec, login};
 use crate::api::account::{self, Me};
 use crate::api::error::ApiError;
@@ -61,10 +62,7 @@ fn render(
         None => login.to_owned(),
         Some(Ok(me)) => fill(
             &TEXT.balance,
-            &[
-                ("login", login),
-                ("balance", &units::usd_micros(me.balance_microdollars)),
-            ],
+            &[("login", login), ("standing", &standing(&me))],
         ),
         Some(Err(e)) => fill(
             &TEXT.balance_failed,
@@ -116,6 +114,7 @@ mod tests {
         let me = Me {
             balance_microdollars: 12_300_000,
             can_spend: true,
+            ..Me::default()
         };
         let text = render(
             &session(),

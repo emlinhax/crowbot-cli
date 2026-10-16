@@ -13,7 +13,7 @@ body = """
 - This session: about {cost}
 - Session file: `{file}`
 - Project: `{project}`"""
-balance = "{login} Balance {balance}."
+balance = "{login} {standing}"
 balance_failed = "{login} The balance did not load: {error}"
 effort = "{model}, effort {effort}"
 context = "{pct}% of the window, as of the last request"
