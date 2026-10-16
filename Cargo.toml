@@ -13,6 +13,10 @@ rust-version = "1.98"
 description = "Terminal coding agent for crowbot.sh"
 license = "MIT OR Apache-2.0"
 publish = false
+# `cargo run` runs crowbot, not the test server below.
+default-run = "crowbot"
+# Every test target is listed below; tests/fake_mcp/ is a program, not a test.
+autotests = false
 
 [dependencies]
 anyhow = "1.0.104"
@@ -42,7 +46,7 @@ similar = "3.2.0"
 syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "parsing", "regex-fancy"] }
 thiserror = "2.0.21"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "signal", "process"] }
-tokio-util = "0.7.19"
+tokio-util = { version = "0.7.19", features = ["codec"] }
 toml = "1.1.6"
 unicode-segmentation = "1.13.3"
 unicode-width = "0.2.2"
@@ -55,6 +59,13 @@ portable-pty = "0.9.0"
 tempfile = "3.27.0"
 tokio = { version = "1.53.1", features = ["net"] }
 vt100 = "0.16.2"
+
+# A stand-in MCP server for the e2e suite; release builds ship only `crowbot`.
+[[bin]]
+name = "crowbot-fake-mcp"
+path = "tests/fake_mcp/main.rs"
+test = false
+doc = false
 
 [[test]]
 name = "e2e"

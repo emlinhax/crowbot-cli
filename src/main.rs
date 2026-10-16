@@ -13,6 +13,7 @@ mod forums;
 mod frontend;
 mod io;
 mod live;
+mod mcp;
 mod mode;
 mod models;
 mod permission;

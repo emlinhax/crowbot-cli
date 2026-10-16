@@ -9,6 +9,7 @@ use crate::api::models::Model;
 use crate::app::App;
 use crate::config::settings::{Overrides, Settings};
 use crate::live::state::Shared;
+use crate::mcp::Servers;
 use crate::mode::{self, Mode};
 use crate::models::{self, Catalog};
 use crate::session::entry::State;
@@ -30,6 +31,8 @@ pub struct Setup {
     pub gone: Option<String>,
     /// The project's files before each prompt changed them, for /undo.
     pub shadow: Shadow,
+    /// The MCP servers config.toml names, started.
+    pub mcp: Servers,
 }
 
 /// A session that goes on from a file.
@@ -51,7 +54,13 @@ pub struct Going {
 
 impl Setup {
     pub async fn load(app: &App, from: Option<Continue<'_>>) -> anyhow::Result<Self> {
-        let catalog = models::load(&app.api, &app.paths, false).await;
+        // CEILING: a slow server holds the first screen for up to `mcp.start_secs`. Upgrade:
+        // start servers behind the welcome screen and hold only the first request for them.
+        let (catalog, shadow, mcp) = tokio::join!(
+            models::load(&app.api, &app.paths, false),
+            Shadow::open(&app.paths),
+            Servers::start(&app.settings, &app.paths),
+        );
         let (transcript, resumed) = match &from {
             Some(from) => {
                 let (transcript, resumed) = Transcript::open(from.path)?;
@@ -71,7 +80,8 @@ impl Setup {
             transcript,
             resumed,
             gone: going.gone,
-            shadow: Shadow::open(&app.paths).await,
+            shadow,
+            mcp,
         })
     }
 }

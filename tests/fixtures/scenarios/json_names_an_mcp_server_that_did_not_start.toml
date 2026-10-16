@@ -1,0 +1,10 @@
+description = "--json reports a server that did not start as an `mcp` event before the run"
+args = ["--json", "hi"]
+home_files = { "config.toml" = "[mcp.gone]\ncommand = 'no-such-mcp-server'\n" }
+
+[[reply]]
+text = "Hello."
+
+[expect]
+exit = 0
+stdout_contains = ['{"type":"mcp","server":"gone","note":"no-such-mcp-server was not found"}']

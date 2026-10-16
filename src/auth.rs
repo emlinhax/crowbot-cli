@@ -56,6 +56,19 @@ pub fn load(paths: &Paths) -> anyhow::Result<Option<Key>> {
 /// The variable a key in the environment comes from.
 pub const ENV_VAR: &str = "CROWBOT_API_KEY";
 
+static HIDDEN: std::sync::LazyLock<Hidden> = crate::data::load!("hidden_env.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Hidden {
+    names: Vec<String>,
+}
+
+/// Variables no program crowbot starts may inherit (data/hidden_env.toml): its key among them.
+pub fn hidden_env() -> &'static [String] {
+    &HIDDEN.names
+}
+
 /// Whether `CROWBOT_API_KEY` is set, and so used over any stored key.
 pub fn env_shadows() -> bool {
     from_env().is_some()
@@ -250,5 +263,10 @@ mod tests {
             assert!(err.contains(&paths.auth().display().to_string()), "{err}");
             assert!(err.contains("crowbot logout"), "{err}");
         }
+    }
+
+    #[test]
+    fn no_program_crowbot_starts_inherits_its_key() {
+        assert!(hidden_env().iter().any(|v| v == ENV_VAR));
     }
 }

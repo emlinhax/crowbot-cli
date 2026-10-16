@@ -75,6 +75,7 @@ pub struct Limits {
     pub snapshot: SnapshotLimits,
     pub compaction: CompactionLimits,
     pub subagent: SubagentLimits,
+    pub mcp: McpLimits,
     pub agent: AgentLimits,
     pub session: SessionLimits,
     pub tools: ToolLimits,
@@ -129,6 +130,17 @@ pub struct RetryLimits {
 pub struct PairLimits {
     pub poll_interval_ms: Limit<u64>,
     pub backoff_ms: Limit<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpLimits {
+    pub start_secs: Limit<u64>,
+    pub stop_ms: Limit<u64>,
+    pub line_bytes: Limit<usize>,
+    pub stderr_bytes: Limit<usize>,
+    pub list_pages: Limit<usize>,
+    pub server_name_chars: Limit<usize>,
 }
 
 #[derive(Debug, Deserialize)]

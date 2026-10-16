@@ -315,9 +315,11 @@ impl Feed {
                     task.step = Some((name.clone(), arguments.clone()));
                 }
             }
+            // The session says an MCP server failed when it starts, not as an event.
             AgentEvent::Retry { .. }
             | AgentEvent::Prompt { .. }
-            | AgentEvent::SnapshotOff { .. } => {}
+            | AgentEvent::SnapshotOff { .. }
+            | AgentEvent::Mcp { .. } => {}
         }
     }
 

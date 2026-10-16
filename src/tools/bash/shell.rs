@@ -5,6 +5,7 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
+use crate::auth;
 use crate::data;
 use crate::io;
 use crate::text::template;
@@ -16,7 +17,6 @@ static CATALOG: LazyLock<Catalog> = data::load!("shells.toml");
 struct Catalog {
     shell: Vec<Entry>,
     fallback: Fallback,
-    unset: Vec<String>,
     env: std::collections::BTreeMap<String, String>,
 }
 
@@ -67,7 +67,7 @@ pub fn resolve(configured: Option<&str>) -> Shell {
         .iter()
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    let unset = CATALOG.unset.clone();
+    let unset = auth::hidden_env().to_vec();
     let entries: Vec<&Entry> = CATALOG.shell.iter().filter(|e| e.os == os).collect();
 
     if let Some(configured) = configured {
@@ -134,8 +134,7 @@ mod tests {
 
     #[test]
     fn commands_never_inherit_crowbots_key() {
-        assert!(CATALOG.unset.iter().any(|v| v == crate::auth::ENV_VAR));
-        assert_eq!(resolve(None).unset, CATALOG.unset);
+        assert_eq!(resolve(None).unset, auth::hidden_env());
     }
 
     #[test]

@@ -1,0 +1,15 @@
+# MCP: servers the user names in config.toml under [mcp.<name>], started with the session, whose
+# tools join crowbot's. The protocol versions crowbot asks for and accepts, how it introduces
+# itself, and what it says of a server.
+protocol = "2025-06-18"
+accepted = ["2024-11-05", "2025-03-26", "2025-06-18"]
+client = "crowbot"
+
+[text]
+# Why a server is not running; shown once when the session starts, and in /status.
+not_found = "{command} was not found"
+no_start = "it did not start: {error}"
+timed_out = "it did not answer within {secs}s"
+version = "it speaks MCP {version}; crowbot speaks {accepted}"
+closed = "it stopped"
+said = "{why}. It printed: {stderr}"

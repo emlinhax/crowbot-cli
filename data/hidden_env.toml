@@ -1,0 +1,3 @@
+# Variables no program crowbot starts may inherit, the model's commands and MCP servers alike:
+# none of them may read crowbot's own key out of the environment.
+names = ["CROWBOT_API_KEY"]

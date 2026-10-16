@@ -2,8 +2,7 @@
 # config.toml overrides the list. `{NAME}` in a candidate is that environment variable; a
 # candidate naming an unset one is skipped. `note` tells the model which shell it has.
 
-# Removed from every command: the model must never read crowbot's own key out of the environment.
-unset = ["CROWBOT_API_KEY"]
+# What every command must not inherit is data/hidden_env.toml.
 
 [[shell]]
 os = "windows"

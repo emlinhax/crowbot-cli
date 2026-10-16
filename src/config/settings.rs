@@ -30,6 +30,9 @@ pub struct Settings {
     /// A shell to run commands in, overriding the search in data/shells.toml.
     #[serde(default)]
     pub shell: Option<String>,
+    /// MCP servers to start with the session, by name.
+    #[serde(default, deserialize_with = "crate::mcp::config::servers")]
+    pub mcp: std::collections::BTreeMap<String, crate::mcp::config::Server>,
     /// What an untrusted project's config asked for and did not get.
     #[serde(skip)]
     pub untrusted: Option<trust::Untrusted>,
@@ -256,6 +259,49 @@ mod tests {
         assert!(keys[0].contains("command = \"npx\""), "{keys:?}");
         assert!(keys[0].contains("GITHUB_TOKEN = …"), "{keys:?}");
         assert!(!keys[0].contains("sekret"), "{keys:?}");
+    }
+
+    /// Settings from a user config `user` and a trusted project's `project`.
+    fn layered(user: &str, project: &str) -> anyhow::Result<Settings> {
+        let (_root, paths) = project_with(project);
+        io::fs::write_atomic(
+            &paths.user_config(),
+            user.as_bytes(),
+            io::fs::Access::Shared,
+        )
+        .unwrap();
+        trust::trust(&paths).unwrap();
+        load(&paths, &Overrides::default())
+    }
+
+    #[test]
+    fn mcp_servers_merge_by_name_and_a_later_layer_turns_one_off() {
+        let user =
+            "[mcp.fake]\ncommand = 'fake-mcp'\nenv = { A = '1' }\n[mcp.other]\ncommand = 'x'";
+        let settings = layered(
+            user,
+            "[mcp.fake]\nenv = { B = '2' }\n[mcp.other]\nenabled = false",
+        )
+        .unwrap();
+        let fake = &settings.mcp["fake"];
+        assert_eq!(fake.command, "fake-mcp");
+        assert_eq!(fake.env.len(), 2);
+        assert!(!settings.mcp["other"].enabled);
+    }
+
+    #[test]
+    fn an_mcp_server_needs_a_command_and_a_name_its_tools_can_carry() {
+        for (config, says) in [
+            ("[mcp.fake]\nargs = ['x']", "needs a `command`"),
+            ("[mcp.'two words']\ncommand = 'x'", "a server's name"),
+            ("[mcp.a__b]\ncommand = 'x'", "without `__`"),
+        ] {
+            let err = format!("{:#}", layered("", config).unwrap_err());
+            assert!(
+                err.contains(says) && err.contains("config.toml"),
+                "{config}: {err}"
+            );
+        }
     }
 
     #[test]

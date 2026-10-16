@@ -10,6 +10,8 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use super::group::{self, Tree};
+
 pub struct ShellCommand<'a> {
     pub program: &'a Path,
     /// Arguments before the command line, e.g. `-c`.
@@ -51,16 +53,7 @@ pub async fn run(
     for name in cmd.unset {
         command.env_remove(name);
     }
-    #[cfg(windows)]
-    {
-        use windows_sys::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW};
-        // No console window, and our own Ctrl+C is not delivered to the child.
-        command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP);
-    }
-    // CEILING: a child that calls setsid or runs under `set -m` leaves the group and survives;
-    // closing that needs PR_SET_CHILD_SUBREAPER or a cgroup.
-    #[cfg(unix)]
-    command.process_group(0);
+    group::contain(&mut command);
 
     let mut child = command.spawn()?;
     let tree = Tree::adopt(&child)?;
@@ -107,94 +100,6 @@ async fn pump(mut from: impl tokio::io::AsyncRead + Unpin, to: mpsc::UnboundedSe
     while let Ok(n) = from.read(&mut buf).await {
         if n == 0 || to.send(buf[..n].to_vec()).is_err() {
             break;
-        }
-    }
-}
-
-/// Every process a command started. Dropping it kills them all.
-struct Tree {
-    #[cfg(windows)]
-    job: windows_sys::Win32::Foundation::HANDLE,
-    #[cfg(unix)]
-    group: i32,
-}
-
-// SAFETY: the job handle is only used through thread-safe Win32 calls.
-#[cfg(windows)]
-unsafe impl Send for Tree {}
-
-impl Tree {
-    #[cfg(windows)]
-    fn adopt(child: &tokio::process::Child) -> io::Result<Self> {
-        use windows_sys::Win32::System::JobObjects::{
-            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
-            SetInformationJobObject,
-        };
-        // SAFETY: plain Win32 calls on a handle we own; the struct is zeroed as the API expects.
-        unsafe {
-            let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
-            if job.is_null() {
-                return Err(io::Error::last_os_error());
-            }
-            // From here every early return closes the job, and the caller's `?` drops the
-            // child, which `kill_on_drop` ends: nothing runs untracked.
-            let tree = Self { job };
-            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            if SetInformationJobObject(
-                job,
-                JobObjectExtendedLimitInformation,
-                (&raw const info).cast(),
-                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-            ) == 0
-            {
-                return Err(io::Error::last_os_error());
-            }
-            // CEILING: a grandchild spawned before this line escapes the job; closing that gap
-            // needs CREATE_SUSPENDED and resuming the main thread after assignment.
-            let handle = child.raw_handle().ok_or_else(untracked)?;
-            if AssignProcessToJobObject(job, handle) == 0 {
-                return Err(io::Error::last_os_error());
-            }
-            Ok(tree)
-        }
-    }
-
-    #[cfg(unix)]
-    fn adopt(child: &tokio::process::Child) -> io::Result<Self> {
-        let group = child
-            .id()
-            .and_then(|id| i32::try_from(id).ok())
-            .ok_or_else(untracked)?;
-        Ok(Self { group })
-    }
-
-    fn kill(&self) {
-        #[cfg(windows)]
-        // SAFETY: the job handle stays valid until drop.
-        unsafe {
-            windows_sys::Win32::System::JobObjects::TerminateJobObject(self.job, 1);
-        }
-        #[cfg(unix)]
-        // SAFETY: signalling a process group we created; failure means it is already gone.
-        unsafe {
-            libc::killpg(self.group, libc::SIGKILL);
-        }
-    }
-}
-
-fn untracked() -> io::Error {
-    io::Error::other("the command exited before it could be tracked")
-}
-
-impl Drop for Tree {
-    fn drop(&mut self) {
-        self.kill();
-        #[cfg(windows)]
-        // SAFETY: closing the handle we created, once.
-        unsafe {
-            windows_sys::Win32::Foundation::CloseHandle(self.job);
         }
     }
 }

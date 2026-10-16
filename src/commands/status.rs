@@ -8,8 +8,9 @@ use super::{Command, Ctx, Outcome, Session, Spec, login};
 use crate::api::account::{self, Me};
 use crate::api::error::ApiError;
 use crate::data;
+use crate::mcp::State;
 use crate::text::template::fill;
-use crate::text::units;
+use crate::text::units::{self, Plural};
 
 static SPEC: LazyLock<Spec> = super::spec!("status");
 static TEXT: LazyLock<Text> = data::load!("commands/status.toml", "text");
@@ -25,6 +26,10 @@ struct Text {
     no_context: String,
     undo_files: String,
     undo_conversation: String,
+    mcp_none: String,
+    mcp_running: Plural,
+    mcp_failed: String,
+    mcp_off: String,
 }
 
 pub struct Status;
@@ -82,6 +87,7 @@ fn render(
         None => TEXT.undo_files.clone(),
         Some(why) => fill(&TEXT.undo_conversation, &[("why", why)]),
     };
+    let mcp = servers(&session.mcp);
     let context = match session.context_pct {
         Some(pct) => fill(&TEXT.context, &[("pct", &pct.to_string())]),
         None => TEXT.no_context.clone(),
@@ -94,11 +100,28 @@ fn render(
             ("mode", &session.mode),
             ("context", &context),
             ("undo", &undo),
+            ("mcp", &mcp),
             ("cost", &units::usd_micros(session.cost_micros)),
             ("file", &session.file),
             ("project", project),
         ],
     )
+}
+
+/// Each MCP server and how it stands, on one line.
+fn servers(servers: &[(String, State)]) -> String {
+    if servers.is_empty() {
+        return TEXT.mcp_none.clone();
+    }
+    let each: Vec<String> = servers
+        .iter()
+        .map(|(name, state)| match state {
+            State::Running { tools } => fill(&TEXT.mcp_running.of(*tools), &[("name", name)]),
+            State::Failed(why) => fill(&TEXT.mcp_failed, &[("name", name), ("why", why)]),
+            State::Off => fill(&TEXT.mcp_off, &[("name", name)]),
+        })
+        .collect();
+    each.join("; ")
 }
 
 #[cfg(test)]
@@ -114,6 +137,13 @@ mod tests {
             cost_micros: 42_000,
             file: "/home/u/.crowbot/sessions/s.jsonl".into(),
             snapshots_off: Some("git was not found".into()),
+            mcp: vec![
+                ("fake".into(), State::Running { tools: 3 }),
+                (
+                    "gone".into(),
+                    State::Failed("gone-mcp was not found".into()),
+                ),
+            ],
         }
     }
 
@@ -137,6 +167,7 @@ mod tests {
             "Context: 12% of the window",
             "This session: about $0.042",
             "Undo: takes back a prompt, not its files: git was not found",
+            "MCP: `fake`, 3 tools; `gone` not running (gone-mcp was not found)",
             "`/home/u/.crowbot/sessions/s.jsonl`",
         ] {
             assert!(text.contains(want), "{want} missing from:\n{text}");

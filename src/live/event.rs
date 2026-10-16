@@ -75,6 +75,11 @@ pub enum AgentEvent {
         call_id: String,
         event: Box<AgentEvent>,
     },
+    /// An MCP server config.toml names is not running, and why; said once, at the start.
+    Mcp {
+        server: String,
+        note: String,
+    },
     /// Snapshots for /undo stopped working; the session goes on without them.
     SnapshotOff {
         why: String,

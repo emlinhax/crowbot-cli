@@ -44,6 +44,8 @@ struct Expect {
     stdout_lacks: Vec<String>,
     #[serde(default)]
     stderr_contains: Vec<String>,
+    #[serde(default)]
+    stderr_lacks: Vec<String>,
     /// Exact contents of files in the project afterwards.
     #[serde(default)]
     files: BTreeMap<String, String>,
@@ -172,11 +174,14 @@ async fn check(name: String, scenario: Scenario) {
         sandbox.copy_project(project);
     }
     fake.set_home(sandbox.home());
+    // `{fake_mcp}` in a file is the stand-in MCP server, with `/` so it reads in TOML.
+    let fake_mcp = env!("CARGO_BIN_EXE_crowbot-fake-mcp").replace('\\', "/");
+    let placed = |text: &str| text.replace("{fake_mcp}", &fake_mcp);
     for (path, text) in &scenario.home_files {
-        sandbox.write_home(path, text);
+        sandbox.write_home(path, &placed(text));
     }
     for (path, text) in &scenario.project_files {
-        sandbox.write_project(path, text);
+        sandbox.write_project(path, &placed(text));
     }
     let args: Vec<&str> = scenario.args.iter().map(String::as_str).collect();
     let key = if scenario.key { WITH_KEY } else { None };
@@ -202,6 +207,12 @@ async fn check(name: String, scenario: Scenario) {
     }
     for want in expect.stderr_contains.iter().map(|w| filled(w)) {
         assert!(stderr.contains(&want), "stderr lacks {want:?}\n{context}");
+    }
+    for unwanted in expect.stderr_lacks.iter().map(|w| filled(w)) {
+        assert!(
+            !stderr.contains(&unwanted),
+            "stderr has {unwanted:?}\n{context}"
+        );
     }
     for (path, want) in &expect.files {
         let got = std::fs::read_to_string(sandbox.project().join(path))

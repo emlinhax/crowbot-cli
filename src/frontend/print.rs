@@ -58,6 +58,7 @@ pub async fn run(
         mut transcript,
         gone,
         shadow,
+        mcp,
         ..
     } = Setup::load(app, from).await?;
     if let Some(gone) = gone {
@@ -75,6 +76,12 @@ pub async fn run(
         declined: Mutex::new(Vec::new()),
     };
     let emit = |event: AgentEvent| out.event(event);
+    for (server, note) in mcp.failures() {
+        emit(AgentEvent::Mcp {
+            server: server.clone(),
+            note: note.clone(),
+        });
+    }
     let cx = RunCtx {
         app,
         model: &model,
@@ -95,6 +102,7 @@ pub async fn run(
         ended = run::run(&cx, &mut transcript, &shared, prompt) => ended,
         () = interrupt => unreachable!("the interrupt future never finishes"),
     };
+    mcp.stop().await;
     Ok(out.finish(ended))
 }
 
@@ -199,6 +207,7 @@ impl Printer<'_> {
                 words::get().retrying,
                 *delay_ms as f64 / 1000.0
             )),
+            AgentEvent::Mcp { server, note } => self.warn(&words::mcp_failed(server, note)),
             AgentEvent::Unsaved { path, error } => {
                 self.warn(&fill(
                     &words::get().unsaved,

@@ -38,10 +38,12 @@ use crate::frontend::tui::screen::Screen;
 use crate::frontend::tui::toast::Toast;
 use crate::frontend::tui::view::View;
 use crate::frontend::tui::{ui, welcome};
+use crate::frontend::words;
 use crate::io::clock;
 use crate::io::term;
 use crate::live::event::{AgentEvent, Ended};
 use crate::live::state::Shared;
+use crate::mcp::Servers;
 use crate::models::Catalog;
 use crate::release::{self, update};
 use crate::session::transcript::Transcript;
@@ -99,6 +101,7 @@ pub async fn run(
         resumed,
         gone,
         shadow,
+        mcp,
     } = Setup::load(app, from).await?;
     let session_file = transcript.file().display().to_string();
     let (tx, rx) = mpsc::unbounded_channel();
@@ -115,7 +118,7 @@ pub async fn run(
         app,
         catalog,
         (model, effort),
-        (&shared, &shadow),
+        (&shared, &shadow, &mcp),
         initial,
         session_file,
     );
@@ -125,17 +128,25 @@ pub async fn run(
     if let Some(change) = update::on_start(&app.http, &app.paths, app.settings.auto_update) {
         tui.feed.notice(&change.say(), "done");
     }
+    for (server, note) in mcp.failures() {
+        tui.feed.notice(&words::mcp_failed(server, note), "warn");
+    }
     let (spent, transcript) = tui.run(turns, transcript, rx).await;
     drop(raw);
+    // The session is done with its servers; `tui` lends them until here.
+    let earlier = std::mem::take(&mut tui.earlier);
+    let file = tui.session_file.clone();
+    drop(tui);
+    mcp.stop().await;
 
     let text = &ui::get().text;
     // Only a file that still holds the whole conversation counts as saved; a turn still
     // holding the transcript at exit has already written its prompt there.
     let last = match &transcript {
         Some(transcript) => transcript.path().map(|p| p.display().to_string()),
-        None => Some(tui.session_file.clone()),
+        None => Some(file),
     };
-    for path in tui.earlier.iter().chain(&last) {
+    for path in earlier.iter().chain(&last) {
         term::out(&format!(
             "{}\n",
             template::fill(&text.saved, &[("path", path)])
@@ -158,6 +169,7 @@ struct Tui<'a> {
     shared: &'a Shared,
     /// Keeps the files as they were before each prompt changed them, for /undo.
     shadow: &'a Shadow,
+    mcp: &'a Servers,
     screen: Screen,
     feed: Feed,
     view: View,
@@ -194,7 +206,7 @@ impl<'a> Tui<'a> {
         app: &'a App,
         catalog: Catalog,
         (model, effort): (Model, Option<String>),
-        (shared, shadow): (&'a Shared, &'a Shadow),
+        (shared, shadow, mcp): (&'a Shared, &'a Shadow, &'a Servers),
         initial: Option<String>,
         session_file: String,
     ) -> Self {
@@ -210,6 +222,7 @@ impl<'a> Tui<'a> {
             next: NextTurn::new(&app.paths, model, effort),
             shared,
             shadow,
+            mcp,
             screen: Screen::new(width, height, theme::get(), term::color_depth()),
             feed: Feed::new(),
             view: View::default(),
@@ -252,6 +265,7 @@ impl<'a> Tui<'a> {
             cost_micros: self.cost_micros,
             file: self.session_file.clone(),
             snapshots_off: self.shadow.off(),
+            mcp: self.mcp.report(),
         }
     }
 

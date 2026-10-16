@@ -6,6 +6,7 @@ window_full = "The reply filled the model's context window; earlier turns are su
 unsaved = "No longer saving this session to {path}: {error}. The conversation goes on unsaved."
 turn_limit = "Stopped after {count} turns."
 retrying = "retrying in"
+mcp_failed = "MCP server {server} is not running: {note}."
 model_gone = "This session used {model}, which crowbot no longer serves; going on with {instead}."
 
 # A summary of earlier turns, made by /compact or on its own; {why} is `auto` or `overflow` below

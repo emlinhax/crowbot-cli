@@ -3,7 +3,9 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+pub mod child;
 mod exec;
+mod group;
 mod tree;
 
 pub use exec::{Captured, Program, exec};

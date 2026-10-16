@@ -276,3 +276,20 @@ async fn slash_compact_sends_a_summary_and_the_recent_turns_word_for_word() {
         "the summarised read was sent again"
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn slash_status_names_the_mcp_servers_and_how_they_stand() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    let server = env!("CARGO_BIN_EXE_crowbot-fake-mcp").replace('\\', "/");
+    sandbox.write_home(
+        "config.toml",
+        &format!("[mcp.fake]\ncommand = '{server}'\n[mcp.gone]\ncommand = 'no-such-mcp'\n"),
+    );
+    in_session(&fake, sandbox, Some(ENV_KEY), |s| {
+        s.wait_for("MCP server gone is not running");
+        s.submit("/status");
+        s.wait_for("MCP: fake, 1 tool; gone not running (no-such-mcp was not found)");
+    })
+    .await;
+}

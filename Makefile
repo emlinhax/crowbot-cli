@@ -37,6 +37,7 @@ golden:
 
 check: lint test e2e
 
-# `make build TARGET=<triple>` builds for another target, e.g. static musl in CI.
+# `make build TARGET=<triple>` builds for another target, e.g. static musl in CI. Only `crowbot`
+# ships; the e2e suite's fake MCP server is built by the tests that run it.
 build:
-	$(CARGO) build --locked --release $(if $(TARGET),--target $(TARGET))
+	$(CARGO) build --locked --release --bin crowbot $(if $(TARGET),--target $(TARGET))

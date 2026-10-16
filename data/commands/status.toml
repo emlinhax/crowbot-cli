@@ -12,6 +12,7 @@ body = """
 - Context: {context}
 - This session: about {cost}
 - Undo: {undo}
+- MCP: {mcp}
 - Session file: `{file}`
 - Project: `{project}`"""
 balance = "{login} {standing}"
@@ -21,3 +22,7 @@ context = "{pct}% of the window, as of the last request"
 no_context = "nothing sent yet"
 undo_files = "takes back a prompt and the files it changed"
 undo_conversation = "takes back a prompt, not its files: {why}"
+mcp_none = "no servers in config.toml"
+mcp_running = { one = "`{name}`, {n} tool", many = "`{name}`, {n} tools" }
+mcp_failed = "`{name}` not running ({why})"
+mcp_off = "`{name}` off"

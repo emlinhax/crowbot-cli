@@ -124,6 +124,30 @@ reason = "a reply cut off with prompt and output this close to the window ran ou
 value = 4
 reason = "a rough count with no tokenizer: English and code average about four bytes a token"
 
+[mcp.start_secs]
+value = 30
+reason = "a server started through npx may fetch its package first; past this it is not coming"
+
+[mcp.stop_ms]
+value = 2000
+reason = "time a server gets to finish once its stdin closes, before it is ended"
+
+[mcp.line_bytes]
+value = 8388608
+reason = "the longest message a server may send, as for a chat stream's event"
+
+[mcp.stderr_bytes]
+value = 4096
+reason = "the end of what a server printed, kept to say why it failed"
+
+[mcp.list_pages]
+value = 20
+reason = "pages of tools a server may list; more means it is looping"
+
+[mcp.server_name_chars]
+value = 24
+reason = "a server's name starts each of its tools' names, which may be 64 characters in all"
+
 [snapshot.timeout_secs]
 value = 30
 reason = "the first snapshot hashes every file git does not ignore; past this the project is too big and snapshots stop for the session"
