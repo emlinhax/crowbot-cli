@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 
 use crate::config::paths::Paths;
-use crate::conversation::message::Message;
+use crate::conversation::message::{Message, Usage};
 use crate::io;
 use crate::session::entry::{self, Parent, Snap, State, Summary};
 use crate::session::reader;
@@ -91,12 +91,6 @@ impl Transcript {
                 mode: None,
             })
         });
-        let summaries = loaded.compactions.iter().filter_map(|(_, _, s)| s.usage);
-        let spent_micros = replies()
-            .filter_map(|a| a.usage)
-            .chain(summaries)
-            .map(|u| u.cost_micros)
-            .sum();
         let compactions = loaded
             .compactions
             .into_iter()
@@ -114,6 +108,7 @@ impl Transcript {
             store: Store::open(path.to_path_buf(), head),
             unsaved: false,
         };
+        let spent_micros = transcript.usage().cost_micros;
         Ok((
             transcript,
             Resumed {
@@ -189,6 +184,20 @@ impl Transcript {
             summary,
         });
         written
+    }
+
+    /// What the conversation's requests cost: its replies, its summaries and its subagents'.
+    pub fn usage(&self) -> Usage {
+        let mut total = Usage::default();
+        let used = self.messages.iter().filter_map(|m| match m {
+            Message::Assistant(reply) => reply.usage,
+            Message::Tool(result) => result.usage,
+            Message::User { .. } => None,
+        });
+        for usage in used.chain(self.compactions.iter().filter_map(|c| c.summary.usage)) {
+            total += usage;
+        }
+        total
     }
 
     /// The entry id of the last message, the run's prompt right after it is said.

@@ -98,6 +98,7 @@ mod tests {
                 details: None,
                 asks: Vec::new(),
                 refused: None,
+                usage: None,
             }),
             Message::Assistant(Assistant::stub(Finish::Length, Vec::new())),
         ];

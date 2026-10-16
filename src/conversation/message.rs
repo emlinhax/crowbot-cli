@@ -59,6 +59,10 @@ pub struct ToolResult {
     /// `check` when the tool's own check refused it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refused: Option<String>,
+    /// What answering it cost, for a call that ran requests of its own (a subagent's);
+    /// recorded, never sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<Usage>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -100,6 +104,16 @@ pub struct Usage {
     /// What this request cost at the model's listed rates, in millionths of a dollar.
     #[serde(default)]
     pub cost_micros: u64,
+}
+
+impl std::ops::AddAssign for Usage {
+    fn add_assign(&mut self, other: Self) {
+        self.input += other.input;
+        self.cached += other.cached;
+        self.output += other.output;
+        self.reasoning += other.reasoning;
+        self.cost_micros += other.cost_micros;
+    }
 }
 
 impl Message {

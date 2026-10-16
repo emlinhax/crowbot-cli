@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::agent::kinds::{self, Kind};
 use crate::agent::{Run, RunCtx, run};
-use crate::conversation::message::{Message, Part};
+use crate::conversation::message::{Message, Part, Usage};
 use crate::live::event::{AgentEvent, Ended};
 use crate::session::entry::Parent;
 use crate::session::transcript::Transcript;
@@ -19,6 +19,8 @@ pub struct Done {
     pub error: Option<String>,
     pub session: PathBuf,
     pub calls: usize,
+    /// What all its requests cost.
+    pub usage: Usage,
 }
 
 /// Runs `prompt` as a subagent of `kind`, started by `parent`'s call `call_id`. What it says
@@ -82,6 +84,7 @@ pub async fn run_child(parent: &Run<'_>, call_id: &str, kind: &Kind, prompt: Str
             .iter()
             .filter(|m| matches!(m, Message::Tool(_)))
             .count(),
+        usage: transcript.usage(),
     }
 }
 
@@ -92,9 +95,11 @@ mod tests {
     use serde_json::{Value, json};
 
     use crate::agent::testing::{Harness, last_message, reply, shared, text};
+    use crate::conversation::message::Message;
     use crate::conversation::message::Part;
     use crate::live::event::{AgentEvent, Outcome};
     use crate::session::list;
+    use crate::session::transcript::Transcript;
 
     fn task(prompt: &str) -> String {
         let args = json!({"description": "look", "prompt": prompt, "subagent_type": "explore"});
@@ -149,6 +154,24 @@ mod tests {
         // Lists of the project's sessions show the parent's file only.
         assert_eq!(list::list(&h.app.paths).len(), 1);
         assert_eq!(list::latest(&h.app.paths).as_deref(), Some(parent));
+
+        // What the subagent spent is the task result's, and a reopened session counts it.
+        let spent = |t: &Transcript| t.usage().cost_micros;
+        let child = result_usage(&transcript).unwrap();
+        assert_eq!((child.input, child.output), (10, 2));
+        assert!(child.cost_micros > 0);
+        let (reopened, resumed) = Transcript::open(parent).unwrap();
+        assert_eq!(spent(&reopened), spent(&transcript));
+        assert_eq!(resumed.spent_micros, spent(&transcript));
+        assert!(spent(&transcript) > child.cost_micros);
+    }
+
+    /// The usage recorded with the transcript's task result.
+    fn result_usage(transcript: &Transcript) -> Option<crate::conversation::message::Usage> {
+        transcript.messages.iter().find_map(|m| match m {
+            Message::Tool(result) if result.name == "task" => result.usage,
+            _ => None,
+        })
     }
 
     #[tokio::test]
@@ -159,7 +182,7 @@ mod tests {
             "tool_calls",
         );
         let h = Harness::new(vec![task("fetch it"), fetch, text("never")]).await;
-        let (ended, _, _) = h
+        let (ended, transcript, _) = h
             .run(&shared("manual"), |event, shared| {
                 if matches!(event.innermost(), AgentEvent::Prompt { .. }) {
                     shared.interrupt();
@@ -168,6 +191,9 @@ mod tests {
             .await;
         assert_eq!(ended.outcome, Outcome::Aborted);
         assert_eq!(h.requests().len(), 2);
+        // Waited for, not dropped: what the subagent spent before the interrupt is kept.
+        let kept = result_usage(&transcript).unwrap();
+        assert_eq!((kept.input, kept.output), (10, 2));
     }
 
     #[tokio::test]

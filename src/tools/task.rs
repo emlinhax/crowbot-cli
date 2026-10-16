@@ -65,6 +65,11 @@ impl Tool for Task {
         &SPEC
     }
 
+    /// The subagent stops with its parent, so its last turn and its cost are kept.
+    fn stops_on_cancel(&self) -> bool {
+        true
+    }
+
     fn check(&self, args: &Args, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let kind = kind(&args.subagent_type)?;
         Ok(Check::new(vec![Ask::new(
@@ -78,7 +83,8 @@ impl Tool for Task {
             let run = cx.run.ok_or_else(|| TEXT.no_run.clone())?;
             let kind = kind(&args.subagent_type).map_err(|e| e.to_string())?;
             let done = child::run_child(run, cx.call_id, kind, args.prompt).await;
-            Ok(said(&done).with_details(json!({
+            let out = said(&done).with_usage(done.usage);
+            Ok(out.with_details(json!({
                 "agent": kind.id,
                 "description": args.description,
                 "session": done.session.display().to_string(),

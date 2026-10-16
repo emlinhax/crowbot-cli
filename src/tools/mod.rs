@@ -30,6 +30,7 @@ use serde_json::{Value, json};
 
 use crate::app::App;
 use crate::config::limits;
+use crate::conversation::message::Usage;
 use crate::data;
 use crate::live::event::AgentEvent;
 use crate::live::files::Files;
@@ -135,6 +136,8 @@ pub struct Output {
     pub content: String,
     pub is_error: bool,
     pub details: Option<Value>,
+    /// What the call's own requests cost (a subagent's), recorded with its result.
+    pub usage: Option<Usage>,
 }
 
 impl Output {
@@ -143,6 +146,7 @@ impl Output {
             content: content.into(),
             is_error: false,
             details: None,
+            usage: None,
         }
     }
 
@@ -151,6 +155,7 @@ impl Output {
             content: content.into(),
             is_error: true,
             details: None,
+            usage: None,
         }
     }
 
@@ -184,6 +189,11 @@ impl Output {
 
     pub fn with_details(mut self, details: Value) -> Self {
         self.details = Some(details);
+        self
+    }
+
+    pub fn with_usage(mut self, usage: Usage) -> Self {
+        self.usage = Some(usage);
         self
     }
 }
@@ -233,6 +243,11 @@ pub trait Tool: Send + Sync {
         args: Self::Args,
         cx: &'a ToolCx<'a>,
     ) -> BoxFuture<'a, Result<Output, String>>;
+    /// Whether the tool ends on an interrupt by itself, so the run waits for it rather than
+    /// dropping it: a subagent records its last turn and what it spent.
+    fn stops_on_cancel(&self) -> bool {
+        false
+    }
 }
 
 /// A `Tool` that takes the model's JSON, so tools with different arguments share one registry.
@@ -240,6 +255,7 @@ pub trait AnyTool: Send + Sync {
     fn spec(&self) -> &Spec;
     fn check(&self, args: &Value, cx: &ToolCx<'_>) -> Result<Check, Refusal>;
     fn run<'a>(&'a self, args: Value, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Output>;
+    fn stops_on_cancel(&self) -> bool;
 }
 
 impl<T: Tool> AnyTool for T {
@@ -261,6 +277,10 @@ impl<T: Tool> AnyTool for T {
             };
             done.unwrap_or_else(Output::error)
         })
+    }
+
+    fn stops_on_cancel(&self) -> bool {
+        Tool::stops_on_cancel(self)
     }
 }
 

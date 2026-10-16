@@ -184,6 +184,7 @@ mod tests {
                 details: None,
                 asks: Vec::new(),
                 refused: None,
+                usage: None,
             }),
             _ => Message::Assistant(Assistant::stub(Finish::Done, vec![Part::Text { text }])),
         }

@@ -292,6 +292,7 @@ mod tests {
             details: None,
             asks: Vec::new(),
             refused: None,
+            usage: None,
         });
         let user = Message::User {
             parts: vec![

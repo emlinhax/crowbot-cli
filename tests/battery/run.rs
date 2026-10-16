@@ -250,13 +250,14 @@ async fn watch(
 
 fn tally(w: &mut Watched, battery: &Battery, line: &str, started: Instant) {
     let event: Value = serde_json::from_str(line).unwrap_or_else(|_| Value::from(line));
+    // A subagent's and a summary's requests are spent too; only the run's own replies are turns.
+    let cost = cost(&event);
+    w.cost += cost;
+    battery.spent.fetch_add(cost, Ordering::Relaxed);
     if event["type"] == "message_end" {
         let message = &event["message"];
-        let cost = message["usage"]["cost_micros"].as_u64().unwrap_or(0);
         w.turns += 1;
-        w.cost += cost;
         w.finished = message["finish"] == "done";
-        battery.spent.fetch_add(cost, Ordering::Relaxed);
         let text: String = message["parts"]
             .as_array()
             .into_iter()
@@ -272,6 +273,18 @@ fn tally(w: &mut Watched, battery: &Battery, line: &str, started: Instant) {
     w.events
         .push_str(&json!({ "ms": ms, "event": event }).to_string());
     w.events.push('\n');
+}
+
+/// What a stream event spent: a reply's or a summary's cost, however deep the subagent.
+fn cost(event: &Value) -> u64 {
+    match event["type"].as_str() {
+        Some("message_end") => event["message"]["usage"]["cost_micros"]
+            .as_u64()
+            .unwrap_or(0),
+        Some("compaction_end") => event["usage"]["cost_micros"].as_u64().unwrap_or(0),
+        Some("child") => cost(&event["event"]),
+        _ => 0,
+    }
 }
 
 fn limit_reached(

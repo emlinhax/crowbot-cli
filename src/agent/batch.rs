@@ -146,9 +146,13 @@ async fn settle<'a>(run: &'a Run<'a>, calls: &'a [ToolCall], slots: Vec<Slot>) -
             },
             Ok(cleared) => {
                 let tcx = tool_cx(run, &call.id);
-                let out = tokio::select! {
-                    out = cleared.tool.run(cleared.args, &tcx) => out,
-                    () = run.cancel.cancelled() => Output::cancelled(),
+                let out = if cleared.tool.stops_on_cancel() {
+                    cleared.tool.run(cleared.args, &tcx).await
+                } else {
+                    tokio::select! {
+                        out = cleared.tool.run(cleared.args, &tcx) => out,
+                        () = run.cancel.cancelled() => Output::cancelled(),
+                    }
                 };
                 ToolResult {
                     asks: cleared.asks,
@@ -295,5 +299,6 @@ fn result(call: &ToolCall, out: Output) -> ToolResult {
         details: out.details,
         asks: Vec::new(),
         refused: None,
+        usage: out.usage,
     }
 }

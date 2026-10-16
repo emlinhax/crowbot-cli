@@ -153,6 +153,7 @@ mod tests {
             details,
             asks: Vec::new(),
             refused: None,
+            usage: None,
         }
     }
 

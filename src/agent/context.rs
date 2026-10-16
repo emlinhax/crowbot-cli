@@ -83,6 +83,7 @@ fn answer_open(out: &mut Vec<Message>, open: &mut Vec<(String, String)>) {
             details: None,
             asks: Vec::new(),
             refused: None,
+            usage: None,
         }));
     }
 }
@@ -142,6 +143,7 @@ mod tests {
             details: None,
             asks: Vec::new(),
             refused: None,
+            usage: None,
         })
     }
 
