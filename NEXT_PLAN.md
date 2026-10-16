@@ -345,6 +345,22 @@ with the session (a project's only once trusted); their tools join the registry 
 - Open: notarisation and Authenticode (paid accounts), Intel macOS, arm64 Linux and Windows on
   ARM targets.
 
+**Learned**
+- From 91c1b39 (2026-10-08) to efbb769 every CI job only built: `if: matrix.checks != false`
+  is false for an entry without `checks`, as Actions compares null and false as 0. Every green
+  run of M5, M6 and M7.1–7.3 tested Linux only, on this machine; "CI covers macOS and Windows"
+  in M5's and M6's notes was not true until 9964060. A flag now names what to skip
+  (`build_only`), and a run counts as tested only once its job logs show `test result` lines.
+- What the eight days hid, all fixed: /undo on macOS and Windows snapshotted the shadow's own git
+  dir and a restore deleted its objects (crowbot's home inside the work tree was compared
+  unresolved against git's resolved path); a test file name Windows refuses (`*`); an unreadable
+  key file's reason cut off by a long macOS temp path; pty tests sending /undo before the run had
+  ended, or an Enter read with its text as a paste on a loaded Windows runner; two
+  platform-only lint errors.
+- The minisign crate writes raw key bytes from `generate_and_write_*`; the CLI's file format is
+  `to_box().into_string()`. The key was proven with Ubuntu 24.04's minisign 0.11, the runner's,
+  unpacked without root.
+
 ## M8 — Forums (Tapatalk/mobiquo)
 - Added 2026-10-03: crowbot browses forums that run the Tapatalk plugin. Transport rides
   `io::fetch` (cffetch's browser TLS, so a Cloudflare WAF that blocks reqwest lets it through);
