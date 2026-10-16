@@ -66,6 +66,8 @@ jobs:
           printf '%s\n' "$MINISIGN_SECRET_KEY" > "$key"
           minisign -S -s "$key" -m dist/SHA256SUMS -x dist/SHA256SUMS.minisig \
             -t "crowbot release $TAG" < /dev/null
+      # One line installs the release: `curl -fsSL …/latest/download/install.sh | sh`.
+      - run: cp install/install.sh install/install.ps1 dist/
       - env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

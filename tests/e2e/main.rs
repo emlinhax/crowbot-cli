@@ -6,6 +6,7 @@ mod chat;
 #[path = "../common/mod.rs"]
 mod common;
 mod fake_crowbot;
+mod install;
 mod login;
 mod models;
 mod pty;

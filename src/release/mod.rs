@@ -152,6 +152,23 @@ mod tests {
     }
 
     #[test]
+    fn each_installer_names_every_file_of_its_platforms() {
+        let sh = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/install/install.sh"));
+        let ps1 = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/install/install.ps1"));
+        for asset in &CATALOG.asset {
+            let (name, script) = match asset.os.as_str() {
+                "windows" => ("install.ps1", ps1),
+                _ => ("install.sh", sh),
+            };
+            assert!(
+                script.contains(&asset.file),
+                "{name} does not install {}",
+                asset.file
+            );
+        }
+    }
+
+    #[test]
     fn a_development_build_reports_the_plain_version() {
         if tag().is_none() {
             assert_eq!(version(), package());

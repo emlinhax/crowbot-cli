@@ -338,7 +338,7 @@ with the session (a project's only once trusted); their tools join the registry 
 - [x] 7.1 the updater checks a minisign signature on `SHA256SUMS`, its trusted comment naming the
       release (`data/release.toml` `[signature]`, a list of keys)
 - [x] 7.2 the release signs `SHA256SUMS` with a key kept as a CI secret
-- [ ] 7.3 `install/install.sh` and `install/install.ps1`, published with each release
+- [x] 7.3 `install/install.sh` and `install/install.ps1`, published with each release
 - [ ] 7.4 README and the website's docs name the one-liners and the signature
 - [ ] 7.5 a release, on an explicit go; the signature and the one-liner checked live
 - e2e: one local batch after 7.3, then pushed so CI runs the scripts on macOS and Windows.
