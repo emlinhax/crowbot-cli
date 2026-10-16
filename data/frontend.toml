@@ -20,6 +20,8 @@ overflow = "crowbot refused the request as too long. "
 # Lines only a headless run prints, on stderr beside the reply.
 [print]
 call = "› {tool}"
+# A subagent's call, under the task that started it.
+child_call = "  › {tool}"
 failed = "  ✗ {error}"
 needs_permission = "  ✗ {tool} needs permission ({what}); rerun with --mode {mode} to allow it"
 unconfirmed = "  ✗ {tool} asks every time ({what}); it cannot run headless"

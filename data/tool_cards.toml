@@ -25,6 +25,8 @@ summary = { count = "lines", one = "{n} line", many = "{n} lines" }
 
 [task]
 title = ["description"]
+body = "summary"
+summary = { count = "calls", one = "{agent}: {n} call", many = "{agent}: {n} calls" }
 
 [edit]
 body = "diff"

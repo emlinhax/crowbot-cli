@@ -69,6 +69,8 @@ struct Running {
     name: String,
     arguments: String,
     since: Instant,
+    /// A subagent's latest call, by tool and arguments, for the `task` call that started it.
+    step: Option<(String, String)>,
 }
 
 pub struct Feed {
@@ -255,6 +257,7 @@ impl Feed {
                 name: name.clone(),
                 arguments: arguments.clone(),
                 since: now,
+                step: None,
             }),
             AgentEvent::ToolEnd { result } => {
                 let arguments = self
@@ -302,10 +305,19 @@ impl Feed {
                     self.notice(&text, role);
                 }
             }
+            // A subagent's work shows as the latest call under the task that started it.
+            AgentEvent::Child { call_id, event } => {
+                if let AgentEvent::ToolStart {
+                    name, arguments, ..
+                } = event.innermost()
+                    && let Some(task) = self.running.iter_mut().find(|r| r.call_id == *call_id)
+                {
+                    task.step = Some((name.clone(), arguments.clone()));
+                }
+            }
             AgentEvent::Retry { .. }
             | AgentEvent::Prompt { .. }
-            | AgentEvent::SnapshotOff { .. }
-            | AgentEvent::Child { .. } => {}
+            | AgentEvent::SnapshotOff { .. } => {}
         }
     }
 
@@ -374,12 +386,18 @@ impl Feed {
             groups.push(
                 self.running
                     .iter()
-                    .map(|tool| {
+                    .flat_map(|tool| {
                         let elapsed = now.duration_since(tool.since).as_millis();
                         let frame =
                             progress::frame(&ui::get().spinner, elapsed, limits.spinner_ms.value);
-                        calls::header(&tool.name, &tool.arguments, State::Running(frame))
-                            .truncate(width)
+                        let mut lines = vec![
+                            calls::header(&tool.name, &tool.arguments, State::Running(frame))
+                                .truncate(width),
+                        ];
+                        if let Some((name, arguments)) = &tool.step {
+                            lines.push(calls::step(name, arguments).truncate(width));
+                        }
+                        lines
                     })
                     .collect(),
             );
@@ -618,6 +636,45 @@ mod tests {
             now,
         );
         assert_eq!(texts(&mut feed, now), ["● bash ls", "  a.txt"]);
+    }
+
+    #[test]
+    fn a_task_shows_its_subagents_latest_call_then_sums_it_up() {
+        let now = crate::io::clock::instant();
+        let mut feed = Feed::new();
+        let start = |call_id: &str, name: &str, arguments: &str| AgentEvent::ToolStart {
+            call_id: call_id.into(),
+            name: name.into(),
+            arguments: arguments.into(),
+        };
+        feed.event(
+            &start("c1", "task", r#"{"description":"find the parser"}"#),
+            now,
+        );
+        // The subagent's call ids are its own: `c1` again here.
+        let child = AgentEvent::Child {
+            call_id: "c1".into(),
+            event: Box::new(start("c1", "read", r#"{"path":"src/parse.rs"}"#)),
+        };
+        feed.event(&child, now);
+        let live = texts(&mut feed, now);
+        assert!(live[0].ends_with("task find the parser"), "{live:?}");
+        assert_eq!(live[1], "  └ read src/parse.rs");
+        let result = ToolResult {
+            call_id: "c1".into(),
+            name: "task".into(),
+            content: "it is in src/parse.rs".into(),
+            is_error: false,
+            details: Some(serde_json::json!({"agent": "explore", "calls": 2})),
+            asks: Vec::new(),
+            refused: None,
+            usage: None,
+        };
+        feed.event(&AgentEvent::ToolEnd { result }, now);
+        assert_eq!(
+            texts(&mut feed, now),
+            ["● task find the parser", "  explore: 2 calls"]
+        );
     }
 
     #[test]

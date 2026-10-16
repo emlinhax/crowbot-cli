@@ -34,6 +34,7 @@ pub struct Ui {
     pub picker: PickerText,
     pub resume: ResumeText,
     pub undo: UndoText,
+    pub task: TaskText,
     pub login: LoginText,
     pub replace: ReplaceText,
     pub signup: SignupText,
@@ -176,6 +177,13 @@ pub struct ForumsText {
     pub saving: String,
     pub cancel_hint: String,
     pub failed: String,
+}
+
+/// How a `task` card shows its subagent at work.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskText {
+    pub step: String,
 }
 
 #[derive(Debug, Deserialize)]

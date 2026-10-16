@@ -40,6 +40,7 @@ pub struct CompactWords {
 #[serde(deny_unknown_fields)]
 pub struct PrintWords {
     pub call: String,
+    pub child_call: String,
     pub failed: String,
     pub needs_permission: String,
     pub unconfirmed: String,

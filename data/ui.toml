@@ -113,6 +113,10 @@ hint = "↑↓ move · → or enter go on with it · esc close"
 none = "No earlier session in this project to go on with."
 saved = "The last conversation is saved in {path}."
 
+# A `task` card while its subagent works: `{call}` is the subagent's latest call.
+[task]
+step = "  └ {call}"
+
 # `/undo` inside a session.
 [undo]
 done = "Took back the last prompt and what followed it; it is in the editor to change or send again."

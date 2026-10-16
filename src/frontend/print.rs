@@ -148,13 +148,15 @@ impl Printer<'_> {
             } if self.declined.lock().unwrap().contains(call_id) => {}
             AgentEvent::ToolStart {
                 name, arguments, ..
-            } => {
-                let mut line = fill(&words::get().print.call, &[("tool", name)]);
-                if let Some(title) = tool_card::title(name, arguments) {
-                    line.push(' ');
-                    line.push_str(&shorten::line(&title, note_chars()));
+            } => self.note(&call_line(&words::get().print.call, name, arguments)),
+            // Only a subagent's calls show; its words are its parent's to pass on.
+            AgentEvent::Child { event, .. } => {
+                if let AgentEvent::ToolStart {
+                    name, arguments, ..
+                } = event.innermost()
+                {
+                    self.note(&call_line(&words::get().print.child_call, name, arguments));
                 }
-                self.note(&line);
             }
             AgentEvent::ToolEnd { result } if result.is_error => {
                 let first = result.content.lines().next().unwrap_or_default();
@@ -268,6 +270,16 @@ impl Printer<'_> {
             }
         }
     }
+}
+
+/// A call as `template` words it, with its card's title.
+fn call_line(template: &str, name: &str, arguments: &str) -> String {
+    let mut line = fill(template, &[("tool", name)]);
+    if let Some(title) = tool_card::title(name, arguments) {
+        line.push(' ');
+        line.push_str(&shorten::line(&title, note_chars()));
+    }
+    line
 }
 
 fn note_chars() -> usize {

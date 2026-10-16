@@ -90,6 +90,45 @@ async fn json_mode_emits_one_event_per_line() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn json_mode_nests_a_subagents_events_in_its_task_call() {
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::call(
+            "task",
+            r#"{"description": "look", "prompt": "find it", "subagent_type": "explore"}"#,
+        ),
+        Reply::text("found it"),
+        Reply::text("It is found."),
+    ]);
+    let sandbox = Sandbox::default();
+    let run = sandbox.run(&fake.url, &["--json", "go"], WITH_KEY).await;
+    // The subagent's file has a fresh name each run; everything else is the contract.
+    let stdout: String = run
+        .success()
+        .stdout()
+        .lines()
+        .map(|line| {
+            let mut event: Value = serde_json::from_str(line).unwrap();
+            if let Some(session) = event.pointer_mut("/result/details/session") {
+                *session = Value::from("{session}");
+            }
+            format!("{event}\n")
+        })
+        .collect();
+    let golden = tests_path("golden/json/task.jsonl");
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        std::fs::write(&golden, &stdout).unwrap();
+    }
+    let want = std::fs::read_to_string(&golden).unwrap_or_default();
+    assert_eq!(stdout, want, "--json changed; if on purpose, `make golden`");
+    let nested = stdout.lines().any(|line| {
+        let event: Value = serde_json::from_str(line).unwrap();
+        event["type"] == "child" && event["event"]["type"] == "message_end"
+    });
+    assert!(nested, "{stdout}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn effort_is_forwarded_and_validated() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);

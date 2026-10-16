@@ -37,6 +37,17 @@ pub fn header(tool: &str, arguments: &str, state: State<'_>) -> Line {
     line
 }
 
+/// A subagent's latest call, under the `task` card that is waiting on it.
+pub fn step(tool: &str, arguments: &str) -> Line {
+    let mut call = tool.to_owned();
+    if let Some(title) = tool_card::title(tool, arguments) {
+        call.push(' ');
+        call.push_str(&title);
+    }
+    let text = template::fill(&ui::get().task.step, &[("call", &call)]);
+    Line::styled(text, Style::fg("muted"))
+}
+
 /// The finished card: header, then the body its spec asks for, indented under it.
 pub fn finished(tool: &str, arguments: &str, result: &ToolResult, width: usize) -> Vec<Line> {
     let state = if result.is_error {
@@ -113,7 +124,8 @@ fn summarize(summary: &Summary, result: &ToolResult, strict: bool) -> Option<Str
                 return None;
             }
             let n = lookup(count, result).parse().unwrap_or(0);
-            Some(forms.of(n))
+            // A form may name other details too: `{agent}: {n} calls`.
+            Some(fill(&forms.of(n), result))
         }
         Summary::First(list) => list.iter().find_map(|s| summarize(s, result, true)),
     }
