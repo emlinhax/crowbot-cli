@@ -1,18 +1,21 @@
 //! `/login` inside a session: pair this device or type an account number, in a card in place of
-//! the editor. The network work is a `Job` the session loop runs beside input, so the screen
-//! stays live and closing the card drops it.
+//! the editor, after asking before it would replace a stored account number. The network work is
+//! a `Job` the session loop runs beside input, so the screen stays live and closing the card
+//! drops it.
 
 use futures_util::future::BoxFuture;
 
+use crate::api::error::said;
 use crate::api::pair::{self, Started};
 use crate::app::App;
 use crate::auth::{self, KeyKind};
 use crate::commands::login::logged_in;
+use crate::config::paths::Paths;
 use crate::frontend::tui::boxed::{self, boxed};
 use crate::frontend::tui::card::{self, Card, Next};
 use crate::frontend::tui::choice::{Choice, Opt};
 use crate::frontend::tui::keymap::Action;
-use crate::frontend::tui::ui;
+use crate::frontend::tui::{replace, ui};
 use crate::io::term::KeyEvent;
 use crate::live::prompt::Reply;
 use crate::text::styled::{Line, Style};
@@ -25,9 +28,17 @@ pub struct Login {
 // One card, rarely moved; boxing the big variant would only add noise.
 #[allow(clippy::large_enum_variant)]
 enum Stage {
+    /// Whether to replace the stored key, and the number given with `/login --key`, if any.
+    Replace {
+        choice: Choice,
+        number: Option<String>,
+    },
     Choose(Choice),
     Starting,
-    Waiting { url: String, code: String },
+    Waiting {
+        url: String,
+        code: String,
+    },
     Checking,
 }
 
@@ -51,7 +62,7 @@ pub fn run(app: &App, job: Job) -> BoxFuture<'_, Done> {
             Job::Start => {
                 return match pair::start(&app.api).await {
                     Ok(started) => Done::Started(started),
-                    Err(e) => Done::Failed(format!("{e:#}")),
+                    Err(e) => Done::Failed(said(&e.into())),
                 };
             }
             Job::Wait(started) => auth::pair(&app.api, &app.paths, &started).await,
@@ -61,23 +72,39 @@ pub fn run(app: &App, job: Job) -> BoxFuture<'_, Done> {
         };
         match done {
             Ok(done) => Done::LoggedIn(logged_in(&done)),
-            Err(e) => Done::Failed(format!("{e:#}")),
+            Err(e) => Done::Failed(said(&e)),
         }
     })
 }
 
 impl Login {
-    pub fn new() -> Self {
-        Self {
-            stage: Stage::Choose(menu()),
+    /// The card, and its first work: checking `number` when `/login --key` gave one. It asks
+    /// first when that would replace a stored account number; `width` wraps the question.
+    pub fn open(paths: &Paths, number: Option<String>, width: usize) -> (Self, Next) {
+        match replace::question(paths, width) {
+            Some(choice) => {
+                let stage = Stage::Replace { choice, number };
+                (Self { stage }, Next::Stay)
+            }
+            None => Self::start(number),
         }
     }
 
-    /// The card while a number given with `/login --key` is checked; a refusal returns to the
-    /// menu, as it does for a number typed into the card.
-    pub fn checking() -> Self {
-        Self {
-            stage: Stage::Checking,
+    /// A refused number returns to the menu, as one typed into the card does.
+    fn start(number: Option<String>) -> (Self, Next) {
+        match number {
+            None => (
+                Self {
+                    stage: Stage::Choose(menu()),
+                },
+                Next::Stay,
+            ),
+            Some(number) => (
+                Self {
+                    stage: Stage::Checking,
+                },
+                work(Job::Check(number)),
+            ),
         }
     }
 }
@@ -89,6 +116,17 @@ fn work(job: Job) -> Next {
 
 impl Card for Login {
     fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Next {
+        if let Stage::Replace { choice, number } = &mut self.stage {
+            return match choice.key(action, key) {
+                Next::Answer(Reply::Choice(0)) => {
+                    let next;
+                    (*self, next) = Self::start(number.take());
+                    next
+                }
+                Next::Answer(_) => Next::Close(None),
+                other => other,
+            };
+        }
         // Once crowbot is being asked only cancelling is left, and the session does that.
         let Stage::Choose(card) = &mut self.stage else {
             return Next::Stay;
@@ -146,6 +184,7 @@ impl Card for Login {
         let text = &ui::get().login;
         let muted = Style::fg("muted");
         let body = match &self.stage {
+            Stage::Replace { choice, .. } => return choice.render(width),
             Stage::Choose(card) => return card.render(width),
             Stage::Starting => vec![Line::styled(&text.starting, muted.clone())],
             Stage::Checking => vec![Line::styled(&text.checking, muted.clone())],
@@ -199,9 +238,13 @@ mod tests {
             .join("\n")
     }
 
+    fn menu_card() -> Login {
+        Login::start(None).0
+    }
+
     #[test]
     fn one_starts_pairing_and_shows_the_code() {
-        let mut login = Login::new();
+        let mut login = menu_card();
         assert!(text(&login).contains("1 Pair this device"));
         assert!(matches!(
             login.key(None, &digit('1')),
@@ -226,7 +269,7 @@ mod tests {
 
     #[test]
     fn two_takes_a_masked_number_and_a_failure_comes_back_to_the_menu() {
-        let mut login = Login::new();
+        let mut login = menu_card();
         login.key(None, &digit('2'));
         login.insert("1234 5678 9012 3456");
         let shown = text(&login);
@@ -243,5 +286,29 @@ mod tests {
             _ => panic!("expected the error"),
         }
         assert!(text(&login).contains("2 Enter my account number"));
+    }
+
+    #[test]
+    fn a_stored_account_number_is_asked_about_first_and_kept_on_no() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::at(dir.path().join("home"), dir.path().to_path_buf());
+        auth::save(&paths, "1234567890123456", KeyKind::Account).unwrap();
+
+        let (mut login, next) = Login::open(&paths, None, 60);
+        assert!(matches!(next, Next::Stay));
+        assert!(text(&login).contains("Replace the stored key?"));
+        assert!(matches!(login.key(None, &digit('2')), Next::Close(None)));
+
+        let (mut login, _) = Login::open(&paths, Some("1111222233334444".into()), 60);
+        match login.key(None, &digit('1')) {
+            Next::Run(card::Job::Login(Job::Check(number))) => {
+                assert_eq!(number, "1111222233334444")
+            }
+            _ => panic!("expected the given number to be checked"),
+        }
+
+        let (mut login, _) = Login::open(&paths, None, 60);
+        login.key(None, &digit('1'));
+        assert!(text(&login).contains("1 Pair this device"));
     }
 }

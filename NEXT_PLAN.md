@@ -186,7 +186,7 @@ reader, since unread fields fail `-D warnings`.
       `tui.account_refresh_secs` mid-run; never on an idle timer
 - [x] 4.3 welcome: replaced in place when the account changes; says not logged in, key file
       unreadable, key rejected or cannot spend
-- [ ] 4.4 login: asks before replacing a stored account number or an unreadable key file; its
+- [x] 4.4 login: asks before replacing a stored account number or an unreadable key file; its
       errors go through `data/errors.toml` like the feed's
 - [ ] 4.5 errors say what follows (`session` in `data/errors.toml`): a 401 opens the login card,
       a 402 or a spent allowance refreshes the account and shows its standing; the key is never

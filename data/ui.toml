@@ -120,6 +120,15 @@ checking = "Checking with crowbot…"
 failed = "Login failed: {error}"
 hint = "esc cancel"
 
+# Asked before a login or signup replaces the key stored on this machine; {hint} is its last
+# digits, {error} why the file cannot be read.
+[replace]
+title = "Replace the stored key?"
+account = "This machine keeps account number {hint}. An account number has no recovery: unless it is written down elsewhere, replacing it here loses the account."
+unreadable = "{error}. Replacing it overwrites whatever it holds."
+replace = "Replace it"
+keep = "Keep it"
+
 # `/forums` in a session: the forums the agent can browse, to log in to, log out of, remove or add.
 [forums]
 title = "Forums"

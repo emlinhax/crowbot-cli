@@ -33,6 +33,7 @@ pub struct Ui {
     pub status: StatusText,
     pub picker: PickerText,
     pub login: LoginText,
+    pub replace: ReplaceText,
     pub forums: ForumsText,
 }
 
@@ -86,6 +87,17 @@ pub struct LoginText {
     pub checking: String,
     pub failed: String,
     pub hint: String,
+}
+
+/// The question before a new key replaces the stored one.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReplaceText {
+    pub title: String,
+    pub account: String,
+    pub unreadable: String,
+    pub replace: String,
+    pub keep: String,
 }
 
 #[derive(Debug, Deserialize)]

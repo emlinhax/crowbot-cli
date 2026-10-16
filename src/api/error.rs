@@ -31,6 +31,20 @@ pub fn headline(info: &ErrorInfo) -> String {
     format!("{}: {info}", Entry::of(info).title)
 }
 
+/// How a failed step reads where there is room for one notice: an error from crowbot gets its
+/// headline and hint, anything else its chain of causes.
+pub fn said(e: &anyhow::Error) -> String {
+    let Some(api) = e.chain().find_map(|c| c.downcast_ref::<ApiError>()) else {
+        return format!("{e:#}");
+    };
+    let mut out = headline(&api.info);
+    if let Some(hint) = Entry::of(&api.info).hint() {
+        out.push_str(". ");
+        out.push_str(&hint);
+    }
+    out
+}
+
 impl Entry {
     /// How the client treats `info`'s kind; an unknown kind reads as `unknown`.
     pub fn of(info: &ErrorInfo) -> &'static Self {
@@ -141,6 +155,19 @@ mod tests {
             },
             body: body.as_bytes().to_vec(),
         }
+    }
+
+    #[test]
+    fn said_names_the_kind_and_its_hint_and_falls_back_to_the_causes() {
+        let refused = ApiError::from(ErrorInfo::local("key_unknown", "Invalid API key"));
+        let said = said(&anyhow::Error::new(refused).context("checking that key with crowbot"));
+        assert!(
+            said.starts_with("crowbot does not know that key: Invalid API key (key_unknown)."),
+            "{said}"
+        );
+        assert!(said.ends_with("or pair this device instead."), "{said}");
+        let other = anyhow::anyhow!("disk full").context("saving the key");
+        assert_eq!(super::said(&other), "saving the key: disk full");
     }
 
     #[test]

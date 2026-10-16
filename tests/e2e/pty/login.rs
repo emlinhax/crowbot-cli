@@ -2,7 +2,7 @@
 
 use super::harness::{ENTER, in_session};
 use crate::Sandbox;
-use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
+use crate::fake_crowbot::{ACCOUNT_NUMBER, ENV_KEY, Fake, Reply};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_command_typed_during_a_run_never_reaches_the_model() {
@@ -72,7 +72,7 @@ async fn slash_login_takes_a_masked_account_number_and_retries_a_wrong_one() {
         s.wait_for("Log in to crowbot");
         s.send("2");
         s.submit("0000 0000 0000 0000");
-        s.wait_for("invalid_api_key");
+        s.wait_for("crowbot does not know that key");
         s.send("2");
         s.type_text("1234 5678 9012 3456");
         s.wait_for("•••• •••• •••• 3456");
@@ -134,4 +134,30 @@ async fn an_unreadable_key_file_is_named_in_the_welcome() {
         s.wait_for("auth.json is unreadable");
     })
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn slash_login_asks_before_replacing_a_stored_account_number() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    sandbox
+        .run(&fake.url, &["login", "--key", ACCOUNT_NUMBER], None)
+        .await
+        .success();
+    let ended = in_session(&fake, sandbox, None, |s| {
+        s.submit("/login");
+        s.wait_for("Replace the stored key?");
+        assert!(s.contents().contains("account number …3456"), "{}", s.contents());
+        s.send("2");
+        s.wait_gone("Replace the stored key?");
+        s.submit("/login");
+        s.wait_for("Replace the stored key?");
+        s.send("1");
+        s.wait_for("Pair this device");
+        s.send("1");
+        s.wait_for("Logged in with device key …9999");
+    })
+    .await;
+    let stored = std::fs::read_to_string(ended.sandbox.home().join("auth.json")).unwrap();
+    assert!(stored.contains("\"device\""), "{stored}");
 }

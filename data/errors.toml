@@ -40,6 +40,11 @@ title = "crowbot rejected the request"
 title = "Your key was not accepted"
 hint = "It may have been revoked. Log in again: `crowbot login`, or /login in a session."
 
+# Our own: a key refused while login checks it, so it was never in use here.
+[key_unknown]
+title = "crowbot does not know that key"
+hint = "Check the account number, or pair this device instead."
+
 [account_disabled]
 title = "This account is frozen"
 hint = "A card refund or chargeback froze it. Contact admin@crowbot.sh."

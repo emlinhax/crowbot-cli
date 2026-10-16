@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::Api;
 use crate::api::account::{self, Me};
+use crate::api::error::ApiError;
 use crate::api::pair::{self, Started};
 use crate::config::paths::Paths;
 use crate::io::{self, fs::Access};
@@ -91,6 +92,14 @@ pub fn stored(paths: &Paths) -> anyhow::Result<Option<Key>> {
     }))
 }
 
+/// What a new key would replace: the stored key's kind and hint, never its secret.
+pub fn held(paths: &Paths) -> anyhow::Result<Option<(KeyKind, String)>> {
+    Ok(stored(paths)?.and_then(|key| match key.origin {
+        Origin::File { kind, hint } => Some((kind, hint)),
+        Origin::Env => None,
+    }))
+}
+
 pub fn save(paths: &Paths, secret: &str, kind: KeyKind) -> anyhow::Result<()> {
     let secret = normalize(secret);
     let (scheme, sealed) = io::secret::seal_b64(secret.as_bytes())?;
@@ -120,11 +129,21 @@ pub async fn adopt(
     let secret = normalize(secret);
     let me = account::me(&api.with_key(secret.clone()))
         .await
+        .map_err(unknown_key)
         .context("checking that key with crowbot")?;
     save(paths, &secret, kind)?;
     let hint = hint(&secret);
     api.set_key(Some(secret));
     Ok(LoggedIn { kind, hint, me })
+}
+
+/// A key refused while it is being checked was never accepted, so "it may have been revoked"
+/// would mislead: it reads as a key crowbot does not know.
+fn unknown_key(mut e: ApiError) -> ApiError {
+    if e.info.kind == "invalid_api_key" {
+        e.info.kind = "key_unknown".to_owned();
+    }
+    e
 }
 
 /// A login that went through: the kind of key, its hint, and the account it opens. The secret

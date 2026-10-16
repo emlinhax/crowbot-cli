@@ -4,10 +4,10 @@ use super::{Step, Tui};
 use crate::commands::{Effect, Outcome as CommandOutcome};
 use crate::frontend::tui::command::{self, Work};
 use crate::frontend::tui::forums::Forums;
-use crate::frontend::tui::login::{self, Login};
+use crate::frontend::tui::login::Login;
 use crate::frontend::tui::picker::Picker;
 use crate::frontend::tui::toast::Toast;
-use crate::frontend::tui::{card, ui};
+use crate::frontend::tui::ui;
 use crate::io::{clipboard, clock};
 use crate::mode;
 use crate::text::template;
@@ -43,13 +43,10 @@ impl<'a> Tui<'a> {
                         self.shared.set_mode(mode);
                     }
                 }
-                Effect::Login { number: None } => self.panel = Some(Box::new(Login::new())),
-                Effect::Login {
-                    number: Some(number),
-                } => {
-                    self.panel = Some(Box::new(Login::checking()));
-                    let job = card::Job::Login(login::Job::Check(number));
-                    return Step::Job(card::run(self.app, job));
+                Effect::Login { number } => {
+                    let (card, next) = Login::open(&self.app.paths, number, self.draw_width());
+                    self.panel = Some(Box::new(card));
+                    return self.panel_next(next);
                 }
                 Effect::PickModel { refresh: true } => {
                     return Step::Work(command::refresh_catalog(self.app));

@@ -19,6 +19,7 @@ mod picker;
 mod progress;
 mod questions;
 mod queue;
+mod replace;
 mod rows;
 mod screen;
 mod toast;
