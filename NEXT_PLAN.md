@@ -263,7 +263,32 @@ only, and a running head decides the branch.
   and only the 413 crowbot answers itself goes end to end.
 - A pty test that leaves a prompt in the editor (undo puts it back) must clear it before Ctrl+D
   can quit.
-## M6 — Subagents + MCP
+## M6 — Subagents + MCP (planned 2026-10-16)
+Plan: the model can hand a self-contained job to a subagent, and use the tools of MCP servers the
+user configures. A `task` tool runs a child loop of one kind from `data/agents/` (`explore`
+read-only, `general` with the parent's tools) under the parent's mode; its answer is the tool
+result, its cost counts in the parent's, its conversation is a file beside the parent's, and its
+edits are the parent prompt's for /undo. MCP servers are local programs in `[mcp.<name>]`, started
+with the session (a project's only once trusted); their tools join the registry as
+`<server>__<tool>` and ask like bash: MANUAL asks, AUTO runs, PLAN refuses all but read-only ones.
+- [ ] 6.1 the registry holds owned specs, built by adding; each description filled once
+- [ ] 6.2 the run harness moves to `src/agent/testing.rs`
+- [ ] 6.3 `task` + `explore`: a child runs in its own file and answers
+- [ ] 6.4 a child's cost counts in the parent's, live and after resume
+- [ ] 6.5 the task card, headless notes, `child` events in `--json`
+- [ ] 6.6 parallel children within `subagent.parallel`
+- [ ] 6.7 `general`: the parent's tools; its edits are covered by /undo
+- [ ] 6.8 a plain No inside a child stops the parent
+- [ ] 6.9 README and Learned (subagents)
+- [ ] 6.10 trust lists a left-out table entry by entry, secrets by name only
+- [ ] 6.11 `[mcp.<name>]` servers start with the session (`io::proc` child, JSON-RPC, handshake);
+      /status names them
+- [ ] 6.12 their tools join the registry (`<server>__<tool>`, optional `tools` allowlist) and ask
+      as `mcp` / `mcp_write`
+- [ ] 6.13 read-only tools (`readOnlyHint`) run in PLAN by the rules and take no snapshot
+- [ ] 6.14 interrupts send `notifications/cancelled`; a server that stops is reported once
+- [ ] 6.15 README and Learned (MCP)
+- e2e: one local batch after 6.5, 6.8, 6.12 and 6.14; each batch is pushed so CI covers Windows.
 ## M7 — Release (`prod` → GitHub Releases, installers)
 - Added 2026-10-02: every push to `prod` runs `ci.yml` through `release.yml` and publishes
   `crowbot-<target>` for musl Linux, Apple-silicon macOS and Windows, plus `SHA256SUMS`. Proven
