@@ -118,7 +118,16 @@ fn words(command: &str) -> Option<Vec<String>> {
     while let Some(c) = chars.next() {
         match (quote, c) {
             (Some(q), c) if c == q => quote = None,
-            (Some('"'), '$' | '`' | '\\') => return None,
+            (Some('"'), '$' | '`') => return None,
+            // In double quotes a backslash escapes only these; before anything else it is itself
+            // (`"a\|b"`). Neither expands anything.
+            (Some('"'), '\\') => match chars.next()? {
+                c @ ('$' | '`' | '"' | '\\' | '\n') => word.push(c),
+                c => {
+                    word.push('\\');
+                    word.push(c);
+                }
+            },
             (Some(_), c) => word.push(c),
             (None, '\'' | '"') => {
                 quote = Some(c);
@@ -193,6 +202,12 @@ mod tests {
             files("jq .name package.json"),
             Some(vec!["package.json".into()])
         );
+        // A backslash in double quotes escapes nothing the shell would expand.
+        assert_eq!(
+            files(r#"grep -n "^def \|^class " more.py"#),
+            Some(vec!["more.py".into()])
+        );
+        assert_eq!(files(r#"grep "a\$b" x"#), Some(vec!["x".into()]));
         for not_a_reader in [
             "grep foo",
             "tail -5",
@@ -228,6 +243,7 @@ mod tests {
             "grep -rn foo",
             "grep -f patterns.txt",
             "grep \"$(cat .env)\"",
+            r#"grep "\\$(cat .env)" x"#,
             "sort -o out.txt",
             "sort --files0-from=list",
             "uniq a b",
