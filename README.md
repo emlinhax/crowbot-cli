@@ -104,6 +104,15 @@ alone. Outside one, they take back the conversation only. When a request nears t
 the model and sent ahead of the last ones (`compaction.keep_tokens`), word for word; `/compact`
 does it by hand.
 
+The model can hand a self-contained job to a subagent with the `task` tool: `explore` reads and
+searches and changes nothing, `general` has the same tools as the session. Kinds are files in
+`data/agents/`. A subagent runs under the session's mode and asks through its permission cards; a
+plain No to one of its calls stops the whole run. Its reply is the tool's result (its card shows
+its latest call while it works), its cost is the session's, and its edits are the prompt's for
+`/undo`. Its conversation is saved beside the session's, in a folder named for it, so `/resume`
+lists sessions only. `--json` wraps a subagent's events in `{"type":"child","call_id":…}`; add up
+cost from `message_end` events at any depth, or from the task's `tool_end` usage, not both.
+
 | Key | Does |
 |---|---|
 | Enter | send; while crowbot works, queue the message for when it is done |
@@ -164,7 +173,7 @@ as keystrokes; a key burst counts as a paste, so its Enters add lines.
 | `data/endpoints.toml` | crowbot's origins and endpoints, and the variables that override them. |
 | `src/io/` | The only code that touches the network, files, processes, terminal or clock; `clippy.toml` bans the raw calls elsewhere. crowbot's API goes through reqwest, the rest of the web (webfetch, forums) through cffetch. |
 | `src/api/` | crowbot's endpoints, errors, streaming chat, retries, pairing and signup. |
-| `src/agent/` | The run loop, tool batches, what the model is sent, and the session setup both frontends share. |
+| `src/agent/` | The run loop, tool batches, what the model is sent, subagents (`child.rs`, kinds in `kinds.rs`), and the session setup both frontends share. |
 | `src/live/` | What a run shares with its tools and frontend while it is going: events, prompts, state, files read. |
 | `src/conversation/` | Messages, parts and errors as a conversation holds them. |
 | `src/tools/` | One file or folder per tool behind the `Tool` trait, registered in `tools/mod.rs`. |

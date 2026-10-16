@@ -279,7 +279,7 @@ with the session (a project's only once trusted); their tools join the registry 
 - [x] 6.6 parallel children within `subagent.parallel`
 - [x] 6.7 `general`: the parent's tools; its edits are covered by /undo
 - [x] 6.8 a plain No inside a child stops the parent
-- [ ] 6.9 README and Learned (subagents)
+- [x] 6.9 README and Learned (subagents)
 - [ ] 6.10 trust lists a left-out table entry by entry, secrets by name only
 - [ ] 6.11 `[mcp.<name>]` servers start with the session (`io::proc` child, JSON-RPC, handshake);
       /status names them
@@ -289,6 +289,22 @@ with the session (a project's only once trusted); their tools join the registry 
 - [ ] 6.14 interrupts send `notifications/cancelled`; a server that stops is reported once
 - [ ] 6.15 README and Learned (MCP)
 - e2e: one local batch after 6.5, 6.8, 6.12 and 6.14; each batch is pushed so CI covers Windows.
+  Subagents: 61 after 6.5, 63 after 6.8.
+
+**Learned (subagents)**
+- A subagent is the same loop under its parent: a `Shared` of its own whose cancel token is a
+  child of the parent run's, with the parent's prompts and mode shared and its own queues, read
+  set and reminder latch. Nothing in the loop had to learn it was nested; the run future proved
+  `Send` behind the tool's `BoxFuture` without a change.
+- One `child` event wrapping the subagent's own keeps the stream additive and settles a real
+  collision: subagents reuse call ids like `c1`, so frontends keep their lists for the outermost
+  call only.
+- An interrupt must wait for a subagent, not drop it (`Tool::stops_on_cancel`), or what it
+  spent and its last turn are lost.
+- Esc at a permission card is a No, not an interrupt; inside a subagent that No now stops the
+  parent, which is what makes a declined child card behave like one of the session's own.
+- One snapshot per prompt, shared through the root run's `OnceCell`, is what lets parallel
+  subagents edit without two `git add -A` on one shadow index.
 ## M7 — Release (`prod` → GitHub Releases, installers)
 - Added 2026-10-02: every push to `prod` runs `ci.yml` through `release.yml` and publishes
   `crowbot-<target>` for musl Linux, Apple-silicon macOS and Windows, plus `SHA256SUMS`. Proven
