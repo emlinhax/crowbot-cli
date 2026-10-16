@@ -287,9 +287,12 @@ with the session (a project's only once trusted); their tools join the registry 
       as `mcp` / `mcp_write`
 - [x] 6.13 read-only tools (`readOnlyHint`) run in PLAN by the rules and take no snapshot
 - [x] 6.14 interrupts send `notifications/cancelled`; a server that stops is reported once
-- [ ] 6.15 README and Learned (MCP)
+- [x] 6.15 README and Learned (MCP)
 - e2e: one local batch after 6.5, 6.8, 6.12 and 6.14; each batch is pushed so CI covers Windows.
-  Subagents: 61 after 6.5, 63 after 6.8.
+  Subagents: 61 after 6.5, 63 after 6.8. MCP: 64 after 6.12, 65 after 6.14.
+- Open (live): a real npx server on Linux and Windows (a `.cmd` shim started directly); the
+  gateway taking real-world schemas such as GitHub's; a battery re-run against the baseline, since
+  `task` and `system.md` changed it.
 
 **Learned (subagents)**
 - A subagent is the same loop under its parent: a `Shared` of its own whose cancel token is a
@@ -305,6 +308,20 @@ with the session (a project's only once trusted); their tools join the registry 
   parent, which is what makes a declined child card behave like one of the session's own.
 - One snapshot per prompt, shared through the root run's `OnceCell`, is what lets parallel
   subagents edit without two `git add -A` on one shadow index.
+
+**Learned (MCP)**
+- The RPC dispatch keeps a sender to answer pings, so dropping the client never closed the
+  server's stdin and every stop waited out its grace, then killed. A stop closes stdin itself;
+  only a test that stopped a server with a sender alive showed it.
+- A program that dies closes stdout and stderr in no set order, so its stderr tail read when the
+  stream ends can come back empty. The tail waits, bounded, for stderr to close: the start notice
+  had the same race and passed by luck.
+- A tool left out over a name clash, said through "is not running", showed the `mcp` event must
+  carry the whole sentence from the side that knows what happened.
+- `[[expect.tools]]` with exact names would tie every MCP scenario to the built-in list; `has` and
+  `lacks` keep each about its server. A fake that logs what it heard into the project, read back
+  with `expect.files`, proves the cancel without a test harness of its own.
+- `make lint | grep` hides lint's exit status: one batch passed that way while lint failed.
 ## M7 — Release (`prod` → GitHub Releases, installers)
 - Added 2026-10-02: every push to `prod` runs `ci.yml` through `release.yml` and publishes
   `crowbot-<target>` for musl Linux, Apple-silicon macOS and Windows, plus `SHA256SUMS`. Proven

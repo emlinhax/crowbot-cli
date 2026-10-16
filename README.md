@@ -139,7 +139,7 @@ session, `/help` lists the commands:
 | `/resume` | go on with an earlier session in this project |
 | `/undo`, `/retry` | take back the last prompt and what followed it, files too; `/retry` then sends it again |
 | `/compact [focus]` | summarise earlier turns now, keeping `focus` in mind |
-| `/status` | account and balance, model, mode, context use, what `/undo` restores, cost so far, session file |
+| `/status` | account and balance, model, mode, context use, what `/undo` restores, MCP servers, cost so far, session file |
 | `/account` | balance and plan, the last `account.usage_days` of spend by model, balance fallback on or off, the account's keys (revoke any but this session's own) |
 | `/copy` | the last reply to the clipboard, as markdown |
 | `/init` | crowbot studies the project and writes its `AGENTS.md` |
@@ -153,6 +153,36 @@ stored account number (signup asks about any stored key). A refused key in a ses
 `/login`; running out of funds or allowance says where the account stands. The project's `AGENTS.md` (else `CLAUDE.md`) joins the
 system prompt at conversation start, up to `agent.instructions_bytes`. On Windows a paste arrives
 as keystrokes; a key burst counts as a paste, so its Enters add lines.
+
+## MCP servers
+
+crowbot can use the tools of local MCP servers: programs it starts and speaks to over stdin and
+stdout. Name each in `~/.crowbot/config.toml`, or in a trusted project's `.crowbot/config.toml`:
+
+```toml
+[mcp.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+env = { GITHUB_PERSONAL_ACCESS_TOKEN = "…" }
+tools = ["get_*", "search_*"]   # optional: offer only these, by the server's names
+timeout_secs = 300              # optional: how long a call may take (else `mcp.call_secs`)
+```
+
+A later layer changes one key of a server, or turns it off with `enabled = false`. Servers start
+with the session, all at once, each within `mcp.start_secs`; one that does not is named once with
+what it printed, and the run goes on. A project's servers start only once the folder is trusted;
+until then they are listed without their `env` values. No server sees `CROWBOT_API_KEY`
+(`data/hidden_env.toml`).
+
+Their tools follow crowbot's own as `<server>__<tool>`, described as the server describes them,
+and ask like bash: MANUAL asks (`permission = "mcp"`, `pattern = "github__*"`,
+`action = "allow"` lets a server's tools run), AUTO runs them, and PLAN refuses them unless the
+server marks a tool read-only (`readOnlyHint`), as `/undo` snapshots before any it does not. The
+model is sent the text of an answer; images, audio and binary resources are named, not sent. A
+call past its limit, or interrupted, is cancelled at the server. A server that stops fails its
+calls at once and is said once; it is not started again. `/status` lists every server, how many
+tools it offers, and whether it stopped. Remote (HTTP) servers, resources and prompts are not
+supported yet (`grep -rn CEILING: src/mcp src/tools/mcp`).
 
 ## Environment
 
@@ -179,6 +209,7 @@ as keystrokes; a key burst counts as a paste, so its Enters add lines.
 | `src/tools/` | One file or folder per tool behind the `Tool` trait, registered in `tools/mod.rs`. |
 | `src/permission/` | Rules (last match wins), the gate that layers them with the mode, the bash command split. |
 | `src/forums/` | Forums: the directory, the sealed store, accounts and the Tapatalk backend. |
+| `src/mcp/` | MCP servers: their config, JSON-RPC over a pair of line channels, the handshake, calls. Their tools as crowbot's are `src/tools/mcp/`. |
 | `src/models/` | The model catalog (live, cached or bundled) and its table. |
 | `src/commands/` | One file per command (effect-only ones share `fixed.rs`), registered in `commands/mod.rs`. |
 | `src/frontend/` | What drives a run: `print` (headless) and `tui/` (the session), and the words and tool cards both share. |
@@ -191,6 +222,7 @@ as keystrokes; a key burst counts as a paste, so its Enters add lines.
 | `src/*.rs` | Startup (`app`), routing (`cli`), the key (`auth`), data loading, efforts and modes. |
 | `crates/cffetch/` | The user's Cloudflare-aware HTTP client, vendored unchanged (outside the workspace: see `Cargo.toml`). Re-sync: copy `src/`, `tests/`, `examples/`, `Cargo.toml`. Its networked suite runs from that directory. |
 | `tests/e2e/` | The real binary against an in-process fake crowbot; `pty/` drives real sessions. |
+| `tests/fake_mcp/` | A stand-in MCP server, a test-only binary the scenarios configure as `{fake_mcp}`. |
 | `tests/fixtures/` | What the fake serves (`sse/`, `api/`), sample `projects/`, `scenarios/*.toml`, frozen `session/` files. |
 | `tests/golden/` | Edit-matcher cases (`edit/`) and the `--json` stream (`json/`). |
 | `tests/smoke.rs` | The only tests that touch the real API (`make smoke`). |
