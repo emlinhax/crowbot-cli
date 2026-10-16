@@ -132,7 +132,7 @@ async fn an_unreadable_key_file_is_named_in_the_welcome() {
     let sandbox = Sandbox::default();
     sandbox.write_home("auth.json", "not json");
     in_session(&fake, sandbox, None, |s| {
-        s.wait_for("auth.json is unreadable");
+        s.wait_for("The stored key is unreadable");
     })
     .await;
 }

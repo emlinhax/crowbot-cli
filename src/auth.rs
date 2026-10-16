@@ -88,9 +88,10 @@ pub fn stored(paths: &Paths) -> anyhow::Result<Option<Key>> {
     let Some(text) = io::fs::read_string(&path)? else {
         return Ok(None);
     };
+    // The reason first: the welcome card cuts a long line, and a home path can be long.
     let unreadable = || {
         format!(
-            "{} is unreadable; `crowbot logout` removes it",
+            "The stored key is unreadable; `crowbot logout` removes {}",
             path.display()
         )
     };
