@@ -13,7 +13,7 @@ pub mod login;
 mod logout;
 mod mode;
 pub mod models;
-mod signup;
+pub mod signup;
 mod spec;
 mod status;
 mod uninstall;
@@ -83,6 +83,10 @@ pub enum Effect {
     /// Open the session's model picker, after fetching a fresh list when asked.
     PickModel {
         refresh: bool,
+    },
+    /// Open the session's signup card; `force` skips asking about a stored key.
+    Signup {
+        force: bool,
     },
     /// Open the forums card; at the login of the forum with this base URL, if given.
     Forums {
@@ -213,12 +217,12 @@ mod tests {
             lookup("nope", Scope::Session),
             Err(Missing::Unknown)
         ));
-        let Err(Missing::Elsewhere(spec)) = lookup("signup", Scope::Session) else {
-            panic!("signup works in the session");
+        let Err(Missing::Elsewhere(spec)) = lookup("update", Scope::Session) else {
+            panic!("update works in the session");
         };
         assert_eq!(
             elsewhere(spec, Scope::Session),
-            "`/signup` only works as `crowbot signup`."
+            "`/update` only works as `crowbot update`."
         );
     }
 

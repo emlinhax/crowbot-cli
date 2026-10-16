@@ -59,7 +59,7 @@ modes = " → "
 queued = "queued"
 steering = "steering"
 request = "request {id}"
-not_logged_in = "Not logged in: type /login"
+not_logged_in = "Not logged in: type /login, or /signup for a new account"
 key_rejected = "crowbot did not accept this key: type /login"
 declined = "Stopped: you declined a call."
 ctrl_c_again = "Press Ctrl+C again to quit"
@@ -126,9 +126,21 @@ hint = "esc cancel"
 [replace]
 title = "Replace the stored key?"
 account = "This machine keeps account number {hint}. An account number has no recovery: unless it is written down elsewhere, replacing it here loses the account."
+device = "This machine keeps device key {hint}. Replacing it is safe: the device can be paired again."
 unreadable = "{error}. Replacing it overwrites whatever it holds."
 replace = "Replace it"
 keep = "Keep it"
+
+# `/signup` in a session; the rest of its words are signup's own (data/commands/signup.toml).
+[signup]
+title = "Create a crowbot account"
+number = "Your account number:  "
+done = "Account {hint} created and saved in {path}. "
+closed = "Account {hint} is saved in {path}."
+failed = "Signup failed: {error}"
+retry = "Try again"
+close = "Close"
+hint = "esc close"
 
 # `/forums` in a session: the forums the agent can browse, to log in to, log out of, remove or add.
 [forums]

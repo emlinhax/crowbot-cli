@@ -6,6 +6,7 @@ use crate::frontend::tui::command::{self, Work};
 use crate::frontend::tui::forums::Forums;
 use crate::frontend::tui::login::Login;
 use crate::frontend::tui::picker::Picker;
+use crate::frontend::tui::signup::Signup;
 use crate::frontend::tui::toast::Toast;
 use crate::frontend::tui::ui;
 use crate::io::{clipboard, clock};
@@ -45,6 +46,11 @@ impl<'a> Tui<'a> {
                 }
                 Effect::Login { number } => {
                     let (card, next) = Login::open(&self.app.paths, number, self.draw_width());
+                    self.panel = Some(Box::new(card));
+                    return self.panel_next(next);
+                }
+                Effect::Signup { force } => {
+                    let (card, next) = Signup::open(&self.app.paths, force, self.draw_width());
                     self.panel = Some(Box::new(card));
                     return self.panel_next(next);
                 }

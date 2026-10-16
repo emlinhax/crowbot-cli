@@ -22,6 +22,7 @@ mod queue;
 mod replace;
 mod rows;
 mod screen;
+mod signup;
 mod toast;
 mod ui;
 mod view;

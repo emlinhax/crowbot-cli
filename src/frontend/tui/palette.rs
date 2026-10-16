@@ -124,7 +124,8 @@ mod tests {
         assert!(names(&matches("/")).contains(&"quit".to_owned()));
         // Hidden and command-line-only commands never show.
         assert!(!names(&matches("/")).contains(&"keytest".to_owned()));
-        assert!(!names(&matches("/")).contains(&"signup".to_owned()));
+        assert!(!names(&matches("/")).contains(&"update".to_owned()));
+        assert!(names(&matches("/")).contains(&"signup".to_owned()));
         assert!(matches("/mode plan").is_empty());
         assert!(matches("mo").is_empty());
         assert!(matches("/zzz").is_empty());

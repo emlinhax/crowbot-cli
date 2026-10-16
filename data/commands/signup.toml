@@ -1,13 +1,14 @@
 name = "signup"
 summary = "Create a crowbot account on this machine (no email, no password)"
 usage = "signup [--force]"
-scope = ["cli"]
+scope = ["cli", "session"]
 
-# What signup says; {placeholders} are filled in.
+# What signup says; {placeholders} are filled in. The session's card says the same.
 [text]
 logged_in = "already logged in; run `{logout}` first, or pass --force if the current key is saved elsewhere"
 creating = "Creating a crowbot account (solving a proof-of-work challenge)…"
-number = "\nYour account number:  {number}\n\nIt is your login and API key. No email, no recovery: store it in a password\nmanager now. A copy is in {path}.\n"
+number = "\nYour account number:  {number}\n\n{about}\n"
+about = "It is your login and API key. No email, no recovery: store it in a password manager now. A copy is in {path}."
 next = "Next: fund it at {chat}."
 confirm = "Type its last {n} digits to confirm you saved it: "
 mismatch = "That does not match; check what you saved."

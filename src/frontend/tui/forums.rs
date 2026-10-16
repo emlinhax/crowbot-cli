@@ -395,10 +395,10 @@ impl Card for Forums {
     }
 
     fn finished(&mut self, done: card::Done) -> Next {
-        match done {
-            card::Done::Forums(done) => self.stage_finished(done),
-            card::Done::Login(_) => Next::Stay,
-        }
+        let card::Done::Forums(done) = done else {
+            return Next::Stay;
+        };
+        self.stage_finished(done)
     }
 }
 

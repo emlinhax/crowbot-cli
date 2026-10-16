@@ -5,7 +5,7 @@ use futures_util::future::BoxFuture;
 
 use serde::Deserialize;
 
-use super::{Command, Ctx, Outcome, Spec};
+use super::{Command, Ctx, Effect, Outcome, Scope, Spec};
 use crate::api::endpoints;
 use crate::auth;
 use crate::data;
@@ -21,6 +21,7 @@ struct Text {
     logged_in: String,
     creating: String,
     number: String,
+    about: String,
     next: String,
     confirm: String,
     mismatch: String,
@@ -45,6 +46,10 @@ impl Command for Signup {
                 [flag] if flag == "--force" => true,
                 _ => return Err(cx.usage(&SPEC)),
             };
+            // A session asks in its own card, which runs beside input.
+            if cx.scope == Scope::Session {
+                return Ok(Effect::Signup { force }.into());
+            }
             // A new account would replace the stored key, and an account number has no recovery.
             if !force && auth::stored(&app.paths)?.is_some() {
                 let logout = cx.scope.invoke("logout");
@@ -56,12 +61,10 @@ impl Command for Signup {
             let path = app.paths.auth().display().to_string();
             term::out(&fill(
                 &TEXT.number,
-                &[("number", &account.formatted), ("path", &path)],
+                &[("number", &account.formatted), ("about", &about(&path))],
             ));
             confirm(&account.number)?;
-            let mut out = fill(&TEXT.next, &[("chat", &endpoints::origin("chat"))]);
-            out.push_str(super::login::env_note());
-            Ok(out.into())
+            Ok(next().into())
         })
     }
 }
@@ -72,10 +75,7 @@ fn confirm(number: &str) -> anyhow::Result<()> {
         return Ok(());
     }
     loop {
-        term::out(&fill(
-            &TEXT.confirm,
-            &[("n", &auth::HINT_CHARS.to_string())],
-        ));
+        term::out(&confirm_prompt());
         let Some(line) = term::read_line()? else {
             return Ok(());
         };
@@ -84,6 +84,32 @@ fn confirm(number: &str) -> anyhow::Result<()> {
         }
         term::out(&format!("{}\n", TEXT.mismatch));
     }
+}
+
+/// What creating an account says while it works.
+pub fn creating() -> &'static str {
+    &TEXT.creating
+}
+
+/// What the number is, and where its copy is kept.
+pub fn about(path: &str) -> String {
+    fill(&TEXT.about, &[("path", path)])
+}
+
+/// The request for the number's last digits.
+pub fn confirm_prompt() -> String {
+    fill(&TEXT.confirm, &[("n", &auth::HINT_CHARS.to_string())])
+}
+
+pub fn mismatch() -> &'static str {
+    &TEXT.mismatch
+}
+
+/// What to do with the new account.
+pub fn next() -> String {
+    let mut out = fill(&TEXT.next, &[("chat", &endpoints::origin("chat"))]);
+    out.push_str(super::login::env_note());
+    out
 }
 
 /// Whether `typed` is the number's last digits, the proof it was saved somewhere.

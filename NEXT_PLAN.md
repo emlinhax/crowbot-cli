@@ -193,7 +193,7 @@ reader, since unread fields fail `-D warnings`.
       dropped on a 401
 - [x] 4.6 signup core shared by `crowbot signup` and the session: the number is saved before
       anything can drop it, and the proof of work stops when its job is dropped
-- [ ] 4.7 `/signup` card: asks before replacing a stored key, shows the number, confirms its last
+- [x] 4.7 `/signup` card: asks before replacing a stored key, shows the number, confirms its last
       four digits
 - [ ] 4.8 `/account` card: overview and keys; revoke any key but the session's own
 - [ ] 4.9 `/account`: the last `account.usage_days` of usage by model, and the balance fallback

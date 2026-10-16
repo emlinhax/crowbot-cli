@@ -13,7 +13,7 @@ use crate::frontend::tui::keymap::Action;
 use crate::frontend::tui::questions::Questions;
 use crate::frontend::tui::rows::capped;
 use crate::frontend::tui::ui::{self, PermissionReply};
-use crate::frontend::tui::{forums, login};
+use crate::frontend::tui::{forums, login, signup};
 use crate::io::term::KeyEvent;
 use crate::live::prompt::{Prompt, Reply};
 use crate::permission::gate;
@@ -40,6 +40,7 @@ pub enum Next {
 /// Network or store work a card waits on, run beside input so the screen stays live.
 pub enum Job {
     Login(login::Job),
+    Signup(signup::Job),
     /// Boxed: it carries a whole forum.
     Forums(Box<forums::Job>),
 }
@@ -47,12 +48,14 @@ pub enum Job {
 /// What a `Job` came to, for the card that asked for it.
 pub enum Done {
     Login(login::Done),
+    Signup(signup::Done),
     Forums(forums::Done),
 }
 
 pub fn run(app: &App, job: Job) -> BoxFuture<'_, Done> {
     match job {
         Job::Login(job) => login::run(app, job).map(Done::Login).boxed(),
+        Job::Signup(job) => signup::run(app, job).map(Done::Signup).boxed(),
         Job::Forums(job) => forums::run(app, *job).map(Done::Forums).boxed(),
     }
 }

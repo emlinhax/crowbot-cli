@@ -34,6 +34,7 @@ pub struct Ui {
     pub picker: PickerText,
     pub login: LoginText,
     pub replace: ReplaceText,
+    pub signup: SignupText,
     pub forums: ForumsText,
 }
 
@@ -95,9 +96,23 @@ pub struct LoginText {
 pub struct ReplaceText {
     pub title: String,
     pub account: String,
+    pub device: String,
     pub unreadable: String,
     pub replace: String,
     pub keep: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SignupText {
+    pub title: String,
+    pub number: String,
+    pub done: String,
+    pub closed: String,
+    pub failed: String,
+    pub retry: String,
+    pub close: String,
+    pub hint: String,
 }
 
 #[derive(Debug, Deserialize)]

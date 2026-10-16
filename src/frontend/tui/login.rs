@@ -15,7 +15,8 @@ use crate::frontend::tui::boxed::{self, boxed};
 use crate::frontend::tui::card::{self, Card, Next};
 use crate::frontend::tui::choice::{Choice, Opt};
 use crate::frontend::tui::keymap::Action;
-use crate::frontend::tui::{replace, ui};
+use crate::frontend::tui::replace::{self, Asks};
+use crate::frontend::tui::ui;
 use crate::io::term::KeyEvent;
 use crate::live::prompt::Reply;
 use crate::text::styled::{Line, Style};
@@ -81,7 +82,7 @@ impl Login {
     /// The card, and its first work: checking `number` when `/login --key` gave one. It asks
     /// first when that would replace a stored account number; `width` wraps the question.
     pub fn open(paths: &Paths, number: Option<String>, width: usize) -> (Self, Next) {
-        match replace::question(paths, width) {
+        match replace::question(paths, Asks::Irreplaceable, width) {
             Some(choice) => {
                 let stage = Stage::Replace { choice, number };
                 (Self { stage }, Next::Stay)

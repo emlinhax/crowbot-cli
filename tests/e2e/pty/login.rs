@@ -1,4 +1,5 @@
-//! `/login` in a session, and a command typed while a turn runs.
+//! `/login` and `/signup` in a session, what the account's state shows, and a command typed
+//! while a turn runs.
 
 use super::harness::{ENTER, ESC, in_session};
 use crate::Sandbox;
@@ -210,4 +211,50 @@ async fn out_of_funds_and_a_spent_allowance_say_where_the_account_stands() {
         s.wait_for("allowance is used up");
     })
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn slash_signup_creates_an_account_in_a_card_and_the_session_uses_it() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse")]);
+    let ended = in_session(&fake, Sandbox::default(), None, |s| {
+        s.wait_for("/signup for a new account");
+        s.submit("/signup");
+        s.wait_for("Your account number:  1234 5678 9012 3456");
+        s.submit("0000");
+        s.wait_for("does not match");
+        s.submit("3456");
+        s.wait_for("Account …3456 created");
+        s.wait_bar("$12.30 left");
+        s.submit("hi");
+        s.wait_for("Hello there!");
+    })
+    .await;
+    assert!(ended.sandbox.home().join("auth.json").exists());
+    assert!(!ended.screen.contains("1234 5678"), "{}", ended.screen);
+    let sessions: String = ended
+        .sandbox
+        .sessions()
+        .iter()
+        .map(|f| std::fs::read_to_string(f).unwrap())
+        .collect();
+    assert!(!sessions.contains("9012"), "the number was saved: {sessions}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn slash_signup_asks_before_replacing_a_stored_key() {
+    let fake = Fake::start().await;
+    let sandbox = Sandbox::default();
+    sandbox
+        .run(&fake.url, &["login", "--key", ACCOUNT_NUMBER], None)
+        .await
+        .success();
+    in_session(&fake, sandbox, None, |s| {
+        s.submit("/signup");
+        s.wait_for("Replace the stored key?");
+        s.send("2");
+        s.wait_gone("Replace the stored key?");
+    })
+    .await;
+    assert_eq!(fake.hits("/api/pow"), 0);
 }
