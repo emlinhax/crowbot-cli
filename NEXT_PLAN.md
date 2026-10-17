@@ -522,9 +522,9 @@ separately, default No, per project.
       APPDATA and XDG_CONFIG_HOME; scenarios gain `user_files`
 - [x] 10.2 streamable HTTP servers (`[mcp.x] url = …`): `io::http` response headers, the SSE
       parser shared, `src/mcp/http.rs` filling the same line channels
-- [ ] 10.3 where other clients keep their servers: `data/mcp_sources.toml`, one reader per shape,
+- [x] 10.3 where other clients keep their servers: `data/mcp_sources.toml`, one reader per shape,
       JSONC and TOML, names made to fit, precedence, fingerprints
-- [ ] 10.4 asked once, remembered (`~/.crowbot/mcp.json`), before a session; headless uses what
+- [x] 10.4 asked once, remembered (`~/.crowbot/mcp.json`), before a session; headless uses what
       was chosen; `/status` names the source
 - [ ] 10.5 a server's `instructions` reach the model in the system prompt
 - [ ] 10.6 README and Learned

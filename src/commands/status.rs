@@ -8,7 +8,7 @@ use super::{Command, Ctx, Outcome, Session, Spec, login};
 use crate::api::account::{self, Me};
 use crate::api::error::ApiError;
 use crate::data;
-use crate::mcp::State;
+use crate::mcp::{Standing, State};
 use crate::text::template::fill;
 use crate::text::units::{self, Plural};
 
@@ -27,6 +27,8 @@ struct Text {
     undo_files: String,
     undo_conversation: String,
     mcp_none: String,
+    mcp_name: String,
+    mcp_found: String,
     mcp_running: Plural,
     mcp_failed: String,
     mcp_stopped: String,
@@ -109,18 +111,25 @@ fn render(
     )
 }
 
-/// Each MCP server and how it stands, on one line.
-fn servers(servers: &[(String, State)]) -> String {
+/// Each MCP server, where it was found, and how it stands, on one line.
+fn servers(servers: &[Standing]) -> String {
     if servers.is_empty() {
         return TEXT.mcp_none.clone();
     }
     let each: Vec<String> = servers
         .iter()
+        .map(|server| {
+            let name = match &server.from {
+                Some(from) => fill(&TEXT.mcp_found, &[("name", &server.name), ("from", from)]),
+                None => fill(&TEXT.mcp_name, &[("name", &server.name)]),
+            };
+            (name, &server.state)
+        })
         .map(|(name, state)| match state {
-            State::Running { tools } => fill(&TEXT.mcp_running.of(*tools), &[("name", name)]),
-            State::Failed(why) => fill(&TEXT.mcp_failed, &[("name", name), ("why", why)]),
-            State::Stopped => fill(&TEXT.mcp_stopped, &[("name", name)]),
-            State::Off => fill(&TEXT.mcp_off, &[("name", name)]),
+            State::Running { tools } => fill(&TEXT.mcp_running.of(*tools), &[("name", &name)]),
+            State::Failed(why) => fill(&TEXT.mcp_failed, &[("name", &name), ("why", why)]),
+            State::Stopped => fill(&TEXT.mcp_stopped, &[("name", &name)]),
+            State::Off => fill(&TEXT.mcp_off, &[("name", &name)]),
         })
         .collect();
     each.join("; ")
@@ -140,11 +149,21 @@ mod tests {
             file: "/home/u/.crowbot/sessions/s.jsonl".into(),
             snapshots_off: Some("git was not found".into()),
             mcp: vec![
-                ("fake".into(), State::Running { tools: 3 }),
-                (
-                    "gone".into(),
-                    State::Failed("gone-mcp was not found".into()),
-                ),
+                Standing {
+                    name: "fake".into(),
+                    from: None,
+                    state: State::Running { tools: 3 },
+                },
+                Standing {
+                    name: "gone".into(),
+                    from: None,
+                    state: State::Failed("gone-mcp was not found".into()),
+                },
+                Standing {
+                    name: "ida".into(),
+                    from: Some("Claude Desktop, Cursor".into()),
+                    state: State::Running { tools: 1 },
+                },
             ],
         }
     }
@@ -169,7 +188,8 @@ mod tests {
             "Context: 12% of the window",
             "This session: about $0.042",
             "Undo: takes back a prompt, not its files: git was not found",
-            "MCP: `fake`, 3 tools; `gone` not running (gone-mcp was not found)",
+            "MCP: `fake`, 3 tools; `gone` not running (gone-mcp was not found); \
+             `ida` (Claude Desktop, Cursor), 1 tool",
             "`/home/u/.crowbot/sessions/s.jsonl`",
         ] {
             assert!(text.contains(want), "{want} missing from:\n{text}");

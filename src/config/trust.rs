@@ -37,6 +37,11 @@ fn load(paths: &Paths) -> anyhow::Result<Store> {
     Ok(io::fs::read_json(&paths.trusted())?.unwrap_or_default())
 }
 
+/// What stands for a secret's value wherever settings are shown.
+pub fn mask() -> &'static str {
+    &DATA.mask
+}
+
 fn project(paths: &Paths) -> String {
     paths.project.display().to_string()
 }

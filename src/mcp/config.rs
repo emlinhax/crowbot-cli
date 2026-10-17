@@ -18,6 +18,8 @@ pub struct Server {
     pub timeout_secs: Option<u64>,
     /// The tools to offer, by the server's names, `*` and `?` allowed; `None` offers them all.
     pub tools: Option<Vec<String>>,
+    /// The apps listing it, when crowbot found it in their settings rather than in its own.
+    pub from: Option<String>,
 }
 
 /// How crowbot reaches a server.
@@ -88,23 +90,17 @@ impl TryFrom<Raw> for Server {
             enabled: raw.enabled,
             timeout_secs: raw.timeout_secs,
             tools: raw.tools,
+            from: None,
         })
     }
 }
 
-/// The `mcp` table, its names checked: each starts its tools' names, so letters, digits, `-`
-/// and `_` only, no `__` (which joins it to a tool's name), and short enough to leave room.
+/// The `mcp` table, its names checked (`fits`).
 pub fn servers<'de, D: Deserializer<'de>>(d: D) -> Result<BTreeMap<String, Server>, D::Error> {
     let servers = BTreeMap::<String, Server>::deserialize(d)?;
     let most = limits::get().mcp.server_name_chars.value;
     for name in servers.keys() {
-        let fits = !name.is_empty()
-            && name.len() <= most
-            && !name.contains("__")
-            && name
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-        if !fits {
+        if !fits(name) {
             return Err(serde::de::Error::custom(format!(
                 "`[mcp.{name}]`: a server's name is up to {most} letters, digits, `-` or `_`, \
                  without `__`"
@@ -112,4 +108,57 @@ pub fn servers<'de, D: Deserializer<'de>>(d: D) -> Result<BTreeMap<String, Serve
         }
     }
     Ok(servers)
+}
+
+/// Whether `name` may name a server. It starts each of its tools' names, so letters, digits, `-`
+/// and `_` only, no `__` (which joins it to a tool's name), and short enough to leave room.
+pub fn fits(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= limits::get().mcp.server_name_chars.value
+        && !name.contains("__")
+        && name.chars().all(allowed)
+}
+
+/// Another app's name for a server (`github.com/mrexodia/ida-pro-mcp`) made into one that
+/// `fits`: its last `/` part, `-` for any other character, one `_` for a run of them, cut to
+/// length; `None` when nothing is left.
+pub fn fit(name: &str) -> Option<String> {
+    let last = name.rsplit('/').next().unwrap_or(name);
+    let mut out = String::new();
+    for c in last.chars() {
+        let c = if allowed(c) { c } else { '-' };
+        if !(c == '_' && out.ends_with('_')) {
+            out.push(c);
+        }
+    }
+    let out: String = out
+        .trim_matches(['-', '_'])
+        .chars()
+        .take(limits::get().mcp.server_name_chars.value)
+        .collect();
+    let out = out.trim_end_matches(['-', '_']).to_owned();
+    fits(&out).then_some(out)
+}
+
+fn allowed(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '-' || c == '_'
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn another_apps_names_are_made_to_fit() {
+        assert_eq!(
+            fit("github.com/mrexodia/ida-pro-mcp").as_deref(),
+            Some("ida-pro-mcp")
+        );
+        assert_eq!(fit("My Server (dev)").as_deref(), Some("My-Server--dev"));
+        assert_eq!(fit("a__b___c").as_deref(), Some("a_b_c"));
+        assert_eq!(fit("...").as_deref(), None);
+        let long = fit(&"x".repeat(100)).unwrap();
+        assert_eq!(long.len(), limits::get().mcp.server_name_chars.value);
+        assert!(fits(&long) && !fits("a__b") && !fits("two words"));
+    }
 }

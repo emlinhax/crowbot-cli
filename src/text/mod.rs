@@ -2,6 +2,7 @@ pub mod choices;
 pub mod controls;
 pub mod diff;
 pub mod highlight;
+pub mod jsonc;
 pub mod markdown;
 pub mod shorten;
 pub mod sse;

@@ -4,6 +4,7 @@
 // used. Upgrade: each as its own capability, behind the same `Server`.
 
 pub mod config;
+pub mod discover;
 mod http;
 pub mod protocol;
 mod rpc;
@@ -25,6 +26,15 @@ pub struct Servers {
     off: Vec<String>,
     /// What is said of a server once, when the session starts: by its name, whole sentences.
     notes: Vec<(String, String)>,
+    /// The apps listing each server found in their settings, by name.
+    from: std::collections::BTreeMap<String, String>,
+}
+
+/// One server as /status shows it: its name, where it was found, and how it stands.
+pub struct Standing {
+    pub name: String,
+    pub from: Option<String>,
+    pub state: State,
 }
 
 /// How one server stands, for /status.
@@ -52,7 +62,12 @@ impl Servers {
             running: Vec::new(),
             failed: Vec::new(),
             off: off.into_iter().map(|(name, _)| name.clone()).collect(),
-            notes: Vec::new(),
+            notes: settings.found_notes.clone(),
+            from: settings
+                .mcp
+                .iter()
+                .filter_map(|(name, cfg)| Some((name.clone(), cfg.from.clone()?)))
+                .collect(),
         };
         for (name, started) in started {
             match started {
@@ -83,7 +98,7 @@ impl Servers {
     }
 
     /// Every server and how it stands, by name.
-    pub fn report(&self) -> Vec<(String, State)> {
+    pub fn report(&self) -> Vec<Standing> {
         let mut report: Vec<(String, State)> = self
             .running
             .iter()
@@ -105,6 +120,13 @@ impl Servers {
             .collect();
         report.sort_by(|a, b| a.0.cmp(&b.0));
         report
+            .into_iter()
+            .map(|(name, state)| Standing {
+                from: self.from.get(&name).cloned(),
+                name,
+                state,
+            })
+            .collect()
     }
 
     /// Stops every server, all at once.

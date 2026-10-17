@@ -23,7 +23,10 @@ no_context = "nothing sent yet"
 undo_files = "takes back a prompt and the files it changed"
 undo_conversation = "takes back a prompt, not its files: {why}"
 mcp_none = "no servers in config.toml"
-mcp_running = { one = "`{name}`, {n} tool", many = "`{name}`, {n} tools" }
-mcp_failed = "`{name}` not running ({why})"
-mcp_stopped = "`{name}` stopped"
-mcp_off = "`{name}` off"
+# `{name}` below is one of these: the server's name, or it and the apps it was found in.
+mcp_name = "`{name}`"
+mcp_found = "`{name}` ({from})"
+mcp_running = { one = "{name}, {n} tool", many = "{name}, {n} tools" }
+mcp_failed = "{name} not running ({why})"
+mcp_stopped = "{name} stopped"
+mcp_off = "{name} off"

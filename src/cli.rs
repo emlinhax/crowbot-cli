@@ -142,6 +142,10 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
     {
         app.settings = settings::load(&app.paths, &flags)?;
     }
+    // Only a run starts servers, so only a run looks for those other apps list.
+    if command.is_none() {
+        crate::mcp::discover::choose::settle(&app.paths, &mut app.settings, session)?;
+    }
     if let Some(command) = command {
         let cx = Ctx {
             session: None,

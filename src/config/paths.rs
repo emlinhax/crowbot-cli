@@ -66,6 +66,11 @@ impl Paths {
         self.home.join("trusted.json")
     }
 
+    /// Which MCP servers found in other apps' settings the user chose to use, or not.
+    pub fn mcp_choices(&self) -> PathBuf {
+        self.home.join("mcp.json")
+    }
+
     /// Whether the user said no to installing, so they are not asked again.
     pub fn install_state(&self) -> PathBuf {
         self.home.join("install.json")

@@ -1,0 +1,14 @@
+description = "A server a repository's own .mcp.json names is not started by a run that cannot ask"
+args = ["-p", "hi"]
+project_files = { ".mcp.json" = '{"mcpServers": {"repo": {"command": "{fake_mcp}"}}}' }
+
+[[reply]]
+text = "Hello."
+
+[expect]
+exit = 0
+stderr_contains = ["MCP server repo (.mcp.json) is not used yet"]
+
+[[expect.tools]]
+index = 0
+lacks = ["repo__echo"]

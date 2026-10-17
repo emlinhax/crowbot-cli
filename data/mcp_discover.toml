@@ -1,0 +1,17 @@
+# What crowbot says of the MCP servers it finds in other apps' settings (data/mcp_sources.toml);
+# {placeholders} are filled in.
+[text]
+# Asked before a session, once per server found: of the user's own apps (default yes), and of a
+# repository's own files (default no). `entry` is one line per server; `{what}` the program and
+# its arguments or the address, `{secrets}` the names of its env and headers.
+found = "crowbot found MCP servers in your other apps' settings:"
+found_project = "This project's own files name MCP servers:"
+danger = "A repository can name any program here; use them only if you trust it."
+entry = "  {name}: {what}{secrets}  ({sources})"
+secrets = ", with {names}"
+question = "Use them in crowbot? A no is remembered."
+question_project = "Use them in crowbot for this project? A no is remembered."
+# Said of a server not yet chosen, in a run that cannot ask.
+unchosen = "MCP server {name} ({sources}) is not used yet: start crowbot in a terminal to choose."
+# Said once at the start, of a server whose name another source's different server has.
+left_out = "MCP server {name} in {source} is left out: {first} lists a different server by that name."

@@ -280,6 +280,7 @@ mod tests {
             enabled: true,
             timeout_secs: Some(5),
             tools: None,
+            from: None,
         };
         let web = Http::new(std::time::Duration::from_secs(2)).unwrap();
         Server::start("web", &config, &paths, &web).await

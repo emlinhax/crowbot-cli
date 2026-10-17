@@ -33,9 +33,14 @@ pub struct Settings {
     /// MCP servers to start with the session, by name.
     #[serde(default, deserialize_with = "crate::mcp::config::servers")]
     pub mcp: std::collections::BTreeMap<String, crate::mcp::config::Server>,
+    /// Whether crowbot offers the MCP servers the user's other apps list.
+    pub mcp_discovery: bool,
     /// What an untrusted project's config asked for and did not get.
     #[serde(skip)]
     pub untrusted: Option<trust::Untrusted>,
+    /// What is said once at the start of servers found in other apps' settings, by server.
+    #[serde(skip)]
+    pub found_notes: Vec<(String, String)>,
 }
 
 /// Values from command-line flags: the last and strongest layer. One that is not given leaves

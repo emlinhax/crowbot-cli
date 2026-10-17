@@ -1,0 +1,16 @@
+description = "A server found in another app's settings is not started by a run that cannot ask: it is named on stderr and its tools are not offered"
+args = ["-p", "hi"]
+user_files = { ".cursor/mcp.json" = '{"mcpServers": {"fake": {"command": "{fake_mcp}"}}}' }
+
+[[reply]]
+text = "Hello."
+
+[expect]
+exit = 0
+stdout = "Hello.\n"
+stderr_contains = ["MCP server fake (Cursor) is not used yet: start crowbot in a terminal to choose."]
+
+[[expect.tools]]
+index = 0
+has = ["read"]
+lacks = ["fake__echo"]

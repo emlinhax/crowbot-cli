@@ -87,6 +87,9 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
         std::fs::create_dir_all(&cache)?;
         std::fs::write(cache.join("models.json"), models)?;
     }
+    // The runs keep the real HOME for the repos' builds; the MCP servers its apps list stay out of
+    // what is measured.
+    std::fs::write(home.path().join("config.toml"), "mcp_discovery = false\n")?;
 
     let watched = watch(battery, repo, task, home.path(), &copy).await?;
 
