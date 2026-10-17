@@ -1,0 +1,9 @@
+prompt = "Using the database (MCP server): what is the combined total of every paid order, across all customers? Answer with the number."
+repo = "desk"
+mode = "auto"
+turns = 25
+suite = "mcp"
+mcp = ["db"]
+# 16 paid orders over four pages sum to 11439.0; the sum is not a stored value, so the reply holds
+# it only if the run gathered the pages and added them.
+check = "python3 {checks}/reply_number.py {reply} 11439"

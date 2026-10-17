@@ -1,0 +1,9 @@
+prompt = "Using the provisioning server (MCP): find a pairing code it accepts, and report the code as a number."
+repo = "desk"
+mode = "auto"
+turns = 25
+suite = "mcp"
+mcp = ["pairing"]
+# 31337 is the only code in 0..100000 the formula accepts; it is not stored, so the reply holds it
+# only if the run reproduced the check and searched for the input.
+check = "python3 {checks}/reply_number.py {reply} 31337"
