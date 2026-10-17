@@ -164,13 +164,19 @@ impl Head {
     }
 }
 
-/// The URL is dropped from the message: a pairing poll's URL carries the live device code.
+/// The URL is dropped from the message: a pairing poll's URL carries the live device code. A
+/// connection that never opened is a connect failure even when it timed out (Windows retries a
+/// refused one for seconds), named by its root cause.
 fn classify(e: reqwest::Error) -> HttpError {
     let e = e.without_url();
-    if e.is_timeout() {
+    if e.is_connect() {
+        let mut cause: &dyn std::error::Error = &e;
+        while let Some(next) = cause.source() {
+            cause = next;
+        }
+        HttpError::Connect(cause.to_string())
+    } else if e.is_timeout() {
         HttpError::Timeout
-    } else if e.is_connect() {
-        HttpError::Connect(e.to_string())
     } else {
         HttpError::Other(e.to_string())
     }
@@ -202,5 +208,6 @@ mod tests {
             panic!("a closed port answered");
         };
         assert!(!err.to_string().contains("DEVICECODE"), "{err}");
+        assert!(matches!(err, HttpError::Connect(_)), "{err:?}");
     }
 }
