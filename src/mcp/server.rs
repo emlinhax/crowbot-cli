@@ -30,8 +30,8 @@ pub struct Server {
 
 /// What crowbot holds of a running server, and so what stopping it takes.
 enum Link {
-    /// A program crowbot started.
-    Program(Process),
+    /// A program crowbot started; boxed, as on Windows its job handle makes it the far larger.
+    Program(Box<Process>),
     /// A server at a URL: the task carrying crowbot's messages to it.
     Url(http::Connection),
 }
@@ -76,7 +76,7 @@ impl Server {
             Reach::Program { command, args, env } => {
                 let running = run(command, args, env, paths)?;
                 let rpc = Rpc::new(running.outgoing, running.incoming, text.closed.clone());
-                (rpc, Link::Program(running.process))
+                (rpc, Link::Program(Box::new(running.process)))
             }
             Reach::Url { url, headers } => {
                 let opened = http::open(web, url, headers, limit);
