@@ -675,3 +675,10 @@ tasks, and a measured before/after (deepseek-v4.1-flash, a crow-2 reference) the
   hand — the conditional behaviour the prompt intends, not "always script".
 - No ungrounded-miss candidate fired, because nothing missed; the candidate is for a run that
   missed having run or scripted nothing.
+
+## M13 — Default model GLM 5.3 Flash, and model/effort remembered (2026-10-17)
+- [x] 13.1 the default model is `glm-5.3-flash-crow` (data/defaults.toml); the bundled model
+      snapshot (data/models.json) refreshed from the live list so the default resolves offline
+- [x] 13.2 the model and effort a session chose are remembered in ~/.crowbot/prefs.json and apply
+      next session, above the config files and below a one-off --model/--effort flag
+      (src/config/prefs.rs, layered in settings::load; written from the TUI's picker and /effort)

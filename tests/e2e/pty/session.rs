@@ -10,7 +10,11 @@ async fn a_session_welcomes_chats_switches_mode_and_quits() {
     fake.script([Reply::sse("hello.sse")]);
     let ended = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         // The message bar and the rule under it, with the model, sit at the bottom from the start.
-        assert!(s.bottom_row().contains("crow-2"), "{}", s.contents());
+        assert!(
+            s.bottom_row().contains("glm-5.3-flash-crow"),
+            "{}",
+            s.contents()
+        );
         s.submit("hi");
         s.wait_for("Hello there!");
         s.send(SHIFT_TAB);
@@ -63,7 +67,7 @@ async fn the_context_share_follows_a_switch_of_model_at_once() {
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.submit("hi");
         s.wait_for("Read it all.");
-        // 100k tokens: a tenth of crow-2's million, three quarters of fake-coder's 131k.
+        // 100k tokens: a tenth of the default's million, three quarters of fake-coder's 131k.
         s.wait_bar("ctx 10%");
         s.submit("/models");
         s.wait_for("╭ Models");

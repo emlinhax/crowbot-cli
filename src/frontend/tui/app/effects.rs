@@ -5,6 +5,7 @@ use std::path::Path;
 use super::{Step, Switch, Tui};
 use crate::api::error::said;
 use crate::commands::{Effect, Outcome as CommandOutcome};
+use crate::config::prefs;
 use crate::frontend::tui::account::Account;
 use crate::frontend::tui::command::{self, Work};
 use crate::frontend::tui::forums::Forums;
@@ -106,7 +107,7 @@ impl<'a> Tui<'a> {
         self.toast = Some(Toast::new(&ui::get().text.copied, clock::instant()));
     }
 
-    /// Asks for `effort` from the next turn on, for this session only.
+    /// Asks for `effort` from the next turn on, and remembers it for the next session.
     pub(super) fn set_effort(&mut self, effort: String) {
         let text = &ui::get().text;
         let mut note = template::fill(&text.effort_set, &[("effort", &effort)]);
@@ -116,15 +117,17 @@ impl<'a> Tui<'a> {
                 &[("model", &self.next.model.id)],
             ));
         }
+        prefs::remember_effort(&self.app.paths, &effort);
         self.next.asked = Some(effort);
         self.feed.notice(&note, "done");
     }
 
-    /// Uses `id` from the next turn on, for this session only.
+    /// Uses `id` from the next turn on, and remembers it for the next session.
     pub(super) fn switch_model(&mut self, id: &str) {
         let Some(model) = self.catalog.get(id).cloned() else {
             return;
         };
+        prefs::remember_model(&self.app.paths, id);
         self.next.switch(&self.app.paths, model);
         let text = template::fill(&ui::get().picker.switched, &[("model", id)]);
         self.feed.notice(&text, "done");
