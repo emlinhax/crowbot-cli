@@ -21,6 +21,12 @@ calls = [{ name = "mini__rename", arguments = '{"id": 1, "name": "first"}' }]
 calls = [{ name = "mini__get_item", arguments = '{"id": 9}' }]
 
 [[reply]]
+calls = [{ name = "mini__unlock", arguments = '{"code": 2}' }]
+
+[[reply]]
+calls = [{ name = "mini__unlock", arguments = '{"code": 5}' }]
+
+[[reply]]
 text = "Done."
 
 [expect]
@@ -29,7 +35,7 @@ stdout = "Done.\n"
 
 [[expect.tools]]
 index = 0
-has = ["mini__open", "mini__get_item", "mini__list_items", "mini__rename"]
+has = ["mini__open", "mini__get_item", "mini__list_items", "mini__rename", "mini__unlock"]
 
 [[expect.requests]]
 index = 0
@@ -67,6 +73,18 @@ message = -1
 role = "tool"
 contains = "No item 9."
 
+[[expect.requests]]
+index = 7
+message = -1
+role = "tool"
+contains = "Unlocked with 2."
+
+[[expect.requests]]
+index = 8
+message = -1
+role = "tool"
+contains = "Rejected 5."
+
 [expect.files]
 ".mcp/mini.calls.jsonl" = '''
 {"args":{"id":"1"},"error":"arguments.id: expected integer, got string \"1\"","outcome":"invalid_args","tool":"get_item"}
@@ -75,4 +93,6 @@ contains = "No item 9."
 {"args":{"query":"a"},"error":null,"outcome":"ok","tool":"list_items"}
 {"args":{"id":1,"name":"first"},"error":null,"outcome":"ok","tool":"rename"}
 {"args":{"id":9},"error":"No item 9.","outcome":"not_found","tool":"get_item"}
+{"args":{"code":2},"error":null,"outcome":"ok","tool":"unlock"}
+{"args":{"code":5},"error":null,"outcome":"ok","tool":"unlock"}
 '''
