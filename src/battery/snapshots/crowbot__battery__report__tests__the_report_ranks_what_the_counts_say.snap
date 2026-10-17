@@ -1,10 +1,11 @@
 ---
 source: src/battery/report.rs
+assertion_line: 586
 expression: text
 ---
 # Battery battery
 
-m · 3 runs of 3 tasks · 1/3 done · 1 ended on an error · $0.0045 · 6300 tokens · crowbot 0123456
+m · 4 runs of 4 tasks · 2/4 done · 1 ended on an error · $0.0052 · 9420 tokens · crowbot 0123456
 
 Runs that never started: broken #1 (r is not set up)
 
@@ -14,6 +15,7 @@ Runs that never started: broken #1 (r is not set up)
 |---|---|---|---|---|---|---|---|
 | fix-it | auto | 1/1 | 4.0 | 5.0 | 0.0035 | 12s |  |
 | flaky | auto | 0/1 | 1.0 | 0.0 | 0.0000 | 30s | http_error 502×1 |
+| mcp-it | auto | 1/1 | 7.0 | 7.0 | 0.0007 | 9s |  |
 | plan-it | plan | 0/1 | 2.0 | 2.0 | 0.0010 | 4s | turns×1 |
 
 ## Ended on an error
@@ -26,10 +28,13 @@ Runs that never started: broken #1 (r is not set up)
 
 | tool | calls | per run | failed | refused |
 |---|---|---|---|---|
-| bash | 4 | 1.3 | 1 | 1 |
-| edit | 1 | 0.3 | 0 | 0 |
-| grep | 1 | 0.3 | 0 | 0 |
-| nope | 1 | 0.3 | 0 | 1 |
+| bash | 4 | 1.0 | 1 | 1 |
+| re__decompile_function | 4 | 1.0 | 2 | 0 |
+| re__set_comment | 2 | 0.5 | 0 | 0 |
+| edit | 1 | 0.2 | 0 | 0 |
+| grep | 1 | 0.2 | 0 | 0 |
+| nope | 1 | 0.2 | 0 | 1 |
+| re__idb_open | 1 | 0.2 | 0 | 0 |
 
 ## Refused before running
 
@@ -43,6 +48,28 @@ Runs that never started: broken #1 (r is not set up)
 | tool | after it failed | after it worked |
 |---|---|---|
 | bash | 1 | 0 |
+| re__decompile_function | 1 | 0 |
+
+## MCP servers
+
+| tool | calls | worked | bad arguments | not found | not ready | busy | no such tool |
+|---|---|---|---|---|---|---|---|
+| re__decompile_function | 4 | 2 | 1 | 0 | 1 | 0 | 0 |
+| re__set_comment | 2 | 2 | 0 | 0 | 0 | 0 | 0 |
+| re__idb_open | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
+
+### Arguments a server refused
+
+| what | count | example |
+|---|---|---|
+| re__decompile_function: arguments.address: expected string, got integer N | 1 | `{"address":4198400}` |
+
+### Calls one reply at a time
+
+| tool | replies that could have joined the one before | calls made together |
+|---|---|---|
+| re__decompile_function | 1 | 0 |
+| re__set_comment | 0 | 2 |
 
 ## Shell (4 bash calls, 0 with substitutions or heredocs)
 
@@ -88,11 +115,16 @@ Runs that never started: broken #1 (r is not set up)
 
 | what | count | example |
 |---|---|---|
+| re__decompile_function → re__decompile_function | 2 | `mcp-it` |
 | bash → bash | 1 | `fix-it` |
 | bash → edit | 1 | `fix-it` |
 | bash → grep | 1 | `fix-it` |
 | grep → bash | 1 | `fix-it` |
 | nope → bash | 1 | `plan-it` |
+| re__decompile_function → re__idb_open | 1 | `mcp-it` |
+| re__decompile_function → re__set_comment | 1 | `mcp-it` |
+| re__idb_open → re__decompile_function | 1 | `mcp-it` |
+| re__set_comment → re__set_comment | 1 | `mcp-it` |
 
 ### Triples
 
@@ -101,6 +133,11 @@ Runs that never started: broken #1 (r is not set up)
 | bash → bash → edit | 1 | `fix-it` |
 | bash → grep → bash | 1 | `fix-it` |
 | grep → bash → bash | 1 | `fix-it` |
+| re__decompile_function → re__decompile_function → re__idb_open | 1 | `mcp-it` |
+| re__decompile_function → re__decompile_function → re__set_comment | 1 | `mcp-it` |
+| re__decompile_function → re__idb_open → re__decompile_function | 1 | `mcp-it` |
+| re__decompile_function → re__set_comment → re__set_comment | 1 | `mcp-it` |
+| re__idb_open → re__decompile_function → re__decompile_function | 1 | `mcp-it` |
 
 ## Asked again under MANUAL
 
@@ -108,6 +145,7 @@ Runs that never started: broken #1 (r is not set up)
 
 | what | count | example |
 |---|---|---|
+| mcp | 7 | `re__decompile_function` |
 | bash `cargo test` | 2 | `cargo test 2>&1` |
 | bash `python3` | 1 | `python3 -m unittest -q` |
 | bash `sed` | 1 | `sed -n '1,40p' src/lib.rs` |
@@ -129,20 +167,24 @@ Runs that never started: broken #1 (r is not set up)
 2. 1 × MANUAL would ask before bash `python3`: a candidate for its default allowlist
 3. 1 × MANUAL would ask before bash `sed`: a candidate for its default allowlist
 4. 1 × PLAN refused bash `python3`: a candidate for that mode's allowlist
-5. 1 × `sed -n` in bash, where read with offset and limit would do
-6. 1 × bash called again unchanged after it failed
-7. 1 × bash → bash → edit in a row: a candidate for one call
-8. 1 × bash → grep → bash in a row: a candidate for one call
-9. 1 × grep → bash → bash in a row: a candidate for one call
-10. 1 × unknown_tool · nope: the tool's description or schema may mislead
+5. 1 × `re__decompile_function: arguments.address: expected string, got integer N`: crowbot could check arguments against the tool's schema before sending and say what is wrong
+6. 1 × `sed -n` in bash, where read with offset and limit would do
+7. 1 × bash called again unchanged after it failed
+8. 1 × bash → bash → edit in a row: a candidate for one call
+9. 1 × bash → grep → bash in a row: a candidate for one call
+10. 1 × grep → bash → bash in a row: a candidate for one call
+11. 1 × re__decompile_function before its server was ready: the model skipped the step the server's instructions name
+12. 1 × re__decompile_function called again unchanged after it failed
+13. 1 × re__decompile_function called once per reply in a row: tell the model independent calls can go in one reply
+14. 1 × unknown_tool · nope: the tool's description or schema may mislead
 
 ## Against battery
 
 | per run | this | that | change |
 |---|---|---|---|
-| done | 0.3 | 0.3 | +0.0 |
-| turns | 2.3 | 2.3 | +0.0 |
-| calls | 2.3 | 2.3 | +0.0 |
-| bash calls | 1.3 | 1.3 | +0.0 |
-| stand-ins | 0.3 | 0.3 | +0.0 |
-| cost (µ$) | 1500.0 | 1500.0 | +0.0 |
+| done | 0.5 | 0.5 | +0.0 |
+| turns | 3.5 | 3.5 | +0.0 |
+| calls | 3.5 | 3.5 | +0.0 |
+| bash calls | 1.0 | 1.0 | +0.0 |
+| stand-ins | 0.2 | 0.2 | +0.0 |
+| cost (µ$) | 1300.0 | 1300.0 | +0.0 |

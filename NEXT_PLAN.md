@@ -568,7 +568,7 @@ ida-pro-mcp, an issue tracker, a database, a docs search), about 12 tasks × 3, 
 - [x] 11.2 four simulated servers in `bench/mcp/`
 - [x] 11.3 MCP tasks in the battery runner: suites in `bench/battery.toml`, a task's `mcp`
       servers in the run's config, `.mcp/` kept with the run, checks on the recorded state
-- [ ] 11.4 MCP in the report: outcomes per server and tool, mistakes, one call per reply,
+- [x] 11.4 MCP in the report: outcomes per server and tool, mistakes, one call per reply,
       repeats, candidates
 - [ ] 11.5 the runs: a pilot, the full run, the reference repeat; `bench/mcp-baseline/`
 - [ ] 11.6 the findings, ranked, to choose fixes from
