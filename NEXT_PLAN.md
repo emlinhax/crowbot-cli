@@ -555,3 +555,20 @@ separately, default No, per project.
 - CEILINGs: no OAuth, legacy SSE, GET stream or re-handshake after a server restarts; Claude
   Code plugins and Claude Desktop extensions not read; one answer per question; the 2026-07-28
   protocol drops `initialize` for `server/discover`, which crowbot does not probe yet.
+
+## M11 — MCP battery (planned 2026-10-17)
+Plan: measure how a cheap model uses MCP tools in crowbot, and what to change where it does not.
+Simulated servers complex enough to trip a model (paged lists, required fields, enums, hex
+addresses, open-first state, long outputs, a transient failure), tasks that need them, and report
+sections about them, on M9's runner. Decided: `deepseek-v4.1-flash` for the full run plus one
+repeat with `glm-5.3-flash-crow` as the reference; four servers (reverse engineering modelled on
+ida-pro-mcp, an issue tracker, a database, a docs search), about 12 tasks × 3, at most $5.
+- [ ] 11.1 a data-driven simulated server: `crowbot-fake-mcp --server <file> --record <dir>`,
+      arguments checked against the tool's own schema, every call logged with its outcome
+- [ ] 11.2 four simulated servers in `bench/mcp/`
+- [ ] 11.3 MCP tasks in the battery runner: suites in `bench/battery.toml`, a task's `mcp`
+      servers in the run's config, `.mcp/` kept with the run, checks on the recorded state
+- [ ] 11.4 MCP in the report: outcomes per server and tool, mistakes, one call per reply,
+      repeats, candidates
+- [ ] 11.5 the runs: a pilot, the full run, the reference repeat; `bench/mcp-baseline/`
+- [ ] 11.6 the findings, ranked, to choose fixes from
