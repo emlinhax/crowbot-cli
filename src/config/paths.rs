@@ -71,6 +71,11 @@ impl Paths {
         self.home.join("mcp.json")
     }
 
+    /// The model and effort the user last chose, remembered across sessions.
+    pub fn prefs(&self) -> PathBuf {
+        self.home.join("prefs.json")
+    }
+
     /// Whether the user said no to installing, so they are not asked again.
     pub fn install_state(&self) -> PathBuf {
         self.home.join("install.json")

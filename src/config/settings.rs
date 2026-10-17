@@ -76,6 +76,11 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
         merge(&mut merged, layer);
         check(&merged, &project)?;
     }
+    // The model and effort the user last chose: above the config files, below a one-off flag.
+    merge(
+        &mut merged,
+        toml::Table::try_from(crate::config::prefs::load(paths))?,
+    );
     merge(&mut merged, toml::Table::try_from(flags)?);
     let mut settings: Settings = toml::Value::Table(merged).try_into()?;
     settings.untrusted = untrusted;
@@ -207,6 +212,33 @@ mod tests {
         assert_eq!(
             load(&paths, &Overrides::default()).unwrap().model,
             "project"
+        );
+        let flags = Overrides {
+            model: Some("flag".into()),
+            ..Overrides::default()
+        };
+        assert_eq!(load(&paths, &flags).unwrap().model, "flag");
+    }
+
+    #[test]
+    fn a_remembered_choice_beats_the_config_files_but_a_flag_beats_it() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
+        // Writing the config file creates the home dir the prefs file then lands in.
+        io::fs::write_atomic(
+            &paths.user_config(),
+            b"model = 'from-config'",
+            io::fs::Access::Shared,
+        )
+        .unwrap();
+        assert_eq!(
+            load(&paths, &Overrides::default()).unwrap().model,
+            "from-config"
+        );
+        crate::config::prefs::remember_model(&paths, "remembered");
+        assert_eq!(
+            load(&paths, &Overrides::default()).unwrap().model,
+            "remembered"
         );
         let flags = Overrides {
             model: Some("flag".into()),
