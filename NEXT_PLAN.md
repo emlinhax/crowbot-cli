@@ -518,7 +518,7 @@ available. Decided: HTTP is in (IDA's installer writes HTTP entries by default);
 the user's apps are asked about once, default Yes, No never asked again, a changed command asked
 again; a repository's own files (`.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`) are asked
 separately, default No, per project.
-- [ ] 10.1 tests never read the developer's own apps: each run gets its own HOME, USERPROFILE,
+- [x] 10.1 tests never read the developer's own apps: each run gets its own HOME, USERPROFILE,
       APPDATA and XDG_CONFIG_HOME; scenarios gain `user_files`
 - [ ] 10.2 streamable HTTP servers (`[mcp.x] url = …`): `io::http` response headers, the SSE
       parser shared, `src/mcp/http.rs` filling the same line channels

@@ -19,9 +19,11 @@ use tempfile::TempDir;
 
 pub use common::{Run, cleared, launch_env, tests_path};
 
-/// A throwaway `CROWBOT_HOME` and project directory for one test.
+/// A throwaway `CROWBOT_HOME`, user's own folder (HOME and the like) and project directory for
+/// one test.
 pub struct Sandbox {
     home: TempDir,
+    user: TempDir,
     project: TempDir,
 }
 
@@ -29,6 +31,7 @@ impl Default for Sandbox {
     fn default() -> Self {
         Self {
             home: tempfile::tempdir().unwrap(),
+            user: tempfile::tempdir().unwrap(),
             project: tempfile::tempdir().unwrap(),
         }
     }
@@ -37,6 +40,11 @@ impl Default for Sandbox {
 impl Sandbox {
     pub fn home(&self) -> &Path {
         self.home.path()
+    }
+
+    /// The user's own folder, where other apps keep their settings.
+    pub fn user(&self) -> &Path {
+        self.user.path()
     }
 
     pub fn project(&self) -> &Path {
@@ -48,6 +56,11 @@ impl Sandbox {
         write(&self.home().join(rel), text);
     }
 
+    /// Writes `text` at `rel` under the user's own folder, making its folders.
+    pub fn write_user(&self, rel: &str, text: &str) {
+        write(&self.user().join(rel), text);
+    }
+
     /// Writes `text` at `rel` under the project, making its folders.
     pub fn write_project(&self, rel: &str, text: &str) {
         write(&self.project().join(rel), text);
@@ -56,7 +69,15 @@ impl Sandbox {
     /// Runs crowbot pointed at `api_url`, with `key` as its env key; with none it has only
     /// what the home stores.
     pub async fn run(&self, api_url: &str, args: &[&str], key: Option<&str>) -> Run {
-        common::launch(self.home(), self.project(), args, Some(api_url), key).await
+        common::launch(
+            self.home(),
+            self.user(),
+            self.project(),
+            args,
+            Some(api_url),
+            key,
+        )
+        .await
     }
 
     /// Copies tests/fixtures/projects/<name> into the project directory.

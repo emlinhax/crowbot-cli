@@ -25,6 +25,9 @@ struct Scenario {
     /// Files to put in the project first, over `project`'s, by path relative to it.
     #[serde(default)]
     project_files: BTreeMap<String, String>,
+    /// Files to put in the user's own folder (HOME, where other apps keep their settings).
+    #[serde(default)]
+    user_files: BTreeMap<String, String>,
     /// The model's turns, in order.
     #[serde(default)]
     reply: Vec<Turn>,
@@ -188,6 +191,9 @@ async fn check(name: String, scenario: Scenario) {
     }
     for (path, text) in &scenario.project_files {
         sandbox.write_project(path, &placed(text));
+    }
+    for (path, text) in &scenario.user_files {
+        sandbox.write_user(path, &placed(text));
     }
     let args: Vec<&str> = scenario.args.iter().map(String::as_str).collect();
     let key = if scenario.key { WITH_KEY } else { None };
