@@ -576,7 +576,7 @@ ida-pro-mcp, an issue tracker, a database, a docs search), about 12 tasks × 3, 
 - [x] 11.8 a reply that writes tool calls as text is asked again once, to make them as calls
 - [x] 11.9 the report's sequences step by reply, so calls made together are one step
 - [x] 11.10 a headless run's prompt says no one will confirm, so make the change
-- [ ] 11.11 a re-run with deepseek-v4.1-flash against `bench/mcp-baseline/`
+- [x] 11.11 a re-run with deepseek-v4.1-flash against `bench/mcp-baseline/`
 
 **Runs (2026-10-17, local only in bench/runs/)**
 - Pilot `20261017T125927`: 2 tasks, both done, $0.0005.
@@ -615,3 +615,18 @@ ida-pro-mcp, an issue tracker, a database, a docs search), about 12 tasks × 3, 
    candidate for one call; they should split at reply boundaries (report only).
 4. A headless run that ends listing changes it did not make (one run): a line in the headless
    prompt that no one will confirm, so act.
+
+**After the fixes (11.7–11.10), re-run against the baseline**
+- A first re-run `20261017T133817` read 39/39, but the simulator still recorded inside the
+  project, so a task that only reads could `cat` the state instead of calling tools. Moving the
+  records out of the model's reach (`{mcp}`, e4caa31) made the next run honest.
+- Clean re-run `20261017T135018` (deepseek-v4.1-flash, 39 runs, 0 ended on an error, $0.0137):
+  against the baseline `20261017T131132`, turns 6.0 vs 7.1 and calls 9.8 vs 11.7 per run, cost
+  350 vs 386 µ$. Done 36/39, against the baseline's 34/39 — but the baseline lost 4 runs to API
+  502s, so on completion the fixes are about level; what moved is the path to the answer, a turn
+  and two calls shorter. The prompt naming the servers meant no run invented what "MCP" is, and
+  the written-call reminder fired 0 times (none wrote its calls as text).
+- The three misses are the weak model, not crowbot: one answered a prototype as text and made no
+  write call; one made the right lookups then declined the task instead of the rename; one
+  searched the tracker many ways but never applied the label. Each is a model giving up at the
+  last write, not a tool it got wrong.
