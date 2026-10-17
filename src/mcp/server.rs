@@ -220,6 +220,9 @@ pub struct Introduced {
 }
 
 /// Introduces crowbot, checks the version the server answers with, and lists its tools.
+// CEILING: the `initialize` handshake of 2025-06-18 and before; 2026-07-28 replaces it with
+// `server/discover`, which servers on that version alone would expect. Upgrade: probe
+// `server/discover` first and fall back to `initialize`.
 pub async fn handshake(rpc: &Rpc) -> Result<Introduced, String> {
     let wait = limits::get().mcp.start_secs.secs();
     let answer = rpc

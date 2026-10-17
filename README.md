@@ -161,8 +161,10 @@ as keystrokes; a key burst counts as a paste, so its Enters add lines.
 
 ## MCP servers
 
-crowbot can use the tools of local MCP servers: programs it starts and speaks to over stdin and
-stdout. Name each in `~/.crowbot/config.toml`, or in a trusted project's `.crowbot/config.toml`:
+crowbot can use the tools of MCP servers: programs it starts and speaks to over stdin and stdout,
+or servers already running that it reaches at a URL over streamable HTTP. Most need no setup:
+crowbot uses the servers your other apps already list (below). To name one yourself, put it in
+`~/.crowbot/config.toml`, or in a trusted project's `.crowbot/config.toml`:
 
 ```toml
 [mcp.github]
@@ -171,7 +173,27 @@ args = ["-y", "@modelcontextprotocol/server-github"]
 env = { GITHUB_PERSONAL_ACCESS_TOKEN = "…" }
 tools = ["get_*", "search_*"]   # optional: offer only these, by the server's names
 timeout_secs = 300              # optional: how long a call may take (else `mcp.call_secs`)
+
+[mcp.ida]
+url = "http://127.0.0.1:13337/mcp"
+headers = { Authorization = "Bearer …" }   # optional, sent with every request
 ```
+
+**Servers your other apps list.** Before a session, crowbot reads the MCP settings of Claude
+Desktop, Claude Code, Cursor, Windsurf, VS Code, Cline, Roo Code, Codex, Gemini CLI, Copilot CLI,
+LM Studio and opencode (`data/mcp_sources.toml`, a new app is a new entry). It asks once about
+the servers it finds, listing what each runs and its secrets by name only (default yes). The
+answer is kept in `~/.crowbot/mcp.json`: a no is never asked again, a server whose command or URL
+changes is asked about again. A repository's own files (`.mcp.json`, `.cursor/mcp.json`,
+`.vscode/mcp.json`, `.roo/mcp.json`) are asked about apart, with a warning, defaulting to no,
+for that project only. A run that cannot ask (`-p`, `--json`) uses what was chosen and names the
+rest on stderr. A server in crowbot's own config wins over one found with the same name, and
+`mcp_discovery = false` turns the search off. `/status` names where a found server came from.
+
+**IDA Pro, for example.** `ida-pro-mcp --install` writes its server into those apps' settings
+(as a URL by default, or a program with `--transport stdio`), so crowbot finds it with nothing
+more to set up. Start the plugin inside IDA first (Edit → Plugins → MCP), and answer yes when
+crowbot asks.
 
 A later layer changes one key of a server, or turns it off with `enabled = false`. Servers start
 with the session, all at once, each within `mcp.start_secs`; one that does not is named once with
@@ -186,8 +208,9 @@ server marks a tool read-only (`readOnlyHint`), as `/undo` snapshots before any 
 model is sent the text of an answer; images, audio and binary resources are named, not sent. A
 call past its limit, or interrupted, is cancelled at the server. A server that stops fails its
 calls at once and is said once; it is not started again. `/status` lists every server, how many
-tools it offers, and whether it stopped. Remote (HTTP) servers, resources and prompts are not
-supported yet (`grep -rn CEILING: src/mcp src/tools/mcp`).
+tools it offers, and whether it stopped. What a server says of how to use its tools joins the
+system prompt under its name, up to `mcp.instructions_chars`. Resources, prompts, OAuth logins
+and the legacy SSE transport are not supported yet (`grep -rn CEILING: src/mcp src/tools/mcp`).
 
 ## Environment
 
@@ -214,7 +237,7 @@ supported yet (`grep -rn CEILING: src/mcp src/tools/mcp`).
 | `src/tools/` | One file or folder per tool behind the `Tool` trait, registered in `tools/mod.rs`. |
 | `src/permission/` | Rules (last match wins), the gate that layers them with the mode, the bash command split. |
 | `src/forums/` | Forums: the directory, the sealed store, accounts and the Tapatalk backend. |
-| `src/mcp/` | MCP servers: their config, JSON-RPC over a pair of line channels, the handshake, calls. Their tools as crowbot's are `src/tools/mcp/`. |
+| `src/mcp/` | MCP servers: their config, JSON-RPC over a pair of line channels filled by a program or by streamable HTTP, the handshake, calls, and `discover/`: the servers other apps list and the choice to use them. Their tools as crowbot's are `src/tools/mcp/`. |
 | `src/models/` | The model catalog (live, cached or bundled) and its table. |
 | `src/commands/` | One file per command (effect-only ones share `fixed.rs`), registered in `commands/mod.rs`. |
 | `src/frontend/` | What drives a run: `print` (headless) and `tui/` (the session), and the words and tool cards both share. |

@@ -527,5 +527,25 @@ separately, default No, per project.
 - [x] 10.4 asked once, remembered (`~/.crowbot/mcp.json`), before a session; headless uses what
       was chosen; `/status` names the source
 - [x] 10.5 a server's `instructions` reach the model in the system prompt
-- [ ] 10.6 README and Learned
+- [x] 10.6 README and Learned
 - e2e: one local batch after 10.2 and 10.4, each pushed; CI logs checked for `test result` lines.
+  67 after 10.2, 69 after 10.4 (the scenarios count as one test).
+- Open (live, on a machine with IDA Pro): `ida-pro-mcp --install` over HTTP and with
+  `--transport stdio`, the question, and the gateway taking its tools' schemas.
+
+**Learned**
+- IDA's installer writes a streamable-HTTP entry by default, not a program: discovery alone
+  would have found it and failed to reach it, so HTTP came first. Its server answers
+  `initialize` with the version asked and replies in plain JSON with a session header.
+- Most apps share one shape (`mcpServers` → `command`, `args`, `env` or `url`); VS Code
+  (`servers`, JSONC), Codex (TOML) and opencode (`command` as one list) differ. Writing every
+  path as an env template, with an unset variable skipping it, let one list serve all three
+  platforms with no `os` field, and lets tests move every path into a sandbox.
+- A choice is keyed by a fingerprint of what a server runs or reaches, not of its secrets: a
+  rotated token asks nothing, a new program asks again.
+- Unread code fails `-D warnings`, so reading the sources (10.3) could not land before the
+  asking (10.4); they went in as one commit, built and tested in order.
+- `clippy::large_enum_variant` fired only on Windows, where a process holds its job handle.
+- CEILINGs: no OAuth, legacy SSE, GET stream or re-handshake after a server restarts; Claude
+  Code plugins and Claude Desktop extensions not read; one answer per question; the 2026-07-28
+  protocol drops `initialize` for `server/discover`, which crowbot does not probe yet.
