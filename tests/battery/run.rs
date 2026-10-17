@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
 use crate::cmd::{self, git};
-use crate::corpus::{Repo, Settings, Task, bench, slashes};
+use crate::corpus::{self, Repo, Settings, Task, bench, slashes};
 use crate::project;
 use crate::record::{self, Record};
 
@@ -87,9 +87,11 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
         std::fs::create_dir_all(&cache)?;
         std::fs::write(cache.join("models.json"), models)?;
     }
-    // The runs keep the real HOME for the repos' builds; the MCP servers its apps list stay out of
-    // what is measured.
-    std::fs::write(home.path().join("config.toml"), "mcp_discovery = false\n")?;
+    std::fs::write(home.path().join("config.toml"), config(task))?;
+    // What the simulated servers record is read from the run's folder, not its diff.
+    let exclude = copy.join(".git/info");
+    std::fs::create_dir_all(&exclude)?;
+    std::fs::write(exclude.join("exclude"), format!("/{RECORDS}/\n"))?;
 
     let watched = watch(battery, repo, task, home.path(), &copy).await?;
 
@@ -128,6 +130,15 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
     if let Ok(text) = std::fs::read_to_string(&plan) {
         record::save(&dir, "plan.md", &text, key)?;
     }
+    let records = copy.join(RECORDS);
+    if records.is_dir() {
+        let kept = dir.join("mcp");
+        std::fs::create_dir_all(&kept)?;
+        for file in std::fs::read_dir(&records)?.flatten() {
+            let name = file.file_name().to_string_lossy().into_owned();
+            record::save(&kept, &name, &std::fs::read_to_string(file.path())?, key)?;
+        }
+    }
     Ok(Record {
         task: task.id.clone(),
         repo: repo.id.clone(),
@@ -144,6 +155,25 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
         dir: rel,
         error: None,
     })
+}
+
+/// Where in the copy the simulated MCP servers keep their state and calls, for the check to read;
+/// they are kept in the run's `mcp/` folder.
+const RECORDS: &str = ".mcp";
+
+/// The run's crowbot config: none of the servers the machine's own apps list (the runs keep the
+/// real HOME for the repos' builds), and the task's simulated servers, recording into the copy.
+fn config(task: &Task) -> String {
+    let mut text = String::from("mcp_discovery = false\n");
+    let simulator = slashes(Path::new(env!("CARGO_BIN_EXE_crowbot-fake-mcp")));
+    for server in &task.mcp {
+        let file = slashes(&corpus::mcp_server(server));
+        text.push_str(&format!(
+            "\n[mcp.{server}]\ncommand = '{simulator}'\n\
+             args = ['--server', '{file}', '--record', '{RECORDS}']\n"
+        ));
+    }
+    text
 }
 
 /// A task's check line with its placeholders filled, each quoted for `sh`: `{reply}` is a file

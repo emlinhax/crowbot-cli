@@ -32,3 +32,9 @@ test = "npx vitest run"
 id = "calc"
 fixture = "tests/fixtures/projects/calc"
 test = "true"
+
+# An empty project for the MCP suite's tasks, whose work happens in simulated servers.
+[[repo]]
+id = "desk"
+fixture = "tests/fixtures/projects/desk"
+test = "true"

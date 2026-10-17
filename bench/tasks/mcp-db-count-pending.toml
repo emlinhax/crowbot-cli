@@ -1,0 +1,7 @@
+prompt = "How many orders in the database (MCP server) are still pending? Answer with the number."
+repo = "desk"
+mode = "auto"
+turns = 20
+suite = "mcp"
+mcp = ["db"]
+check = "python3 {checks}/reply_number.py {reply} 4"

@@ -1,0 +1,7 @@
+prompt = "Tracker issue #17 says netlogd reports a bad header checksum for valid packets. Find the function in the IDA database of ./netlogd that checks that header, and the checksum routine it calls, then comment both of their addresses on issue #17."
+repo = "desk"
+mode = "auto"
+turns = 40
+suite = "mcp"
+mcp = ["re", "tracker"]
+check = "python3 {checks}/mcp_state.py .mcp/tracker.json 'comments[issue=17].body' '~' 0x401890 && python3 {checks}/mcp_state.py .mcp/tracker.json 'comments[issue=17].body' '~' 0x401c40"

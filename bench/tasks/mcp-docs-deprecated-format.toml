@@ -1,0 +1,7 @@
+prompt = "According to the netlogd docs (MCP server), which wire format is deprecated, and on what date will it be removed?"
+repo = "desk"
+mode = "auto"
+turns = 20
+suite = "mcp"
+mcp = ["docs"]
+check = "grep -qi v1 {reply} && grep -q 2027-03-01 {reply}"

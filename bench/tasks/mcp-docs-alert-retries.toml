@@ -1,0 +1,7 @@
+prompt = "From the netlogd docs (MCP server): how many times is a failed alert retried by default, and which setting changes that?"
+repo = "desk"
+mode = "auto"
+turns = 20
+suite = "mcp"
+mcp = ["docs"]
+check = "python3 {checks}/reply_number.py {reply} 5 && grep -q 'max_retries' {reply}"

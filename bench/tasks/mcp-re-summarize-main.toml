@@ -1,0 +1,7 @@
+prompt = "Using the IDA database of ./netlogd (reverse-engineering MCP server), explain in a few sentences what netlogd's main function does, which config file it reads by default, and which port it listens on when the config sets none."
+repo = "desk"
+mode = "auto"
+turns = 30
+suite = "mcp"
+mcp = ["re"]
+check = "grep -q 5140 {reply} && grep -q 'netlogd.conf' {reply}"

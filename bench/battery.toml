@@ -1,14 +1,10 @@
-# One battery run: the model, how often each task runs, and what stops it. `make battery` reads
-# this; the shipped binary never does.
-model = "glm-5.3-flash-crow"
-repeats = 3
+# One battery run: what every suite shares, then each suite's model, repeats and cap.
+# `make battery` runs the `code` suite; `make battery SUITE=mcp` the MCP one. The shipped binary
+# never reads this file.
+
 # The smoke account's plan runs 2 requests in flight; a third run fails on 429 once crowbot's
 # retries run out (2026-10-14: 84 of 90 runs at 4). Raise it only with a bigger plan.
 parallel = 2
-
-[cap_micros]
-value = 60000000
-reason = "the most one full run may spend; 90 runs are estimated at about $8"
 
 [run_cap_micros]
 value = 2000000
@@ -25,3 +21,22 @@ reason = "time for crowbot to end its commands after Ctrl-C before it is killed"
 [check_secs]
 value = 600
 reason = "a task's check is its repo's test suite; a cold Rust build of one is a few minutes"
+
+# M9's corpus: tool use on real repositories.
+[suites.code]
+model = "glm-5.3-flash-crow"
+repeats = 3
+
+[suites.code.cap_micros]
+value = 60000000
+reason = "the most one full run may spend; 90 runs are estimated at about $8"
+
+# M11's: simulated MCP servers (bench/mcp/), with the cheapest model, to see what a weak one
+# makes of them.
+[suites.mcp]
+model = "deepseek-v4.1-flash"
+repeats = 3
+
+[suites.mcp.cap_micros]
+value = 5000000
+reason = "agreed for the MCP battery; about 40 runs with the cheapest model are well under $1"

@@ -1,0 +1,7 @@
+prompt = "Open a tracker issue titled `Document the stats reply` whose body says what netlogd answers to a stats request, as the function at 0x401e00 in the IDA database of ./netlogd shows."
+repo = "desk"
+mode = "auto"
+turns = 30
+suite = "mcp"
+mcp = ["re", "tracker"]
+check = "python3 {checks}/mcp_state.py .mcp/tracker.json 'issues[title~Document the stats reply].body' '~' lines"

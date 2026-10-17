@@ -1,0 +1,7 @@
+prompt = "In the IDA database of ./netlogd (reverse-engineering MCP server), the function at 0x401890 parses a packet header. Give it the prototype `int __cdecl parse_header(const char *buf, int len, struct header *hdr)`."
+repo = "desk"
+mode = "auto"
+turns = 20
+suite = "mcp"
+mcp = ["re"]
+check = "python3 {checks}/mcp_state.py .mcp/re.json 'functions[address=0x401890].prototype' '~' 'parse_header(const char *buf, int len, struct header *hdr)'"

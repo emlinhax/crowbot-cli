@@ -1,0 +1,7 @@
+prompt = "Using the database (MCP server): what is the total of all paid orders of the customer Acme Corp? Answer with the number."
+repo = "desk"
+mode = "auto"
+turns = 25
+suite = "mcp"
+mcp = ["db"]
+check = "python3 {checks}/reply_number.py {reply} 4574"
