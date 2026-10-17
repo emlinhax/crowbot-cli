@@ -57,7 +57,7 @@ pub struct NextTurn {
     pub asked: Option<String>,
     pub system: String,
     /// What the session's MCP servers said of their tools, kept for each prompt written.
-    servers: Vec<(String, String)>,
+    servers: Vec<crate::mcp::Connected>,
 }
 
 impl NextTurn {
@@ -65,7 +65,7 @@ impl NextTurn {
         paths: &Paths,
         model: Model,
         asked: Option<String>,
-        servers: Vec<(String, String)>,
+        servers: Vec<crate::mcp::Connected>,
     ) -> Self {
         let system = system_prompt::build(paths, &model.id, &servers);
         Self {

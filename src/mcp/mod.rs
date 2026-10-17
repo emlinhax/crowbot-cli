@@ -30,6 +30,14 @@ pub struct Servers {
     from: std::collections::BTreeMap<String, String>,
 }
 
+/// A running server as the system prompt names it.
+#[derive(Clone, Debug)]
+pub struct Connected {
+    pub name: String,
+    /// What it said of how to use its tools, when it said anything.
+    pub instructions: Option<String>,
+}
+
 /// One server as /status shows it: its name, where it was found, and how it stands.
 pub struct Standing {
     pub name: String,
@@ -129,11 +137,14 @@ impl Servers {
             .collect()
     }
 
-    /// What each running server said of how to use its tools, by name.
-    pub fn instructions(&self) -> Vec<(String, String)> {
+    /// Each running server, for the system prompt: its name and what it said of its tools.
+    pub fn connected(&self) -> Vec<Connected> {
         self.running
             .iter()
-            .filter_map(|s| Some((s.name.clone(), s.instructions.clone()?)))
+            .map(|s| Connected {
+                name: s.name.clone(),
+                instructions: s.instructions.clone(),
+            })
             .collect()
     }
 

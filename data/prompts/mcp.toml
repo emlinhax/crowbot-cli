@@ -1,5 +1,12 @@
-# A section for each MCP server that sent instructions with its tools, after the forums and before
-# the project's own; omitted when none did. {server} is its name in crowbot, {text} what it said.
+# Once the session has MCP servers, after the forums and before the project's own: what they are
+# and that their tools answer for them. {names} lists them by their names in crowbot.
+servers = """
+<mcp-servers>
+The user connected these MCP servers: {names}. Each tool named `<server>__<tool>` belongs to one of them.
+A question about what a server holds (its data, records, documents or files) is answered by calling its tools, never from memory or by guessing what the server is.
+</mcp-servers>"""
+# Then a section for each server that sent instructions with its tools. {server} is its name in
+# crowbot, {text} what it said.
 frame = """
 <mcp-server-instructions server="{server}">
 {text}

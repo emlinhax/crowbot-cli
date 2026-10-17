@@ -218,7 +218,7 @@ impl<'a> Tui<'a> {
         let mut tui = Self {
             app,
             catalog,
-            next: NextTurn::new(&app.paths, model, effort, mcp.instructions()),
+            next: NextTurn::new(&app.paths, model, effort, mcp.connected()),
             shared,
             shadow,
             mcp,

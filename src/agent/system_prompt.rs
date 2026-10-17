@@ -8,6 +8,7 @@ use crate::config::limits;
 use crate::config::paths::Paths;
 use crate::data;
 use crate::io;
+use crate::mcp::Connected;
 use crate::text::template;
 
 const BASE: &str = data::raw!("prompts/system.md");
@@ -29,6 +30,7 @@ static MCP: LazyLock<Mcp> = data::load!("prompts/mcp.toml");
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Mcp {
+    servers: String,
     frame: String,
     cut: String,
 }
@@ -39,9 +41,9 @@ struct Forums {
     frame: String,
 }
 
-/// Reminders a mode can name in data/modes/*.toml; one line per prompt file. `servers` is what
-/// each MCP server said of how to use its tools, by name.
-pub fn build(paths: &Paths, model: &str, servers: &[(String, String)]) -> String {
+/// Reminders a mode can name in data/modes/*.toml; one line per prompt file. `servers` are the
+/// session's MCP servers.
+pub fn build(paths: &Paths, model: &str, servers: &[Connected]) -> String {
     let cwd = paths.project.display().to_string();
     let date = io::clock::today();
     let env = template::fill(
@@ -78,11 +80,18 @@ fn forums(paths: &Paths) -> Option<String> {
     )
 }
 
-/// Each server's instructions, framed, each within `mcp.instructions_chars`.
-fn mcp(servers: &[(String, String)]) -> Option<String> {
+/// The session's MCP servers by name, then each one's instructions, framed, each within
+/// `mcp.instructions_chars`.
+fn mcp(servers: &[Connected]) -> Option<String> {
+    if servers.is_empty() {
+        return None;
+    }
+    let names: Vec<&str> = servers.iter().map(|s| s.name.as_str()).collect();
+    let listed = template::fill(&MCP.servers, &[("names", &names.join(", "))]);
     let max = limits::get().mcp.instructions_chars.value;
     let framed: Vec<String> = servers
         .iter()
+        .filter_map(|s| Some((&s.name, s.instructions.as_deref()?)))
         .map(|(server, text)| {
             let text = text.trim();
             let mut kept: String = text.chars().take(max).collect();
@@ -95,7 +104,9 @@ fn mcp(servers: &[(String, String)]) -> Option<String> {
                 .to_owned()
         })
         .collect();
-    (!framed.is_empty()).then(|| framed.join("\n\n"))
+    let mut parts = vec![listed.trim().to_owned()];
+    parts.extend(framed);
+    Some(parts.join("\n\n"))
 }
 
 /// The first instructions file the project has, framed, within `agent.instructions_bytes`.
@@ -125,7 +136,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_servers_instructions_join_after_the_forums_and_before_the_project_cut_to_fit() {
+    fn the_servers_are_named_and_their_instructions_join_before_the_project_cut_to_fit() {
         let root = tempfile::tempdir().unwrap();
         let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
         crate::io::fs::make_dir(&paths.project).unwrap();
@@ -136,17 +147,25 @@ mod tests {
         )
         .unwrap();
         let max = limits::get().mcp.instructions_chars.value;
+        let server = |name: &str, instructions: Option<String>| Connected {
+            name: name.into(),
+            instructions,
+        };
         let servers = [
-            ("ida".to_owned(), "Open a database first.".to_owned()),
-            ("long".to_owned(), "x".repeat(max + 10)),
+            server("ida", Some("Open a database first.".into())),
+            server("long", Some("x".repeat(max + 10))),
+            server("quiet", None),
         ];
         let prompt = build(&paths, "m", &servers);
+        let named = prompt.find("The user connected these MCP servers: ida, long, quiet.");
         let ida = prompt.find("<mcp-server-instructions server=\"ida\">\nOpen a database first.");
         let project = prompt.find("<project-instructions");
-        assert!(ida.is_some() && ida < project, "{prompt}");
+        assert!(named.is_some() && named < ida && ida < project, "{prompt}");
+        assert!(prompt.contains("never from memory"), "{prompt}");
+        assert!(!prompt.contains("server=\"quiet\""), "{prompt}");
         assert!(prompt.contains("they run past"), "{prompt}");
         assert!(!prompt.contains(&"x".repeat(max + 1)));
-        assert!(!build(&paths, "m", &[]).contains("<mcp-server-instructions"));
+        assert!(!build(&paths, "m", &[]).contains("<mcp-servers>"));
     }
 
     #[test]
