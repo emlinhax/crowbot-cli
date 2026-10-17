@@ -570,5 +570,43 @@ ida-pro-mcp, an issue tracker, a database, a docs search), about 12 tasks × 3, 
       servers in the run's config, `.mcp/` kept with the run, checks on the recorded state
 - [x] 11.4 MCP in the report: outcomes per server and tool, mistakes, one call per reply,
       repeats, candidates
-- [ ] 11.5 the runs: a pilot, the full run, the reference repeat; `bench/mcp-baseline/`
+- [x] 11.5 the runs: a pilot, the full run, the reference repeat; `bench/mcp-baseline/`
 - [ ] 11.6 the findings, ranked, to choose fixes from
+
+**Runs (2026-10-17, local only in bench/runs/)**
+- Pilot `20261017T125927`: 2 tasks, both done, $0.0005.
+- First full run `20261017T130025` (deepseek-v4.1-flash, 39 runs, $0.0143, 33 done) showed four
+  faults of the battery's own (a check that read a comment already on the issue, an address
+  lookup that matched only a function's start, missing references, a busy retry ranked a
+  mistake); mended in 6a8807e.
+- Clean run `20261017T131132` (deepseek-v4.1-flash, 39 runs, $0.0150, 34 done, 4 ended on API
+  502s): the baseline, `bench/mcp-baseline/`.
+- Reference `20261017T132430` (glm-5.3-flash-crow, 13 runs, $0.0737, 13 done): 6.9 calls per
+  run against flash's 11.7, at about fifteen times the cost.
+
+**Learned**
+- The weak model sent no argument a server refused in 78 runs: required fields, integers, enums
+  and `0x` addresses all as the schemas said. Checking arguments in crowbot before sending
+  buys nothing yet; the CEILING stays.
+- It batches unprompted: 78 searches and 50 issue reads went out several to a reply, against a
+  handful made one reply at a time. A server's "busy, try again" was retried as asked.
+- Its failures are rarer and of another kind, each 1–2 in 78: answering at once without a tool,
+  inventing what "MCP" stands for (the server's instructions were in the prompt); tool calls
+  written into the reply as text, which ends the run; listing what it would change instead of
+  changing it; a prototype copied inexactly (`struct` dropped).
+- A simulator must behave as its description says, or the battery measures the simulator: the
+  address lookup and the missing references cost 8 lookups in the first run.
+- Check what a check selects: "every selected item passes" over a collection that already held
+  data failed two runs that did the task.
+- API 502s ended 4 of 39 runs, as in M9; not an MCP matter.
+
+**Candidates, ranked**
+1. When MCP servers are connected, say so in the system prompt in plain words (their names,
+   that their tools answer questions about what they hold, never to answer from memory): the
+   two runs that answered without a tool.
+2. A reply whose text holds tool calls (`{"tool_calls": …}`) is asked again once, telling the
+   model to make them as calls: one run ended this way.
+3. The report's "in a row" sequences count calls already made together in one reply as a
+   candidate for one call; they should split at reply boundaries (report only).
+4. A headless run that ends listing changes it did not make (one run): a line in the headless
+   prompt that no one will confirm, so act.
