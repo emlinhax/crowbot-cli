@@ -64,7 +64,7 @@ pub async fn run(
     if let Some(gone) = gone {
         term::warn(&words::model_gone(&gone, &model.id));
     }
-    let system = system_prompt::build(&app.paths, &model.id, &mcp.connected());
+    let system = system_prompt::build(&app.paths, &model.id, &mcp.connected(), true);
 
     let out = Printer {
         format,

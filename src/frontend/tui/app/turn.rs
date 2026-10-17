@@ -67,7 +67,7 @@ impl NextTurn {
         asked: Option<String>,
         servers: Vec<crate::mcp::Connected>,
     ) -> Self {
-        let system = system_prompt::build(paths, &model.id, &servers);
+        let system = system_prompt::build(paths, &model.id, &servers, false);
         Self {
             model,
             asked,
@@ -83,12 +83,12 @@ impl NextTurn {
 
     /// Uses `model` from the next turn on, with a prompt written for it.
     pub fn switch(&mut self, paths: &Paths, model: Model) {
-        self.system = system_prompt::build(paths, &model.id, &self.servers);
+        self.system = system_prompt::build(paths, &model.id, &self.servers, false);
         self.model = model;
     }
 
     /// Writes the prompt again, since what it names (AGENTS.md, the forums) may have changed.
     pub fn reload(&mut self, paths: &Paths) {
-        self.system = system_prompt::build(paths, &self.model.id, &self.servers);
+        self.system = system_prompt::build(paths, &self.model.id, &self.servers, false);
     }
 }
