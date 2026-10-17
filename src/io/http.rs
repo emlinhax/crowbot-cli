@@ -193,7 +193,9 @@ mod tests {
             .local_addr()
             .unwrap()
             .port();
-        let http = Http::new(Duration::from_secs(2)).unwrap();
+        // Windows retries a refused connect for seconds: the request's own bound must outlast
+        // the connect's, or it ends as a timeout first.
+        let http = Http::new(Duration::from_secs(5)).unwrap();
         let sent = http
             .send(Request {
                 method: Method::Get,
@@ -201,7 +203,7 @@ mod tests {
                 bearer: None,
                 headers: &[],
                 json: None,
-                timeout: Duration::from_secs(2),
+                timeout: Duration::from_secs(20),
             })
             .await;
         let Err(err) = sent else {

@@ -234,7 +234,10 @@ mod tests {
     async fn a_stop_closes_stdin_while_a_sender_lives_on() {
         let dir = tempfile::tempdir().unwrap();
         let (program, args) = echo(dir.path());
-        let running = start(&service(&program, &args, dir.path(), 1024)).unwrap();
+        let mut running = start(&service(&program, &args, dir.path(), 1024)).unwrap();
+        // Up and reading first, so a slow start (PowerShell's on Windows) is not timed.
+        running.outgoing.send("up".into()).unwrap();
+        assert_eq!(running.incoming.recv().await, Some(Ok("up".into())));
         let grace = Duration::from_secs(10);
         let started = std::time::Instant::now();
         running.process.stop(grace).await;
