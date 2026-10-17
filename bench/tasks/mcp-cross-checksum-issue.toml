@@ -4,4 +4,4 @@ mode = "auto"
 turns = 40
 suite = "mcp"
 mcp = ["re", "tracker"]
-check = "python3 {checks}/mcp_state.py .mcp/tracker.json 'comments[issue=17].body' '~' 0x401890 && python3 {checks}/mcp_state.py .mcp/tracker.json 'comments[issue=17].body' '~' 0x401c40"
+check = "python3 {checks}/mcp_state.py .mcp/tracker.json 'comments[issue=17][author=crowbot].body' '~' 0x401890 && python3 {checks}/mcp_state.py .mcp/tracker.json 'comments[issue=17][author=crowbot].body' '~' 0x401c40"

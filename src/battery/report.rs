@@ -447,7 +447,19 @@ fn candidates(stats: &Stats, words: &Words) -> Vec<(usize, String)> {
         }
     }
     for (label, c) in stats.tools.retried.top(usize::MAX) {
-        push(&t.candidate_retry, c.n, &[("label", label)]);
+        // A server that answered "busy, try again" was right to be called again.
+        let busy = stats
+            .mcp
+            .rows
+            .iter()
+            .find(|r| r.name == label)
+            .and_then(|r| r.outcomes.get("transient"))
+            .copied()
+            .unwrap_or(0);
+        let n = c.n.saturating_sub(busy);
+        if n > 0 {
+            push(&t.candidate_retry, n, &[("label", label)]);
+        }
     }
     for (label, c) in stats.triples.top(3) {
         push(&t.candidate_sequence, c.n, &[("label", label)]);

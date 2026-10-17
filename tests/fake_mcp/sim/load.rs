@@ -79,6 +79,10 @@ pub struct Tool {
     pub arg: Option<String>,
     #[serde(default)]
     pub format: Option<Format>,
+    /// With a hex key: an item's field giving its size, so an address anywhere inside it finds
+    /// it, as a disassembler finds the function containing an address.
+    #[serde(default)]
+    pub range: Option<String>,
     /// One item as the answer shows it: `{field}` from the item, else from the arguments; `{*}`
     /// is the whole item as JSON.
     #[serde(default)]

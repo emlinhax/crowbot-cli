@@ -244,6 +244,17 @@ fn find(tool: &Tool, args: &Item, items: &[Item]) -> Result<usize, Fail> {
     if let Some(at) = items.iter().position(|i| i.get(key).is_some_and(same)) {
         return Ok(at);
     }
+    let within = |item: &Item| {
+        let (start, size, at) = (
+            address(item.get(key)?)?,
+            item.get(tool.range.as_deref()?)?.as_u64()?,
+            address(value)?,
+        );
+        Some(start <= at && at < start + size)
+    };
+    if let Some(at) = items.iter().position(|i| within(i) == Some(true)) {
+        return Ok(at);
+    }
     let missing = tool
         .missing
         .as_deref()

@@ -616,6 +616,70 @@ refs = "0x401a00 (write_log) is called from: 0x401680 in 0x401600 (handle_client
 address = "0x401760"
 refs = "0x401760 (recv_line) is called from: 0x401620 in 0x401600 (handle_client)"
 
+[[collections.xrefs]]
+address = "0x401000"
+refs = "0x401000 (main) is called from: 0x400fa4 in 0x400f80 (start)"
+
+[[collections.xrefs]]
+address = "0x4011a0"
+refs = "0x4011a0 (sub_4011a0) is called from: 0x401028 in 0x401000 (main)"
+
+[[collections.xrefs]]
+address = "0x401300"
+refs = "0x401300 (open_listener) is called from: 0x401060 in 0x401000 (main)"
+
+[[collections.xrefs]]
+address = "0x401480"
+refs = "0x401480 (accept_loop) is called from: 0x401080 in 0x401000 (main)"
+
+[[collections.xrefs]]
+address = "0x401600"
+refs = "0x401600 (handle_client) is called from: 0x4014b8 in 0x401480 (accept_loop)"
+
+[[collections.xrefs]]
+address = "0x401b20"
+refs = "0x401b20 (format_timestamp) is called from: 0x401a10 in 0x401a00 (write_log)"
+
+[[collections.xrefs]]
+address = "0x401d10"
+refs = "0x401d10 (rotate_logs) is called from: 0x401ad0 in 0x401a00 (write_log)"
+
+[[collections.xrefs]]
+address = "0x401e00"
+refs = "0x401e00 (sub_401e00) is called from: 0x401640 in 0x401600 (handle_client)"
+
+[[collections.xrefs]]
+address = "0x401f20"
+refs = "0x401f20 (sub_401f20) is called from: 0x401628 in 0x401600 (handle_client)"
+
+[[collections.xrefs]]
+address = "0x402080"
+refs = "0x402080 (sub_402080) is called from: 0x401290 in 0x4011a0 (sub_4011a0)"
+
+[[collections.xrefs]]
+address = "0x406100"
+refs = "\"cannot read config\\n\" is referenced from: 0x40103c in 0x401000 (main)"
+
+[[collections.xrefs]]
+address = "0x406160"
+refs = "\"port=\" is referenced from: 0x401220 in 0x4011a0 (sub_4011a0)"
+
+[[collections.xrefs]]
+address = "0x406168"
+refs = "\"log_dir=\" is referenced from: 0x401250 in 0x4011a0 (sub_4011a0)"
+
+[[collections.xrefs]]
+address = "0x406180"
+refs = "\"%s [%u] %s\\n\" is referenced from: 0x401a60 in 0x401a00 (write_log)"
+
+[[collections.xrefs]]
+address = "0x4061b0"
+refs = "\"lines=%u bytes=%u\\n\" is referenced from: 0x401e70 in 0x401e00 (sub_401e00)"
+
+[[collections.xrefs]]
+address = "0x4061c4"
+refs = "\"pong\\n\" is referenced from: 0x401f58 in 0x401f20 (sub_401f20)"
+
 [[collections.strings]]
 address = "0x406100"
 text = 'cannot read config\n'
@@ -798,8 +862,9 @@ act = "get"
 collection = "functions"
 key = "address"
 format = "hex"
+range = "size"
 render = "{address} {name} ({size} bytes): {prototype}. Comment: {comment}"
-missing = "No function starts at {address}."
+missing = "No function contains {address}."
 
 [[tool]]
 name = "decompile_function"
