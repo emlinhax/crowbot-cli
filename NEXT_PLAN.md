@@ -563,7 +563,7 @@ addresses, open-first state, long outputs, a transient failure), tasks that need
 sections about them, on M9's runner. Decided: `deepseek-v4.1-flash` for the full run plus one
 repeat with `glm-5.3-flash-crow` as the reference; four servers (reverse engineering modelled on
 ida-pro-mcp, an issue tracker, a database, a docs search), about 12 tasks × 3, at most $5.
-- [ ] 11.1 a data-driven simulated server: `crowbot-fake-mcp --server <file> --record <dir>`,
+- [x] 11.1 a data-driven simulated server: `crowbot-fake-mcp --server <file> --record <dir>`,
       arguments checked against the tool's own schema, every call logged with its outcome
 - [ ] 11.2 four simulated servers in `bench/mcp/`
 - [ ] 11.3 MCP tasks in the battery runner: suites in `bench/battery.toml`, a task's `mcp`

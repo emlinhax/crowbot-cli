@@ -187,9 +187,15 @@ async fn check(name: String, scenario: Scenario) {
     // `{fake_mcp_url}` the fake's own MCP endpoint over HTTP.
     let fake_mcp = env!("CARGO_BIN_EXE_crowbot-fake-mcp").replace('\\', "/");
     let fake_mcp_url = format!("{}/mcp", fake.url);
+    // `{fixtures}` is tests/fixtures, for a simulated server's file.
+    let fixtures = tests_path("fixtures")
+        .display()
+        .to_string()
+        .replace('\\', "/");
     let placed = |text: &str| {
         text.replace("{fake_mcp}", &fake_mcp)
             .replace("{fake_mcp_url}", &fake_mcp_url)
+            .replace("{fixtures}", &fixtures)
     };
     for (path, text) in &scenario.home_files {
         sandbox.write_home(path, &placed(text));
