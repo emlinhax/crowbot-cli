@@ -4,6 +4,7 @@ pub mod diff;
 pub mod highlight;
 pub mod markdown;
 pub mod shorten;
+pub mod sse;
 pub mod stream;
 pub mod styled;
 pub mod table;

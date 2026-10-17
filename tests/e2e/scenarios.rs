@@ -183,9 +183,14 @@ async fn check(name: String, scenario: Scenario) {
         sandbox.copy_project(project);
     }
     fake.set_home(sandbox.home());
-    // `{fake_mcp}` in a file is the stand-in MCP server, with `/` so it reads in TOML.
+    // `{fake_mcp}` in a file is the stand-in MCP server, with `/` so it reads in TOML;
+    // `{fake_mcp_url}` the fake's own MCP endpoint over HTTP.
     let fake_mcp = env!("CARGO_BIN_EXE_crowbot-fake-mcp").replace('\\', "/");
-    let placed = |text: &str| text.replace("{fake_mcp}", &fake_mcp);
+    let fake_mcp_url = format!("{}/mcp", fake.url);
+    let placed = |text: &str| {
+        text.replace("{fake_mcp}", &fake_mcp)
+            .replace("{fake_mcp_url}", &fake_mcp_url)
+    };
     for (path, text) in &scenario.home_files {
         sandbox.write_home(path, &placed(text));
     }

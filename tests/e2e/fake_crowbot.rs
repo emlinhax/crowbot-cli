@@ -156,6 +156,7 @@ impl Fake {
             .route("/web/ok", get(web_ok))
             .route("/web/blocked", get(web_blocked))
             .route("/forum/mobiquo/mobiquo.php", post(mobiquo))
+            .route("/mcp", post(mcp))
             .layer(middleware::from_fn_with_state(inner.clone(), record))
             .with_state(inner.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -242,6 +243,36 @@ fn error(status: u16, kind: &str, retry_after: Option<u64>) -> Response {
             .insert(header::RETRY_AFTER, secs.to_string().parse().unwrap());
     }
     resp
+}
+
+/// An MCP server over streamable HTTP with one tool, `echo`: it opens session `fake-session` at
+/// `initialize` and turns away anything later that does not carry it.
+async fn mcp(headers: HeaderMap, axum::Json(body): axum::Json<Value>) -> Response {
+    let method = body["method"].as_str().unwrap_or_default();
+    let session = headers.get("mcp-session-id").and_then(|v| v.to_str().ok());
+    if method != "initialize" && session != Some("fake-session") {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    let Some(id) = body.get("id").cloned() else {
+        return StatusCode::ACCEPTED.into_response();
+    };
+    let result = match method {
+        "initialize" => json!({"protocolVersion": "2025-06-18", "capabilities": {"tools": {}}}),
+        "tools/list" => json!({"tools": [{"name": "echo", "description": "Says back its text.",
+            "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}}}]}),
+        "tools/call" => {
+            let text = &body["params"]["arguments"]["text"];
+            json!({"content": [{"type": "text", "text": text}]})
+        }
+        _ => return StatusCode::NOT_FOUND.into_response(),
+    };
+    let message = json!({"jsonrpc": "2.0", "id": id, "result": result});
+    let mut response = axum::Json(message).into_response();
+    if method == "initialize" {
+        let session = header::HeaderValue::from_static("fake-session");
+        response.headers_mut().insert("mcp-session-id", session);
+    }
+    response
 }
 
 /// A plain page, as a documentation site serves it.

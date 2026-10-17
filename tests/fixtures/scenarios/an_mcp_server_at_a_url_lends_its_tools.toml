@@ -1,0 +1,23 @@
+description = "A server named by its URL is reached over streamable HTTP: its tools reach the model and run in AUTO"
+args = ["--mode", "auto", "-p", "echo over http"]
+home_files = { "config.toml" = "[mcp.web]\nurl = '{fake_mcp_url}'\n" }
+
+[[reply]]
+calls = [{ name = "web__echo", arguments = '{"text": "said over http"}' }]
+
+[[reply]]
+text = "It answered."
+
+[expect]
+exit = 0
+stdout = "It answered.\n"
+
+[[expect.tools]]
+index = 0
+has = ["read", "web__echo"]
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "said over http"

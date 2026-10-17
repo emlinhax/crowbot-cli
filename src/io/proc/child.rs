@@ -100,16 +100,6 @@ pub struct Stderr {
 }
 
 impl Stderr {
-    /// Nothing printed, and stderr closed: for tests that play a program.
-    #[cfg(test)]
-    pub fn none() -> Self {
-        let (_, ended) = watch::channel(());
-        Self {
-            kept: Arc::default(),
-            ended,
-        }
-    }
-
     /// The end of what it printed, as text, once it has closed stderr or `wait` has passed: a
     /// program that stops closes stdout and stderr in no set order.
     pub async fn tail(&self, wait: Duration) -> String {

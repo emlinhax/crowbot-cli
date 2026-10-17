@@ -26,6 +26,8 @@ pub struct Head {
     pub status: u16,
     pub request_id: Option<String>,
     pub retry_after: Option<Duration>,
+    /// Every header, by lowercase name, for those a caller reads itself.
+    pub headers: Vec<(String, String)>,
 }
 
 pub struct Response {
@@ -131,6 +133,14 @@ impl Http {
 }
 
 impl Head {
+    /// The header `name` (any case), if the response carried it.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(n, _)| n.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
+
     fn of(resp: &reqwest::Response) -> Self {
         let header = |name: &str| {
             resp.headers()
@@ -145,6 +155,11 @@ impl Head {
             retry_after: header("retry-after")
                 .and_then(|v| v.trim().parse().ok())
                 .map(Duration::from_secs),
+            headers: resp
+                .headers()
+                .iter()
+                .filter_map(|(n, v)| Some((n.as_str().to_owned(), v.to_str().ok()?.to_owned())))
+                .collect(),
         }
     }
 }

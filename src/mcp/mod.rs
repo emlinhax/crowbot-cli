@@ -4,6 +4,7 @@
 // used. Upgrade: each as its own capability, behind the same `Server`.
 
 pub mod config;
+mod http;
 pub mod protocol;
 mod rpc;
 pub mod server;
@@ -12,6 +13,7 @@ use futures_util::future::join_all;
 
 use crate::config::paths::Paths;
 use crate::config::settings::Settings;
+use crate::io::http::Http;
 use crate::text::template::fill;
 use protocol::DATA;
 use server::Server;
@@ -38,15 +40,14 @@ pub enum State {
 
 impl Servers {
     /// Starts every enabled server, all at once.
-    pub async fn start(settings: &Settings, paths: &Paths) -> Self {
+    pub async fn start(settings: &Settings, paths: &Paths, web: &Http) -> Self {
         let (enabled, off): (Vec<_>, Vec<_>) =
             settings.mcp.iter().partition(|(_, cfg)| cfg.enabled);
-        let started = join_all(
-            enabled
-                .iter()
-                .map(|(name, cfg)| async move { (name, Server::start(name, cfg, paths).await) }),
-        )
-        .await;
+        let started =
+            join_all(enabled.iter().map(|(name, cfg)| async move {
+                (name, Server::start(name, cfg, paths, web).await)
+            }))
+            .await;
         let mut servers = Self {
             running: Vec::new(),
             failed: Vec::new(),

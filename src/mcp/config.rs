@@ -1,8 +1,7 @@
-//! A server as config.toml names it: `[mcp.<name>]` with the program, its arguments, its
-//! environment, how long a call may take and which of its tools to offer. Keyed by name, so a later layer changes one field of a server or turns it off
-//! (`enabled = false`).
-// CEILING: local servers only, started as a program and spoken to over stdin and stdout. Upgrade:
-// a `url` key for a remote server, whose HTTP task fills the same pair of line channels.
+//! A server as config.toml names it: `[mcp.<name>]` with the program to start (its arguments
+//! and environment) or the URL it answers at (and the headers to send), how long a call may take
+//! and which of its tools to offer. Keyed by name, so a later layer changes one field of a server
+//! or turns it off (`enabled = false`).
 
 use std::collections::BTreeMap;
 
@@ -13,14 +12,28 @@ use crate::config::limits;
 #[derive(Clone, Debug, Deserialize)]
 #[serde(try_from = "Raw")]
 pub struct Server {
-    pub command: String,
-    pub args: Vec<String>,
-    pub env: BTreeMap<String, String>,
+    pub reach: Reach,
     pub enabled: bool,
     /// How long a call may take, over `mcp.call_secs`.
     pub timeout_secs: Option<u64>,
     /// The tools to offer, by the server's names, `*` and `?` allowed; `None` offers them all.
     pub tools: Option<Vec<String>>,
+}
+
+/// How crowbot reaches a server.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Reach {
+    /// A program crowbot starts and speaks to over its stdin and stdout.
+    Program {
+        command: String,
+        args: Vec<String>,
+        env: BTreeMap<String, String>,
+    },
+    /// A server already running, spoken to over streamable HTTP.
+    Url {
+        url: String,
+        headers: BTreeMap<String, String>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -32,6 +45,10 @@ struct Raw {
     args: Vec<String>,
     #[serde(default)]
     env: BTreeMap<String, String>,
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
+    headers: BTreeMap<String, String>,
     #[serde(default = "on")]
     enabled: bool,
     #[serde(default)]
@@ -48,15 +65,26 @@ impl TryFrom<Raw> for Server {
     type Error = String;
 
     fn try_from(raw: Raw) -> Result<Self, String> {
-        let command = match (raw.command, raw.enabled) {
-            (Some(command), _) => command,
-            (None, false) => String::new(),
-            (None, true) => return Err("a server needs a `command` to run".into()),
-        };
-        Ok(Self {
+        let program = |command| Reach::Program {
             command,
             args: raw.args,
             env: raw.env,
+        };
+        let reach = match (raw.command, raw.url) {
+            (Some(_), Some(_)) => {
+                return Err("a server has a `command` or a `url`, not both".into());
+            }
+            (Some(command), None) => program(command),
+            (None, Some(url)) => Reach::Url {
+                url,
+                headers: raw.headers,
+            },
+            // Turned off, it needs neither: a later layer can switch off what an earlier named.
+            (None, None) if !raw.enabled => program(String::new()),
+            (None, None) => return Err("a server needs a `command` to run or a `url`".into()),
+        };
+        Ok(Self {
+            reach,
             enabled: raw.enabled,
             timeout_secs: raw.timeout_secs,
             tools: raw.tools,

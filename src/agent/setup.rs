@@ -59,7 +59,7 @@ impl Setup {
         let (catalog, shadow, mut mcp) = tokio::join!(
             models::load(&app.api, &app.paths, false),
             Shadow::open(&app.paths),
-            Servers::start(&app.settings, &app.paths),
+            Servers::start(&app.settings, &app.paths, &app.http),
         );
         let (transcript, resumed) = match &from {
             Some(from) => {

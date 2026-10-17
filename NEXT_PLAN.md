@@ -520,7 +520,7 @@ again; a repository's own files (`.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.j
 separately, default No, per project.
 - [x] 10.1 tests never read the developer's own apps: each run gets its own HOME, USERPROFILE,
       APPDATA and XDG_CONFIG_HOME; scenarios gain `user_files`
-- [ ] 10.2 streamable HTTP servers (`[mcp.x] url = …`): `io::http` response headers, the SSE
+- [x] 10.2 streamable HTTP servers (`[mcp.x] url = …`): `io::http` response headers, the SSE
       parser shared, `src/mcp/http.rs` filling the same line channels
 - [ ] 10.3 where other clients keep their servers: `data/mcp_sources.toml`, one reader per shape,
       JSONC and TOML, names made to fit, precedence, fingerprints
