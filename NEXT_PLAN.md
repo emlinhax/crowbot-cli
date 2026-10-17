@@ -509,3 +509,23 @@ with the session (a project's only once trusted); their tools join the registry 
   83 in the re-run) is mostly reads that depend on the one before, so it is not a batching
   candidate yet. Under MANUAL, webfetch (53) and project test runs (`python` 54, `cargo test` 39)
   are now the most asked; both run or fetch what a person should see, so they stay asks.
+
+## M10 — MCP servers found instead of configured (planned 2026-10-17)
+Plan: crowbot uses the MCP servers the user's other apps already list (Claude Desktop, Claude
+Code, Cursor, VS Code, Codex, … in `data/mcp_sources.toml`), asking once, and talks to servers
+over streamable HTTP as well as stdio, so `ida-pro-mcp --install` alone makes IDA's tools
+available. Decided: HTTP is in (IDA's installer writes HTTP entries by default); servers from
+the user's apps are asked about once, default Yes, No never asked again, a changed command asked
+again; a repository's own files (`.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`) are asked
+separately, default No, per project.
+- [ ] 10.1 tests never read the developer's own apps: each run gets its own HOME, USERPROFILE,
+      APPDATA and XDG_CONFIG_HOME; scenarios gain `user_files`
+- [ ] 10.2 streamable HTTP servers (`[mcp.x] url = …`): `io::http` response headers, the SSE
+      parser shared, `src/mcp/http.rs` filling the same line channels
+- [ ] 10.3 where other clients keep their servers: `data/mcp_sources.toml`, one reader per shape,
+      JSONC and TOML, names made to fit, precedence, fingerprints
+- [ ] 10.4 asked once, remembered (`~/.crowbot/mcp.json`), before a session; headless uses what
+      was chosen; `/status` names the source
+- [ ] 10.5 a server's `instructions` reach the model in the system prompt
+- [ ] 10.6 README and Learned
+- e2e: one local batch after 10.2 and 10.4, each pushed; CI logs checked for `test result` lines.
