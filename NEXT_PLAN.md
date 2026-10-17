@@ -630,3 +630,24 @@ ida-pro-mcp, an issue tracker, a database, a docs search), about 12 tasks × 3, 
   write call; one made the right lookups then declined the task instead of the rename; one
   searched the tracker many ways but never applied the label. Each is a model giving up at the
   last write, not a tool it got wrong.
+
+## M12 — Empirical grounding (run it / script it / verify it) (planned 2026-10-17)
+Plan: on compute/search tasks a model does the arithmetic in its head and never writes a helper
+script; even a strong model grounds only by running the real program when one is at hand, and has
+no fallback when it isn't (seen testing the IDA MCP on Windows and in this session's crackme runs).
+The analyzer even penalises scripting as a smell. So: a prompt principle to run/script/verify
+instead of computing in the head, the analyzer reclassified to reward it, compute/keygen battery
+tasks, and a measured before/after (deepseek-v4.1-flash, a crow-2 reference) the M11 way.
+- [ ] 12.1 the system prompt: when an answer turns on a computation, a search or multi-step logic,
+      make it checkable (run it, script it, brute-force it, debug it), not in the head
+- [ ] 12.2 the prompt says each bash runs in the project dir and shell state does not persist, so
+      no re-`cd` and multi-step shell work goes in one command
+- [ ] 12.3 a solve-for-input op for the simulator: a new `Act::Check` evaluates a data-defined
+      arithmetic predicate over an argument and accepts or rejects it
+- [ ] 12.4 compute/search + keygen tasks in the battery (sum over pages, a search, a pairing code
+      from a published formula), neutrally themed
+- [ ] 12.5 the report rewards grounding: a signal and candidate for runs that answered without
+      running or scripting a check; the python/node/heredoc smells dropped
+- [ ] 12.6 a measured before/after on the mcp suite, plus a crow-2 reference
+- [ ] 12.7 the findings to the user, and the Windows enablers to check (python on PATH, IDA's
+      debug path)
