@@ -15,7 +15,7 @@ async fn print_streams_the_reply_and_records_the_session() {
     assert_eq!(run.success().stdout(), "Hello there!\n");
 
     let body = &fake.chat_bodies()[0];
-    assert_eq!(body["model"], "crow-2");
+    assert_eq!(body["model"], "glm-5.3-flash-crow");
     assert_eq!(body["stream"], true);
     assert_eq!(body["messages"][0]["role"], "system");
     assert_eq!(body["messages"][1]["content"], "hi there");
@@ -33,8 +33,8 @@ async fn print_streams_the_reply_and_records_the_session() {
     assert_eq!(reply["role"], "assistant");
     assert_eq!(reply["parts"][0]["type"], "reasoning");
     assert_eq!(reply["request_id"], "req_fake");
-    // 600 uncached * $6 + 400 cached * $0.60 + 100 out * $10, in micro-dollars
-    assert_eq!(reply["usage"]["cost_micros"], 4840);
+    // 600 uncached * $0.20 + 400 cached * $0.10 + 100 out * $0.60, in micro-dollars
+    assert_eq!(reply["usage"]["cost_micros"], 220);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -67,7 +67,11 @@ async fn continue_goes_on_with_the_latest_session_in_its_own_file() {
     let text = std::fs::read_to_string(&sessions[0]).unwrap();
     // One header, then two prompts and their replies, each prompt with what it was sent under.
     assert_eq!(text.lines().count(), 5);
-    assert_eq!(text.matches(r#""state":{"model":"crow-2""#).count(), 2);
+    assert_eq!(
+        text.matches(r#""state":{"model":"glm-5.3-flash-crow""#)
+            .count(),
+        2
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

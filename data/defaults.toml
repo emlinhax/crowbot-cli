@@ -1,6 +1,6 @@
 # Built-in settings; ~/.crowbot/config.toml, .crowbot/config.toml and flags override them in that
 # order. `[[permission]]` rules are appended instead, and the last matching rule wins.
-model = "crow-2"
+model = "glm-5.3-flash-crow"
 mode = "manual"
 # Release builds update themselves daily during interactive sessions; `crowbot update` does it now.
 # CROWBOT_NO_UPDATE also turns it off.
