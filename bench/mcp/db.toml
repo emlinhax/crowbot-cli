@@ -1,0 +1,386 @@
+# A simulated database: tables named by argument, rows matched by a `where` object and paged,
+# a count the model may not think to use, inserts and updates by id, and a raw SQL tool that is
+# turned off, as many hosted databases' MCP servers keep it. The shop's numbers the battery's
+# checks expect: Acme Corp's paid orders total 4574.0, 4 orders are pending, order 1017 was
+# marked refunded.
+name = "db"
+instructions = "Tables: customers, orders, products. Use select with a `where` object of column = value; raw SQL is turned off."
+
+[[collections.tables]]
+table = "customers"
+columns = "id, name, city"
+
+[[collections.tables]]
+table = "orders"
+columns = "id, customer_id, total, status, date"
+
+[[collections.tables]]
+table = "products"
+columns = "id, name, price, stock"
+
+[[collections.customers]]
+id = 1
+name = "Northwind Traders"
+city = "Oslo"
+
+[[collections.customers]]
+id = 2
+name = "Blue Harbor"
+city = "Lisbon"
+
+[[collections.customers]]
+id = 3
+name = "Acme Corp"
+city = "Denver"
+
+[[collections.customers]]
+id = 4
+name = "Kestrel Labs"
+city = "Austin"
+
+[[collections.customers]]
+id = 5
+name = "Juniper & Co"
+city = "Dublin"
+
+[[collections.customers]]
+id = 6
+name = "Orbit Foods"
+city = "Lyon"
+
+[[collections.customers]]
+id = 7
+name = "Pine Valley Books"
+city = "Portland"
+
+[[collections.customers]]
+id = 8
+name = "Atlas Freight"
+city = "Hamburg"
+
+[[collections.orders]]
+id = 1001
+customer_id = 3
+total = 267.0
+status = "paid"
+date = "2026-07-15"
+
+[[collections.orders]]
+id = 1002
+customer_id = 3
+total = 1200.0
+status = "paid"
+date = "2026-08-23"
+
+[[collections.orders]]
+id = 1003
+customer_id = 3
+total = 267.0
+status = "paid"
+date = "2026-02-27"
+
+[[collections.orders]]
+id = 1004
+customer_id = 1
+total = 1560.0
+status = "refunded"
+date = "2026-06-21"
+
+[[collections.orders]]
+id = 1005
+customer_id = 4
+total = 1560.0
+status = "pending"
+date = "2026-08-12"
+
+[[collections.orders]]
+id = 1006
+customer_id = 3
+total = 178.0
+status = "paid"
+date = "2026-08-12"
+
+[[collections.orders]]
+id = 1007
+customer_id = 6
+total = 267.0
+status = "refunded"
+date = "2026-05-28"
+
+[[collections.orders]]
+id = 1008
+customer_id = 3
+total = 900.0
+status = "paid"
+date = "2026-05-22"
+
+[[collections.orders]]
+id = 1009
+customer_id = 5
+total = 900.0
+status = "paid"
+date = "2026-01-24"
+
+[[collections.orders]]
+id = 1010
+customer_id = 6
+total = 1200.0
+status = "paid"
+date = "2026-02-25"
+
+[[collections.orders]]
+id = 1011
+customer_id = 2
+total = 89.0
+status = "paid"
+date = "2026-05-14"
+
+[[collections.orders]]
+id = 1012
+customer_id = 2
+total = 450.0
+status = "refunded"
+date = "2026-07-22"
+
+[[collections.orders]]
+id = 1013
+customer_id = 6
+total = 35.5
+status = "refunded"
+date = "2026-03-24"
+
+[[collections.orders]]
+id = 1014
+customer_id = 8
+total = 106.5
+status = "refunded"
+date = "2026-05-14"
+
+[[collections.orders]]
+id = 1015
+customer_id = 3
+total = 106.5
+status = "pending"
+date = "2026-05-23"
+
+[[collections.orders]]
+id = 1016
+customer_id = 2
+total = 3600.0
+status = "paid"
+date = "2026-07-17"
+
+[[collections.orders]]
+id = 1017
+customer_id = 6
+total = 240.0
+status = "refunded"
+date = "2026-03-14"
+
+[[collections.orders]]
+id = 1018
+customer_id = 1
+total = 720.0
+status = "paid"
+date = "2026-04-10"
+
+[[collections.orders]]
+id = 1019
+customer_id = 3
+total = 106.5
+status = "paid"
+date = "2026-03-18"
+
+[[collections.orders]]
+id = 1020
+customer_id = 5
+total = 1200.0
+status = "pending"
+date = "2026-03-23"
+
+[[collections.orders]]
+id = 1021
+customer_id = 4
+total = 1560.0
+status = "refunded"
+date = "2026-06-14"
+
+[[collections.orders]]
+id = 1022
+customer_id = 1
+total = 1350.0
+status = "refunded"
+date = "2026-01-24"
+
+[[collections.orders]]
+id = 1023
+customer_id = 3
+total = 1350.0
+status = "refunded"
+date = "2026-07-22"
+
+[[collections.orders]]
+id = 1024
+customer_id = 7
+total = 71.0
+status = "refunded"
+date = "2026-02-25"
+
+[[collections.orders]]
+id = 1025
+customer_id = 3
+total = 900.0
+status = "pending"
+date = "2026-01-16"
+
+[[collections.orders]]
+id = 1026
+customer_id = 1
+total = 89.0
+status = "paid"
+date = "2026-08-15"
+
+[[collections.orders]]
+id = 1027
+customer_id = 3
+total = 178.0
+status = "refunded"
+date = "2026-01-13"
+
+[[collections.orders]]
+id = 1028
+customer_id = 5
+total = 267.0
+status = "paid"
+date = "2026-03-27"
+
+[[collections.orders]]
+id = 1029
+customer_id = 8
+total = 178.0
+status = "refunded"
+date = "2026-01-12"
+
+[[collections.orders]]
+id = 1030
+customer_id = 3
+total = 720.0
+status = "paid"
+date = "2026-07-14"
+
+[[collections.orders]]
+id = 1031
+customer_id = 3
+total = 900.0
+status = "paid"
+date = "2026-06-21"
+
+[[collections.orders]]
+id = 1032
+customer_id = 3
+total = 35.5
+status = "paid"
+date = "2026-02-25"
+
+[[collections.products]]
+id = 1
+name = "Rack mount kit"
+price = 89.0
+stock = 14
+
+[[collections.products]]
+id = 2
+name = "Log shipper license (1 year)"
+price = 240.0
+stock = 999
+
+[[collections.products]]
+id = 3
+name = "Support plan"
+price = 1200.0
+stock = 999
+
+[[collections.products]]
+id = 4
+name = "Sensor pack"
+price = 35.5
+stock = 120
+
+[[collections.products]]
+id = 5
+name = "Gateway appliance"
+price = 780.0
+stock = 9
+
+[[collections.products]]
+id = 6
+name = "Training seat"
+price = 450.0
+stock = 30
+
+[[tool]]
+name = "list_tables"
+description = "Every table with its columns."
+schema = '{"type": "object", "properties": {}}'
+read_only = true
+act = "list"
+collection = "tables"
+render = "{table}: {columns}"
+
+[[tool]]
+name = "describe_table"
+description = "A table's columns."
+schema = '{"type": "object", "properties": {"table": {"type": "string"}}, "required": ["table"], "additionalProperties": false}'
+read_only = true
+act = "get"
+collection = "tables"
+key = "table"
+render = "{table}: {columns}"
+missing = "No table {table}."
+
+[[tool]]
+name = "select"
+description = "Rows of a table whose columns equal every value in `where`, five at a time; pass `offset` for the next page."
+schema = '{"type": "object", "properties": {"table": {"type": "string"}, "where": {"type": "object"}, "offset": {"type": "integer"}, "limit": {"type": "integer"}}, "required": ["table"], "additionalProperties": false}'
+read_only = true
+act = "list"
+collection_arg = "table"
+where_arg = "where"
+page = { size = 5, arg = "offset", kind = "offset", limit = "limit" }
+render = "{*}"
+
+[[tool]]
+name = "count"
+description = "How many rows of a table have columns equal to every value in `where`."
+schema = '{"type": "object", "properties": {"table": {"type": "string"}, "where": {"type": "object"}}, "required": ["table"], "additionalProperties": false}'
+read_only = true
+act = "count"
+collection_arg = "table"
+where_arg = "where"
+
+[[tool]]
+name = "insert"
+description = "Add a row to a table; `row` holds its columns, the id is given."
+schema = '{"type": "object", "properties": {"table": {"type": "string"}, "row": {"type": "object"}}, "required": ["table", "row"], "additionalProperties": false}'
+act = "create"
+collection_arg = "table"
+merge_arg = "row"
+text = "Inserted row {id} into {table}."
+
+[[tool]]
+name = "update"
+description = "Change columns of the row with an id; `set` holds the columns and their new values."
+schema = '{"type": "object", "properties": {"table": {"type": "string"}, "id": {"type": "integer"}, "set": {"type": "object"}}, "required": ["table", "id", "set"], "additionalProperties": false}'
+act = "update"
+collection_arg = "table"
+key = "id"
+merge_arg = "set"
+text = "Updated {table} row {id}: {*}"
+missing = "No row with id {id} in {table}."
+
+[[tool]]
+name = "run_sql"
+description = "Run a raw SQL statement."
+schema = '{"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"], "additionalProperties": false}'
+act = "text"
+text = "Raw SQL is turned off on this server; use select, count, insert or update."

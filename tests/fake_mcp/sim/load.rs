@@ -69,6 +69,9 @@ pub struct Tool {
     pub act: Act,
     #[serde(default)]
     pub collection: Option<String>,
+    /// An argument naming the collection instead (a database's table).
+    #[serde(default)]
+    pub collection_arg: Option<String>,
     /// The field an item is found by, and the argument giving it (the same name unless `arg`).
     #[serde(default)]
     pub key: Option<String>,
@@ -76,7 +79,8 @@ pub struct Tool {
     pub arg: Option<String>,
     #[serde(default)]
     pub format: Option<Format>,
-    /// One item as the answer shows it: `{field}` from the item, else from the arguments.
+    /// One item as the answer shows it: `{field}` from the item, else from the arguments; `{*}`
+    /// is the whole item as JSON.
     #[serde(default)]
     pub render: Option<String>,
     /// The answer of `text`, `update` and `create`, filled the same way.
@@ -98,6 +102,16 @@ pub struct Tool {
     /// For `update` and `create`: item field = the argument that sets it.
     #[serde(default)]
     pub set: BTreeMap<String, String>,
+    /// For `update` and `create`: an object argument whose every field is set on the item.
+    #[serde(default)]
+    pub merge_arg: Option<String>,
+    /// For `update` and `create`: fields set to these values first, so arguments can override
+    /// them (a new issue's state, a close tool's `closed`).
+    #[serde(default)]
+    pub constants: Map<String, Value>,
+    /// For `create`: the field numbering new items, `id` unless named.
+    #[serde(default)]
+    pub id_field: Option<String>,
     #[serde(default)]
     pub requires: Option<String>,
     #[serde(default)]

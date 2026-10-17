@@ -1,0 +1,432 @@
+# A simulated issue tracker, shaped like GitHub's MCP server: issues found by search and paged by
+# cursor, a `state` enum, labels as a list that an update replaces whole, comments, and issues to
+# create. The project is netlogd, the daemon the `re` server's binary is.
+name = "tracker"
+instructions = "Issues are numbered; `update_issue` replaces the labels it is given, so pass every label the issue should keep."
+
+[[collections.issues]]
+number = 1
+title = "Log rotation keeps nine files instead of eight"
+state = "closed"
+labels = ["bug"]
+assignee = "mira"
+body = "With max_size set, rotate_logs leaves logfile.1 through logfile.9 behind. The docs say eight."
+
+[[collections.issues]]
+number = 2
+title = "Support TLS for the listener"
+state = "open"
+labels = ["enhancement"]
+assignee = ""
+body = "Clients on untrusted networks need encrypted transport."
+
+[[collections.issues]]
+number = 3
+title = "Timestamp lacks a timezone"
+state = "open"
+labels = ["enhancement"]
+assignee = "jon"
+body = "Lines read 2026-10-01 12:00:00 with no offset, which is ambiguous across hosts."
+
+[[collections.issues]]
+number = 4
+title = "Daemon crashes when the config has no log_dir"
+state = "open"
+labels = ["bug"]
+assignee = ""
+body = "Starting netlogd with a config that sets port= but no log_dir= makes it crash on the first line written."
+
+[[collections.issues]]
+number = 5
+title = "Document the config file keys"
+state = "open"
+labels = ["docs"]
+assignee = "mira"
+body = "Only port= and log_dir= are known from the source; please list every key."
+
+[[collections.issues]]
+number = 6
+title = "Add a --foreground flag"
+state = "closed"
+labels = ["enhancement"]
+assignee = "jon"
+body = "Done in 0.4."
+
+[[collections.issues]]
+number = 7
+title = "Facility numbers are written as unsigned"
+state = "open"
+labels = ["question"]
+assignee = ""
+body = "Is facility meant to be signed?"
+
+[[collections.issues]]
+number = 8
+title = "Crash on SIGHUP during rotation"
+state = "closed"
+labels = ["bug", "crash"]
+assignee = "mira"
+body = "Fixed by blocking SIGHUP in rotate_logs."
+
+[[collections.issues]]
+number = 9
+title = "Slow when a client sends one byte at a time"
+state = "open"
+labels = ["performance"]
+assignee = ""
+body = "recv_line reads a single byte per recv call."
+
+[[collections.issues]]
+number = 10
+title = "Make the port configurable from the command line"
+state = "open"
+labels = ["enhancement"]
+assignee = ""
+body = "Today only the config file can set it."
+
+[[collections.issues]]
+number = 11
+title = "Segfault after the stats request on a closed socket"
+state = "open"
+labels = ["bug"]
+assignee = "jon"
+body = "Sending '?' and closing the socket at once crashes the daemon; looks like a crash in the stats reply."
+
+[[collections.issues]]
+number = 12
+title = "Export logs as CSV"
+state = "closed"
+labels = ["enhancement"]
+assignee = "mira"
+body = "Add a csv output mode next to the plain text one."
+
+[[collections.issues]]
+number = 13
+title = "Ping reply has a trailing newline"
+state = "open"
+labels = ["question"]
+assignee = ""
+body = "Clients see pong followed by a newline; intended?"
+
+[[collections.issues]]
+number = 14
+title = "Typo in the exit message"
+state = "closed"
+labels = ["docs"]
+assignee = "jon"
+body = "netlogd: exiting with %d reads fine now."
+
+[[collections.issues]]
+number = 15
+title = "Config lines with spaces before the key are ignored"
+state = "open"
+labels = ["bug"]
+assignee = ""
+body = "'  port=6000' is not read."
+
+[[collections.issues]]
+number = 16
+title = "Add systemd unit file"
+state = "open"
+labels = ["enhancement"]
+assignee = ""
+body = "Ship netlogd.service."
+
+[[collections.issues]]
+number = 17
+title = "bad header checksum for valid packets"
+state = "open"
+labels = ["bug"]
+assignee = "mira"
+body = "Since 0.5 netlogd prints 'bad header checksum' for packets other implementations accept."
+
+[[collections.issues]]
+number = 18
+title = "Use a ring buffer for client lines"
+state = "open"
+labels = ["performance"]
+assignee = ""
+body = ""
+
+[[collections.issues]]
+number = 19
+title = "Crash when the log file is not writable"
+state = "open"
+labels = ["bug"]
+assignee = ""
+body = "If fopen fails the daemon carries on; later a crash follows in write_log."
+
+[[collections.issues]]
+number = 20
+title = "Rename sub_ functions in the debug build"
+state = "closed"
+labels = ["question"]
+assignee = "jon"
+body = "Not planned."
+
+[[collections.issues]]
+number = 21
+title = "README install steps are out of date"
+state = "open"
+labels = ["docs"]
+assignee = ""
+body = ""
+
+[[collections.issues]]
+number = 22
+title = "Limit the number of clients"
+state = "open"
+labels = ["enhancement"]
+assignee = ""
+body = ""
+
+[[collections.issues]]
+number = 23
+title = "Allow exporting logs to CSV files"
+state = "open"
+labels = ["enhancement"]
+assignee = ""
+body = "It would help to export the log as CSV for spreadsheets."
+
+[[collections.issues]]
+number = 24
+title = "Stats counters overflow after 4 GB"
+state = "open"
+labels = ["bug"]
+assignee = "jon"
+body = "bytes is unsigned 32-bit."
+
+[[collections.issues]]
+number = 25
+title = "Add IPv6 support"
+state = "open"
+labels = ["enhancement"]
+assignee = ""
+body = ""
+
+[[collections.issues]]
+number = 26
+title = "Header parsing reads past short packets"
+state = "closed"
+labels = ["bug"]
+assignee = "mira"
+body = "Fixed: packets under 8 bytes are rejected."
+
+[[collections.issues]]
+number = 27
+title = "Rotation crash on full disk"
+state = "open"
+labels = ["bug", "performance"]
+assignee = ""
+body = "When the disk is full, rename fails and the next write is a crash."
+
+[[collections.issues]]
+number = 28
+title = "Question about the checksum algorithm"
+state = "open"
+labels = ["question"]
+assignee = ""
+body = "Which CRC variant does netlogd use?"
+
+[[collections.issues]]
+number = 29
+title = "Add a --version flag"
+state = "open"
+labels = ["enhancement"]
+assignee = ""
+body = ""
+
+[[collections.issues]]
+number = 30
+title = "Docs: explain the facility field"
+state = "open"
+labels = ["docs"]
+assignee = ""
+body = ""
+
+[[collections.comments]]
+id = 1
+issue = 17
+author = "jon"
+body = "Seen here too with packets from the Go client."
+
+[[collections.comments]]
+id = 2
+issue = 17
+author = "mira"
+body = "Packets pass if I recompute the CRC over the whole payload."
+
+[[collections.comments]]
+id = 3
+issue = 12
+author = "jon"
+body = "Merged in 0.4."
+
+[[collections.comments]]
+id = 4
+issue = 4
+author = "mira"
+body = "Reproduced with a minimal config."
+
+[[collections.labels]]
+name = "bug"
+description = "Something is broken"
+
+[[collections.labels]]
+name = "crash"
+description = "The daemon stops"
+
+[[collections.labels]]
+name = "enhancement"
+description = "New feature"
+
+[[collections.labels]]
+name = "docs"
+description = "Documentation"
+
+[[collections.labels]]
+name = "question"
+description = "Needs an answer"
+
+[[collections.labels]]
+name = "performance"
+description = "Speed or memory"
+
+[[collections.labels]]
+name = "duplicate"
+description = "Already reported"
+
+[[collections.users]]
+login = "mira"
+name = "Mira Okafor"
+
+[[collections.users]]
+login = "jon"
+name = "Jon Lindqvist"
+
+[[collections.users]]
+login = "sam"
+name = "Sam Reyes"
+
+[[tool]]
+name = "search_issues"
+description = "Issues whose title or body contains the query, oldest first, three at a time. `state` keeps open or closed ones. Pass the cursor the last page gave for the next."
+schema = '{"type": "object", "properties": {"query": {"type": "string"}, "state": {"type": "string", "enum": ["open", "closed"]}, "cursor": {"type": "string"}}, "additionalProperties": false}'
+read_only = true
+act = "list"
+collection = "issues"
+matches = { state = "state" }
+filter = { arg = "query", fields = ["title", "body"] }
+page = { size = 3, arg = "cursor", kind = "cursor" }
+render = "#{number} [{state}] {title} (labels: {labels})"
+
+[[tool]]
+name = "get_issue"
+description = "One issue with its body, labels, state and assignee."
+schema = '{"type": "object", "properties": {"number": {"type": "integer"}}, "required": ["number"], "additionalProperties": false}'
+read_only = true
+act = "get"
+collection = "issues"
+key = "number"
+render = "#{number} {title}\nState: {state}\nLabels: {labels}\nAssignee: {assignee}\n\n{body}"
+missing = "No issue #{number}."
+
+[[tool]]
+name = "list_comments"
+description = "The comments on an issue, oldest first."
+schema = '{"type": "object", "properties": {"issue": {"type": "integer"}}, "required": ["issue"], "additionalProperties": false}'
+read_only = true
+act = "list"
+collection = "comments"
+matches = { issue = "issue" }
+render = "comment {id} by {author}: {body}"
+
+[[tool]]
+name = "create_comment"
+description = "Add a comment to an issue."
+schema = '{"type": "object", "properties": {"issue": {"type": "integer"}, "body": {"type": "string"}}, "required": ["issue", "body"], "additionalProperties": false}'
+act = "create"
+collection = "comments"
+set = { issue = "issue", body = "body" }
+constants = { author = "crowbot" }
+text = "Comment {id} added to #{issue}."
+
+[[tool]]
+name = "create_issue"
+description = "Open a new issue."
+schema = '{"type": "object", "properties": {"title": {"type": "string"}, "body": {"type": "string"}, "labels": {"type": "array", "items": {"type": "string"}}}, "required": ["title", "body"], "additionalProperties": false}'
+act = "create"
+collection = "issues"
+id_field = "number"
+set = { title = "title", body = "body", labels = "labels" }
+constants = { state = "open", labels = [], assignee = "" }
+text = "Opened issue #{number}: {title}."
+
+[[tool]]
+name = "update_issue"
+description = "Change an issue's state, labels (the whole list) or assignee."
+schema = '{"type": "object", "properties": {"number": {"type": "integer"}, "state": {"type": "string", "enum": ["open", "closed"]}, "labels": {"type": "array", "items": {"type": "string"}}, "assignee": {"type": "string"}}, "required": ["number"], "additionalProperties": false}'
+act = "update"
+collection = "issues"
+key = "number"
+set = { state = "state", labels = "labels", assignee = "assignee" }
+text = "Issue #{number}: state {state}, labels [{labels}], assignee {assignee}."
+missing = "No issue #{number}."
+
+[[tool]]
+name = "close_issue"
+description = "Close an issue, giving why."
+schema = '{"type": "object", "properties": {"number": {"type": "integer"}, "reason": {"type": "string", "enum": ["completed", "not_planned", "duplicate"]}}, "required": ["number", "reason"], "additionalProperties": false}'
+act = "update"
+collection = "issues"
+key = "number"
+set = { close_reason = "reason" }
+constants = { state = "closed" }
+text = "Closed #{number} as {reason}."
+missing = "No issue #{number}."
+
+[[tool]]
+name = "assign_issue"
+description = "Assign an issue to a user by login."
+schema = '{"type": "object", "properties": {"number": {"type": "integer"}, "assignee": {"type": "string"}}, "required": ["number", "assignee"], "additionalProperties": false}'
+act = "update"
+collection = "issues"
+key = "number"
+set = { assignee = "assignee" }
+text = "#{number} is assigned to {assignee}."
+missing = "No issue #{number}."
+
+[[tool]]
+name = "list_labels"
+description = "The labels issues can carry."
+schema = '{"type": "object", "properties": {}}'
+read_only = true
+act = "list"
+collection = "labels"
+render = "{name}: {description}"
+
+[[tool]]
+name = "create_label"
+description = "Add a label issues can carry."
+schema = '{"type": "object", "properties": {"name": {"type": "string"}, "description": {"type": "string"}}, "required": ["name"], "additionalProperties": false}'
+act = "create"
+collection = "labels"
+set = { name = "name", description = "description" }
+text = "Label {name} created."
+
+[[tool]]
+name = "list_users"
+description = "People who can be assigned issues."
+schema = '{"type": "object", "properties": {}}'
+read_only = true
+act = "list"
+collection = "users"
+render = "{login} ({name})"
+
+[[tool]]
+name = "get_issue_timeline"
+description = "What happened to an issue over time."
+schema = '{"type": "object", "properties": {"number": {"type": "integer"}}, "required": ["number"], "additionalProperties": false}'
+read_only = true
+act = "text"
+text = "#{number}: opened, labelled, discussed; nothing else recorded."

@@ -1,0 +1,109 @@
+# A simulated docs search: pages found by a query, three at a time behind a cursor, read whole by
+# id. The answers the battery's checks expect: alerts are retried 5 times by default
+# (`alerts.max_retries`); the v1 wire format is deprecated and removed on 2027-03-01.
+name = "docs"
+instructions = "Search returns page ids; fetch a page by its id to read it."
+
+[[collections.pages]]
+id = "getting-started"
+section = "Basics"
+title = "Getting started with netlogd"
+text = "netlogd collects log lines from clients over TCP and writes them to a file. Install the package, write /etc/netlogd.conf, and start the daemon with `netlogd /etc/netlogd.conf`. By default it listens on port 5140 and writes to /var/log/netlogd/netlogd.log."
+
+[[collections.pages]]
+id = "configuration"
+section = "Basics"
+title = "Configuration keys"
+text = "The configuration file holds one key=value per line. `port` (default 5140) is the TCP port. `log_dir` is the folder for log files. `max_size` (default 10485760) is the size in bytes at which the log is rotated. `rotate_count` (default 8) is how many rotated files are kept. Keys must start at the beginning of the line. Alert settings are described under Alerts."
+
+[[collections.pages]]
+id = "rotation"
+section = "Basics"
+title = "Log rotation"
+text = "When the log passes `max_size`, netlogd renames it to netlogd.log.1, shifting older files up, and keeps `rotate_count` of them. Rotation happens on the write that crosses the limit."
+
+[[collections.pages]]
+id = "alerts-overview"
+section = "Alerts"
+title = "Alerts: forwarding lines to an HTTP endpoint"
+text = "netlogd can forward lines whose facility is at or below `alerts.facility` to an HTTP endpoint set by `alerts.url`. Each alert is a POST with a JSON body. Alerts are sent from a background queue, so a slow endpoint never holds up logging."
+
+[[collections.pages]]
+id = "alerts-format"
+section = "Alerts"
+title = "Alerts: the JSON body"
+text = "An alert body holds `time` (RFC 3339), `facility` (a number), `host` and `line`. The endpoint should answer 2xx; anything else counts as a failed delivery."
+
+[[collections.pages]]
+id = "alerts-security"
+section = "Alerts"
+title = "Alerts: signing and TLS"
+text = "Set `alerts.secret` to sign each alert with an HMAC-SHA256 header, X-Netlogd-Signature. Use an https:// URL for TLS; certificates are checked against the system store."
+
+[[collections.pages]]
+id = "alerts-retries"
+section = "Alerts"
+title = "Alerts: failed deliveries and retries"
+text = "A failed alert delivery is retried. By default netlogd retries each alert 5 times before dropping it; change this with `alerts.max_retries` (0 turns retries off). Retries wait `alerts.retry_backoff_secs` seconds (default 30), doubling each time. Dropped alerts are counted in the stats reply."
+
+[[collections.pages]]
+id = "wire-format"
+section = "Protocol"
+title = "The wire format (v2)"
+text = "Each message starts with an 8-byte header: a 4-byte facility and a 4-byte CRC-32 of the payload that follows, both little-endian, then the text up to a newline. A message whose checksum does not match is dropped with `bad header checksum` on stderr."
+
+[[collections.pages]]
+id = "wire-format-v1"
+section = "Protocol"
+title = "The v1 wire format (deprecated)"
+text = "The v1 wire format sent the text alone, without a header or checksum. It is deprecated since 0.5 and will be removed in netlogd 1.0, planned for 2027-03-01. Clients should move to the v2 format."
+
+[[collections.pages]]
+id = "stats"
+section = "Protocol"
+title = "The stats request"
+text = "A line starting with `?` asks for counters. netlogd answers `lines=<n> bytes=<n>` followed by a newline."
+
+[[collections.pages]]
+id = "ping"
+section = "Protocol"
+title = "Ping"
+text = "A line starting with `#` is a ping; netlogd answers `pong` and a newline."
+
+[[collections.pages]]
+id = "troubleshooting"
+section = "Help"
+title = "Troubleshooting"
+text = "`cannot read config`: the path is wrong or unreadable. `bad header checksum`: the client computes the CRC over something other than the payload; see the wire format. Missing lines: check that the client ends each message with a newline. Alerts not arriving: check `alerts.url`, the endpoint's answers, and the dropped-alerts counter in the stats reply."
+
+[[tool]]
+name = "search"
+description = "Pages whose title or text contains the query, three at a time; pass the cursor the last page gave for the next three."
+schema = '{"type": "object", "properties": {"query": {"type": "string"}, "cursor": {"type": "string"}}, "required": ["query"], "additionalProperties": false}'
+read_only = true
+act = "list"
+collection = "pages"
+filter = { arg = "query", fields = ["title", "text"] }
+page = { size = 3, arg = "cursor", kind = "cursor" }
+render = "{id}: {title}"
+
+[[tool]]
+name = "fetch"
+description = "A page's whole text, by its id."
+schema = '{"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"], "additionalProperties": false}'
+read_only = true
+act = "get"
+collection = "pages"
+key = "id"
+render = "# {title}\n\n{text}"
+missing = "No page {id}."
+
+[[tool]]
+name = "list_pages"
+description = "Every page, or those of one section (Basics, Alerts, Protocol, Help)."
+schema = '{"type": "object", "properties": {"section": {"type": "string", "enum": ["Basics", "Alerts", "Protocol", "Help"]}}, "additionalProperties": false}'
+read_only = true
+act = "list"
+collection = "pages"
+matches = { section = "section" }
+render = "{id}: {title} ({section})"

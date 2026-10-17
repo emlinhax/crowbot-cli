@@ -565,7 +565,7 @@ repeat with `glm-5.3-flash-crow` as the reference; four servers (reverse enginee
 ida-pro-mcp, an issue tracker, a database, a docs search), about 12 tasks × 3, at most $5.
 - [x] 11.1 a data-driven simulated server: `crowbot-fake-mcp --server <file> --record <dir>`,
       arguments checked against the tool's own schema, every call logged with its outcome
-- [ ] 11.2 four simulated servers in `bench/mcp/`
+- [x] 11.2 four simulated servers in `bench/mcp/`
 - [ ] 11.3 MCP tasks in the battery runner: suites in `bench/battery.toml`, a task's `mcp`
       servers in the run's config, `.mcp/` kept with the run, checks on the recorded state
 - [ ] 11.4 MCP in the report: outcomes per server and tool, mistakes, one call per reply,

@@ -39,47 +39,55 @@ impl Fail {
 
 /// The answer, and whether the data changed.
 pub fn act(tool: &Tool, args: &Item, data: &mut Collections) -> Result<(String, bool), Fail> {
+    if tool.act == Act::Text {
+        return Ok((fill(text(tool), None, args), false));
+    }
+    let name = collection(tool, args, data)?;
+    let items = data.entry(name).or_default();
     match tool.act {
-        Act::Text => Ok((fill(text(tool), None, args), false)),
-        Act::List => list(tool, args, data).map(|answer| (answer, false)),
-        Act::Count => {
-            let n = matching(tool, args, collection(tool, data))?.len();
-            Ok((n.to_string(), false))
-        }
+        Act::Text => unreachable!("answered before a collection is looked up"),
+        Act::List => list(tool, args, items).map(|answer| (answer, false)),
+        Act::Count => Ok((matching(tool, args, items)?.len().to_string(), false)),
         Act::Get => {
-            let items = collection(tool, data);
             let at = find(tool, args, items)?;
             Ok((fill(render(tool), Some(&items[at]), args), false))
         }
         Act::Update => {
-            let at = find(tool, args, collection(tool, data))?;
-            let item = &mut collection_mut(tool, data)[at];
-            for (field, arg) in &tool.set {
-                if let Some(value) = args.get(arg) {
-                    item.insert(field.clone(), value.clone());
-                }
-            }
-            Ok((fill(text(tool), Some(item), args), true))
+            let at = find(tool, args, items)?;
+            apply(tool, args, &mut items[at]);
+            Ok((fill(text(tool), Some(&items[at]), args), true))
         }
         Act::Create => {
-            let items = collection_mut(tool, data);
+            let id_field = tool.id_field.as_deref().unwrap_or("id");
             let id = items
                 .iter()
-                .filter_map(|i| i.get("id").and_then(Value::as_u64))
+                .filter_map(|i| i.get(id_field).and_then(Value::as_u64))
                 .max()
                 .unwrap_or(0)
                 + 1;
             let mut item = Item::new();
-            item.insert("id".into(), Value::from(id));
-            for (field, arg) in &tool.set {
-                if let Some(value) = args.get(arg) {
-                    item.insert(field.clone(), value.clone());
-                }
-            }
+            item.insert(id_field.into(), Value::from(id));
+            apply(tool, args, &mut item);
             let answer = fill(text(tool), Some(&item), args);
             items.push(item);
             Ok((answer, true))
         }
+    }
+}
+
+/// Sets on `item` the tool's `constants`, then the fields `set` names from their arguments, and
+/// every field of the object argument `merge_arg`.
+fn apply(tool: &Tool, args: &Item, item: &mut Item) {
+    item.extend(tool.constants.clone());
+    for (field, arg) in &tool.set {
+        if let Some(value) = args.get(arg) {
+            item.insert(field.clone(), value.clone());
+        }
+    }
+    if let Some(arg) = &tool.merge_arg
+        && let Some(Value::Object(fields)) = args.get(arg)
+    {
+        item.extend(fields.clone());
     }
 }
 
@@ -91,20 +99,23 @@ fn render(tool: &Tool) -> &str {
     tool.render.as_deref().unwrap_or("{id}")
 }
 
-fn collection<'a>(tool: &Tool, data: &'a Collections) -> &'a [Item] {
-    let name = tool
-        .collection
-        .as_deref()
-        .expect("this act names a collection");
-    data.get(name).map(Vec::as_slice).unwrap_or_default()
-}
-
-fn collection_mut<'a>(tool: &Tool, data: &'a mut Collections) -> &'a mut Vec<Item> {
-    let name = tool
-        .collection
-        .clone()
-        .expect("this act names a collection");
-    data.entry(name).or_default()
+/// The collection a call acts on: the tool's own, or the one its `collection_arg` names.
+fn collection(tool: &Tool, args: &Item, data: &Collections) -> Result<String, Fail> {
+    let Some(arg) = &tool.collection_arg else {
+        return Ok(tool
+            .collection
+            .clone()
+            .expect("this act names a collection"));
+    };
+    let named = args.get(arg).and_then(Value::as_str).unwrap_or_default();
+    if data.contains_key(named) {
+        return Ok(named.to_owned());
+    }
+    let known: Vec<&str> = data.keys().map(String::as_str).collect();
+    Err(Fail::new(
+        Outcome::InvalidArgs,
+        format!("no {arg} `{named}`; there are: {}", known.join(", ")),
+    ))
 }
 
 /// The items `matches`, `where_arg` and `filter` let through, in order.
@@ -157,8 +168,8 @@ fn matching<'a>(tool: &Tool, args: &Item, items: &'a [Item]) -> Result<Vec<&'a I
         .collect())
 }
 
-fn list(tool: &Tool, args: &Item, data: &Collections) -> Result<String, Fail> {
-    let items = matching(tool, args, collection(tool, data))?;
+fn list(tool: &Tool, args: &Item, items: &[Item]) -> Result<String, Fail> {
+    let items = matching(tool, args, items)?;
     let total = items.len();
     let (start, size) = match &tool.page {
         None => (0, total.max(1)),
@@ -285,6 +296,11 @@ pub fn fill(template: &str, item: Option<&Item>, args: &Item) -> String {
         };
         let name = &rest[open + 1..open + close];
         out.push_str(&rest[..open]);
+        if let (Some(item), "*") = (item, name) {
+            out.push_str(&Value::Object(item.clone()).to_string());
+            rest = &rest[open + close + 1..];
+            continue;
+        }
         match item.and_then(|i| i.get(name)).or_else(|| args.get(name)) {
             Some(value) => out.push_str(&shown(value)),
             None => out.push_str(&rest[open..=open + close]),
