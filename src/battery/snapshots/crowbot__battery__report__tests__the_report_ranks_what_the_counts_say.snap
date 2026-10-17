@@ -1,6 +1,5 @@
 ---
 source: src/battery/report.rs
-assertion_line: 598
 expression: text
 ---
 # Battery battery
@@ -109,6 +108,13 @@ Runs that never started: broken #1 (r is not set up)
 |---|---|---|---|
 | `sed -n` | read with offset and limit | 1 | `sed -n '1,40p' src/lib.rs` |
 
+## Empirical grounding (ran or scripted a check vs did not)
+
+| what | count | example |
+|---|---|---|
+| answered without running or scripting | 2 | `flaky` |
+| grounded by running or scripting | 2 | `fix-it` |
+
 ## Replies in a row (calls made together are one step)
 
 ### Pairs
@@ -164,12 +170,13 @@ Runs that never started: broken #1 (r is not set up)
 6. 1 × `sed -n` in bash, where read with offset and limit would do
 7. 1 × bash + grep → bash → bash + edit in a row: a candidate for one call
 8. 1 × bash called again unchanged after it failed
-9. 1 × re__decompile_function before its server was ready: the model skipped the step the server's instructions name
-10. 1 × re__decompile_function called again unchanged after it failed
-11. 1 × re__decompile_function called once per reply in a row: tell the model independent calls can go in one reply
-12. 1 × re__decompile_function → re__decompile_function → re__idb_open in a row: a candidate for one call
-13. 1 × re__decompile_function → re__decompile_function → re__set_comment in a row: a candidate for one call
-14. 1 × unknown_tool · nope: the tool's description or schema may mislead
+9. 1 × flaky missed with nothing run or scripted to check the answer: a candidate for grounding it (run it, script it, brute-force it)
+10. 1 × re__decompile_function before its server was ready: the model skipped the step the server's instructions name
+11. 1 × re__decompile_function called again unchanged after it failed
+12. 1 × re__decompile_function called once per reply in a row: tell the model independent calls can go in one reply
+13. 1 × re__decompile_function → re__decompile_function → re__idb_open in a row: a candidate for one call
+14. 1 × re__decompile_function → re__decompile_function → re__set_comment in a row: a candidate for one call
+15. 1 × unknown_tool · nope: the tool's description or schema may mislead
 
 ## Against battery
 
@@ -180,4 +187,5 @@ Runs that never started: broken #1 (r is not set up)
 | calls | 3.5 | 3.5 | +0.0 |
 | bash calls | 1.0 | 1.0 | +0.0 |
 | stand-ins | 0.2 | 0.2 | +0.0 |
+| grounded | 0.5 | 0.5 | +0.0 |
 | cost (µ$) | 1300.0 | 1300.0 | +0.0 |

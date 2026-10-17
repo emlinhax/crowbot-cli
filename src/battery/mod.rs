@@ -1,6 +1,7 @@
 //! Reading a tool-use battery's records back (NEXT_PLAN.md M9): what the model called, how, and
 //! what the gate would have said, counted so the report can rank what to make easier.
 
+pub mod grounding;
 pub mod load;
 pub mod mcp;
 pub mod record;
