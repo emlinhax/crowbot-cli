@@ -6,6 +6,7 @@ use crate::agent::compact::{self, Why};
 use crate::agent::context;
 use crate::agent::model_text;
 use crate::agent::overflow;
+use crate::agent::written;
 use crate::agent::{Run, RunCtx};
 use crate::api::chat::{self, Turn};
 use crate::api::models::Model;
@@ -61,6 +62,9 @@ pub(crate) async fn run_under(
     // One summary-and-send-again per run, and none after one failed: a model that cannot
     // summarise would only fail again.
     let (mut sent_again, mut summary_failed) = (false, false);
+    // Calls written as text are pointed out once per run: a model that keeps writing them would
+    // only spend turns.
+    let mut told_written = false;
 
     let outcome = 'run: loop {
         loop {
@@ -89,6 +93,7 @@ pub(crate) async fn run_under(
             record(cx, transcript, Message::Assistant(reply.clone()));
             let finish = reply.finish;
             let calls: Vec<ToolCall> = reply.tool_calls().cloned().collect();
+            let written = calls.is_empty() && written::wrote_calls(&Part::text_of(&reply.parts));
             let refused = reply.error.as_ref().is_some_and(overflow::refused);
             (cx.emit)(AgentEvent::MessageEnd { message: reply });
             if refused && !sent_again && !summary_failed {
@@ -145,6 +150,13 @@ pub(crate) async fn run_under(
                 for parts in steered {
                     deliver(&run, transcript, parts);
                 }
+                continue;
+            }
+            if written && !told_written && !tools.is_empty() {
+                told_written = true;
+                let text = model_text::get().written_calls.clone();
+                let parts = vec![Part::Reminder { text }];
+                record(cx, transcript, Message::User { parts });
                 continue;
             }
             if calls.is_empty() {
@@ -322,6 +334,32 @@ mod tests {
         let last = last_message(&h.requests()[1]);
         assert_eq!(last["role"], "user");
         assert_eq!(last["content"], "also look at b");
+    }
+
+    #[tokio::test]
+    async fn calls_written_as_text_are_pointed_out_once() {
+        let written =
+            r#"I'll read it. {"tool_calls":[{"name":"read","arguments":{"path":"a.txt"}}]}"#;
+        let h = Harness::new(vec![
+            text(written),
+            reply(
+                "",
+                &[("c1", "read", json!({"path": "a.txt"}))],
+                "tool_calls",
+            ),
+            text(written),
+        ])
+        .await;
+        h.write("a.txt", "x");
+        let (ended, _, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let requests = h.requests();
+        // Told once, then the call is made; written out again, the run ends there.
+        assert_eq!(requests.len(), 3);
+        let told = last_message(&requests[1]);
+        assert_eq!(told["role"], "user");
+        let told = told["content"].to_string();
+        assert!(told.contains("wrote tool calls into its text"), "{told}");
     }
 
     #[tokio::test]
