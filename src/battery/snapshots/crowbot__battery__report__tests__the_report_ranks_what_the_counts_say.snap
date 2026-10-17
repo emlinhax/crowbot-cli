@@ -1,6 +1,6 @@
 ---
 source: src/battery/report.rs
-assertion_line: 586
+assertion_line: 598
 expression: text
 ---
 # Battery battery
@@ -109,34 +109,27 @@ Runs that never started: broken #1 (r is not set up)
 |---|---|---|---|
 | `sed -n` | read with offset and limit | 1 | `sed -n '1,40p' src/lib.rs` |
 
-## Calls in a row
+## Replies in a row (calls made together are one step)
 
 ### Pairs
 
 | what | count | example |
 |---|---|---|
 | re__decompile_function → re__decompile_function | 2 | `mcp-it` |
-| bash → bash | 1 | `fix-it` |
-| bash → edit | 1 | `fix-it` |
-| bash → grep | 1 | `fix-it` |
-| grep → bash | 1 | `fix-it` |
-| nope → bash | 1 | `plan-it` |
+| bash + grep → bash | 1 | `fix-it` |
+| bash → bash + edit | 1 | `fix-it` |
 | re__decompile_function → re__idb_open | 1 | `mcp-it` |
 | re__decompile_function → re__set_comment | 1 | `mcp-it` |
 | re__idb_open → re__decompile_function | 1 | `mcp-it` |
-| re__set_comment → re__set_comment | 1 | `mcp-it` |
 
 ### Triples
 
 | what | count | example |
 |---|---|---|
-| bash → bash → edit | 1 | `fix-it` |
-| bash → grep → bash | 1 | `fix-it` |
-| grep → bash → bash | 1 | `fix-it` |
+| bash + grep → bash → bash + edit | 1 | `fix-it` |
 | re__decompile_function → re__decompile_function → re__idb_open | 1 | `mcp-it` |
 | re__decompile_function → re__decompile_function → re__set_comment | 1 | `mcp-it` |
 | re__decompile_function → re__idb_open → re__decompile_function | 1 | `mcp-it` |
-| re__decompile_function → re__set_comment → re__set_comment | 1 | `mcp-it` |
 | re__idb_open → re__decompile_function → re__decompile_function | 1 | `mcp-it` |
 
 ## Asked again under MANUAL
@@ -169,13 +162,13 @@ Runs that never started: broken #1 (r is not set up)
 4. 1 × PLAN refused bash `python3`: a candidate for that mode's allowlist
 5. 1 × `re__decompile_function: arguments.address: expected string, got integer N`: crowbot could check arguments against the tool's schema before sending and say what is wrong
 6. 1 × `sed -n` in bash, where read with offset and limit would do
-7. 1 × bash called again unchanged after it failed
-8. 1 × bash → bash → edit in a row: a candidate for one call
-9. 1 × bash → grep → bash in a row: a candidate for one call
-10. 1 × grep → bash → bash in a row: a candidate for one call
-11. 1 × re__decompile_function before its server was ready: the model skipped the step the server's instructions name
-12. 1 × re__decompile_function called again unchanged after it failed
-13. 1 × re__decompile_function called once per reply in a row: tell the model independent calls can go in one reply
+7. 1 × bash + grep → bash → bash + edit in a row: a candidate for one call
+8. 1 × bash called again unchanged after it failed
+9. 1 × re__decompile_function before its server was ready: the model skipped the step the server's instructions name
+10. 1 × re__decompile_function called again unchanged after it failed
+11. 1 × re__decompile_function called once per reply in a row: tell the model independent calls can go in one reply
+12. 1 × re__decompile_function → re__decompile_function → re__idb_open in a row: a candidate for one call
+13. 1 × re__decompile_function → re__decompile_function → re__set_comment in a row: a candidate for one call
 14. 1 × unknown_tool · nope: the tool's description or schema may mislead
 
 ## Against battery

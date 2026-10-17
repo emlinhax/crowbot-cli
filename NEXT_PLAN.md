@@ -574,7 +574,7 @@ ida-pro-mcp, an issue tracker, a database, a docs search), about 12 tasks × 3, 
 - [x] 11.6 the findings, ranked, to choose fixes from: the user chose all four (2026-10-17)
 - [x] 11.7 the system prompt names the connected MCP servers and says to answer from their tools
 - [x] 11.8 a reply that writes tool calls as text is asked again once, to make them as calls
-- [ ] 11.9 the report's sequences step by reply, so calls made together are one step
+- [x] 11.9 the report's sequences step by reply, so calls made together are one step
 - [ ] 11.10 a headless run's prompt says no one will confirm, so make the change
 - [ ] 11.11 a re-run with deepseek-v4.1-flash against `bench/mcp-baseline/`
 
