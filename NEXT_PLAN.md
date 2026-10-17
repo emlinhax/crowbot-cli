@@ -546,6 +546,12 @@ separately, default No, per project.
 - Unread code fails `-D warnings`, so reading the sources (10.3) could not land before the
   asking (10.4); they went in as one commit, built and tested in order.
 - `clippy::large_enum_variant` fired only on Windows, where a process holds its job handle.
+- Windows CI, now running its tests, found three more: a refused local connect is retried for
+  seconds there, so io::http called it a timeout ("could not connect" now comes first, with its
+  cause); the bash tool drained its pipes for 250 ms after the shell exited before killing what
+  it left, and a loaded runner lost the last output (leftovers are killed first now, and the
+  pipes read to their end); a stop test timed PowerShell's cold start. CI green on all four
+  targets at fb1f67d, its logs showing the discovery tests on Windows and macOS.
 - CEILINGs: no OAuth, legacy SSE, GET stream or re-handshake after a server restarts; Claude
   Code plugins and Claude Desktop extensions not read; one answer per question; the 2026-07-28
   protocol drops `initialize` for `server/discover`, which crowbot does not probe yet.
