@@ -21,14 +21,15 @@ smoke:
 	@test -n "$${CROWBOT_SMOKE_KEY:-}" || { echo "set CROWBOT_SMOKE_KEY (smoke spends real money)"; exit 1; }
 	$(CARGO) test --locked --test smoke -- --ignored --test-threads=1
 
-# The tool-use battery (bench/, NEXT_PLAN.md M9); never in CI. Setup clones the repos and runs
-# their code; the battery spends real money. `make battery TASKS=a,b REPEATS=1` runs a pilot.
+# The tool-use battery (bench/, NEXT_PLAN.md M9 and M11); never in CI. Setup clones the repos and
+# runs their code; the battery spends real money. `make battery TASKS=a,b REPEATS=1` runs a pilot;
+# `SUITE=mcp` the MCP suite, `MODEL=<id>` another model than the suite's.
 battery-setup:
 	$(CARGO) test --locked --test battery setup -- --ignored --exact --nocapture
 
 battery:
 	@test -n "$${CROWBOT_SMOKE_KEY:-}" || { echo "set CROWBOT_SMOKE_KEY (the battery spends real money)"; exit 1; }
-	BATTERY_TASKS="$(TASKS)" BATTERY_REPEATS="$(REPEATS)" $(CARGO) test --locked --test battery live -- --ignored --exact --nocapture
+	BATTERY_SUITE="$(SUITE)" BATTERY_MODEL="$(MODEL)" BATTERY_TASKS="$(TASKS)" BATTERY_REPEATS="$(REPEATS)" $(CARGO) test --locked --test battery live -- --ignored --exact --nocapture
 
 # Rewrites golden files and insta snapshots from current output; only for a deliberate change.
 golden:

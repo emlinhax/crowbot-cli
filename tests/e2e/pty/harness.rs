@@ -72,7 +72,7 @@ impl Session {
         for name in cleared() {
             cmd.env_remove(name);
         }
-        for (name, value) in launch_env(sandbox.home(), Some(api_url), key) {
+        for (name, value) in launch_env(sandbox.home(), sandbox.user(), Some(api_url), key) {
             cmd.env(name, value);
         }
         cmd.env("TERM", "xterm-256color");

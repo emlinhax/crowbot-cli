@@ -2,6 +2,7 @@
 //! what the gate would have said, counted so the report can rank what to make easier.
 
 pub mod load;
+pub mod mcp;
 pub mod record;
 pub mod replay;
 pub mod report;

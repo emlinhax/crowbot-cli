@@ -44,10 +44,12 @@ pub fn cleared() -> Vec<String> {
     names
 }
 
-/// What every crowbot a test starts is launched with: its home, the API at `api_url` (the live
-/// one when `None`), and `key` as its env key (only what the home stores when `None`).
+/// What every crowbot a test starts is launched with: its home, `user` as the user's own folders
+/// (so no setting of the developer's own apps is read), the API at `api_url` (the live one when
+/// `None`), and `key` as its env key (only what the home stores when `None`).
 pub fn launch_env(
     home: &Path,
+    user: &Path,
     api_url: Option<&str>,
     key: Option<&str>,
 ) -> Vec<(&'static str, String)> {
@@ -55,6 +57,7 @@ pub fn launch_env(
         ("CROWBOT_HOME", home.display().to_string()),
         ("CROWBOT_NO_BROWSER", "1".to_owned()),
     ];
+    env.extend(user_env(user));
     if let Some(url) = api_url {
         env.push(("CROWBOT_API_URL", url.to_owned()));
         env.push(("CROWBOT_CHAT_URL", url.to_owned()));
@@ -65,9 +68,21 @@ pub fn launch_env(
     env
 }
 
+/// The variables the user's own folders are found by, on each platform, all pointed into `user`.
+pub fn user_env(user: &Path) -> Vec<(&'static str, String)> {
+    let at = |rel: &str| user.join(rel).display().to_string();
+    vec![
+        ("HOME", at("")),
+        ("USERPROFILE", at("")),
+        ("APPDATA", at("AppData/Roaming")),
+        ("XDG_CONFIG_HOME", at(".config")),
+    ]
+}
+
 /// Runs crowbot headless in `project` with `args`, within `RUN_LIMIT`.
 pub async fn launch(
     home: &Path,
+    user: &Path,
     project: &Path,
     args: &[&str],
     api_url: Option<&str>,
@@ -83,7 +98,7 @@ pub async fn launch(
         command.env_remove(name);
     }
     command
-        .envs(launch_env(home, api_url, key))
+        .envs(launch_env(home, user, api_url, key))
         .kill_on_drop(true);
     let output = tokio::time::timeout(RUN_LIMIT, command.output())
         .await

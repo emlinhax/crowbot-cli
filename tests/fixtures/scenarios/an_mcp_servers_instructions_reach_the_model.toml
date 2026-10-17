@@ -1,0 +1,21 @@
+description = "The system prompt names the connected MCP servers, and what a server says of how to use its tools joins it under its name"
+args = ["-p", "hi"]
+home_files = { "config.toml" = "[mcp.fake]\ncommand = '{fake_mcp}'\nargs = ['--instructions', 'Look before you echo.']\n" }
+
+[[reply]]
+text = "Hello."
+
+[expect]
+exit = 0
+
+[[expect.requests]]
+index = 0
+message = 0
+role = "system"
+contains = "<mcp-server-instructions server=\"fake\">\nLook before you echo.\n</mcp-server-instructions>"
+
+[[expect.requests]]
+index = 0
+message = 0
+role = "system"
+contains = "The user connected these MCP servers: fake."

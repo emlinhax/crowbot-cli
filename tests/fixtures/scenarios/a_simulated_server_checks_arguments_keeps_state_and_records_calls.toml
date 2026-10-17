@@ -1,0 +1,78 @@
+description = "A server simulated from a file checks arguments against its schema, needs opening first, pages a list, changes its data and records every call and its state"
+args = ["--mode", "auto", "-p", "use the store"]
+home_files = { "config.toml" = "[mcp.mini]\ncommand = '{fake_mcp}'\nargs = ['--server', '{fixtures}/mcp/mini.toml', '--record', '.mcp']\n" }
+
+[[reply]]
+calls = [{ name = "mini__get_item", arguments = '{"id": "1"}' }]
+
+[[reply]]
+calls = [{ name = "mini__get_item", arguments = '{"id": 1}' }]
+
+[[reply]]
+calls = [{ name = "mini__open", arguments = '{}' }]
+
+[[reply]]
+calls = [{ name = "mini__list_items", arguments = '{"query": "a"}' }]
+
+[[reply]]
+calls = [{ name = "mini__rename", arguments = '{"id": 1, "name": "first"}' }]
+
+[[reply]]
+calls = [{ name = "mini__get_item", arguments = '{"id": 9}' }]
+
+[[reply]]
+text = "Done."
+
+[expect]
+exit = 0
+stdout = "Done.\n"
+
+[[expect.tools]]
+index = 0
+has = ["mini__open", "mini__get_item", "mini__list_items", "mini__rename"]
+
+[[expect.requests]]
+index = 0
+message = 0
+role = "system"
+contains = "Open the store before anything else."
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "arguments.id: expected integer, got string \"1\""
+
+[[expect.requests]]
+index = 2
+message = -1
+role = "tool"
+contains = "The store is not open: call open first."
+
+[[expect.requests]]
+index = 4
+message = -1
+role = "tool"
+contains = "1-2 of 3:\n1: alpha\n2: beta\nMore: call again with offset=2."
+
+[[expect.requests]]
+index = 5
+message = -1
+role = "tool"
+contains = "Item 1 is now first."
+
+[[expect.requests]]
+index = 6
+message = -1
+role = "tool"
+contains = "No item 9."
+
+[expect.files]
+".mcp/mini.calls.jsonl" = '''
+{"args":{"id":"1"},"error":"arguments.id: expected integer, got string \"1\"","outcome":"invalid_args","tool":"get_item"}
+{"args":{"id":1},"error":"The store is not open: call open first.","outcome":"precondition","tool":"get_item"}
+{"args":{},"error":null,"outcome":"ok","tool":"open"}
+{"args":{"query":"a"},"error":null,"outcome":"ok","tool":"list_items"}
+{"args":{"id":1,"name":"first"},"error":null,"outcome":"ok","tool":"rename"}
+{"args":{"id":9},"error":"No item 9.","outcome":"not_found","tool":"get_item"}
+'''

@@ -13,6 +13,7 @@ pub mod setup;
 pub mod system_prompt;
 #[cfg(test)]
 pub mod testing;
+pub mod written;
 
 use tokio_util::sync::CancellationToken;
 

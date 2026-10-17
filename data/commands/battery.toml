@@ -14,9 +14,13 @@ subcommands = ["cargo", "git", "go", "npm", "npx", "pnpm", "yarn", "pip", "uv", 
 # Modes the recorded asks are replayed under: what they would have asked about or refused.
 replay = ["manual"]
 
-# Permissions a mode asks about by design (changing files, leaving the project): their counts are
-# reported, but never proposed for an allowlist.
-never_propose = ["edit", "bash_write", "external_directory"]
+# Permissions a mode asks about by design (changing files, leaving the project, an MCP server's
+# tools): their counts are reported, but never proposed for an allowlist.
+never_propose = ["edit", "bash_write", "external_directory", "mcp", "mcp_write"]
+
+# How a simulated MCP server says each call went (tests/fake_mcp/sim), in the order the MCP
+# table's columns after "calls" name them.
+mcp_outcomes = ["ok", "invalid_args", "not_found", "precondition", "transient", "unknown_tool"]
 
 # Shell commands that do what a tool does. A command matches when it starts with `words` and
 # contains `contains`, of those a smell gives; the first match wins, and pipe filters never match.
@@ -151,7 +155,12 @@ flags = "### Flags"
 filters = "### Pipe filters"
 smells = "### Commands that stand in for a tool"
 smells_columns = ["command", "instead", "count", "example"]
-sequences = "## Calls in a row"
+mcp = "## MCP servers"
+mcp_columns = ["tool", "calls", "worked", "bad arguments", "not found", "not ready", "busy", "no such tool"]
+mistakes = "### Arguments a server refused"
+replies = "### Calls one reply at a time"
+replies_columns = ["tool", "replies that could have joined the one before", "calls made together"]
+sequences = "## Replies in a row (calls made together are one step)"
 pairs = "### Pairs"
 triples = "### Triples"
 replay = "## Asked again under {mode}"
@@ -166,6 +175,9 @@ candidate_live = "{n} × {mode} refused {label}: a candidate for that mode's all
 candidate_refusal = "{n} × {label}: the tool's description or schema may mislead"
 candidate_retry = "{n} × {label} called again unchanged after it failed"
 candidate_sequence = "{n} × {label} in a row: a candidate for one call"
+candidate_mistake = "{n} × `{label}`: crowbot could check arguments against the tool's schema before sending and say what is wrong"
+candidate_reply = "{n} × {label} called once per reply in a row: tell the model independent calls can go in one reply"
+candidate_ready = "{n} × {label} before its server was ready: the model skipped the step the server's instructions name"
 against = "## Against {name}"
 against_columns = ["per run", "this", "that", "change"]
 against_rows = ["done", "turns", "calls", "bash calls", "stand-ins", "cost (µ$)"]

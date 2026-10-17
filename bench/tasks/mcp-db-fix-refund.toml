@@ -1,0 +1,7 @@
+prompt = "In the database (MCP server), order 1017 was marked refunded by mistake. Set its status back to paid."
+repo = "desk"
+mode = "auto"
+turns = 20
+suite = "mcp"
+mcp = ["db"]
+check = "python3 {checks}/mcp_state.py {mcp}/db.json 'orders[id=1017].status' == paid"

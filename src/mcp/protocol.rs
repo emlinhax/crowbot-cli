@@ -30,6 +30,8 @@ pub struct Text {
     pub said: String,
     pub not_running: String,
     pub stopped: String,
+    pub http_status: String,
+    pub too_long: String,
 }
 
 /// What `initialize` asks with: the version crowbot speaks, no capabilities of its own.
@@ -45,6 +47,9 @@ pub fn initialize() -> Value {
 pub struct Initialized {
     #[serde(rename = "protocolVersion")]
     pub protocol_version: String,
+    /// How to use its tools, for the model.
+    #[serde(default)]
+    pub instructions: Option<String>,
 }
 
 /// One page of `tools/list`.

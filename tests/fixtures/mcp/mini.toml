@@ -1,0 +1,63 @@
+# A small simulated server for the e2e suite: one of each act, a state flag, a paged list and a
+# paged tools/list, so the simulator's every path is driven through crowbot.
+name = "mini"
+instructions = "Open the store before anything else."
+list_page = 2
+
+[flags.open]
+missing = "The store is not open: call open first."
+
+[[collections.items]]
+id = 1
+name = "alpha"
+
+[[collections.items]]
+id = 2
+name = "beta"
+
+[[collections.items]]
+id = 3
+name = "gamma"
+
+[[tool]]
+name = "open"
+description = "Opens the store."
+schema = '{"type": "object", "properties": {}}'
+act = "text"
+text = "Opened: 3 items."
+sets = "open"
+
+[[tool]]
+name = "get_item"
+description = "One item by its id."
+schema = '{"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"], "additionalProperties": false}'
+read_only = true
+requires = "open"
+act = "get"
+collection = "items"
+key = "id"
+render = "{id}: {name}"
+missing = "No item {id}."
+
+[[tool]]
+name = "list_items"
+description = "Items whose name contains the query, a page at a time."
+schema = '{"type": "object", "properties": {"query": {"type": "string"}, "offset": {"type": "integer"}}}'
+read_only = true
+requires = "open"
+act = "list"
+collection = "items"
+filter = { arg = "query", fields = ["name"] }
+page = { size = 2, arg = "offset", kind = "offset" }
+render = "{id}: {name}"
+
+[[tool]]
+name = "rename"
+description = "Renames an item."
+schema = '{"type": "object", "properties": {"id": {"type": "integer"}, "name": {"type": "string"}}, "required": ["id", "name"]}'
+requires = "open"
+act = "update"
+collection = "items"
+key = "id"
+set = { name = "name" }
+text = "Item {id} is now {name}."

@@ -5,6 +5,9 @@ mode = "manual"
 # Release builds update themselves daily during interactive sessions; `crowbot update` does it now.
 # CROWBOT_NO_UPDATE also turns it off.
 auto_update = true
+# Offer the MCP servers other apps list (Claude Desktop, Cursor, VS Code, …; data/mcp_sources.toml),
+# each asked about once.
+mcp_discovery = true
 
 [[permission]]
 permission = "*"

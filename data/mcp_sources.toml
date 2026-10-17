@@ -1,0 +1,186 @@
+# Where other apps keep the MCP servers they use, so crowbot can offer the same ones without a
+# word in its own config (src/mcp/discover). Each `[[source]]`:
+# - `name`: as crowbot shows it.
+# - `scope`: `user` for an app's own settings, `project` for a file a repository ships, asked
+#   about apart and only for that project.
+# - `paths`: every file to read. `{NAME}` is that environment variable and `{project}` the
+#   project folder; a path naming an unset variable, or a file that is not there, is skipped,
+#   so one list serves Windows, macOS and Linux.
+# - `format`: `json`, `jsonc` (comments and trailing commas allowed) or `toml`.
+# - `at`: the keys leading to the map of servers by name; `{project}` as above.
+# - `shape`: how one server is written: `common` (`command`, `args`, `env`, or `url` and
+#   `headers`, as most apps write it) or `opencode` (`command` as one list, `environment`).
+# Sources earlier in this list win a name two different servers share.
+
+[[source]]
+name = "Claude Desktop"
+scope = "user"
+paths = [
+  "{APPDATA}/Claude/claude_desktop_config.json",
+  "{HOME}/Library/Application Support/Claude/claude_desktop_config.json",
+  "{XDG_CONFIG_HOME}/Claude/claude_desktop_config.json",
+  "{HOME}/.config/Claude/claude_desktop_config.json",
+]
+format = "json"
+at = ["mcpServers"]
+shape = "common"
+
+[[source]]
+name = "Claude Code"
+scope = "user"
+paths = ["{HOME}/.claude.json", "{USERPROFILE}/.claude.json"]
+format = "json"
+at = ["mcpServers"]
+shape = "common"
+
+# Claude Code's servers for this project alone, kept in the user's own file.
+[[source]]
+name = "Claude Code"
+scope = "user"
+paths = ["{HOME}/.claude.json", "{USERPROFILE}/.claude.json"]
+format = "json"
+at = ["projects", "{project}", "mcpServers"]
+shape = "common"
+
+[[source]]
+name = "Cursor"
+scope = "user"
+paths = ["{HOME}/.cursor/mcp.json", "{USERPROFILE}/.cursor/mcp.json"]
+format = "json"
+at = ["mcpServers"]
+shape = "common"
+
+# Windsurf, now Devin Desktop, has kept its file in all of these.
+[[source]]
+name = "Windsurf"
+scope = "user"
+paths = [
+  "{HOME}/.codeium/windsurf/mcp_config.json",
+  "{USERPROFILE}/.codeium/windsurf/mcp_config.json",
+  "{HOME}/.codeium/mcp_config.json",
+  "{USERPROFILE}/.codeium/mcp_config.json",
+  "{XDG_CONFIG_HOME}/devin/mcp_config.json",
+  "{HOME}/.config/devin/mcp_config.json",
+  "{APPDATA}/devin/mcp_config.json",
+]
+format = "json"
+at = ["mcpServers"]
+shape = "common"
+
+[[source]]
+name = "VS Code"
+scope = "user"
+paths = [
+  "{APPDATA}/Code/User/mcp.json",
+  "{HOME}/Library/Application Support/Code/User/mcp.json",
+  "{XDG_CONFIG_HOME}/Code/User/mcp.json",
+  "{HOME}/.config/Code/User/mcp.json",
+]
+format = "jsonc"
+at = ["servers"]
+shape = "common"
+
+[[source]]
+name = "Cline"
+scope = "user"
+paths = [
+  "{APPDATA}/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+  "{HOME}/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+  "{XDG_CONFIG_HOME}/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+  "{HOME}/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+  "{HOME}/.cline/data/settings/cline_mcp_settings.json",
+]
+format = "json"
+at = ["mcpServers"]
+shape = "common"
+
+[[source]]
+name = "Roo Code"
+scope = "user"
+paths = [
+  "{APPDATA}/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json",
+  "{HOME}/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json",
+  "{XDG_CONFIG_HOME}/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json",
+  "{HOME}/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json",
+]
+format = "json"
+at = ["mcpServers"]
+shape = "common"
+
+[[source]]
+name = "Codex"
+scope = "user"
+paths = ["{CODEX_HOME}/config.toml", "{HOME}/.codex/config.toml", "{USERPROFILE}/.codex/config.toml"]
+format = "toml"
+at = ["mcp_servers"]
+shape = "common"
+
+[[source]]
+name = "Gemini CLI"
+scope = "user"
+paths = ["{HOME}/.gemini/settings.json", "{USERPROFILE}/.gemini/settings.json"]
+format = "jsonc"
+at = ["mcpServers"]
+shape = "common"
+
+[[source]]
+name = "Copilot CLI"
+scope = "user"
+paths = ["{HOME}/.copilot/mcp-config.json", "{USERPROFILE}/.copilot/mcp-config.json"]
+format = "json"
+at = ["mcpServers"]
+shape = "common"
+
+[[source]]
+name = "LM Studio"
+scope = "user"
+paths = [
+  "{HOME}/.lmstudio/mcp.json",
+  "{USERPROFILE}/.lmstudio/mcp.json",
+  "{HOME}/.cache/lm-studio/mcp.json",
+]
+format = "json"
+at = ["mcpServers"]
+shape = "common"
+
+[[source]]
+name = "opencode"
+scope = "user"
+paths = ["{XDG_CONFIG_HOME}/opencode/opencode.json", "{HOME}/.config/opencode/opencode.json", "{USERPROFILE}/.config/opencode/opencode.json"]
+format = "jsonc"
+at = ["mcp"]
+shape = "opencode"
+
+# A repository's own files: Claude Code's and VS Code's shared `.mcp.json`, Cursor's, VS Code's
+# and Roo Code's.
+[[source]]
+name = ".mcp.json"
+scope = "project"
+paths = ["{project}/.mcp.json"]
+format = "jsonc"
+at = ["mcpServers"]
+shape = "common"
+
+[[source]]
+name = ".cursor/mcp.json"
+scope = "project"
+paths = ["{project}/.cursor/mcp.json"]
+format = "json"
+at = ["mcpServers"]
+shape = "common"
+
+[[source]]
+name = ".vscode/mcp.json"
+scope = "project"
+paths = ["{project}/.vscode/mcp.json"]
+format = "jsonc"
+at = ["servers"]
+shape = "common"
+
+[[source]]
+name = ".roo/mcp.json"
+scope = "project"
+paths = ["{project}/.roo/mcp.json"]
+format = "json"
+at = ["mcpServers"]
+shape = "common"

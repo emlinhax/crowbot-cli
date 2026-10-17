@@ -33,9 +33,14 @@ pub struct Settings {
     /// MCP servers to start with the session, by name.
     #[serde(default, deserialize_with = "crate::mcp::config::servers")]
     pub mcp: std::collections::BTreeMap<String, crate::mcp::config::Server>,
+    /// Whether crowbot offers the MCP servers the user's other apps list.
+    pub mcp_discovery: bool,
     /// What an untrusted project's config asked for and did not get.
     #[serde(skip)]
     pub untrusted: Option<trust::Untrusted>,
+    /// What is said once at the start of servers found in other apps' settings, by server.
+    #[serde(skip)]
+    pub found_notes: Vec<(String, String)>,
 }
 
 /// Values from command-line flags: the last and strongest layer. One that is not given leaves
@@ -284,15 +289,22 @@ mod tests {
         )
         .unwrap();
         let fake = &settings.mcp["fake"];
-        assert_eq!(fake.command, "fake-mcp");
-        assert_eq!(fake.env.len(), 2);
+        let crate::mcp::config::Reach::Program { command, env, .. } = &fake.reach else {
+            panic!("{:?}", fake.reach);
+        };
+        assert_eq!(command, "fake-mcp");
+        assert_eq!(env.len(), 2);
         assert!(!settings.mcp["other"].enabled);
     }
 
     #[test]
-    fn an_mcp_server_needs_a_command_and_a_name_its_tools_can_carry() {
+    fn an_mcp_server_needs_a_command_or_a_url_and_a_name_its_tools_can_carry() {
         for (config, says) in [
             ("[mcp.fake]\nargs = ['x']", "needs a `command`"),
+            (
+                "[mcp.fake]\ncommand = 'x'\nurl = 'http://127.0.0.1:1/mcp'",
+                "not both",
+            ),
             ("[mcp.'two words']\ncommand = 'x'", "a server's name"),
             ("[mcp.a__b]\ncommand = 'x'", "without `__`"),
         ] {
@@ -302,6 +314,20 @@ mod tests {
                 "{config}: {err}"
             );
         }
+    }
+
+    #[test]
+    fn an_mcp_server_at_a_url_keeps_its_headers() {
+        let settings = layered(
+            "[mcp.ida]\nurl = 'http://127.0.0.1:13337/mcp'\nheaders = { Authorization = 'Bearer t' }",
+            "",
+        )
+        .unwrap();
+        let crate::mcp::config::Reach::Url { url, headers } = &settings.mcp["ida"].reach else {
+            panic!("{:?}", settings.mcp["ida"].reach);
+        };
+        assert_eq!(url, "http://127.0.0.1:13337/mcp");
+        assert_eq!(headers["Authorization"], "Bearer t");
     }
 
     #[test]

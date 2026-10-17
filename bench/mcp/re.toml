@@ -1,0 +1,1088 @@
+# A simulated reverse-engineering server, shaped like ida-pro-mcp: a database to open first, many
+# tools, functions found by hex address, long decompiled answers, a list paged by offset, strings
+# paged by cursor, and one busy first call. The binary is `netlogd`, a small logging daemon.
+name = "re"
+instructions = "Open the database with idb_open before anything else. Addresses are hex strings such as 0x401000."
+
+[flags.open]
+missing = "No database is open: call idb_open with the path of the binary first."
+
+[[collections.functions]]
+address = "0x401000"
+name = "main"
+size = 214
+prototype = "int __cdecl main(int argc, char **argv)"
+comment = ""
+calls = "0x4011a0 (sub_4011a0), 0x401300 (open_listener), 0x401480 (accept_loop)"
+code = '''int __cdecl main(int argc, char **argv)
+{
+  struct config cfg;
+  int fd;
+
+  if ( sub_4011a0(argc > 1 ? argv[1] : "/etc/netlogd.conf", &cfg) < 0 )
+  {
+    fprintf(stderr, "cannot read config\n");
+    return 1;
+  }
+  fd = open_listener(cfg.port);
+  if ( fd < 0 )
+    return 2;
+  return accept_loop(fd, &cfg);
+}'''
+asm = '''push    ebp
+mov     ebp, esp
+sub     esp, 40h
+cmp     [ebp+argc], 1
+jle     short loc_401019
+mov     eax, [ebp+argv]
+call    sub_4011A0
+test    eax, eax
+js      short loc_401090
+call    open_listener
+call    accept_loop
+leave
+retn'''
+
+[[collections.functions]]
+address = "0x4011a0"
+name = "sub_4011a0"
+size = 342
+prototype = "int __cdecl sub_4011a0(const char *path, struct config *cfg)"
+comment = ""
+calls = "0x402080 (sub_402080)"
+code = '''int __cdecl sub_4011a0(const char *path, struct config *cfg)
+{
+  FILE *f;
+  char line[256];
+
+  f = fopen(path, "r");
+  if ( !f )
+    return -1;
+  cfg->port = 5140;
+  while ( fgets(line, 256, f) )
+  {
+    if ( !strncmp(line, "port=", 5) )
+      cfg->port = atoi(line + 5);
+    else if ( !strncmp(line, "log_dir=", 8) )
+      cfg->log_dir = sub_402080(line + 8);
+  }
+  fclose(f);
+  return 0;
+}'''
+asm = '''push    ebp
+mov     ebp, esp
+call    fopen
+test    eax, eax
+jz      short loc_4012F0
+call    fgets
+call    strncmp
+call    atoi
+call    sub_402080
+call    fclose
+retn'''
+
+[[collections.functions]]
+address = "0x401300"
+name = "open_listener"
+size = 180
+prototype = "int __cdecl open_listener(int port)"
+comment = ""
+calls = "socket, bind, listen"
+code = '''int __cdecl open_listener(int port)
+{
+  struct sockaddr_in addr;
+  int fd;
+
+  fd = socket(2, 1, 0);
+  memset(&addr, 0, 16);
+  addr.sin_family = 2;
+  addr.sin_port = htons(port);
+  if ( bind(fd, &addr, 16) < 0 || listen(fd, 16) < 0 )
+    return -1;
+  return fd;
+}'''
+asm = '''call    socket
+call    memset
+call    htons
+call    bind
+call    listen
+retn'''
+
+[[collections.functions]]
+address = "0x401480"
+name = "accept_loop"
+size = 160
+prototype = "int __cdecl accept_loop(int fd, struct config *cfg)"
+comment = ""
+calls = "accept, 0x401600 (handle_client)"
+code = '''int __cdecl accept_loop(int fd, struct config *cfg)
+{
+  int client;
+
+  while ( 1 )
+  {
+    client = accept(fd, 0, 0);
+    if ( client < 0 )
+      break;
+    handle_client(client, cfg);
+    close(client);
+  }
+  return 0;
+}'''
+asm = '''loc_401490:
+call    accept
+test    eax, eax
+js      short loc_4014F0
+call    handle_client
+call    close
+jmp     short loc_401490'''
+
+[[collections.functions]]
+address = "0x401600"
+name = "handle_client"
+size = 300
+prototype = "void __cdecl handle_client(int client, struct config *cfg)"
+comment = ""
+calls = "0x401760 (recv_line), 0x401890 (sub_401890), 0x401a00 (write_log), 0x401e00 (sub_401e00), 0x401f20 (sub_401f20)"
+code = '''void __cdecl handle_client(int client, struct config *cfg)
+{
+  char line[1024];
+  struct header hdr;
+
+  while ( recv_line(client, line, 1024) > 0 )
+  {
+    if ( line[0] == '#' )
+    {
+      sub_401f20(client);
+      continue;
+    }
+    if ( line[0] == '?' )
+    {
+      sub_401e00(client, cfg);
+      continue;
+    }
+    if ( sub_401890(line, strlen(line), &hdr) == 0 )
+      write_log(cfg, &hdr, line + hdr.offset);
+  }
+}'''
+asm = '''call    recv_line
+cmp     byte ptr [ebp+line], 23h
+jz      short loc_401700
+cmp     byte ptr [ebp+line], 3Fh
+jz      short loc_401720
+call    strlen
+call    sub_401890
+call    write_log
+retn'''
+
+[[collections.functions]]
+address = "0x401760"
+name = "recv_line"
+size = 240
+prototype = "int __cdecl recv_line(int fd, char *buf, int size)"
+comment = ""
+calls = "recv"
+code = '''int __cdecl recv_line(int fd, char *buf, int size)
+{
+  int n = 0;
+  char c;
+
+  while ( n < size - 1 && recv(fd, &c, 1, 0) == 1 )
+  {
+    if ( c == '\n' )
+      break;
+    buf[n++] = c;
+  }
+  buf[n] = 0;
+  return n;
+}'''
+asm = '''loc_401770:
+call    recv
+cmp     eax, 1
+jnz     short loc_401840
+cmp     [ebp+c], 0Ah
+jz      short loc_401840
+jmp     short loc_401770'''
+
+[[collections.functions]]
+address = "0x401890"
+name = "sub_401890"
+size = 260
+prototype = "int __cdecl sub_401890(int a1, int a2, int a3)"
+comment = ""
+calls = "0x401c40 (sub_401c40), 0x401a00 (write_log)"
+code = '''int __cdecl sub_401890(int a1, int a2, int a3)
+{
+  unsigned int sum;
+
+  if ( a2 < 8 )
+    return -1;
+  *(_DWORD *)a3 = *(_DWORD *)a1;
+  *(_DWORD *)(a3 + 4) = 8;
+  sum = sub_401c40(a1 + 8, a2 - 8);
+  if ( sum != *(_DWORD *)(a1 + 4) )
+  {
+    fprintf(stderr, "bad header checksum\n");
+    return -1;
+  }
+  return 0;
+}'''
+asm = '''cmp     [ebp+arg_4], 8
+jl      short loc_401950
+call    sub_401C40
+cmp     eax, [ecx+4]
+jz      short loc_401940
+push    offset aBadHeaderChecksum ; "bad header checksum\n"
+call    fprintf
+retn'''
+
+[[collections.functions]]
+address = "0x401a00"
+name = "write_log"
+size = 288
+prototype = "int __cdecl write_log(struct config *cfg, struct header *hdr, const char *text)"
+comment = ""
+calls = "0x401b20 (format_timestamp), fopen, fprintf, fclose, 0x401d10 (rotate_logs)"
+code = '''int __cdecl write_log(struct config *cfg, struct header *hdr, const char *text)
+{
+  char stamp[32];
+  FILE *f;
+
+  format_timestamp(stamp, 32);
+  f = fopen(cfg->log_path, "a");
+  if ( !f )
+    return -1;
+  fprintf(f, "%s [%u] %s\n", stamp, hdr->facility, text);
+  if ( ftell(f) > cfg->max_size )
+    rotate_logs(cfg);
+  fclose(f);
+  return 0;
+}'''
+asm = '''call    format_timestamp
+call    fopen
+call    fprintf
+call    ftell
+call    rotate_logs
+call    fclose
+retn'''
+
+[[collections.functions]]
+address = "0x401b20"
+name = "format_timestamp"
+size = 96
+prototype = "void __cdecl format_timestamp(char *out, int size)"
+comment = ""
+calls = "time, localtime, strftime"
+code = '''void __cdecl format_timestamp(char *out, int size)
+{
+  time_t now = time(0);
+
+  strftime(out, size, "%Y-%m-%d %H:%M:%S", localtime(&now));
+}'''
+asm = '''call    time
+call    localtime
+call    strftime
+retn'''
+
+[[collections.functions]]
+address = "0x401c40"
+name = "sub_401c40"
+size = 120
+prototype = "unsigned int __cdecl sub_401c40(const unsigned char *p, int n)"
+comment = ""
+calls = ""
+code = '''unsigned int __cdecl sub_401c40(const unsigned char *p, int n)
+{
+  unsigned int crc = 0xFFFFFFFF;
+  int i, k;
+
+  for ( i = 0; i < n; ++i )
+  {
+    crc ^= p[i];
+    for ( k = 0; k < 8; ++k )
+      crc = (crc >> 1) ^ (0xEDB88320 & -(crc & 1));
+  }
+  return ~crc;
+}'''
+asm = '''mov     eax, 0FFFFFFFFh
+loc_401C50:
+xor     al, [esi]
+mov     ecx, 8
+loc_401C58:
+shr     eax, 1
+xor     eax, 0EDB88320h
+loop    loc_401C58
+not     eax
+retn'''
+
+[[collections.functions]]
+address = "0x401d10"
+name = "rotate_logs"
+size = 200
+prototype = "void __cdecl rotate_logs(struct config *cfg)"
+comment = ""
+calls = "rename, snprintf"
+code = '''void __cdecl rotate_logs(struct config *cfg)
+{
+  char old[512];
+  int i;
+
+  for ( i = 8; i > 0; --i )
+  {
+    snprintf(old, 512, "%s.%d", cfg->log_path, i);
+    rename(old, old);
+  }
+  rename(cfg->log_path, old);
+}'''
+asm = '''call    snprintf
+call    rename
+dec     esi
+jnz     short loc_401D20
+call    rename
+retn'''
+
+[[collections.functions]]
+address = "0x401e00"
+name = "sub_401e00"
+size = 210
+prototype = "int __cdecl sub_401e00(int client, struct config *cfg)"
+comment = ""
+calls = "recv, send"
+code = '''int __cdecl sub_401e00(int client, struct config *cfg)
+{
+  char req[64];
+  char reply[128];
+  int n;
+
+  n = recv(client, req, 64, 0);
+  if ( n <= 0 )
+    return -1;
+  n = snprintf(reply, 128, "lines=%u bytes=%u\n", cfg->lines, cfg->bytes);
+  return send(client, reply, n, 0);
+}'''
+asm = '''call    recv
+test    eax, eax
+jle     short loc_401EF0
+call    snprintf
+call    send
+retn'''
+
+[[collections.functions]]
+address = "0x401f20"
+name = "sub_401f20"
+size = 110
+prototype = "int __cdecl sub_401f20(int client)"
+comment = ""
+calls = "recv, send"
+code = '''int __cdecl sub_401f20(int client)
+{
+  char buf[16];
+
+  if ( recv(client, buf, 16, 0) <= 0 )
+    return -1;
+  return send(client, "pong\n", 5, 0);
+}'''
+asm = '''call    recv
+test    eax, eax
+jle     short loc_401F80
+push    offset aPong ; "pong\n"
+call    send
+retn'''
+
+[[collections.functions]]
+address = "0x402010"
+name = "sub_402010"
+size = 32
+prototype = "void *__cdecl sub_402010(void *p, int n)"
+comment = ""
+calls = "memset"
+code = '''void *__cdecl sub_402010(void *p, int n)
+{
+  return memset(p, 0, n);
+}'''
+asm = '''call    memset
+retn'''
+
+[[collections.functions]]
+address = "0x402040"
+name = "sub_402040"
+size = 48
+prototype = "int __cdecl sub_402040(const char *a, const char *b)"
+comment = ""
+calls = "strcmp"
+code = '''int __cdecl sub_402040(const char *a, const char *b)
+{
+  return strcmp(a, b) == 0;
+}'''
+asm = '''call    strcmp
+setz    al
+retn'''
+
+[[collections.functions]]
+address = "0x402080"
+name = "sub_402080"
+size = 64
+prototype = "char *__cdecl sub_402080(const char *s)"
+comment = ""
+calls = "strlen, malloc, memcpy"
+code = '''char *__cdecl sub_402080(const char *s)
+{
+  int n = strlen(s);
+  char *copy = malloc(n + 1);
+
+  memcpy(copy, s, n + 1);
+  return copy;
+}'''
+asm = '''call    strlen
+call    malloc
+call    memcpy
+retn'''
+
+[[collections.functions]]
+address = "0x4020c0"
+name = "sub_4020c0"
+size = 40
+prototype = "void __cdecl sub_4020c0(void *p)"
+comment = ""
+calls = "free"
+code = '''void __cdecl sub_4020c0(void *p)
+{
+  if ( p )
+    free(p);
+}'''
+asm = '''test    eax, eax
+jz      short locret
+call    free
+retn'''
+
+[[collections.functions]]
+address = "0x402100"
+name = "sub_402100"
+size = 56
+prototype = "int __cdecl sub_402100(int v, int lo, int hi)"
+comment = ""
+calls = ""
+code = '''int __cdecl sub_402100(int v, int lo, int hi)
+{
+  if ( v < lo )
+    return lo;
+  return v > hi ? hi : v;
+}'''
+asm = '''cmp     eax, ecx
+jl      short loc_402120
+cmp     eax, edx
+cmovg   eax, edx
+retn'''
+
+[[collections.functions]]
+address = "0x402140"
+name = "sub_402140"
+size = 44
+prototype = "unsigned short __cdecl sub_402140(unsigned short v)"
+comment = ""
+calls = ""
+code = '''unsigned short __cdecl sub_402140(unsigned short v)
+{
+  return (v << 8) | (v >> 8);
+}'''
+asm = '''rol     ax, 8
+retn'''
+
+[[collections.functions]]
+address = "0x402180"
+name = "sub_402180"
+size = 52
+prototype = "int __cdecl sub_402180(const char *s)"
+comment = ""
+calls = ""
+code = '''int __cdecl sub_402180(const char *s)
+{
+  int n = 0;
+
+  while ( *s == ' ' || *s == '\t' )
+    ++s, ++n;
+  return n;
+}'''
+asm = '''loc_402184:
+cmp     byte ptr [esi], 20h
+jz      short loc_402190
+cmp     byte ptr [esi], 9
+jnz     short locret
+retn'''
+
+[[collections.functions]]
+address = "0x4021c0"
+name = "sub_4021c0"
+size = 36
+prototype = "int __cdecl sub_4021c0(void)"
+comment = ""
+calls = "getpid"
+code = '''int __cdecl sub_4021c0(void)
+{
+  return getpid();
+}'''
+asm = '''call    getpid
+retn'''
+
+[[collections.functions]]
+address = "0x402200"
+name = "sub_402200"
+size = 60
+prototype = "void __cdecl sub_402200(int code)"
+comment = ""
+calls = "fprintf, exit"
+code = '''void __cdecl sub_402200(int code)
+{
+  fprintf(stderr, "netlogd: exiting with %d\n", code);
+  exit(code);
+}'''
+asm = '''call    fprintf
+call    exit'''
+
+[[collections.functions]]
+address = "0x402240"
+name = "sub_402240"
+size = 28
+prototype = "int __cdecl sub_402240(int a, int b)"
+comment = ""
+calls = ""
+code = '''int __cdecl sub_402240(int a, int b)
+{
+  return a > b ? a : b;
+}'''
+asm = '''cmp     eax, edx
+cmovl   eax, edx
+retn'''
+
+[[collections.functions]]
+address = "0x402280"
+name = "sub_402280"
+size = 28
+prototype = "int __cdecl sub_402280(int a, int b)"
+comment = ""
+calls = ""
+code = '''int __cdecl sub_402280(int a, int b)
+{
+  return a < b ? a : b;
+}'''
+asm = '''cmp     eax, edx
+cmovg   eax, edx
+retn'''
+
+[[collections.functions]]
+address = "0x4022c0"
+name = "sub_4022c0"
+size = 48
+prototype = "int __cdecl sub_4022c0(int fd)"
+comment = ""
+calls = "fcntl"
+code = '''int __cdecl sub_4022c0(int fd)
+{
+  return fcntl(fd, 4, 2048);
+}'''
+asm = '''call    fcntl
+retn'''
+
+# What refers to an address, by that address: imports, strings and functions.
+[[collections.xrefs]]
+address = "0x405010"
+refs = "recv (import) is called from: 0x401790 in 0x401760 (recv_line), 0x401e38 in 0x401e00 (sub_401e00), 0x401f44 in 0x401f20 (sub_401f20)"
+
+[[collections.xrefs]]
+address = "0x405014"
+refs = "send (import) is called from: 0x401ea0 in 0x401e00 (sub_401e00), 0x401f60 in 0x401f20 (sub_401f20)"
+
+[[collections.xrefs]]
+address = "0x406120"
+refs = "\"bad header checksum\\n\" is referenced from: 0x4018f4 in 0x401890 (sub_401890)"
+
+[[collections.xrefs]]
+address = "0x406140"
+refs = "\"/etc/netlogd.conf\" is referenced from: 0x40101c in 0x401000 (main)"
+
+[[collections.xrefs]]
+address = "0x401890"
+refs = "0x401890 (sub_401890) is called from: 0x401650 in 0x401600 (handle_client)"
+
+[[collections.xrefs]]
+address = "0x401c40"
+refs = "0x401c40 (sub_401c40) is called from: 0x4018d0 in 0x401890 (sub_401890)"
+
+[[collections.xrefs]]
+address = "0x401a00"
+refs = "0x401a00 (write_log) is called from: 0x401680 in 0x401600 (handle_client)"
+
+[[collections.xrefs]]
+address = "0x401760"
+refs = "0x401760 (recv_line) is called from: 0x401620 in 0x401600 (handle_client)"
+
+[[collections.xrefs]]
+address = "0x401000"
+refs = "0x401000 (main) is called from: 0x400fa4 in 0x400f80 (start)"
+
+[[collections.xrefs]]
+address = "0x4011a0"
+refs = "0x4011a0 (sub_4011a0) is called from: 0x401028 in 0x401000 (main)"
+
+[[collections.xrefs]]
+address = "0x401300"
+refs = "0x401300 (open_listener) is called from: 0x401060 in 0x401000 (main)"
+
+[[collections.xrefs]]
+address = "0x401480"
+refs = "0x401480 (accept_loop) is called from: 0x401080 in 0x401000 (main)"
+
+[[collections.xrefs]]
+address = "0x401600"
+refs = "0x401600 (handle_client) is called from: 0x4014b8 in 0x401480 (accept_loop)"
+
+[[collections.xrefs]]
+address = "0x401b20"
+refs = "0x401b20 (format_timestamp) is called from: 0x401a10 in 0x401a00 (write_log)"
+
+[[collections.xrefs]]
+address = "0x401d10"
+refs = "0x401d10 (rotate_logs) is called from: 0x401ad0 in 0x401a00 (write_log)"
+
+[[collections.xrefs]]
+address = "0x401e00"
+refs = "0x401e00 (sub_401e00) is called from: 0x401640 in 0x401600 (handle_client)"
+
+[[collections.xrefs]]
+address = "0x401f20"
+refs = "0x401f20 (sub_401f20) is called from: 0x401628 in 0x401600 (handle_client)"
+
+[[collections.xrefs]]
+address = "0x402080"
+refs = "0x402080 (sub_402080) is called from: 0x401290 in 0x4011a0 (sub_4011a0)"
+
+[[collections.xrefs]]
+address = "0x406100"
+refs = "\"cannot read config\\n\" is referenced from: 0x40103c in 0x401000 (main)"
+
+[[collections.xrefs]]
+address = "0x406160"
+refs = "\"port=\" is referenced from: 0x401220 in 0x4011a0 (sub_4011a0)"
+
+[[collections.xrefs]]
+address = "0x406168"
+refs = "\"log_dir=\" is referenced from: 0x401250 in 0x4011a0 (sub_4011a0)"
+
+[[collections.xrefs]]
+address = "0x406180"
+refs = "\"%s [%u] %s\\n\" is referenced from: 0x401a60 in 0x401a00 (write_log)"
+
+[[collections.xrefs]]
+address = "0x4061b0"
+refs = "\"lines=%u bytes=%u\\n\" is referenced from: 0x401e70 in 0x401e00 (sub_401e00)"
+
+[[collections.xrefs]]
+address = "0x4061c4"
+refs = "\"pong\\n\" is referenced from: 0x401f58 in 0x401f20 (sub_401f20)"
+
+[[collections.strings]]
+address = "0x406100"
+text = 'cannot read config\n'
+
+[[collections.strings]]
+address = "0x406120"
+text = 'bad header checksum\n'
+
+[[collections.strings]]
+address = "0x406140"
+text = "/etc/netlogd.conf"
+
+[[collections.strings]]
+address = "0x406160"
+text = "port="
+
+[[collections.strings]]
+address = "0x406168"
+text = "log_dir="
+
+[[collections.strings]]
+address = "0x406180"
+text = '%s [%u] %s\n'
+
+[[collections.strings]]
+address = "0x406190"
+text = "%Y-%m-%d %H:%M:%S"
+
+[[collections.strings]]
+address = "0x4061a4"
+text = "%s.%d"
+
+[[collections.strings]]
+address = "0x4061b0"
+text = 'lines=%u bytes=%u\n'
+
+[[collections.strings]]
+address = "0x4061c4"
+text = 'pong\n'
+
+[[collections.strings]]
+address = "0x4061d0"
+text = 'netlogd: exiting with %d\n'
+
+[[collections.strings]]
+address = "0x4061f0"
+text = "r"
+
+[[collections.strings]]
+address = "0x4061f4"
+text = "a"
+
+[[collections.imports]]
+address = "0x405010"
+name = "recv"
+module = "libc.so.6"
+
+[[collections.imports]]
+address = "0x405014"
+name = "send"
+module = "libc.so.6"
+
+[[collections.imports]]
+address = "0x405018"
+name = "socket"
+module = "libc.so.6"
+
+[[collections.imports]]
+address = "0x40501c"
+name = "bind"
+module = "libc.so.6"
+
+[[collections.imports]]
+address = "0x405020"
+name = "listen"
+module = "libc.so.6"
+
+[[collections.imports]]
+address = "0x405024"
+name = "accept"
+module = "libc.so.6"
+
+[[collections.imports]]
+address = "0x405028"
+name = "fopen"
+module = "libc.so.6"
+
+[[collections.imports]]
+address = "0x40502c"
+name = "fprintf"
+module = "libc.so.6"
+
+[[collections.imports]]
+address = "0x405030"
+name = "fclose"
+module = "libc.so.6"
+
+[[collections.imports]]
+address = "0x405034"
+name = "rename"
+module = "libc.so.6"
+
+[[collections.imports]]
+address = "0x405038"
+name = "strftime"
+module = "libc.so.6"
+
+[[collections.imports]]
+address = "0x40503c"
+name = "time"
+module = "libc.so.6"
+
+[[collections.structs]]
+name = "config"
+size = 24
+fields = "int port; char *log_dir; char *log_path; int max_size; unsigned lines; unsigned bytes"
+
+[[collections.structs]]
+name = "header"
+size = 12
+fields = "unsigned facility; unsigned offset; unsigned length"
+
+[[tool]]
+name = "idb_open"
+description = "Open the IDA database for a binary. Must be called before any other tool."
+schema = '{"type": "object", "properties": {"path": {"type": "string", "description": "Path of the binary or its .i64 database"}}, "required": ["path"], "additionalProperties": false}'
+act = "text"
+text = "Opened {path}: netlogd, x86, 25 functions, 13 strings, 12 imports."
+sets = "open"
+
+[[tool]]
+name = "idb_info"
+description = "Facts about the open database: architecture, entry point, counts."
+schema = '{"type": "object", "properties": {}}'
+read_only = true
+requires = "open"
+act = "text"
+text = "netlogd: ELF x86 (32-bit), entry 0x400f80 (start), main at 0x401000, 25 functions, 13 strings, 12 imports."
+
+[[tool]]
+name = "list_segments"
+description = "The segments of the binary with their address ranges."
+schema = '{"type": "object", "properties": {}}'
+read_only = true
+requires = "open"
+act = "text"
+text = ".text 0x400f80-0x402300 (code)\n.rodata 0x406000-0x406200\n.idata 0x405000-0x405040 (imports)\n.data 0x407000-0x407100"
+
+[[tool]]
+name = "list_functions"
+description = "Functions in address order, ten at a time; `query` keeps those whose name contains it."
+schema = '{"type": "object", "properties": {"query": {"type": "string"}, "offset": {"type": "integer", "description": "Where the page starts, as the last page said"}}, "additionalProperties": false}'
+read_only = true
+requires = "open"
+act = "list"
+collection = "functions"
+filter = { arg = "query", fields = ["name"] }
+page = { size = 10, arg = "offset", kind = "offset" }
+render = "{address} {name} ({size} bytes)"
+
+[[tool]]
+name = "get_function_by_name"
+description = "A function's address, size and prototype, by its name."
+schema = '{"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"], "additionalProperties": false}'
+read_only = true
+requires = "open"
+act = "get"
+collection = "functions"
+key = "name"
+render = "{address} {name} ({size} bytes): {prototype}"
+missing = "No function named {name}."
+
+[[tool]]
+name = "get_function_by_address"
+description = "The function containing an address: its name, size, prototype and comment."
+schema = '{"type": "object", "properties": {"address": {"type": "string", "description": "Hex address, e.g. 0x401000"}}, "required": ["address"], "additionalProperties": false}'
+read_only = true
+requires = "open"
+act = "get"
+collection = "functions"
+key = "address"
+format = "hex"
+range = "size"
+render = "{address} {name} ({size} bytes): {prototype}. Comment: {comment}"
+missing = "No function contains {address}."
+
+[[tool]]
+name = "decompile_function"
+description = "Hex-Rays pseudocode of the function at an address."
+schema = '{"type": "object", "properties": {"address": {"type": "string", "description": "Hex address of the function, e.g. 0x401000"}}, "required": ["address"], "additionalProperties": false}'
+read_only = true
+requires = "open"
+act = "get"
+collection = "functions"
+key = "address"
+format = "hex"
+render = "{code}"
+missing = "No function starts at {address}."
+delay_ms = 150
+
+[[tool]]
+name = "disassemble_function"
+description = "Disassembly of the function at an address."
+schema = '{"type": "object", "properties": {"address": {"type": "string", "description": "Hex address of the function"}}, "required": ["address"], "additionalProperties": false}'
+read_only = true
+requires = "open"
+act = "get"
+collection = "functions"
+key = "address"
+format = "hex"
+render = "{asm}"
+missing = "No function starts at {address}."
+
+[[tool]]
+name = "xrefs_to"
+description = "Everything that refers to an address: calls to a function or import, uses of a string."
+schema = '{"type": "object", "properties": {"address": {"type": "string", "description": "Hex address"}}, "required": ["address"], "additionalProperties": false}'
+read_only = true
+requires = "open"
+act = "get"
+collection = "xrefs"
+key = "address"
+format = "hex"
+render = "{refs}"
+missing = "No references to {address}."
+fail_first = "Auto-analysis is still running; try again in a moment."
+
+[[tool]]
+name = "xrefs_from"
+description = "What the function at an address calls."
+schema = '{"type": "object", "properties": {"address": {"type": "string"}}, "required": ["address"], "additionalProperties": false}'
+read_only = true
+requires = "open"
+act = "get"
+collection = "functions"
+key = "address"
+format = "hex"
+render = "{name} calls: {calls}"
+missing = "No function starts at {address}."
+
+[[tool]]
+name = "list_strings"
+description = "Strings in the binary, eight at a time; `query` keeps those containing it. Pass the cursor the last page gave for the next."
+schema = '{"type": "object", "properties": {"query": {"type": "string"}, "cursor": {"type": "string"}}, "additionalProperties": false}'
+read_only = true
+requires = "open"
+act = "list"
+collection = "strings"
+filter = { arg = "query", fields = ["text"] }
+page = { size = 8, arg = "cursor", kind = "cursor" }
+render = "{address} \"{text}\""
+
+[[tool]]
+name = "get_string"
+description = "The string at an address."
+schema = '{"type": "object", "properties": {"address": {"type": "string"}}, "required": ["address"], "additionalProperties": false}'
+read_only = true
+requires = "open"
+act = "get"
+collection = "strings"
+key = "address"
+format = "hex"
+render = "{address} \"{text}\""
+missing = "No string at {address}."
+
+[[tool]]
+name = "list_imports"
+description = "Imported functions with their addresses in the import table; `query` keeps names containing it."
+schema = '{"type": "object", "properties": {"query": {"type": "string"}}, "additionalProperties": false}'
+read_only = true
+requires = "open"
+act = "list"
+collection = "imports"
+filter = { arg = "query", fields = ["name"] }
+render = "{address} {module}!{name}"
+
+[[tool]]
+name = "list_exports"
+description = "Exported symbols."
+schema = '{"type": "object", "properties": {}}'
+read_only = true
+requires = "open"
+act = "text"
+text = "0x400f80 start\n0x401000 main"
+
+[[tool]]
+name = "rename_function"
+description = "Give the function at an address a new name."
+schema = '{"type": "object", "properties": {"address": {"type": "string", "description": "Hex address of the function"}, "new_name": {"type": "string"}}, "required": ["address", "new_name"], "additionalProperties": false}'
+requires = "open"
+act = "update"
+collection = "functions"
+key = "address"
+format = "hex"
+set = { name = "new_name" }
+text = "Renamed {address} to {name}."
+missing = "No function starts at {address}."
+
+[[tool]]
+name = "set_comment"
+description = "Set the comment of the function at an address, replacing any it had."
+schema = '{"type": "object", "properties": {"address": {"type": "string"}, "comment": {"type": "string"}}, "required": ["address", "comment"], "additionalProperties": false}'
+requires = "open"
+act = "update"
+collection = "functions"
+key = "address"
+format = "hex"
+set = { comment = "comment" }
+text = "Comment set on {address} ({name})."
+missing = "No function starts at {address}."
+
+[[tool]]
+name = "set_function_prototype"
+description = "Set the C prototype of the function at an address, e.g. `int __cdecl f(char *s)`."
+schema = '{"type": "object", "properties": {"address": {"type": "string"}, "prototype": {"type": "string"}}, "required": ["address", "prototype"], "additionalProperties": false}'
+requires = "open"
+act = "update"
+collection = "functions"
+key = "address"
+format = "hex"
+set = { prototype = "prototype" }
+text = "{address} is now {prototype}."
+missing = "No function starts at {address}."
+
+[[tool]]
+name = "rename_local_variable"
+description = "Rename a local variable in the function at an address."
+schema = '{"type": "object", "properties": {"address": {"type": "string"}, "old_name": {"type": "string"}, "new_name": {"type": "string"}}, "required": ["address", "old_name", "new_name"], "additionalProperties": false}'
+requires = "open"
+act = "text"
+text = "Renamed {old_name} to {new_name} in {address}."
+
+[[tool]]
+name = "get_bytes"
+description = "Raw bytes at an address."
+schema = '{"type": "object", "properties": {"address": {"type": "string"}, "size": {"type": "integer"}}, "required": ["address", "size"], "additionalProperties": false}'
+read_only = true
+requires = "open"
+act = "text"
+text = "{size} bytes at {address}: 55 8b ec 83 ec 40 53 56 57 8b 7d 08 85 ff 74 20"
+
+[[tool]]
+name = "search_bytes"
+description = "Find a byte pattern such as `20 83 B8 ED` in the code."
+schema = '{"type": "object", "properties": {"pattern": {"type": "string"}}, "required": ["pattern"], "additionalProperties": false}'
+read_only = true
+requires = "open"
+act = "text"
+text = "Searched for {pattern}: 1 match at 0x401c5c in sub_401c40."
+
+[[tool]]
+name = "list_structs"
+description = "Structures defined in the database."
+schema = '{"type": "object", "properties": {}}'
+read_only = true
+requires = "open"
+act = "list"
+collection = "structs"
+render = "{name} ({size} bytes)"
+
+[[tool]]
+name = "get_struct"
+description = "A structure's fields, by its name."
+schema = '{"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"], "additionalProperties": false}'
+read_only = true
+requires = "open"
+act = "get"
+collection = "structs"
+key = "name"
+render = "struct {name}: {fields}"
+missing = "No structure named {name}."
+
+[[tool]]
+name = "create_struct"
+description = "Define a new structure from C field declarations."
+schema = '{"type": "object", "properties": {"name": {"type": "string"}, "fields": {"type": "array", "items": {"type": "string"}}}, "required": ["name", "fields"], "additionalProperties": false}'
+requires = "open"
+act = "create"
+collection = "structs"
+set = { name = "name", fields = "fields" }
+text = "Created struct {name}."
+
+[[tool]]
+name = "get_entry_points"
+description = "The binary's entry points."
+schema = '{"type": "object", "properties": {}}'
+read_only = true
+requires = "open"
+act = "text"
+text = "0x400f80 start\n0x401000 main"
+
+[[tool]]
+name = "make_function"
+description = "Create a function at an address that analysis missed."
+schema = '{"type": "object", "properties": {"address": {"type": "string"}}, "required": ["address"], "additionalProperties": false}'
+requires = "open"
+act = "text"
+text = "A function already exists at {address}."
+
+[[tool]]
+name = "idb_save"
+description = "Save the database."
+schema = '{"type": "object", "properties": {}}'
+requires = "open"
+act = "text"
+text = "Saved."

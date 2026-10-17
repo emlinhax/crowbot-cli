@@ -1,25 +1,76 @@
-//! A stand-in MCP server for crowbot's e2e suite: JSON-RPC over stdin and stdout, one message a
-//! line, offering the tools in `tools()`. `--exit` fails at once, saying so on stderr; `--log
-//! <file>` writes down each message it hears, a line each, for a scenario to read back.
+//! A stand-in MCP server: JSON-RPC over stdin and stdout, one message a line. Without `--server`
+//! it offers the fixed tools the e2e suite calls (builtin.rs); with `--server <file>` it plays the
+//! server that file describes (sim/), as the MCP battery does, and `--record <dir>` keeps its state
+//! and every call there. `--exit` fails at once, saying so on stderr; `--log <file>` writes down
+//! each message it hears, a line each; `--instructions <text>` tells the client how to use its
+//! tools.
 // A test program talking on stdin and stdout; the io-wrapper rule is for crowbot itself.
 #![allow(clippy::disallowed_methods, clippy::disallowed_macros)]
 
+mod builtin;
+mod sim;
+
 use std::fs::File;
 use std::io::{BufRead, Write};
+use std::path::PathBuf;
 
 use serde_json::{Value, json};
 
+/// How a `tools/call` is answered.
+pub enum Call {
+    Answer(Value),
+    /// Left unanswered, as a tool still at work.
+    Never,
+    Unknown,
+}
+
+/// The tools on offer and how they answer: the fixed set, or the one a file describes.
+enum Server {
+    Builtin,
+    Sim(Box<sim::Server>),
+}
+
+impl Server {
+    /// One page of `tools/list` from `cursor`.
+    fn list(&self, cursor: Option<&str>) -> Value {
+        match self {
+            Self::Builtin => json!({"tools": builtin::tools()}),
+            Self::Sim(sim) => sim.list(cursor),
+        }
+    }
+
+    fn call(&mut self, params: &Value) -> Call {
+        match self {
+            Self::Builtin => builtin::call(params),
+            Self::Sim(sim) => sim.call(params),
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let flag = |name: &str| {
+        args.iter()
+            .position(|a| a == name)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
     if args.iter().any(|a| a == "--exit") {
         eprintln!("fake-mcp: told to fail at start");
         std::process::exit(1);
     }
-    let mut log = args
-        .iter()
-        .position(|a| a == "--log")
-        .and_then(|i| args.get(i + 1))
-        .map(|path| File::create(path).expect("the log can be written"));
+    let mut log = flag("--log").map(|path| File::create(path).expect("the log can be written"));
+    let mut server = match flag("--server") {
+        Some(file) => Server::Sim(Box::new(sim::Server::load(
+            &PathBuf::from(file),
+            flag("--record").map(PathBuf::from),
+        ))),
+        None => Server::Builtin,
+    };
+    let instructions = flag("--instructions").or_else(|| match &server {
+        Server::Sim(sim) => sim.instructions(),
+        Server::Builtin => None,
+    });
     let stdin = std::io::stdin();
     let mut out = std::io::stdout();
     for line in stdin.lock().lines() {
@@ -37,10 +88,11 @@ fn main() {
             Some("initialize") => Ok(json!({
                 "protocolVersion": "2025-06-18",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "fake", "version": "0"}
+                "serverInfo": {"name": "fake", "version": "0"},
+                "instructions": instructions,
             })),
-            Some("tools/list") => Ok(json!({"tools": tools()})),
-            Some("tools/call") => match call(&message["params"]) {
+            Some("tools/list") => Ok(server.list(message["params"]["cursor"].as_str())),
+            Some("tools/call") => match server.call(&message["params"]) {
                 Call::Answer(result) => Ok(result),
                 Call::Never => continue,
                 Call::Unknown => Err(json!({"code": -32602, "message": "no such tool"})),
@@ -64,60 +116,5 @@ fn heard(message: &Value) -> String {
         "tools/call" => format!("{method} {}", params["name"].as_str().unwrap_or_default()),
         "notifications/cancelled" => format!("{method} {}", params["requestId"]),
         _ => method.to_owned(),
-    }
-}
-
-fn tools() -> Value {
-    json!([
-        {"name": "echo", "description": "Says back what it is given; {max_lines} stays as written.",
-         "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}}},
-        {"name": "env", "description": "Says whether crowbot's key and FAKE_TOKEN reached it.",
-         "inputSchema": {"type": "object"}},
-        {"name": "fail", "description": "Always fails.", "inputSchema": {"type": "object"}},
-        {"name": "picture", "description": "Answers with an image.",
-         "inputSchema": {"type": "object"}},
-        {"name": "look", "description": "Looks without touching anything.",
-         "inputSchema": {"type": "object"}, "annotations": {"readOnlyHint": true}},
-        {"name": "slow", "description": "Never answers.", "inputSchema": {"type": "object"}},
-        {"name": "die", "description": "Exits at once.", "inputSchema": {"type": "object"}}
-    ])
-}
-
-enum Call {
-    Answer(Value),
-    /// Left unanswered, as a tool still at work.
-    Never,
-    Unknown,
-}
-
-fn call(params: &Value) -> Call {
-    let text = |text: String| Call::Answer(json!({"content": [{"type": "text", "text": text}]}));
-    let seen = |name: &str| std::env::var(name).unwrap_or_else(|_| "unset".into());
-    match params["name"].as_str().unwrap_or_default() {
-        "echo" => text(
-            params["arguments"]["text"]
-                .as_str()
-                .unwrap_or_default()
-                .into(),
-        ),
-        "env" => text(format!(
-            "key: {}; FAKE_TOKEN: {}",
-            seen("CROWBOT_API_KEY"),
-            seen("FAKE_TOKEN")
-        )),
-        "fail" => Call::Answer(json!({
-            "content": [{"type": "text", "text": "fake-mcp: this tool always fails"}],
-            "isError": true
-        })),
-        "picture" => Call::Answer(json!({
-            "content": [{"type": "image", "data": "iVBORw0KGgo=", "mimeType": "image/png"}]
-        })),
-        "look" => text("looked, changed nothing".into()),
-        "slow" => Call::Never,
-        "die" => {
-            eprintln!("fake-mcp: dying as asked");
-            std::process::exit(3);
-        }
-        _ => Call::Unknown,
     }
 }

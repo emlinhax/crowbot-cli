@@ -1,0 +1,7 @@
+prompt = "In the IDA database of ./netlogd (reverse-engineering MCP server), set the comment \"reads from the client socket\" on every function that calls recv."
+repo = "desk"
+mode = "auto"
+turns = 40
+suite = "mcp"
+mcp = ["re"]
+check = "python3 {checks}/mcp_state.py {mcp}/re.json 'functions[address=0x401760].comment' '~' 'reads from the client socket' && python3 {checks}/mcp_state.py {mcp}/re.json 'functions[address=0x401e00].comment' '~' 'reads from the client socket' && python3 {checks}/mcp_state.py {mcp}/re.json 'functions[address=0x401f20].comment' '~' 'reads from the client socket'"

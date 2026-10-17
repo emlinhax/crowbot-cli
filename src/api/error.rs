@@ -168,6 +168,7 @@ mod tests {
                 status,
                 request_id: Some("req_1".into()),
                 retry_after: Some(Duration::from_secs(3)),
+                headers: Vec::new(),
             },
             body: body.as_bytes().to_vec(),
         }

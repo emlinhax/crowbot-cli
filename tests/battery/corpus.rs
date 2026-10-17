@@ -9,9 +9,30 @@ pub fn bench() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("bench")
 }
 
+/// bench/battery.toml: what every suite shares, and each suite's model, repeats and cap.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct File {
+    parallel: usize,
+    run_cap_micros: Limit,
+    run_wall_secs: Limit,
+    stop_grace_secs: Limit,
+    check_secs: Limit,
+    suites: BTreeMap<String, Suite>,
+}
+
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct Suite {
+    model: String,
+    repeats: u32,
+    cap_micros: Limit,
+}
+
+/// One suite's run: its own model, repeats and cap, and the limits every suite shares.
+#[derive(Clone)]
 pub struct Settings {
+    pub suite: String,
     pub model: String,
     pub repeats: u32,
     pub parallel: usize,
@@ -109,10 +130,50 @@ pub struct Task {
     /// A file in bench/patches/ applied before the copy's one commit.
     #[serde(default)]
     pub patch: Option<String>,
+    /// The suite it belongs to; `make battery SUITE=<name>` runs one suite.
+    #[serde(default = "code")]
+    pub suite: String,
+    /// Simulated MCP servers (bench/mcp/<name>.toml) the run is configured with.
+    #[serde(default)]
+    pub mcp: Vec<String>,
 }
 
-pub fn settings() -> Settings {
-    parse(&bench().join("battery.toml"))
+fn code() -> String {
+    "code".into()
+}
+
+/// The settings of suite `name`.
+pub fn settings(name: &str) -> Settings {
+    let file: File = parse(&bench().join("battery.toml"));
+    let suite = file
+        .suites
+        .get(name)
+        .unwrap_or_else(|| panic!("bench/battery.toml has no suite {name}"))
+        .clone();
+    Settings {
+        suite: name.to_owned(),
+        model: suite.model,
+        repeats: suite.repeats,
+        parallel: file.parallel,
+        cap_micros: suite.cap_micros,
+        run_cap_micros: file.run_cap_micros,
+        run_wall_secs: file.run_wall_secs,
+        stop_grace_secs: file.stop_grace_secs,
+        check_secs: file.check_secs,
+    }
+}
+
+/// Every suite's name.
+pub fn suites() -> Vec<String> {
+    parse::<File>(&bench().join("battery.toml"))
+        .suites
+        .into_keys()
+        .collect()
+}
+
+/// A simulated MCP server's file.
+pub fn mcp_server(name: &str) -> PathBuf {
+    bench().join("mcp").join(format!("{name}.toml"))
 }
 
 pub fn repos() -> Vec<Repo> {

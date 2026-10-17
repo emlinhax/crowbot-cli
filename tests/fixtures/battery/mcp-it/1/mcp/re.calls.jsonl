@@ -1,0 +1,7 @@
+{"args": {"address": 4198400}, "error": "arguments.address: expected string, got integer 4198400", "outcome": "invalid_args", "tool": "decompile_function"}
+{"args": {"address": "0x401000"}, "error": "No database is open: call idb_open with the path of the binary first.", "outcome": "precondition", "tool": "decompile_function"}
+{"args": {"path": "./netlogd"}, "error": null, "outcome": "ok", "tool": "idb_open"}
+{"args": {"address": "0x401000"}, "error": null, "outcome": "ok", "tool": "decompile_function"}
+{"args": {"address": "0x401300"}, "error": null, "outcome": "ok", "tool": "decompile_function"}
+{"args": {"address": "0x401000", "comment": "entry"}, "error": null, "outcome": "ok", "tool": "set_comment"}
+{"args": {"address": "0x401300", "comment": "listens"}, "error": null, "outcome": "ok", "tool": "set_comment"}

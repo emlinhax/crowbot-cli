@@ -25,6 +25,9 @@ struct Scenario {
     /// Files to put in the project first, over `project`'s, by path relative to it.
     #[serde(default)]
     project_files: BTreeMap<String, String>,
+    /// Files to put in the user's own folder (HOME, where other apps keep their settings).
+    #[serde(default)]
+    user_files: BTreeMap<String, String>,
     /// The model's turns, in order.
     #[serde(default)]
     reply: Vec<Turn>,
@@ -180,14 +183,28 @@ async fn check(name: String, scenario: Scenario) {
         sandbox.copy_project(project);
     }
     fake.set_home(sandbox.home());
-    // `{fake_mcp}` in a file is the stand-in MCP server, with `/` so it reads in TOML.
+    // `{fake_mcp}` in a file is the stand-in MCP server, with `/` so it reads in TOML;
+    // `{fake_mcp_url}` the fake's own MCP endpoint over HTTP.
     let fake_mcp = env!("CARGO_BIN_EXE_crowbot-fake-mcp").replace('\\', "/");
-    let placed = |text: &str| text.replace("{fake_mcp}", &fake_mcp);
+    let fake_mcp_url = format!("{}/mcp", fake.url);
+    // `{fixtures}` is tests/fixtures, for a simulated server's file.
+    let fixtures = tests_path("fixtures")
+        .display()
+        .to_string()
+        .replace('\\', "/");
+    let placed = |text: &str| {
+        text.replace("{fake_mcp}", &fake_mcp)
+            .replace("{fake_mcp_url}", &fake_mcp_url)
+            .replace("{fixtures}", &fixtures)
+    };
     for (path, text) in &scenario.home_files {
         sandbox.write_home(path, &placed(text));
     }
     for (path, text) in &scenario.project_files {
         sandbox.write_project(path, &placed(text));
+    }
+    for (path, text) in &scenario.user_files {
+        sandbox.write_user(path, &placed(text));
     }
     let args: Vec<&str> = scenario.args.iter().map(String::as_str).collect();
     let key = if scenario.key { WITH_KEY } else { None };

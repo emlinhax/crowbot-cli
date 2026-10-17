@@ -26,6 +26,8 @@ pub struct Head {
     pub status: u16,
     pub request_id: Option<String>,
     pub retry_after: Option<Duration>,
+    /// Every header, by lowercase name, for those a caller reads itself.
+    pub headers: Vec<(String, String)>,
 }
 
 pub struct Response {
@@ -131,6 +133,14 @@ impl Http {
 }
 
 impl Head {
+    /// The header `name` (any case), if the response carried it.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(n, _)| n.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
+
     fn of(resp: &reqwest::Response) -> Self {
         let header = |name: &str| {
             resp.headers()
@@ -145,17 +155,28 @@ impl Head {
             retry_after: header("retry-after")
                 .and_then(|v| v.trim().parse().ok())
                 .map(Duration::from_secs),
+            headers: resp
+                .headers()
+                .iter()
+                .filter_map(|(n, v)| Some((n.as_str().to_owned(), v.to_str().ok()?.to_owned())))
+                .collect(),
         }
     }
 }
 
-/// The URL is dropped from the message: a pairing poll's URL carries the live device code.
+/// The URL is dropped from the message: a pairing poll's URL carries the live device code. A
+/// connection that never opened is a connect failure even when it timed out (Windows retries a
+/// refused one for seconds), named by its root cause.
 fn classify(e: reqwest::Error) -> HttpError {
     let e = e.without_url();
-    if e.is_timeout() {
+    if e.is_connect() {
+        let mut cause: &dyn std::error::Error = &e;
+        while let Some(next) = cause.source() {
+            cause = next;
+        }
+        HttpError::Connect(cause.to_string())
+    } else if e.is_timeout() {
         HttpError::Timeout
-    } else if e.is_connect() {
-        HttpError::Connect(e.to_string())
     } else {
         HttpError::Other(e.to_string())
     }
@@ -172,7 +193,9 @@ mod tests {
             .local_addr()
             .unwrap()
             .port();
-        let http = Http::new(Duration::from_secs(2)).unwrap();
+        // Windows retries a refused connect for seconds: the request's own bound must outlast
+        // the connect's, or it ends as a timeout first.
+        let http = Http::new(Duration::from_secs(5)).unwrap();
         let sent = http
             .send(Request {
                 method: Method::Get,
@@ -180,12 +203,13 @@ mod tests {
                 bearer: None,
                 headers: &[],
                 json: None,
-                timeout: Duration::from_secs(2),
+                timeout: Duration::from_secs(20),
             })
             .await;
         let Err(err) = sent else {
             panic!("a closed port answered");
         };
         assert!(!err.to_string().contains("DEVICECODE"), "{err}");
+        assert!(matches!(err, HttpError::Connect(_)), "{err:?}");
     }
 }

@@ -22,6 +22,7 @@ pub struct ModelText {
     pub non_interactive: String,
     pub unconfirmed: String,
     pub doom_loop: String,
+    pub written_calls: String,
     pub mode_left: String,
     pub compact_focus: String,
     pub compacted: String,

@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
 use crate::cmd::{self, git};
-use crate::corpus::{Repo, Settings, Task, bench, slashes};
+use crate::corpus::{self, Repo, Settings, Task, bench, slashes};
 use crate::project;
 use crate::record::{self, Record};
 
@@ -87,6 +87,9 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
         std::fs::create_dir_all(&cache)?;
         std::fs::write(cache.join("models.json"), models)?;
     }
+    // Beside the copy, not in it: the model reaches the servers' data through their tools only.
+    let records = parent.path().join("mcp");
+    std::fs::write(home.path().join("config.toml"), config(task, &records))?;
 
     let watched = watch(battery, repo, task, home.path(), &copy).await?;
 
@@ -105,7 +108,7 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
     let reply = dir.join("reply.txt");
     record::save(&dir, "reply.txt", &watched.reply, key)?;
     let check = cmd::sh(
-        &check_line(&task.check, &reply, &plan),
+        &check_line(&task.check, &reply, &plan, &records),
         &copy,
         &repo.env(),
         settings.check_secs.secs(),
@@ -125,6 +128,14 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
     if let Ok(text) = std::fs::read_to_string(&plan) {
         record::save(&dir, "plan.md", &text, key)?;
     }
+    if records.is_dir() {
+        let kept = dir.join("mcp");
+        std::fs::create_dir_all(&kept)?;
+        for file in std::fs::read_dir(&records)?.flatten() {
+            let name = file.file_name().to_string_lossy().into_owned();
+            record::save(&kept, &name, &std::fs::read_to_string(file.path())?, key)?;
+        }
+    }
     Ok(Record {
         task: task.id.clone(),
         repo: repo.id.clone(),
@@ -143,17 +154,34 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
     })
 }
 
+/// The run's crowbot config: none of the servers the machine's own apps list (the runs keep the
+/// real HOME for the repos' builds), and the task's simulated servers, recording into `records`.
+fn config(task: &Task, records: &Path) -> String {
+    let mut text = String::from("mcp_discovery = false\n");
+    let simulator = slashes(Path::new(env!("CARGO_BIN_EXE_crowbot-fake-mcp")));
+    let records = slashes(records);
+    for server in &task.mcp {
+        let file = slashes(&corpus::mcp_server(server));
+        text.push_str(&format!(
+            "\n[mcp.{server}]\ncommand = '{simulator}'\n\
+             args = ['--server', '{file}', '--record', '{records}']\n"
+        ));
+    }
+    text
+}
+
 /// A task's check line with its placeholders filled, each quoted for `sh`: `{reply}` is a file
-/// holding the run's last reply, `{plan}` its plan file (absent when it wrote none) and
-/// `{checks}` bench/checks/.
-pub fn check_line(check: &str, reply: &Path, plan: &Path) -> String {
+/// holding the run's last reply, `{plan}` its plan file (absent when it wrote none), `{checks}`
+/// bench/checks/ and `{mcp}` the folder its simulated servers recorded into.
+pub fn check_line(check: &str, reply: &Path, plan: &Path, mcp: &Path) -> String {
     check
         .replace("{reply}", &quote(reply))
         .replace("{plan}", &quote(plan))
         .replace("{checks}", &quote(&bench().join("checks")))
+        .replace("{mcp}", &quote(mcp))
 }
 
-pub const PLACEHOLDERS: &[&str] = &["{reply}", "{plan}", "{checks}"];
+pub const PLACEHOLDERS: &[&str] = &["{reply}", "{plan}", "{checks}", "{mcp}"];
 
 fn quote(path: &Path) -> String {
     format!("'{}'", slashes(path).replace('\'', r"'\''"))

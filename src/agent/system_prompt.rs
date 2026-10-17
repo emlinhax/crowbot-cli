@@ -8,10 +8,13 @@ use crate::config::limits;
 use crate::config::paths::Paths;
 use crate::data;
 use crate::io;
+use crate::mcp::Connected;
 use crate::text::template;
 
 const BASE: &str = data::raw!("prompts/system.md");
 const ENV: &str = data::raw!("prompts/env.md");
+/// For a run nobody can answer: say so, so the model acts instead of asking.
+const HEADLESS: &str = data::raw!("prompts/headless.md");
 
 static PROJECT: LazyLock<Project> = data::load!("prompts/project.toml");
 
@@ -24,6 +27,15 @@ struct Project {
 }
 
 static FORUMS: LazyLock<Forums> = data::load!("prompts/forums.toml");
+static MCP: LazyLock<Mcp> = data::load!("prompts/mcp.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Mcp {
+    servers: String,
+    frame: String,
+    cut: String,
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -31,8 +43,9 @@ struct Forums {
     frame: String,
 }
 
-/// Reminders a mode can name in data/modes/*.toml; one line per prompt file.
-pub fn build(paths: &Paths, model: &str) -> String {
+/// Reminders a mode can name in data/modes/*.toml; one line per prompt file. `servers` are the
+/// session's MCP servers; `headless` is a run nobody can answer (`-p`, `--json`).
+pub fn build(paths: &Paths, model: &str, servers: &[Connected], headless: bool) -> String {
     let cwd = paths.project.display().to_string();
     let date = io::clock::today();
     let env = template::fill(
@@ -47,7 +60,9 @@ pub fn build(paths: &Paths, model: &str) -> String {
     let parts = [
         Some(BASE.trim_end().to_owned()),
         forums(paths),
+        mcp(servers),
         project(paths),
+        headless.then(|| HEADLESS.trim_end().to_owned()),
         Some(env.trim_end().to_owned()),
     ];
     parts.into_iter().flatten().collect::<Vec<_>>().join("\n\n")
@@ -66,6 +81,35 @@ fn forums(paths: &Paths) -> Option<String> {
             .trim()
             .to_owned(),
     )
+}
+
+/// The session's MCP servers by name, then each one's instructions, framed, each within
+/// `mcp.instructions_chars`.
+fn mcp(servers: &[Connected]) -> Option<String> {
+    if servers.is_empty() {
+        return None;
+    }
+    let names: Vec<&str> = servers.iter().map(|s| s.name.as_str()).collect();
+    let listed = template::fill(&MCP.servers, &[("names", &names.join(", "))]);
+    let max = limits::get().mcp.instructions_chars.value;
+    let framed: Vec<String> = servers
+        .iter()
+        .filter_map(|s| Some((&s.name, s.instructions.as_deref()?)))
+        .map(|(server, text)| {
+            let text = text.trim();
+            let mut kept: String = text.chars().take(max).collect();
+            if kept.len() < text.len() {
+                let cut = template::fill(&MCP.cut, &[("max", &max.to_string())]);
+                kept = format!("{}\n{cut}", kept.trim_end());
+            }
+            template::fill(&MCP.frame, &[("server", server), ("text", &kept)])
+                .trim()
+                .to_owned()
+        })
+        .collect();
+    let mut parts = vec![listed.trim().to_owned()];
+    parts.extend(framed);
+    Some(parts.join("\n\n"))
 }
 
 /// The first instructions file the project has, framed, within `agent.instructions_bytes`.
@@ -95,6 +139,49 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_servers_are_named_and_their_instructions_join_before_the_project_cut_to_fit() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
+        crate::io::fs::make_dir(&paths.project).unwrap();
+        crate::io::fs::write_atomic(
+            &paths.project.join("AGENTS.md"),
+            b"Use tabs.",
+            crate::io::fs::Access::Shared,
+        )
+        .unwrap();
+        let max = limits::get().mcp.instructions_chars.value;
+        let server = |name: &str, instructions: Option<String>| Connected {
+            name: name.into(),
+            instructions,
+        };
+        let servers = [
+            server("ida", Some("Open a database first.".into())),
+            server("long", Some("x".repeat(max + 10))),
+            server("quiet", None),
+        ];
+        let prompt = build(&paths, "m", &servers, false);
+        let named = prompt.find("The user connected these MCP servers: ida, long, quiet.");
+        let ida = prompt.find("<mcp-server-instructions server=\"ida\">\nOpen a database first.");
+        let project = prompt.find("<project-instructions");
+        assert!(named.is_some() && named < ida && ida < project, "{prompt}");
+        assert!(prompt.contains("never from memory"), "{prompt}");
+        assert!(!prompt.contains("server=\"quiet\""), "{prompt}");
+        assert!(prompt.contains("they run past"), "{prompt}");
+        assert!(!prompt.contains(&"x".repeat(max + 1)));
+        assert!(!build(&paths, "m", &[], false).contains("<mcp-servers>"));
+    }
+
+    #[test]
+    fn a_headless_run_is_told_nobody_will_answer() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
+        let headless = build(&paths, "m", &[], true);
+        let at = headless.find("<headless>").unwrap();
+        assert!(at < headless.find("<env>").unwrap(), "{headless}");
+        assert!(!build(&paths, "m", &[], false).contains("<headless>"));
+    }
+
+    #[test]
     fn the_projects_instructions_join_the_prompt_before_the_environment() {
         let root = tempfile::tempdir().unwrap();
         let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
@@ -106,12 +193,12 @@ mod tests {
             )
             .unwrap();
         };
-        let bare = build(&paths, "m");
+        let bare = build(&paths, "m", &[], false);
         assert!(!bare.contains("<project-instructions"));
         write("CLAUDE.md", "Use tabs.");
-        assert!(build(&paths, "m").contains("file=\"CLAUDE.md\">\nUse tabs."));
+        assert!(build(&paths, "m", &[], false).contains("file=\"CLAUDE.md\">\nUse tabs."));
         write("AGENTS.md", "Run make test.");
-        let prompt = build(&paths, "m");
+        let prompt = build(&paths, "m", &[], false);
         assert!(
             prompt.contains("Run make test.") && !prompt.contains("Use tabs."),
             "{prompt}"
@@ -119,7 +206,7 @@ mod tests {
         assert!(prompt.find("Run make test.") < prompt.find("<env>"));
         let max = limits::get().agent.instructions_bytes.value;
         write("AGENTS.md", &"é".repeat(max));
-        let prompt = build(&paths, "m");
+        let prompt = build(&paths, "m", &[], false);
         assert!(prompt.contains("is left out"), "the cut is not said");
         assert!(prompt.len() < bare.len() + max + 1000);
     }
@@ -130,7 +217,7 @@ mod tests {
         let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
         // With no store yet, the seed is what there is to browse.
         let seed = &crate::forums::data().seed[0];
-        let prompt = build(&paths, "m");
+        let prompt = build(&paths, "m", &[], false);
         assert!(
             prompt.contains(&format!(
                 "- {} ({})\n  {}",
@@ -142,6 +229,6 @@ mod tests {
         );
         assert!(prompt.find("<forums>") < prompt.find("<env>"));
         crate::forums::store::remove(&paths, seed).unwrap();
-        assert!(!build(&paths, "m").contains("<forums>"));
+        assert!(!build(&paths, "m", &[], false).contains("<forums>"));
     }
 }

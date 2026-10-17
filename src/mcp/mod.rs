@@ -1,9 +1,11 @@
 //! MCP servers the user names in config.toml (`[mcp.<name>]`): started with the session, in
 //! parallel, each within `mcp.start_secs`; those that fail are said once and shown in /status.
-// CEILING: tools only; a server's resources, prompts, sampling, roots and instructions are not
-// used. Upgrade: each as its own capability, behind the same `Server`.
+// CEILING: tools and their instructions only; a server's resources, prompts, sampling and roots
+// are not used. Upgrade: each as its own capability, behind the same `Server`.
 
 pub mod config;
+pub mod discover;
+mod http;
 pub mod protocol;
 mod rpc;
 pub mod server;
@@ -12,6 +14,7 @@ use futures_util::future::join_all;
 
 use crate::config::paths::Paths;
 use crate::config::settings::Settings;
+use crate::io::http::Http;
 use crate::text::template::fill;
 use protocol::DATA;
 use server::Server;
@@ -23,6 +26,23 @@ pub struct Servers {
     off: Vec<String>,
     /// What is said of a server once, when the session starts: by its name, whole sentences.
     notes: Vec<(String, String)>,
+    /// The apps listing each server found in their settings, by name.
+    from: std::collections::BTreeMap<String, String>,
+}
+
+/// A running server as the system prompt names it.
+#[derive(Clone, Debug)]
+pub struct Connected {
+    pub name: String,
+    /// What it said of how to use its tools, when it said anything.
+    pub instructions: Option<String>,
+}
+
+/// One server as /status shows it: its name, where it was found, and how it stands.
+pub struct Standing {
+    pub name: String,
+    pub from: Option<String>,
+    pub state: State,
 }
 
 /// How one server stands, for /status.
@@ -38,20 +58,24 @@ pub enum State {
 
 impl Servers {
     /// Starts every enabled server, all at once.
-    pub async fn start(settings: &Settings, paths: &Paths) -> Self {
+    pub async fn start(settings: &Settings, paths: &Paths, web: &Http) -> Self {
         let (enabled, off): (Vec<_>, Vec<_>) =
             settings.mcp.iter().partition(|(_, cfg)| cfg.enabled);
-        let started = join_all(
-            enabled
-                .iter()
-                .map(|(name, cfg)| async move { (name, Server::start(name, cfg, paths).await) }),
-        )
-        .await;
+        let started =
+            join_all(enabled.iter().map(|(name, cfg)| async move {
+                (name, Server::start(name, cfg, paths, web).await)
+            }))
+            .await;
         let mut servers = Self {
             running: Vec::new(),
             failed: Vec::new(),
             off: off.into_iter().map(|(name, _)| name.clone()).collect(),
-            notes: Vec::new(),
+            notes: settings.found_notes.clone(),
+            from: settings
+                .mcp
+                .iter()
+                .filter_map(|(name, cfg)| Some((name.clone(), cfg.from.clone()?)))
+                .collect(),
         };
         for (name, started) in started {
             match started {
@@ -82,7 +106,7 @@ impl Servers {
     }
 
     /// Every server and how it stands, by name.
-    pub fn report(&self) -> Vec<(String, State)> {
+    pub fn report(&self) -> Vec<Standing> {
         let mut report: Vec<(String, State)> = self
             .running
             .iter()
@@ -104,6 +128,24 @@ impl Servers {
             .collect();
         report.sort_by(|a, b| a.0.cmp(&b.0));
         report
+            .into_iter()
+            .map(|(name, state)| Standing {
+                from: self.from.get(&name).cloned(),
+                name,
+                state,
+            })
+            .collect()
+    }
+
+    /// Each running server, for the system prompt: its name and what it said of its tools.
+    pub fn connected(&self) -> Vec<Connected> {
+        self.running
+            .iter()
+            .map(|s| Connected {
+                name: s.name.clone(),
+                instructions: s.instructions.clone(),
+            })
+            .collect()
     }
 
     /// Stops every server, all at once.

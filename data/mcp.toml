@@ -16,4 +16,7 @@ no_start = "it did not start: {error}"
 timed_out = "it did not answer within {secs}s"
 version = "it speaks MCP {version}; crowbot speaks {accepted}"
 closed = "it exited"
+# A server at a URL: what an answer said instead of one.
+http_status = "it answered HTTP {status}"
+too_long = "an answer ran past {bytes} bytes"
 said = "{why}. It printed: {stderr}"

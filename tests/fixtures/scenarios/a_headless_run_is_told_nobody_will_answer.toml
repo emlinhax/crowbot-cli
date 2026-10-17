@@ -1,0 +1,15 @@
+description = "A headless run's system prompt says nobody will answer or confirm, so the model acts instead of asking"
+args = ["-p", "hi"]
+
+[[reply]]
+text = "Hello."
+
+[expect]
+exit = 0
+stdout = "Hello.\n"
+
+[[expect.requests]]
+index = 0
+message = 0
+role = "system"
+contains = "This run is not interactive: nobody will read a question"

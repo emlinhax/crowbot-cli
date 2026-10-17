@@ -1,0 +1,7 @@
+prompt = "In the issue tracker (MCP server), every open issue that reports a crash should carry the label `crash`. Add it wherever it is missing, keeping each issue's other labels."
+repo = "desk"
+mode = "auto"
+turns = 40
+suite = "mcp"
+mcp = ["tracker"]
+check = "python3 {checks}/mcp_state.py {mcp}/tracker.json 'issues[number=4].labels' has crash && python3 {checks}/mcp_state.py {mcp}/tracker.json 'issues[number=4].labels' has bug && python3 {checks}/mcp_state.py {mcp}/tracker.json 'issues[number=11].labels' has crash && python3 {checks}/mcp_state.py {mcp}/tracker.json 'issues[number=19].labels' has crash && python3 {checks}/mcp_state.py {mcp}/tracker.json 'issues[number=27].labels' has crash && python3 {checks}/mcp_state.py {mcp}/tracker.json 'issues[number=27].labels' has performance"

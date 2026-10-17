@@ -68,7 +68,12 @@ async fn passes(
     project::make(repo, patch, &copy).await?;
     let reply = parent.path().join("reply.txt");
     std::fs::write(&reply, "")?;
-    let line = run::check_line(check, &reply, &parent.path().join("no-plan.md"));
+    let line = run::check_line(
+        check,
+        &reply,
+        &parent.path().join("no-plan.md"),
+        &parent.path().join("mcp"),
+    );
     let ran = cmd::sh(&line, &copy, &repo.env(), settings.check_secs.secs()).await;
     if !ran.ok && patch.is_none() {
         eprintln!("{}", ran.output);

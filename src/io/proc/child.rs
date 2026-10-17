@@ -100,16 +100,6 @@ pub struct Stderr {
 }
 
 impl Stderr {
-    /// Nothing printed, and stderr closed: for tests that play a program.
-    #[cfg(test)]
-    pub fn none() -> Self {
-        let (_, ended) = watch::channel(());
-        Self {
-            kept: Arc::default(),
-            ended,
-        }
-    }
-
     /// The end of what it printed, as text, once it has closed stderr or `wait` has passed: a
     /// program that stops closes stdout and stderr in no set order.
     pub async fn tail(&self, wait: Duration) -> String {
@@ -244,7 +234,10 @@ mod tests {
     async fn a_stop_closes_stdin_while_a_sender_lives_on() {
         let dir = tempfile::tempdir().unwrap();
         let (program, args) = echo(dir.path());
-        let running = start(&service(&program, &args, dir.path(), 1024)).unwrap();
+        let mut running = start(&service(&program, &args, dir.path(), 1024)).unwrap();
+        // Up and reading first, so a slow start (PowerShell's on Windows) is not timed.
+        running.outgoing.send("up".into()).unwrap();
+        assert_eq!(running.incoming.recv().await, Some(Ok("up".into())));
         let grace = Duration::from_secs(10);
         let started = std::time::Instant::now();
         running.process.stop(grace).await;

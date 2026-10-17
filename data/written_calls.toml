@@ -1,0 +1,4 @@
+# What in a reply's text shows the model wrote tool calls out instead of making them: the JSON a
+# chat API carries calls in, and the call tokens some models' templates use. A reply with no calls
+# whose text holds one of these is asked again once (src/agent/written.rs).
+markers = ['"tool_calls"', "<tool_call>", "<|tool_call", "<｜tool▁call"]

@@ -1,0 +1,7 @@
+prompt = "Open the IDA database of ./netlogd in the reverse-engineering MCP server. Find the function that prints \"bad header checksum\" and rename it to check_header."
+repo = "desk"
+mode = "auto"
+turns = 30
+suite = "mcp"
+mcp = ["re"]
+check = "python3 {checks}/mcp_state.py {mcp}/re.json 'functions[address=0x401890].name' == check_header"

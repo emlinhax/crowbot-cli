@@ -32,10 +32,16 @@ use run::{Battery, PLACEHOLDERS, Target};
 
 #[test]
 fn corpus_is_well_formed() {
-    let settings = corpus::settings();
-    assert!(settings.repeats > 0 && settings.parallel > 0);
-    for (name, limit) in settings.limits() {
-        assert!(!limit.reason.trim().is_empty(), "{name} has no reason");
+    let suites = corpus::suites();
+    for suite in &suites {
+        let settings = corpus::settings(suite);
+        assert!(settings.repeats > 0 && settings.parallel > 0, "{suite}");
+        for (name, limit) in settings.limits() {
+            assert!(
+                !limit.reason.trim().is_empty(),
+                "{suite}: {name} has no reason"
+            );
+        }
     }
     let repos = corpus::repos();
     let ids: BTreeSet<&str> = repos.iter().map(|r| r.id.as_str()).collect();
@@ -66,6 +72,19 @@ fn corpus_is_well_formed() {
             "{at}: mode"
         );
         assert!(task.turns > 0, "{at}: turns");
+        assert!(
+            suites.contains(&task.suite),
+            "{at}: no suite {}",
+            task.suite
+        );
+        for server in &task.mcp {
+            assert!(
+                corpus::mcp_server(server).is_file(),
+                "{at}: no server {server}"
+            );
+            // Headless, MANUAL declines every MCP call and PLAN all but read-only ones.
+            assert_eq!(task.mode, "auto", "{at}: an MCP task runs in AUTO");
+        }
         if let Some(patch) = &task.patch {
             assert!(bench().join("patches").join(patch).is_file(), "{at}: patch");
         }
@@ -74,7 +93,10 @@ fn corpus_is_well_formed() {
             rest = rest.replace(known, "");
         }
         assert!(
-            !rest.contains("{reply") && !rest.contains("{plan") && !rest.contains("{checks"),
+            !rest.contains("{reply")
+                && !rest.contains("{plan")
+                && !rest.contains("{checks")
+                && !rest.contains("{mcp"),
             "{at}: placeholder"
         );
     }
@@ -92,7 +114,7 @@ fn task(id: &str) -> Task {
 fn against(fake: &Fake, out: &Path) -> Battery {
     let settings = corpus::Settings {
         model: "crow-2".into(),
-        ..corpus::settings()
+        ..corpus::settings("code")
     };
     let target = Target {
         api_url: Some(fake.url.clone()),
@@ -173,6 +195,50 @@ async fn a_run_is_checked_and_recorded() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn an_mcp_task_runs_its_simulated_servers_and_keeps_their_records() {
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::call(
+            "db__update",
+            r#"{"table": "orders", "id": "1017", "set": {"status": "paid"}}"#,
+        ),
+        Reply::call(
+            "db__update",
+            r#"{"table": "orders", "id": 1017, "set": {"status": "paid"}}"#,
+        ),
+        Reply::text("Order 1017 is paid again."),
+    ]);
+    let out = tempfile::tempdir().unwrap();
+    let battery = against(&fake, out.path());
+    let record = battery
+        .run(&repo("desk"), &task("mcp-db-fix-refund"), 1)
+        .await;
+    assert_eq!(record.error, None);
+    assert!(record.check, "{:?}", record.stopped_by);
+    let dir = out.path().join(&record.dir);
+    let read = |name: &str| std::fs::read_to_string(dir.join(name)).unwrap();
+    let calls = read("mcp/db.calls.jsonl");
+    let outcomes: Vec<&str> = calls
+        .lines()
+        .map(|l| {
+            if l.contains("\"outcome\":\"ok\"") {
+                "ok"
+            } else {
+                "not ok"
+            }
+        })
+        .collect();
+    assert_eq!(outcomes, ["not ok", "ok"], "{calls}");
+    assert!(read("mcp/db.json").contains("\"status\": \"paid\""));
+    // The records are kept beside the project, out of the model's reach and out of its diff.
+    assert!(
+        !read("diff.patch").contains("calls.jsonl"),
+        "{}",
+        read("diff.patch")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_run_past_its_turn_limit_is_stopped() {
     let fake = Fake::start().await;
     auto_fix(&fake);
@@ -196,7 +262,7 @@ async fn setup() {
         eprintln!("battery: setting up {}", repo.id);
         setup::cache(repo).await.unwrap();
     }
-    let problems = setup::verify(&repos, &corpus::tasks(), &corpus::settings()).await;
+    let problems = setup::verify(&repos, &corpus::tasks(), &corpus::settings("code")).await;
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
@@ -204,17 +270,25 @@ async fn setup() {
 #[ignore = "spends real money; run with `make battery`"]
 async fn live() {
     let key = std::env::var("CROWBOT_SMOKE_KEY").expect("set CROWBOT_SMOKE_KEY");
-    let mut settings = corpus::settings();
+    let suite = var("BATTERY_SUITE").unwrap_or_else(|| "code".into());
+    let mut settings = corpus::settings(&suite);
     if let Some(repeats) = var("BATTERY_REPEATS") {
         settings.repeats = repeats.parse().expect("BATTERY_REPEATS is a number");
+    }
+    if let Some(model) = var("BATTERY_MODEL") {
+        settings.model = model;
     }
     let only: Option<Vec<String>> =
         var("BATTERY_TASKS").map(|t| t.split(',').map(|s| s.trim().to_owned()).collect());
     let tasks: Vec<Task> = corpus::tasks()
         .into_iter()
+        .filter(|t| t.suite == suite)
         .filter(|t| only.as_ref().is_none_or(|o| o.contains(&t.id)))
         .collect();
-    assert!(!tasks.is_empty(), "BATTERY_TASKS names no task");
+    assert!(
+        !tasks.is_empty(),
+        "suite {suite} has no task BATTERY_TASKS names"
+    );
     let repos = corpus::repos();
     let target = Target { api_url: None, key };
     let models = live_models(&target, &settings.model).await;
@@ -228,6 +302,7 @@ async fn live() {
     .await
     .unwrap_or_default();
     let meta = serde_json::json!({
+        "suite": settings.suite,
         "model": settings.model,
         "repeats": settings.repeats,
         "tasks": tasks.len(),

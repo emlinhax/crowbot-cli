@@ -1,5 +1,5 @@
-//! One MCP server: started as the program config.toml names, introduced (`initialize`), its tools
-//! listed, called, and stopped with the session.
+//! One MCP server: started as the program config.toml names or reached at its URL, introduced
+//! (`initialize`), its tools listed, called, and stopped with the session.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,8 +11,10 @@ use crate::auth;
 use crate::config::limits;
 use crate::config::paths::Paths;
 use crate::io;
+use crate::io::http::Http;
 use crate::io::proc::child::{self, Process, Service, Stderr};
-use crate::mcp::config;
+use crate::mcp::config::{self, Reach};
+use crate::mcp::http;
 use crate::mcp::protocol::{self, CallResult, DATA, Initialized, ToolInfo, ToolPage};
 use crate::mcp::rpc::{self, Rpc};
 use crate::text::template::fill;
@@ -22,8 +24,18 @@ pub struct Server {
     pub name: String,
     /// The tools it offers: those it listed that its `tools` setting lets through.
     pub tools: Vec<ToolInfo>,
+    /// What it said of how to use them, when it said anything.
+    pub instructions: Option<String>,
     caller: Caller,
-    process: Process,
+    link: Link,
+}
+
+/// What crowbot holds of a running server, and so what stopping it takes.
+enum Link {
+    /// A program crowbot started; boxed, as on Windows its job handle makes it the far larger.
+    Program(Box<Process>),
+    /// A server at a URL: the task carrying crowbot's messages to it.
+    Url(http::Connection),
 }
 
 /// The way to call a server's tools, which they all share.
@@ -33,7 +45,8 @@ pub struct Caller {
     rpc: Arc<Rpc>,
     /// How long a call may take.
     limit: Duration,
-    stderr: Stderr,
+    /// What a program crowbot started prints on stderr; a server at a URL has none.
+    stderr: Option<Stderr>,
     /// Whether a call has said yet that the server stopped.
     told_stopped: Arc<AtomicBool>,
 }
@@ -48,54 +61,57 @@ pub struct Failed {
 }
 
 impl Server {
-    /// Starts server `name` in the project and asks for its tools; `Err` says why it is not
-    /// running, with the end of what it printed when it printed anything.
-    pub async fn start(name: &str, cfg: &config::Server, paths: &Paths) -> Result<Self, String> {
+    /// Starts server `name` in the project, or reaches it at its URL, and asks for its tools;
+    /// `Err` says why it is not running, with the end of what it printed when it printed anything.
+    pub async fn start(
+        name: &str,
+        cfg: &config::Server,
+        paths: &Paths,
+        web: &Http,
+    ) -> Result<Self, String> {
         let text = &DATA.text;
-        let program = io::proc::which(&cfg.command)
-            .ok_or_else(|| fill(&text.not_found, &[("command", &cfg.command)]))?;
-        let env: Vec<(String, String)> = cfg
-            .env
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
         let limits = &limits::get().mcp;
-        let running = child::start(&Service {
-            program: &program,
-            args: &cfg.args,
-            cwd: &paths.project,
-            env: &env,
-            unset: auth::hidden_env(),
-            line_bytes: limits.line_bytes.value,
-            stderr_bytes: limits.stderr_bytes.value,
-        })
-        .map_err(|e| fill(&text.no_start, &[("error", &e.to_string())]))?;
-        let rpc = Rpc::new(running.outgoing, running.incoming, text.closed.clone());
+        let limit = cfg
+            .timeout_secs
+            .map_or(limits.call_secs.secs(), Duration::from_secs);
+        let (rpc, link) = match &cfg.reach {
+            Reach::Program { command, args, env } => {
+                let running = run(command, args, env, paths)?;
+                let rpc = Rpc::new(running.outgoing, running.incoming, text.closed.clone());
+                (rpc, Link::Program(Box::new(running.process)))
+            }
+            Reach::Url { url, headers } => {
+                let opened = http::open(web, url, headers, limit);
+                let rpc = Rpc::new(opened.outgoing, opened.incoming, text.closed.clone());
+                (rpc, Link::Url(opened.connection))
+            }
+        };
         let started = io::clock::timeout(limits.start_secs.secs(), handshake(&rpc)).await;
         let listed = started.unwrap_or_else(|_| {
             let secs = limits.start_secs.value.to_string();
             Err(fill(&text.timed_out, &[("secs", &secs)]))
         });
-        let limit = cfg
-            .timeout_secs
-            .map_or(limits.call_secs.secs(), Duration::from_secs);
+        let stderr = match &link {
+            Link::Program(process) => Some(process.stderr()),
+            Link::Url(_) => None,
+        };
         match listed {
-            Ok(tools) => Ok(Self {
+            Ok(introduced) => Ok(Self {
                 name: name.to_owned(),
-                tools: offered(tools, cfg.tools.as_deref()),
+                tools: offered(introduced.tools, cfg.tools.as_deref()),
+                instructions: introduced.instructions,
                 caller: Caller {
                     server: name.to_owned(),
                     rpc: Arc::new(rpc),
                     limit,
-                    stderr: running.process.stderr(),
+                    stderr,
                     told_stopped: Arc::default(),
                 },
-                process: running.process,
+                link,
             }),
             Err(why) => {
-                let stderr = running.process.stderr();
-                running.process.stop(limits.stop_ms.ms()).await;
-                Err(said(&why, &stderr).await)
+                link.stop().await;
+                Err(said(&why, stderr.as_ref()).await)
             }
         }
     }
@@ -109,10 +125,44 @@ impl Server {
         self.caller.rpc.closed().is_some()
     }
 
-    /// Closes its stdin, gives it `mcp.stop_ms` to finish, then ends it.
+    /// Closes its stdin, gives it `mcp.stop_ms` to finish, then ends it; a server at a URL is
+    /// only let go.
     pub async fn stop(self) {
-        self.process.stop(limits::get().mcp.stop_ms.ms()).await;
+        self.link.stop().await;
     }
+}
+
+impl Link {
+    async fn stop(self) {
+        match self {
+            Self::Program(process) => process.stop(limits::get().mcp.stop_ms.ms()).await,
+            Self::Url(connection) => drop(connection),
+        }
+    }
+}
+
+/// Starts `command` in the project, its environment `env` and never crowbot's key.
+fn run(
+    command: &str,
+    args: &[String],
+    env: &std::collections::BTreeMap<String, String>,
+    paths: &Paths,
+) -> Result<child::Running, String> {
+    let text = &DATA.text;
+    let program =
+        io::proc::which(command).ok_or_else(|| fill(&text.not_found, &[("command", command)]))?;
+    let env: Vec<(String, String)> = env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let limits = &limits::get().mcp;
+    child::start(&Service {
+        program: &program,
+        args,
+        cwd: &paths.project,
+        env: &env,
+        unset: auth::hidden_env(),
+        line_bytes: limits.line_bytes.value,
+        stderr_bytes: limits.stderr_bytes.value,
+    })
+    .map_err(|e| fill(&text.no_start, &[("error", &e.to_string())]))
 }
 
 impl Caller {
@@ -124,7 +174,7 @@ impl Caller {
         match self.rpc.request("tools/call", params, self.limit).await {
             Ok(answer) => serde_json::from_value(answer).map_err(|e| failed(e.to_string())),
             Err(rpc::Error::Closed(why)) => {
-                let why = said(&why, &self.stderr).await;
+                let why = said(&why, self.stderr.as_ref()).await;
                 let first = !self.told_stopped.swap(true, Ordering::Relaxed);
                 let stopped = first.then(|| {
                     fill(
@@ -151,7 +201,10 @@ fn offered(tools: Vec<ToolInfo>, allowed: Option<&[String]>) -> Vec<ToolInfo> {
 }
 
 /// `why`, with the end of what the server printed on stderr, if it printed anything.
-async fn said(why: &str, stderr: &Stderr) -> String {
+async fn said(why: &str, stderr: Option<&Stderr>) -> String {
+    let Some(stderr) = stderr else {
+        return why.to_owned();
+    };
     let stderr = stderr.tail(limits::get().mcp.stop_ms.ms()).await;
     match stderr.is_empty() {
         true => why.to_owned(),
@@ -159,8 +212,18 @@ async fn said(why: &str, stderr: &Stderr) -> String {
     }
 }
 
+/// What a server told crowbot when introduced.
+#[derive(Debug)]
+pub struct Introduced {
+    pub tools: Vec<ToolInfo>,
+    pub instructions: Option<String>,
+}
+
 /// Introduces crowbot, checks the version the server answers with, and lists its tools.
-pub async fn handshake(rpc: &Rpc) -> Result<Vec<ToolInfo>, String> {
+// CEILING: the `initialize` handshake of 2025-06-18 and before; 2026-07-28 replaces it with
+// `server/discover`, which servers on that version alone would expect. Upgrade: probe
+// `server/discover` first and fall back to `initialize`.
+pub async fn handshake(rpc: &Rpc) -> Result<Introduced, String> {
     let wait = limits::get().mcp.start_secs.secs();
     let answer = rpc
         .request("initialize", protocol::initialize(), wait)
@@ -195,7 +258,10 @@ pub async fn handshake(rpc: &Rpc) -> Result<Vec<ToolInfo>, String> {
             break;
         }
     }
-    Ok(tools)
+    Ok(Introduced {
+        tools,
+        instructions: hello.instructions.filter(|text| !text.trim().is_empty()),
+    })
 }
 
 /// An RPC failure in the words /status and the start notice use.
@@ -258,7 +324,7 @@ fn played(rpc: Rpc) -> Caller {
         server: "fake".into(),
         rpc: Arc::new(rpc),
         limit: Duration::from_secs(1),
-        stderr: Stderr::none(),
+        stderr: None,
         told_stopped: Arc::default(),
     }
 }
@@ -277,7 +343,7 @@ mod tests {
             "tools/list" => Some(json!({"tools": [{"name": "b"}]})),
             _ => None,
         });
-        let tools = handshake(&rpc).await.unwrap();
+        let tools = handshake(&rpc).await.unwrap().tools;
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(names, ["a", "b"]);
     }
@@ -325,7 +391,7 @@ mod tests {
             "initialize" => Some(hello("2025-06-18")),
             _ => Some(json!({"tools": [{"name": "again"}], "nextCursor": "more"})),
         });
-        let tools = handshake(&rpc).await.unwrap();
+        let tools = handshake(&rpc).await.unwrap().tools;
         assert_eq!(tools.len(), limits::get().mcp.list_pages.value);
     }
 }

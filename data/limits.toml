@@ -152,6 +152,10 @@ reason = "a server's name starts each of its tools' names, which may be 64 chara
 value = 64
 reason = "the longest tool name a chat request takes; a server's tool past it is cut to fit"
 
+[mcp.instructions_chars]
+value = 4096
+reason = "what one server says of how to use its tools; Claude Code keeps as much, and more crowds the prompt"
+
 [mcp.call_secs]
 value = 120
 reason = "a tool call a server has not answered by then is not coming; `timeout_secs` per server"
@@ -249,8 +253,8 @@ value = 600
 reason = "the longest a model may ask to wait on one command"
 
 [tools.bash_drain_ms]
-value = 250
-reason = "after the shell exits, output still in flight gets this long before the pipes close"
+value = 2000
+reason = "once the command and all it started are ended, its pipes close; only one that escaped the tree keeps them open this long"
 
 [tools.bash_memory_bytes]
 value = 262144

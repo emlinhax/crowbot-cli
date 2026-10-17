@@ -15,10 +15,18 @@ const MAX_COST_MICROS: u64 = 1000;
 /// Runs crowbot against the live API, launched as e2e launches it.
 async fn crowbot(args: &[&str]) -> Run {
     let key = std::env::var("CROWBOT_SMOKE_KEY").expect("set CROWBOT_SMOKE_KEY");
-    let home = tempfile::tempdir().unwrap();
+    let (home, user) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
     // An empty project: the live model sees neither this checkout nor its .crowbot config.
     let project = tempfile::tempdir().unwrap();
-    common::launch(home.path(), project.path(), args, None, Some(&key)).await
+    common::launch(
+        home.path(),
+        user.path(),
+        project.path(),
+        args,
+        None,
+        Some(&key),
+    )
+    .await
 }
 
 #[tokio::test]

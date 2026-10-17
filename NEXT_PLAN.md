@@ -339,11 +339,17 @@ with the session (a project's only once trusted); their tools join the registry 
       release (`data/release.toml` `[signature]`, a list of keys)
 - [x] 7.2 the release signs `SHA256SUMS` with a key kept as a CI secret
 - [x] 7.3 `install/install.sh` and `install/install.ps1`, published with each release
-- [ ] 7.4 README and the website's docs name the one-liners and the signature
-- [ ] 7.5 a release, on an explicit go; the signature and the one-liner checked live
+- [x] 7.4 README and the website's docs name the one-liners and the signature
+- [x] 7.5 a release, on an explicit go; the signature and the one-liner checked live
 - e2e: one local batch after 7.3, then pushed so CI runs the scripts on macOS and Windows.
-- Open: notarisation and Authenticode (paid accounts), Intel macOS, arm64 Linux and Windows on
-  ARM targets.
+- 2026-10-16: `v0.2.0-6` (deploy 8477a0f) is the first signed release. Its `SHA256SUMS.minisig`
+  verifies with the minisign CLI (trusted comment `crowbot release v0.2.0-6`), and the published
+  `install.sh | sh` installed `crowbot 0.2.0 (v0.2.0-6)` into a throwaway home. The release ran
+  its checks on every target (macOS 474 + 64, Windows 464 + 63 tests). The website's docs
+  (crowbot ba068b2) show the one-liners; its deploy is a separate go.
+- Open: the updater's signature check runs for real only on the release after this one (older
+  installs do not check); notarisation and Authenticode (paid accounts); Intel macOS, arm64
+  Linux and Windows on ARM targets.
 
 **Learned**
 - From 91c1b39 (2026-10-08) to efbb769 every CI job only built: `if: matrix.checks != false`
@@ -503,3 +509,124 @@ with the session (a project's only once trusted); their tools join the registry 
   83 in the re-run) is mostly reads that depend on the one before, so it is not a batching
   candidate yet. Under MANUAL, webfetch (53) and project test runs (`python` 54, `cargo test` 39)
   are now the most asked; both run or fetch what a person should see, so they stay asks.
+
+## M10 — MCP servers found instead of configured (planned 2026-10-17)
+Plan: crowbot uses the MCP servers the user's other apps already list (Claude Desktop, Claude
+Code, Cursor, VS Code, Codex, … in `data/mcp_sources.toml`), asking once, and talks to servers
+over streamable HTTP as well as stdio, so `ida-pro-mcp --install` alone makes IDA's tools
+available. Decided: HTTP is in (IDA's installer writes HTTP entries by default); servers from
+the user's apps are asked about once, default Yes, No never asked again, a changed command asked
+again; a repository's own files (`.mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`) are asked
+separately, default No, per project.
+- [x] 10.1 tests never read the developer's own apps: each run gets its own HOME, USERPROFILE,
+      APPDATA and XDG_CONFIG_HOME; scenarios gain `user_files`
+- [x] 10.2 streamable HTTP servers (`[mcp.x] url = …`): `io::http` response headers, the SSE
+      parser shared, `src/mcp/http.rs` filling the same line channels
+- [x] 10.3 where other clients keep their servers: `data/mcp_sources.toml`, one reader per shape,
+      JSONC and TOML, names made to fit, precedence, fingerprints
+- [x] 10.4 asked once, remembered (`~/.crowbot/mcp.json`), before a session; headless uses what
+      was chosen; `/status` names the source
+- [x] 10.5 a server's `instructions` reach the model in the system prompt
+- [x] 10.6 README and Learned
+- e2e: one local batch after 10.2 and 10.4, each pushed; CI logs checked for `test result` lines.
+  67 after 10.2, 69 after 10.4 (the scenarios count as one test).
+- Open (live, on a machine with IDA Pro): `ida-pro-mcp --install` over HTTP and with
+  `--transport stdio`, the question, and the gateway taking its tools' schemas.
+
+**Learned**
+- IDA's installer writes a streamable-HTTP entry by default, not a program: discovery alone
+  would have found it and failed to reach it, so HTTP came first. Its server answers
+  `initialize` with the version asked and replies in plain JSON with a session header.
+- Most apps share one shape (`mcpServers` → `command`, `args`, `env` or `url`); VS Code
+  (`servers`, JSONC), Codex (TOML) and opencode (`command` as one list) differ. Writing every
+  path as an env template, with an unset variable skipping it, let one list serve all three
+  platforms with no `os` field, and lets tests move every path into a sandbox.
+- A choice is keyed by a fingerprint of what a server runs or reaches, not of its secrets: a
+  rotated token asks nothing, a new program asks again.
+- Unread code fails `-D warnings`, so reading the sources (10.3) could not land before the
+  asking (10.4); they went in as one commit, built and tested in order.
+- `clippy::large_enum_variant` fired only on Windows, where a process holds its job handle.
+- Windows CI, now running its tests, found three more: a refused local connect is retried for
+  seconds there, so io::http called it a timeout ("could not connect" now comes first, with its
+  cause); the bash tool drained its pipes for 250 ms after the shell exited before killing what
+  it left, and a loaded runner lost the last output (leftovers are killed first now, and the
+  pipes read to their end); a stop test timed PowerShell's cold start. CI green on all four
+  targets at fb1f67d, its logs showing the discovery tests on Windows and macOS.
+- CEILINGs: no OAuth, legacy SSE, GET stream or re-handshake after a server restarts; Claude
+  Code plugins and Claude Desktop extensions not read; one answer per question; the 2026-07-28
+  protocol drops `initialize` for `server/discover`, which crowbot does not probe yet.
+
+## M11 — MCP battery (planned 2026-10-17)
+Plan: measure how a cheap model uses MCP tools in crowbot, and what to change where it does not.
+Simulated servers complex enough to trip a model (paged lists, required fields, enums, hex
+addresses, open-first state, long outputs, a transient failure), tasks that need them, and report
+sections about them, on M9's runner. Decided: `deepseek-v4.1-flash` for the full run plus one
+repeat with `glm-5.3-flash-crow` as the reference; four servers (reverse engineering modelled on
+ida-pro-mcp, an issue tracker, a database, a docs search), about 12 tasks × 3, at most $5.
+- [x] 11.1 a data-driven simulated server: `crowbot-fake-mcp --server <file> --record <dir>`,
+      arguments checked against the tool's own schema, every call logged with its outcome
+- [x] 11.2 four simulated servers in `bench/mcp/`
+- [x] 11.3 MCP tasks in the battery runner: suites in `bench/battery.toml`, a task's `mcp`
+      servers in the run's config, `.mcp/` kept with the run, checks on the recorded state
+- [x] 11.4 MCP in the report: outcomes per server and tool, mistakes, one call per reply,
+      repeats, candidates
+- [x] 11.5 the runs: a pilot, the full run, the reference repeat; `bench/mcp-baseline/`
+- [x] 11.6 the findings, ranked, to choose fixes from: the user chose all four (2026-10-17)
+- [x] 11.7 the system prompt names the connected MCP servers and says to answer from their tools
+- [x] 11.8 a reply that writes tool calls as text is asked again once, to make them as calls
+- [x] 11.9 the report's sequences step by reply, so calls made together are one step
+- [x] 11.10 a headless run's prompt says no one will confirm, so make the change
+- [x] 11.11 a re-run with deepseek-v4.1-flash against `bench/mcp-baseline/`
+
+**Runs (2026-10-17, local only in bench/runs/)**
+- Pilot `20261017T125927`: 2 tasks, both done, $0.0005.
+- First full run `20261017T130025` (deepseek-v4.1-flash, 39 runs, $0.0143, 33 done) showed four
+  faults of the battery's own (a check that read a comment already on the issue, an address
+  lookup that matched only a function's start, missing references, a busy retry ranked a
+  mistake); mended in 6a8807e.
+- Clean run `20261017T131132` (deepseek-v4.1-flash, 39 runs, $0.0150, 34 done, 4 ended on API
+  502s): the baseline, `bench/mcp-baseline/`.
+- Reference `20261017T132430` (glm-5.3-flash-crow, 13 runs, $0.0737, 13 done): 6.9 calls per
+  run against flash's 11.7, at about fifteen times the cost.
+
+**Learned**
+- The weak model sent no argument a server refused in 78 runs: required fields, integers, enums
+  and `0x` addresses all as the schemas said. Checking arguments in crowbot before sending
+  buys nothing yet; the CEILING stays.
+- It batches unprompted: 78 searches and 50 issue reads went out several to a reply, against a
+  handful made one reply at a time. A server's "busy, try again" was retried as asked.
+- Its failures are rarer and of another kind, each 1–2 in 78: answering at once without a tool,
+  inventing what "MCP" stands for (the server's instructions were in the prompt); tool calls
+  written into the reply as text, which ends the run; listing what it would change instead of
+  changing it; a prototype copied inexactly (`struct` dropped).
+- A simulator must behave as its description says, or the battery measures the simulator: the
+  address lookup and the missing references cost 8 lookups in the first run.
+- Check what a check selects: "every selected item passes" over a collection that already held
+  data failed two runs that did the task.
+- API 502s ended 4 of 39 runs, as in M9; not an MCP matter.
+
+**Candidates, ranked**
+1. When MCP servers are connected, say so in the system prompt in plain words (their names,
+   that their tools answer questions about what they hold, never to answer from memory): the
+   two runs that answered without a tool.
+2. A reply whose text holds tool calls (`{"tool_calls": …}`) is asked again once, telling the
+   model to make them as calls: one run ended this way.
+3. The report's "in a row" sequences count calls already made together in one reply as a
+   candidate for one call; they should split at reply boundaries (report only).
+4. A headless run that ends listing changes it did not make (one run): a line in the headless
+   prompt that no one will confirm, so act.
+
+**After the fixes (11.7–11.10), re-run against the baseline**
+- A first re-run `20261017T133817` read 39/39, but the simulator still recorded inside the
+  project, so a task that only reads could `cat` the state instead of calling tools. Moving the
+  records out of the model's reach (`{mcp}`, e4caa31) made the next run honest.
+- Clean re-run `20261017T135018` (deepseek-v4.1-flash, 39 runs, 0 ended on an error, $0.0137):
+  against the baseline `20261017T131132`, turns 6.0 vs 7.1 and calls 9.8 vs 11.7 per run, cost
+  350 vs 386 µ$. Done 36/39, against the baseline's 34/39 — but the baseline lost 4 runs to API
+  502s, so on completion the fixes are about level; what moved is the path to the answer, a turn
+  and two calls shorter. The prompt naming the servers meant no run invented what "MCP" is, and
+  the written-call reminder fired 0 times (none wrote its calls as text).
+- The three misses are the weak model, not crowbot: one answered a prototype as text and made no
+  write call; one made the right lookups then declined the task instead of the rename; one
+  searched the tracker many ways but never applied the label. Each is a model giving up at the
+  last write, not a tool it got wrong.

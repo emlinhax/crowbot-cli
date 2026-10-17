@@ -47,7 +47,7 @@ pub struct Session {
     /// Why /undo cannot put files back; `None` when it can.
     pub snapshots_off: Option<String>,
     /// Each MCP server config.toml names, and how it stands.
-    pub mcp: Vec<(String, crate::mcp::State)>,
+    pub mcp: Vec<crate::mcp::Standing>,
 }
 
 impl Ctx<'_> {
