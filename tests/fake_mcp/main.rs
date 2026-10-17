@@ -1,6 +1,7 @@
 //! A stand-in MCP server for crowbot's e2e suite: JSON-RPC over stdin and stdout, one message a
 //! line, offering the tools in `tools()`. `--exit` fails at once, saying so on stderr; `--log
-//! <file>` writes down each message it hears, a line each, for a scenario to read back.
+//! <file>` writes down each message it hears, a line each, for a scenario to read back;
+//! `--instructions <text>` tells the client how to use its tools.
 // A test program talking on stdin and stdout; the io-wrapper rule is for crowbot itself.
 #![allow(clippy::disallowed_methods, clippy::disallowed_macros)]
 
@@ -20,6 +21,11 @@ fn main() {
         .position(|a| a == "--log")
         .and_then(|i| args.get(i + 1))
         .map(|path| File::create(path).expect("the log can be written"));
+    let instructions = args
+        .iter()
+        .position(|a| a == "--instructions")
+        .and_then(|i| args.get(i + 1))
+        .cloned();
     let stdin = std::io::stdin();
     let mut out = std::io::stdout();
     for line in stdin.lock().lines() {
@@ -37,7 +43,8 @@ fn main() {
             Some("initialize") => Ok(json!({
                 "protocolVersion": "2025-06-18",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "fake", "version": "0"}
+                "serverInfo": {"name": "fake", "version": "0"},
+                "instructions": instructions,
             })),
             Some("tools/list") => Ok(json!({"tools": tools()})),
             Some("tools/call") => match call(&message["params"]) {

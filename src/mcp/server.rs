@@ -24,6 +24,8 @@ pub struct Server {
     pub name: String,
     /// The tools it offers: those it listed that its `tools` setting lets through.
     pub tools: Vec<ToolInfo>,
+    /// What it said of how to use them, when it said anything.
+    pub instructions: Option<String>,
     caller: Caller,
     link: Link,
 }
@@ -94,9 +96,10 @@ impl Server {
             Link::Url(_) => None,
         };
         match listed {
-            Ok(tools) => Ok(Self {
+            Ok(introduced) => Ok(Self {
                 name: name.to_owned(),
-                tools: offered(tools, cfg.tools.as_deref()),
+                tools: offered(introduced.tools, cfg.tools.as_deref()),
+                instructions: introduced.instructions,
                 caller: Caller {
                     server: name.to_owned(),
                     rpc: Arc::new(rpc),
@@ -209,8 +212,15 @@ async fn said(why: &str, stderr: Option<&Stderr>) -> String {
     }
 }
 
+/// What a server told crowbot when introduced.
+#[derive(Debug)]
+pub struct Introduced {
+    pub tools: Vec<ToolInfo>,
+    pub instructions: Option<String>,
+}
+
 /// Introduces crowbot, checks the version the server answers with, and lists its tools.
-pub async fn handshake(rpc: &Rpc) -> Result<Vec<ToolInfo>, String> {
+pub async fn handshake(rpc: &Rpc) -> Result<Introduced, String> {
     let wait = limits::get().mcp.start_secs.secs();
     let answer = rpc
         .request("initialize", protocol::initialize(), wait)
@@ -245,7 +255,10 @@ pub async fn handshake(rpc: &Rpc) -> Result<Vec<ToolInfo>, String> {
             break;
         }
     }
-    Ok(tools)
+    Ok(Introduced {
+        tools,
+        instructions: hello.instructions.filter(|text| !text.trim().is_empty()),
+    })
 }
 
 /// An RPC failure in the words /status and the start notice use.
@@ -327,7 +340,7 @@ mod tests {
             "tools/list" => Some(json!({"tools": [{"name": "b"}]})),
             _ => None,
         });
-        let tools = handshake(&rpc).await.unwrap();
+        let tools = handshake(&rpc).await.unwrap().tools;
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(names, ["a", "b"]);
     }
@@ -375,7 +388,7 @@ mod tests {
             "initialize" => Some(hello("2025-06-18")),
             _ => Some(json!({"tools": [{"name": "again"}], "nextCursor": "more"})),
         });
-        let tools = handshake(&rpc).await.unwrap();
+        let tools = handshake(&rpc).await.unwrap().tools;
         assert_eq!(tools.len(), limits::get().mcp.list_pages.value);
     }
 }

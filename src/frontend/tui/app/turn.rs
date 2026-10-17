@@ -56,15 +56,23 @@ pub struct NextTurn {
     /// The effort asked for: the setting until `/effort` changes it.
     pub asked: Option<String>,
     pub system: String,
+    /// What the session's MCP servers said of their tools, kept for each prompt written.
+    servers: Vec<(String, String)>,
 }
 
 impl NextTurn {
-    pub fn new(paths: &Paths, model: Model, asked: Option<String>) -> Self {
-        let system = system_prompt::build(paths, &model.id);
+    pub fn new(
+        paths: &Paths,
+        model: Model,
+        asked: Option<String>,
+        servers: Vec<(String, String)>,
+    ) -> Self {
+        let system = system_prompt::build(paths, &model.id, &servers);
         Self {
             model,
             asked,
             system,
+            servers,
         }
     }
 
@@ -75,12 +83,12 @@ impl NextTurn {
 
     /// Uses `model` from the next turn on, with a prompt written for it.
     pub fn switch(&mut self, paths: &Paths, model: Model) {
-        self.system = system_prompt::build(paths, &model.id);
+        self.system = system_prompt::build(paths, &model.id, &self.servers);
         self.model = model;
     }
 
     /// Writes the prompt again, since what it names (AGENTS.md, the forums) may have changed.
     pub fn reload(&mut self, paths: &Paths) {
-        self.system = system_prompt::build(paths, &self.model.id);
+        self.system = system_prompt::build(paths, &self.model.id, &self.servers);
     }
 }

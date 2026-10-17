@@ -1,7 +1,7 @@
 //! MCP servers the user names in config.toml (`[mcp.<name>]`): started with the session, in
 //! parallel, each within `mcp.start_secs`; those that fail are said once and shown in /status.
-// CEILING: tools only; a server's resources, prompts, sampling, roots and instructions are not
-// used. Upgrade: each as its own capability, behind the same `Server`.
+// CEILING: tools and their instructions only; a server's resources, prompts, sampling and roots
+// are not used. Upgrade: each as its own capability, behind the same `Server`.
 
 pub mod config;
 pub mod discover;
@@ -126,6 +126,14 @@ impl Servers {
                 name,
                 state,
             })
+            .collect()
+    }
+
+    /// What each running server said of how to use its tools, by name.
+    pub fn instructions(&self) -> Vec<(String, String)> {
+        self.running
+            .iter()
+            .filter_map(|s| Some((s.name.clone(), s.instructions.clone()?)))
             .collect()
     }
 

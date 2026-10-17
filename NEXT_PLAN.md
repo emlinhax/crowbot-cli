@@ -526,6 +526,6 @@ separately, default No, per project.
       JSONC and TOML, names made to fit, precedence, fingerprints
 - [x] 10.4 asked once, remembered (`~/.crowbot/mcp.json`), before a session; headless uses what
       was chosen; `/status` names the source
-- [ ] 10.5 a server's `instructions` reach the model in the system prompt
+- [x] 10.5 a server's `instructions` reach the model in the system prompt
 - [ ] 10.6 README and Learned
 - e2e: one local batch after 10.2 and 10.4, each pushed; CI logs checked for `test result` lines.

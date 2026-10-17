@@ -1,0 +1,15 @@
+description = "What an MCP server says of how to use its tools joins the system prompt under its name"
+args = ["-p", "hi"]
+home_files = { "config.toml" = "[mcp.fake]\ncommand = '{fake_mcp}'\nargs = ['--instructions', 'Look before you echo.']\n" }
+
+[[reply]]
+text = "Hello."
+
+[expect]
+exit = 0
+
+[[expect.requests]]
+index = 0
+message = 0
+role = "system"
+contains = "<mcp-server-instructions server=\"fake\">\nLook before you echo.\n</mcp-server-instructions>"

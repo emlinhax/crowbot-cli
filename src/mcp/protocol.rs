@@ -47,6 +47,9 @@ pub fn initialize() -> Value {
 pub struct Initialized {
     #[serde(rename = "protocolVersion")]
     pub protocol_version: String,
+    /// How to use its tools, for the model.
+    #[serde(default)]
+    pub instructions: Option<String>,
 }
 
 /// One page of `tools/list`.
