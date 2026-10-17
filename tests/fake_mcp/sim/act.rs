@@ -42,10 +42,13 @@ pub fn act(tool: &Tool, args: &Item, data: &mut Collections) -> Result<(String, 
     if tool.act == Act::Text {
         return Ok((fill(text(tool), None, args), false));
     }
+    if tool.act == Act::Check {
+        return check(tool, args, data);
+    }
     let name = collection(tool, args, data)?;
     let items = data.entry(name).or_default();
     match tool.act {
-        Act::Text => unreachable!("answered before a collection is looked up"),
+        Act::Text | Act::Check => unreachable!("answered before a collection is looked up"),
         Act::List => list(tool, args, items).map(|answer| (answer, false)),
         Act::Count => Ok((matching(tool, args, items)?.len().to_string(), false)),
         Act::Get => {
@@ -72,6 +75,33 @@ pub fn act(tool: &Tool, args: &Item, data: &mut Collections) -> Result<(String, 
             items.push(item);
             Ok((answer, true))
         }
+    }
+}
+
+/// A `check` act: tests the integer argument against the predicate. A pass is logged to the named
+/// collection, so the recorded state shows it was solved; a reject changes nothing.
+fn check(tool: &Tool, args: &Item, data: &mut Collections) -> Result<(String, bool), Fail> {
+    let spec = tool
+        .check
+        .as_ref()
+        .expect("a check act names its predicate");
+    let value = args.get(&spec.arg).and_then(Value::as_i64).ok_or_else(|| {
+        Fail::new(
+            Outcome::InvalidArgs,
+            format!("`{}` must be an integer", spec.arg),
+        )
+    })?;
+    let got = value
+        .wrapping_mul(spec.a)
+        .wrapping_add(spec.b)
+        .rem_euclid(spec.m);
+    if got == spec.target {
+        let mut item = Item::new();
+        item.insert(spec.field.clone(), Value::from(value));
+        data.entry(spec.into.clone()).or_default().push(item);
+        Ok((fill(&spec.ok, None, args), true))
+    } else {
+        Ok((fill(&spec.no, None, args), false))
     }
 }
 

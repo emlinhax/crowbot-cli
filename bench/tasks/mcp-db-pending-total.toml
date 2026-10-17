@@ -1,0 +1,9 @@
+prompt = "Using the database (MCP server): what is the combined total of all pending orders? Answer with the number."
+repo = "desk"
+mode = "auto"
+turns = 25
+suite = "mcp"
+mcp = ["db"]
+# The four pending orders sum to 3766.5, a value not stored anywhere, so the reply holds it only if
+# the run found them and added them.
+check = "python3 {checks}/reply_number.py {reply} 3766.5"

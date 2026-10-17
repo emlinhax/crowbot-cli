@@ -1,0 +1,21 @@
+# A provisioning server: it publishes the formula that validates a device pairing code (spec) and
+# verifies a candidate (verify). The code is not stored anywhere; it has to be computed from the
+# published formula, so a run must reproduce the check and search for the input rather than read it
+# off — the shape of a solve-for-input task. The accepted code for this fixture is 31337.
+name = "pairing"
+instructions = "Read the provisioning spec, then verify a pairing code."
+
+[[tool]]
+name = "spec"
+description = "The provisioning check: when a pairing code is accepted."
+schema = '{"type": "object", "properties": {}}'
+read_only = true
+act = "text"
+text = "A pairing code is accepted when (code * 48271 + 12345) mod 100000 equals 80672. Codes are integers from 0 to 99999."
+
+[[tool]]
+name = "verify"
+description = "Checks whether a pairing code is accepted by the provisioning formula."
+schema = '{"type": "object", "properties": {"code": {"type": "integer"}}, "required": ["code"], "additionalProperties": false}'
+act = "check"
+check = { arg = "code", a = 48271, b = 12345, m = 100000, target = 80672, into = "unlocked", field = "code", ok = "Accepted: {code} pairs the device.", no = "Rejected: {code} is not accepted." }

@@ -103,13 +103,21 @@ pub fn lead(command: &str, subcommands: &[String]) -> String {
 }
 
 fn matches(smell: &Smell, words: &[&str], command: &str) -> bool {
-    let by_words = smell.words.len() <= words.len()
-        && smell.words.iter().zip(words).all(|(want, got)| want == got);
-    let by_text = smell
-        .contains
-        .as_ref()
-        .is_none_or(|c| command.contains(c.as_str()));
-    (!smell.words.is_empty() || smell.contains.is_some()) && by_words && by_text
+    command_matches(&smell.words, smell.contains.as_deref(), words, command)
+}
+
+/// Whether `command`, whose leading words are `words`, starts with `pat_words` and contains
+/// `pat_contains` — the shape both a smell and a grounding pattern match by.
+pub fn command_matches(
+    pat_words: &[String],
+    pat_contains: Option<&str>,
+    words: &[&str],
+    command: &str,
+) -> bool {
+    let by_words = pat_words.len() <= words.len()
+        && pat_words.iter().zip(words).all(|(want, got)| want == got);
+    let by_text = pat_contains.is_none_or(|c| command.contains(c));
+    (!pat_words.is_empty() || pat_contains.is_some()) && by_words && by_text
 }
 
 #[cfg(test)]
@@ -137,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    fn a_heredoc_is_one_stand_in_and_cat_into_a_file_is_a_write() {
+    fn writing_a_file_with_cat_is_a_smell_but_a_compute_script_is_not() {
         let data = fixture::words();
         let smell = |command: &str| {
             let words = words(command);
@@ -148,7 +156,9 @@ mod tests {
         };
         assert_eq!(smell("cat > /tmp/a.rs <<'EOF'"), Some("cat <<"));
         assert_eq!(smell("cat src/a.rs"), Some("cat"));
-        assert_eq!(smell("python3 - <<'EOF'"), Some("heredoc"));
+        // Scripting to compute or verify is grounding now, not a smell (M12).
+        assert_eq!(smell("python3 - <<'EOF'"), None);
+        assert_eq!(smell("python3 -c 'print(sum(...))'"), None);
         assert_eq!(smell("cargo test"), None);
     }
 

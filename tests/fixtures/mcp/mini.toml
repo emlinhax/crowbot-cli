@@ -1,5 +1,6 @@
-# A small simulated server for the e2e suite: one of each act, a state flag, a paged list and a
-# paged tools/list, so the simulator's every path is driven through crowbot.
+# A small simulated server for the e2e suite: one of each act (including a check predicate), a
+# state flag, a paged list and a paged tools/list, so the simulator's every path is driven through
+# crowbot.
 name = "mini"
 instructions = "Open the store before anything else."
 list_page = 2
@@ -61,3 +62,11 @@ collection = "items"
 key = "id"
 set = { name = "name" }
 text = "Item {id} is now {name}."
+
+[[tool]]
+name = "unlock"
+description = "Unlocks the store with a code; the code is accepted when (code * 3 + 1) mod 10 == 7."
+schema = '{"type": "object", "properties": {"code": {"type": "integer"}}, "required": ["code"], "additionalProperties": false}'
+requires = "open"
+act = "check"
+check = { arg = "code", a = 3, b = 1, m = 10, target = 7, into = "unlocked", field = "code", ok = "Unlocked with {code}.", no = "Rejected {code}." }

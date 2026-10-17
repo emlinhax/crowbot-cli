@@ -86,21 +86,6 @@ words = ["wc", "-l"]
 instead = "grep with a count"
 
 [[smell]]
-label = "python -c"
-words = ["python", "-c"]
-instead = "a tool, not a script for a basic step"
-
-[[smell]]
-label = "python3 -c"
-words = ["python3", "-c"]
-instead = "a tool, not a script for a basic step"
-
-[[smell]]
-label = "node -e"
-words = ["node", "-e"]
-instead = "a tool, not a script for a basic step"
-
-[[smell]]
 label = "awk"
 words = ["awk"]
 instead = "read, grep or edit"
@@ -109,11 +94,6 @@ instead = "read, grep or edit"
 label = "perl"
 words = ["perl"]
 instead = "read, grep or edit"
-
-[[smell]]
-label = "heredoc"
-contains = "<<"
-instead = "a tool, not a script for a basic step"
 
 [[smell]]
 label = "mv"
@@ -135,6 +115,34 @@ label = "mkdir"
 words = ["mkdir"]
 instead = "fs"
 
+# Commands that ground an answer by running or scripting a check — a test, a program, a short
+# script, a debugger — rather than working it out in the head. A command matches the way a smell
+# does: it starts with `words` and contains `contains`. Scripting to compute, search or verify is
+# wanted, which is why these are grounding and no longer smells.
+[[ground]]
+words = ["cargo", "test"]
+
+[[ground]]
+words = ["go", "test"]
+
+[[ground]]
+words = ["pytest"]
+
+[[ground]]
+words = ["python"]
+
+[[ground]]
+words = ["python3"]
+
+[[ground]]
+words = ["node"]
+
+[[ground]]
+words = ["gdb"]
+
+[[ground]]
+words = ["lldb"]
+
 # The report's words. `{…}` are filled in.
 [text]
 title = "# Battery {name}"
@@ -155,6 +163,7 @@ flags = "### Flags"
 filters = "### Pipe filters"
 smells = "### Commands that stand in for a tool"
 smells_columns = ["command", "instead", "count", "example"]
+grounding = "## Empirical grounding (ran or scripted a check vs did not)"
 mcp = "## MCP servers"
 mcp_columns = ["tool", "calls", "worked", "bad arguments", "not found", "not ready", "busy", "no such tool"]
 mistakes = "### Arguments a server refused"
@@ -178,7 +187,8 @@ candidate_sequence = "{n} × {label} in a row: a candidate for one call"
 candidate_mistake = "{n} × `{label}`: crowbot could check arguments against the tool's schema before sending and say what is wrong"
 candidate_reply = "{n} × {label} called once per reply in a row: tell the model independent calls can go in one reply"
 candidate_ready = "{n} × {label} before its server was ready: the model skipped the step the server's instructions name"
+candidate_grounding = "{n} × {label} missed with nothing run or scripted to check the answer: a candidate for grounding it (run it, script it, brute-force it)"
 against = "## Against {name}"
 against_columns = ["per run", "this", "that", "change"]
-against_rows = ["done", "turns", "calls", "bash calls", "stand-ins", "cost (µ$)"]
+against_rows = ["done", "turns", "calls", "bash calls", "stand-ins", "grounded", "cost (µ$)"]
 saved = "Saved to {path}"

@@ -48,6 +48,8 @@ pub enum Act {
     Create,
     /// Only `text`, filled from the arguments.
     Text,
+    /// Accepts or rejects one integer argument against a data-defined predicate (`check`).
+    Check,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
@@ -120,6 +122,9 @@ pub struct Tool {
     pub requires: Option<String>,
     #[serde(default)]
     pub sets: Option<String>,
+    /// For a `check` act: the predicate a candidate argument is tested against.
+    #[serde(default)]
+    pub check: Option<CheckSpec>,
     /// The first call fails with this, as a busy server's would.
     #[serde(default)]
     pub fail_first: Option<String>,
@@ -152,6 +157,26 @@ pub struct Page {
 pub enum PageKind {
     Offset,
     Cursor,
+}
+
+/// A `check` act's predicate: the integer argument `arg` is accepted when
+/// `(arg * a + b) mod m == target`, as a disassembled key check would read. A passing candidate is
+/// logged to the `into` collection as `{field: value}`, so a recorded run shows it was solved.
+// CEILING: one predicate shape (affine-mod over a single integer argument). Upgrade path: a small
+// expression language if a task ever needs another shape.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CheckSpec {
+    pub arg: String,
+    pub a: i64,
+    pub b: i64,
+    pub m: i64,
+    pub target: i64,
+    pub into: String,
+    pub field: String,
+    /// What the tool answers on a pass and on a reject.
+    pub ok: String,
+    pub no: String,
 }
 
 pub fn load(path: &Path) -> Definition {
