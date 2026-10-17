@@ -93,7 +93,10 @@ fn corpus_is_well_formed() {
             rest = rest.replace(known, "");
         }
         assert!(
-            !rest.contains("{reply") && !rest.contains("{plan") && !rest.contains("{checks"),
+            !rest.contains("{reply")
+                && !rest.contains("{plan")
+                && !rest.contains("{checks")
+                && !rest.contains("{mcp"),
             "{at}: placeholder"
         );
     }
@@ -227,9 +230,9 @@ async fn an_mcp_task_runs_its_simulated_servers_and_keeps_their_records() {
         .collect();
     assert_eq!(outcomes, ["not ok", "ok"], "{calls}");
     assert!(read("mcp/db.json").contains("\"status\": \"paid\""));
-    // The records are the run's own, not changes to its project.
+    // The records are kept beside the project, out of the model's reach and out of its diff.
     assert!(
-        !read("diff.patch").contains(".mcp"),
+        !read("diff.patch").contains("calls.jsonl"),
         "{}",
         read("diff.patch")
     );

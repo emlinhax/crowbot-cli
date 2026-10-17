@@ -4,4 +4,4 @@ mode = "auto"
 turns = 20
 suite = "mcp"
 mcp = ["re"]
-check = "python3 {checks}/mcp_state.py .mcp/re.json 'functions[address=0x401890].prototype' '~' 'parse_header(const char *buf, int len, struct header *hdr)'"
+check = "python3 {checks}/mcp_state.py {mcp}/re.json 'functions[address=0x401890].prototype' '~' 'parse_header(const char *buf, int len, struct header *hdr)'"

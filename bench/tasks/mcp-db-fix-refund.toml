@@ -4,4 +4,4 @@ mode = "auto"
 turns = 20
 suite = "mcp"
 mcp = ["db"]
-check = "python3 {checks}/mcp_state.py .mcp/db.json 'orders[id=1017].status' == paid"
+check = "python3 {checks}/mcp_state.py {mcp}/db.json 'orders[id=1017].status' == paid"

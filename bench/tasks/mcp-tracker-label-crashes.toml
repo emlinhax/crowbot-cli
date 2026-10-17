@@ -4,4 +4,4 @@ mode = "auto"
 turns = 40
 suite = "mcp"
 mcp = ["tracker"]
-check = "python3 {checks}/mcp_state.py .mcp/tracker.json 'issues[number=4].labels' has crash && python3 {checks}/mcp_state.py .mcp/tracker.json 'issues[number=4].labels' has bug && python3 {checks}/mcp_state.py .mcp/tracker.json 'issues[number=11].labels' has crash && python3 {checks}/mcp_state.py .mcp/tracker.json 'issues[number=19].labels' has crash && python3 {checks}/mcp_state.py .mcp/tracker.json 'issues[number=27].labels' has crash && python3 {checks}/mcp_state.py .mcp/tracker.json 'issues[number=27].labels' has performance"
+check = "python3 {checks}/mcp_state.py {mcp}/tracker.json 'issues[number=4].labels' has crash && python3 {checks}/mcp_state.py {mcp}/tracker.json 'issues[number=4].labels' has bug && python3 {checks}/mcp_state.py {mcp}/tracker.json 'issues[number=11].labels' has crash && python3 {checks}/mcp_state.py {mcp}/tracker.json 'issues[number=19].labels' has crash && python3 {checks}/mcp_state.py {mcp}/tracker.json 'issues[number=27].labels' has crash && python3 {checks}/mcp_state.py {mcp}/tracker.json 'issues[number=27].labels' has performance"

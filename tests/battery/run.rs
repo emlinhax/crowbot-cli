@@ -87,11 +87,9 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
         std::fs::create_dir_all(&cache)?;
         std::fs::write(cache.join("models.json"), models)?;
     }
-    std::fs::write(home.path().join("config.toml"), config(task))?;
-    // What the simulated servers record is read from the run's folder, not its diff.
-    let exclude = copy.join(".git/info");
-    std::fs::create_dir_all(&exclude)?;
-    std::fs::write(exclude.join("exclude"), format!("/{RECORDS}/\n"))?;
+    // Beside the copy, not in it: the model reaches the servers' data through their tools only.
+    let records = parent.path().join("mcp");
+    std::fs::write(home.path().join("config.toml"), config(task, &records))?;
 
     let watched = watch(battery, repo, task, home.path(), &copy).await?;
 
@@ -110,7 +108,7 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
     let reply = dir.join("reply.txt");
     record::save(&dir, "reply.txt", &watched.reply, key)?;
     let check = cmd::sh(
-        &check_line(&task.check, &reply, &plan),
+        &check_line(&task.check, &reply, &plan, &records),
         &copy,
         &repo.env(),
         settings.check_secs.secs(),
@@ -130,7 +128,6 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
     if let Ok(text) = std::fs::read_to_string(&plan) {
         record::save(&dir, "plan.md", &text, key)?;
     }
-    let records = copy.join(RECORDS);
     if records.is_dir() {
         let kept = dir.join("mcp");
         std::fs::create_dir_all(&kept)?;
@@ -157,36 +154,34 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
     })
 }
 
-/// Where in the copy the simulated MCP servers keep their state and calls, for the check to read;
-/// they are kept in the run's `mcp/` folder.
-const RECORDS: &str = ".mcp";
-
 /// The run's crowbot config: none of the servers the machine's own apps list (the runs keep the
-/// real HOME for the repos' builds), and the task's simulated servers, recording into the copy.
-fn config(task: &Task) -> String {
+/// real HOME for the repos' builds), and the task's simulated servers, recording into `records`.
+fn config(task: &Task, records: &Path) -> String {
     let mut text = String::from("mcp_discovery = false\n");
     let simulator = slashes(Path::new(env!("CARGO_BIN_EXE_crowbot-fake-mcp")));
+    let records = slashes(records);
     for server in &task.mcp {
         let file = slashes(&corpus::mcp_server(server));
         text.push_str(&format!(
             "\n[mcp.{server}]\ncommand = '{simulator}'\n\
-             args = ['--server', '{file}', '--record', '{RECORDS}']\n"
+             args = ['--server', '{file}', '--record', '{records}']\n"
         ));
     }
     text
 }
 
 /// A task's check line with its placeholders filled, each quoted for `sh`: `{reply}` is a file
-/// holding the run's last reply, `{plan}` its plan file (absent when it wrote none) and
-/// `{checks}` bench/checks/.
-pub fn check_line(check: &str, reply: &Path, plan: &Path) -> String {
+/// holding the run's last reply, `{plan}` its plan file (absent when it wrote none), `{checks}`
+/// bench/checks/ and `{mcp}` the folder its simulated servers recorded into.
+pub fn check_line(check: &str, reply: &Path, plan: &Path, mcp: &Path) -> String {
     check
         .replace("{reply}", &quote(reply))
         .replace("{plan}", &quote(plan))
         .replace("{checks}", &quote(&bench().join("checks")))
+        .replace("{mcp}", &quote(mcp))
 }
 
-pub const PLACEHOLDERS: &[&str] = &["{reply}", "{plan}", "{checks}"];
+pub const PLACEHOLDERS: &[&str] = &["{reply}", "{plan}", "{checks}", "{mcp}"];
 
 fn quote(path: &Path) -> String {
     format!("'{}'", slashes(path).replace('\'', r"'\''"))

@@ -4,4 +4,4 @@ mode = "auto"
 turns = 30
 suite = "mcp"
 mcp = ["re"]
-check = "python3 {checks}/mcp_state.py .mcp/re.json 'functions[address=0x401890].name' == check_header"
+check = "python3 {checks}/mcp_state.py {mcp}/re.json 'functions[address=0x401890].name' == check_header"

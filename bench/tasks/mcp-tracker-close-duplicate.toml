@@ -4,4 +4,4 @@ mode = "auto"
 turns = 25
 suite = "mcp"
 mcp = ["tracker"]
-check = "python3 {checks}/mcp_state.py .mcp/tracker.json 'comments[issue=23][author=crowbot].body' '~' 'duplicate of #12' && python3 {checks}/mcp_state.py .mcp/tracker.json 'issues[number=23].state' == closed"
+check = "python3 {checks}/mcp_state.py {mcp}/tracker.json 'comments[issue=23][author=crowbot].body' '~' 'duplicate of #12' && python3 {checks}/mcp_state.py {mcp}/tracker.json 'issues[number=23].state' == closed"

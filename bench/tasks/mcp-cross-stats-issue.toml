@@ -4,4 +4,4 @@ mode = "auto"
 turns = 30
 suite = "mcp"
 mcp = ["re", "tracker"]
-check = "python3 {checks}/mcp_state.py .mcp/tracker.json 'issues[title~Document the stats reply].body' '~' lines"
+check = "python3 {checks}/mcp_state.py {mcp}/tracker.json 'issues[title~Document the stats reply].body' '~' lines"
