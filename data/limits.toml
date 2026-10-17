@@ -253,8 +253,8 @@ value = 600
 reason = "the longest a model may ask to wait on one command"
 
 [tools.bash_drain_ms]
-value = 250
-reason = "after the shell exits, output still in flight gets this long before the pipes close"
+value = 2000
+reason = "once the command and all it started are ended, its pipes close; only one that escaped the tree keeps them open this long"
 
 [tools.bash_memory_bytes]
 value = 262144

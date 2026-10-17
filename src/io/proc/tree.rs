@@ -75,9 +75,12 @@ pub async fn run(
             () = cancel.cancelled() => break Ended::Cancelled,
         }
     };
-    if !matches!(ended, Ended::Exited(_)) {
-        tree.kill();
-    }
+    // What the command left running ends with it, so the pipes close once their last writer is
+    // gone and what is still in them is read to the end, however slow the reader (a loaded
+    // Windows); `drain` bounds only a process that escaped the tree.
+    // CEILING: background processes (dev servers) die with the command; running one detached
+    // would need its own lifecycle and output channel.
+    tree.kill();
     let drain = tokio::time::sleep(cmd.drain);
     tokio::pin!(drain);
     loop {
@@ -89,9 +92,6 @@ pub async fn run(
             () = &mut drain => break,
         }
     }
-    // CEILING: background processes (dev servers) die with the command; running one detached
-    // would need its own lifecycle and output channel.
-    tree.kill();
     Ok(ended)
 }
 
@@ -146,7 +146,7 @@ mod tests {
                 env: &[],
                 unset,
                 timeout,
-                drain: Duration::from_millis(200),
+                drain: Duration::from_secs(2),
             },
             cancel,
             &mut |chunk| output.extend_from_slice(chunk),
