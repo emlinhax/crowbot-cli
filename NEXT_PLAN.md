@@ -638,16 +638,40 @@ no fallback when it isn't (seen testing the IDA MCP on Windows and in this sessi
 The analyzer even penalises scripting as a smell. So: a prompt principle to run/script/verify
 instead of computing in the head, the analyzer reclassified to reward it, compute/keygen battery
 tasks, and a measured before/after (deepseek-v4.1-flash, a crow-2 reference) the M11 way.
-- [ ] 12.1 the system prompt: when an answer turns on a computation, a search or multi-step logic,
+- [x] 12.1 the system prompt: when an answer turns on a computation, a search or multi-step logic,
       make it checkable (run it, script it, brute-force it, debug it), not in the head
-- [ ] 12.2 the prompt says each bash runs in the project dir and shell state does not persist, so
+- [x] 12.2 the prompt says each bash runs in the project dir and shell state does not persist, so
       no re-`cd` and multi-step shell work goes in one command
-- [ ] 12.3 a solve-for-input op for the simulator: a new `Act::Check` evaluates a data-defined
+- [x] 12.3 a solve-for-input op for the simulator: a new `Act::Check` evaluates a data-defined
       arithmetic predicate over an argument and accepts or rejects it
-- [ ] 12.4 compute/search + keygen tasks in the battery (sum over pages, a search, a pairing code
+- [x] 12.4 compute/search + keygen tasks in the battery (sum over pages, a search, a pairing code
       from a published formula), neutrally themed
-- [ ] 12.5 the report rewards grounding: a signal and candidate for runs that answered without
+- [x] 12.5 the report rewards grounding: a signal and candidate for runs that answered without
       running or scripting a check; the python/node/heredoc smells dropped
-- [ ] 12.6 a measured before/after on the mcp suite, plus a crow-2 reference
-- [ ] 12.7 the findings to the user, and the Windows enablers to check (python on PATH, IDA's
+- [x] 12.6 a measured before/after on the mcp suite, plus a crow-2 reference
+- [x] 12.7 the findings to the user, and the Windows enablers to check (python on PATH, IDA's
       debug path)
+
+**Runs (2026-10-17, local only in bench/runs/; ~$0.20 total, within the mcp cap)**
+- Pilot `20261017T160854` (new prompt, mcp-pairing-code): the model scripted a modular inverse,
+  got 46642, `verify` rejected it, re-read the spec, brute-forced 0..100000 in a script, found
+  31337, `verify` accepted. The script plus the oracle caught an answer the inverse got wrong.
+- Before `20261017T161022` (old prompt, deepseek-v4.1-flash, four compute/keygen tasks, 12 runs,
+  all done, $0.0035): 3 of 12 grounded.
+- After `20261017T161229` (new prompt, same tasks, 12 runs, all done, $0.0033): 10 of 12 grounded.
+  Against the before, per run: grounded 0.8 vs 0.2 (+0.6), bash calls 0.8 vs 0.2, done 1.0 vs 1.0,
+  cost 272 vs 292 µ$.
+- Reference `20261017T161522` (crow-2, new prompt, four tasks, all done, $0.19): 2 of 4 grounded —
+  it scripts the big sum and the keygen but does the two small sums in its head.
+
+**Learned**
+- The prompt line reliably moves a weak model to grounding on compute tasks: 3 → 10 of 12 runs,
+  with no done-rate regression and slightly lower cost. What changed is the method, not the score.
+- On these tasks done was already 1.0: the sums are small enough that deepseek adds them in its
+  head correctly, so the prompt changed how it answered, not whether. The payoff shows where
+  mental math fails — the keygen, where even a scripted inverse was wrong and the `verify` oracle
+  saved it. A harder sum would turn the method gain into a score gain too.
+- The strong model is selective: it scripts the big or hard computation and does the trivial one by
+  hand — the conditional behaviour the prompt intends, not "always script".
+- No ungrounded-miss candidate fired, because nothing missed; the candidate is for a run that
+  missed having run or scripted nothing.
