@@ -18,9 +18,9 @@ pub fn render(block: &Block, open: bool, width: usize) -> Vec<Line> {
         Block::Notice { text, role } => {
             Line::styled(text, Style::fg(role)).wrap(width, &Line::default())
         }
-        Block::Tool { arguments, result } => {
-            calls::finished(&result.name, arguments, result, width)
-        }
+        Block::Tool {
+            arguments, result, ..
+        } => calls::finished(&result.name, arguments, result, width),
         Block::Thinking { text, secs } => {
             let words = &ui::get().thinking;
             let header = match secs {

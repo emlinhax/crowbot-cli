@@ -756,3 +756,11 @@ on three downloaded Linux x86-64 crackmes of rising difficulty:
 - Conclusion: within "free speedups only", crowbot is already a fast, reliable RE CLI for weak
   models; the remaining wall-time is per-turn latency (generation + upstream queue). The vault/vault2
   `re` suite stays as the committed timed regression guard.
+
+## M15 — Batched calls shown grouped, and orient before speculating (2026-10-18)
+- [x] 15.1 the TUI stacks a reply's tool calls with no blank between them (a batch reads as one
+      group), keeping the blank above the first; `Block::Tool { first }` set from the `MessageEnd`
+      boundary, the blank skipped for continuation calls in `Feed::measure`, mirrored in replay
+- [x] 15.2 the prompt: start a task by orienting (fetch the link, read the named files, check the
+      working dir and `git status`) instead of theorizing; ask when the request is unclear or needs
+      info only the user has
