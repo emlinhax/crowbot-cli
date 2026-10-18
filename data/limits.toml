@@ -180,6 +180,14 @@ reason = "the same call three times in a row is a loop, not persistence (opencod
 value = 32768
 reason = "a project's AGENTS.md is a few KiB; more would crowd every request it rides on"
 
+[agent.verify_attempts]
+value = 2
+reason = "verify-then-fix cycles before a run ends regardless; more risks looping on a check the model cannot satisfy"
+
+[agent.verify_timeout_secs]
+value = 300
+reason = "the project's own test or build check; a few minutes covers a cold build before something is wrong"
+
 [session.slug_chars]
 value = 96
 reason = "a project's session folder is named from its path; this keeps the name well under filesystem limits"

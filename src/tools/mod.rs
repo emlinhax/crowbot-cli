@@ -20,6 +20,7 @@ mod todowrite;
 mod webfetch;
 mod write;
 
+pub use bash::shell;
 pub use target::plan_file;
 pub use task::NAME as TASK;
 

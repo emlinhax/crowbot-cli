@@ -818,7 +818,9 @@ grounding (auto-verify). In progress.
 - [x] 17.4 decompile tool: a `decompile` tool wrapping kuna, PATH-or-install (name a function to
       decompile it, or omit it to list the binary's functions; without kuna it returns the install
       path, objdump the fallback). Validated end-to-end against the stripped `vault` fixture.
-- [ ] 17.5 extend grounding (auto-verify): **designed, awaiting go to build.** See the design below.
+- [~] 17.5 extend grounding (auto-verify): **mechanism built (configured-or-skip, off by default),
+      unit + integration tested; live benchmark measurement still to do.** Design below; built as
+      designed (settings.verify, src/agent/verify.rs, run.rs ~181, trust-gated for free).
 
 ### 17.5 design — auto-verify (configured-or-skip)
 Catch "declared done but broken": when a top-level run that changed files would end, run the
