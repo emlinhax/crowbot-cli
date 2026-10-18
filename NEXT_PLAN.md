@@ -818,7 +818,33 @@ grounding (auto-verify). In progress.
 - [x] 17.4 decompile tool: a `decompile` tool wrapping kuna, PATH-or-install (name a function to
       decompile it, or omit it to list the binary's functions; without kuna it returns the install
       path, objdump the fallback). Validated end-to-end against the stripped `vault` fixture.
-- [ ] 17.5 extend grounding (auto-verify): not started.
+- [ ] 17.5 extend grounding (auto-verify): **designed, awaiting go to build.** See the design below.
+
+### 17.5 design — auto-verify (configured-or-skip)
+Catch "declared done but broken": when a top-level run that changed files would end, run the
+project's configured check; a failure is handed back so the model fixes it. Harness-enforced, not a
+prompt nudge a weak model ignores.
+- **Command source (decided): configured-or-skip.** A new `verify` setting (crowbot config /
+  AGENTS.md). Set → run it; unset → skip entirely, never guess. **Off by default, so shipping the
+  mechanism changes nothing until a project opts in** (zero-risk ship; the opt-in benefit is measured
+  before recommending it on).
+- **Trust: free.** `verify` is not in trust.toml `untrusted_keys` (only model/effort are), so an
+  untrusted repo's `verify` is dropped by `trust::admit` — only the user's own or a trusted folder's
+  config can set the command crowbot auto-runs. No malicious-repo auto-exec.
+- **Integration (no new machinery):** run.rs ~181, where `drain_follow` decides end-vs-continue.
+  When the run would be `Done`, call `verify::failure(...)`; on a failure it returns a follow-up
+  (the existing `Part::Reminder`/`deliver` path) and the run continues; on pass/none it ends.
+- **Gate:** top-level (`parent.is_none()`), changed files (`run.before.get().is_some()`, set in
+  batch.rs:88), a `verify` command set, under a retry cap. Only a clean nonzero exit counts as
+  failure (timeout/signal/cancel → skip, so an inconclusive check never loops).
+- **New data/limits:** `settings.verify: Option<String>`; `agent.verify_attempts` (cap 2),
+  `agent.verify_timeout_secs` (300); `model_text.verify_failed`. Shell reuse via a `pub use
+  bash::shell` re-export (write-it-once). New file `src/agent/verify.rs`.
+- **Scope honesty:** a code-task lever (tests/lint after edits); RE already has M12 "run it" and a
+  task-specific success check, so auto-verify won't change RE much.
+- **Measurement:** code suite with `verify` ON (per-repo check from bench/repos.toml) vs OFF
+  (have it: deepseek 14/16; the 2 failures, ufo-fix-join, are the target case). Win = solve rate up,
+  turns not blown up, no loops. Needs battery per-task `verify` config injection (a small follow-up).
 
 **Code comparison (2026-10-18, 8-task subset, 2 repeats, ~$0.22)** — does deepseek hold on code?
 | model | solve | turns | wall | $/run |
