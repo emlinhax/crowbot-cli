@@ -777,6 +777,28 @@ held.
       heuristic in bash), killing the cd-spam; the "don't re-cd" line dropped
 - [x] 16.3 recommended-tools note: a short, evidence-based prompt section (kuna decompiler per
       decbench.com, requests/httpx over urllib, ripgrep, pwndbg, …) + a full reference doc
-- [ ] 16.4 revisit batching: re-measure after 16.1-16.3; a targeted fix only if a serial pattern
+- [x] 16.4 revisit batching: re-measured; no clear one-call-per-reply pattern to target (code tasks are near-minimal), so no nudge added — M14 showed those do not land anyway
       remains
-- [ ] 16.5 measured before/after on the keygenme + re suite (deepseek + glm-flash)
+- [x] 16.5 measured before/after on a code recon task and the keygenme; kept all three
+
+**Measured (2026-10-18, local; ~$0.3 total)**
+Built pre-M16 (M15) and M16 binaries and ran them back-to-back to control for API-latency drift.
+- Code recon task ("summarize the project + its git state"), M15 → M16:
+  - crow-2 (strong, N=3): turns 3.3 → 3.0, calls 4.3 → 3.7, recon 3.3 → 2.7 — it trusts the
+    handed-over listing/git and skips recon.
+  - deepseek-v4.1-flash (weak, N=5): turns 3.8 → 3.4, calls 5.2 → 5.0, recon 4.4 → 4.6 — flat; it
+    re-does its own recon regardless.
+  - cd-prefix ≈ 0 for both: on a normal repo task the model does not `cd`.
+- Keygenme (N=1 each): M15 36 turns, M16 45; both solved correctly. Variance is enormous (earlier
+  runs were 20/36/45 turns), so this is noise. There the model `cd`-prefixed 44/53 calls under M16 —
+  the cd-spam is a work-in-a-subdir artifact, and the model re-`cd`s by habit even with cwd
+  persisting.
+
+**Learned**
+- A (pre-orient) helps the *stronger* model (and the default glm-flash is strong) by letting it skip
+  recon; the weakest model is flat (sticky habit of re-looking). Kept.
+- B (persist cwd) shows no measured turn/call win — cd-spam is rare (keygenme-only) and behavioural
+  where it occurs — but cwd now persists, which is correct, so kept as hygiene.
+- C (tool note) is tool-choice guidance, not a turn lever; unmeasured but low-risk; kept.
+- Consistent with M14: a weak model's tool-use habits (recon, cd, one-call-per-reply) are sticky;
+  harness nudges move the turn count only for stronger models. The model is the floor.
