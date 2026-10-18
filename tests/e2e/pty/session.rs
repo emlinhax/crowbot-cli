@@ -11,7 +11,7 @@ async fn a_session_welcomes_chats_switches_mode_and_quits() {
     let ended = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         // The message bar and the rule under it, with the model, sit at the bottom from the start.
         assert!(
-            s.bottom_row().contains("glm-5.3-flash-crow"),
+            s.bottom_row().contains("deepseek-v4.1-flash"),
             "{}",
             s.contents()
         );
@@ -35,7 +35,9 @@ async fn a_doubled_slash_sends_a_message_that_starts_with_a_slash() {
     })
     .await;
     let bodies = fake.chat_bodies();
-    assert_eq!(bodies[0]["messages"][1]["content"], "/etc/hosts is odd");
+    // The first user message is prefixed with the opening orientation reminder.
+    let first_user = bodies[0]["messages"][1]["content"].as_str().unwrap();
+    assert!(first_user.ends_with("/etc/hosts is odd"), "{first_user}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -1,0 +1,8 @@
+prompt = "Reverse the ./vault binary in this folder and find the passcode it accepts. Report the exact passcode."
+repo = "crackme"
+mode = "auto"
+turns = 40
+suite = "re"
+# The passcode is not in the binary (only the key and target arrays are), so the reply holds it
+# only if the run reversed the three checks and recovered it.
+check = "grep -qF '7Qx!9pL2#aK4' {reply}"

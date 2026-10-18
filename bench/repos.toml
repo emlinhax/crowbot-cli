@@ -38,3 +38,10 @@ test = "true"
 id = "desk"
 fixture = "tests/fixtures/projects/desk"
 test = "true"
+
+# A reverse-engineering challenge binary for the `re` suite: the stripped `vault` ELF, reversed with
+# bash (objdump/gdb/python). Only the binary ships in the fixture; its source is in bench/benchmarks/.
+[[repo]]
+id = "crackme"
+fixture = "tests/fixtures/projects/crackme"
+test = "true"

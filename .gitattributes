@@ -1,3 +1,6 @@
 * text=auto eol=lf
 # Edit goldens test line endings and BOMs byte for byte.
 tests/golden/** -text
+
+# RE benchmark binaries are reversed byte-for-byte; never normalise them.
+tests/fixtures/projects/crackme/vault* binary

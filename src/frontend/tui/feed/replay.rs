@@ -7,15 +7,19 @@ impl Feed {
     pub fn replay(&mut self, messages: &[Message]) {
         // A tool card shows the call's arguments, which the reply before its result carries.
         let mut arguments = Vec::new();
+        // The results of one reply are consecutive; group them as a batch, as the live feed does.
+        let mut batch_open = false;
         for message in messages {
             match message {
                 Message::User { parts } => {
+                    batch_open = false;
                     let text = Part::text_of(parts);
                     if !text.trim().is_empty() {
                         self.user(&text);
                     }
                 }
                 Message::Assistant(reply) => {
+                    batch_open = false;
                     for part in &reply.parts {
                         match part {
                             Part::Reasoning { text } if !text.trim().is_empty() => {
@@ -45,9 +49,12 @@ impl Feed {
                         .find(|(id, _)| *id == result.call_id)
                         .map(|(_, a)| a.clone())
                         .unwrap_or_default();
+                    let first = !batch_open;
+                    batch_open = true;
                     self.push(Block::Tool {
                         arguments,
                         result: result.clone(),
+                        first,
                     });
                 }
             }

@@ -15,10 +15,13 @@ async fn print_streams_the_reply_and_records_the_session() {
     assert_eq!(run.success().stdout(), "Hello there!\n");
 
     let body = &fake.chat_bodies()[0];
-    assert_eq!(body["model"], "glm-5.3-flash-crow");
+    assert_eq!(body["model"], "deepseek-v4.1-flash");
     assert_eq!(body["stream"], true);
     assert_eq!(body["messages"][0]["role"], "system");
-    assert_eq!(body["messages"][1]["content"], "hi there");
+    // The first user message carries the opening orientation reminder, then the prompt.
+    let first_user = body["messages"][1]["content"].as_str().unwrap();
+    assert!(first_user.ends_with("hi there"), "{first_user}");
+    assert!(first_user.contains("<workspace>"), "{first_user}");
 
     let sessions = sandbox.sessions();
     assert_eq!(sessions.len(), 1);
@@ -33,8 +36,8 @@ async fn print_streams_the_reply_and_records_the_session() {
     assert_eq!(reply["role"], "assistant");
     assert_eq!(reply["parts"][0]["type"], "reasoning");
     assert_eq!(reply["request_id"], "req_fake");
-    // 600 uncached * $0.20 + 400 cached * $0.10 + 100 out * $0.60, in micro-dollars
-    assert_eq!(reply["usage"]["cost_micros"], 220);
+    // 600 uncached * $0.03 + 400 cached * $0.0006 + 100 out * $0.12, in micro-dollars (rounded)
+    assert_eq!(reply["usage"]["cost_micros"], 30);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -68,7 +71,7 @@ async fn continue_goes_on_with_the_latest_session_in_its_own_file() {
     // One header, then two prompts and their replies, each prompt with what it was sent under.
     assert_eq!(text.lines().count(), 5);
     assert_eq!(
-        text.matches(r#""state":{"model":"glm-5.3-flash-crow""#)
+        text.matches(r#""state":{"model":"deepseek-v4.1-flash""#)
             .count(),
         2
     );

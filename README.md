@@ -266,6 +266,10 @@ and remembers a yes in `~/.crowbot/trusted.json`; a headless run ignores those s
 note on stderr). Permanent allowances go in `~/.crowbot/config.toml`, e.g. `permission = "bash"`,
 `pattern = "cargo *"`, `action = "allow"`.
 
+A `verify` command (e.g. `verify = "make test"`) runs when a run that changed files would end; a
+failure is handed back for the model to fix, capped so it cannot loop. It is off unless set, and
+only your own or a trusted folder's config may set what crowbot auto-runs.
+
 ## Checks
 
 GNU make (see the Makefile's first line).

@@ -190,6 +190,8 @@ pub struct AgentLimits {
     pub max_turns: Limit<u32>,
     pub doom_loop_repeats: Limit<usize>,
     pub instructions_bytes: Limit<usize>,
+    pub verify_attempts: Limit<u32>,
+    pub verify_timeout_secs: Limit<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -216,6 +218,7 @@ pub struct ToolLimits {
     pub bash_spill_max_bytes: Limit<usize>,
     pub bash_spill_keep_days: Limit<u64>,
     pub webfetch_max_bytes: Limit<usize>,
+    pub decompile_timeout_secs: Limit<u64>,
 }
 
 #[derive(Debug, Deserialize)]

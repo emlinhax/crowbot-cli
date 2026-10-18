@@ -30,6 +30,11 @@ pub struct Settings {
     /// A shell to run commands in, overriding the search in data/shells.toml.
     #[serde(default)]
     pub shell: Option<String>,
+    /// A command crowbot runs when a run that changed files would end, to catch "done but broken";
+    /// its failure is handed back so the model fixes it. Unset = off. Not an untrusted-settable key
+    /// (see trust.toml), so only the user's own or a trusted folder's config sets what auto-runs.
+    #[serde(default)]
+    pub verify: Option<String>,
     /// MCP servers to start with the session, by name.
     #[serde(default, deserialize_with = "crate::mcp::config::servers")]
     pub mcp: std::collections::BTreeMap<String, crate::mcp::config::Server>,

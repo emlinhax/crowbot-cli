@@ -1,0 +1,4 @@
+# What decompile tells the model; {placeholders} are filled in.
+no_kuna = "kuna (the decompiler) is not on PATH. Get the single binary for this platform from https://github.com/Noelo-Lab/kuna/releases/latest and put it on PATH, then retry; or read the disassembly with objdump in the meantime."
+failed = "kuna could not {action} {binary}: {error}"
+no_output = "kuna returned nothing for {binary}; check the path and that it is a binary."

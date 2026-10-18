@@ -682,3 +682,228 @@ tasks, and a measured before/after (deepseek-v4.1-flash, a crow-2 reference) the
 - [x] 13.2 the model and effort a session chose are remembered in ~/.crowbot/prefs.json and apply
       next session, above the config files and below a one-off --model/--effort flag
       (src/config/prefs.rs, layered in settings::load; written from the TUI's picker and /effort)
+
+## M14 — Fast reversing for weak models (planned 2026-10-18)
+Plan: measure where a weak model's reverse-engineering wall-time goes, then cut it without dropping
+the solve rate. Probes found wall-time is round-trips (one model call per step; tools in a reply
+already run concurrently), caching is already tuned, and the battery records wall_ms. $10 cap; free
+speedups only (round-trips + a sharper RE recipe, no effort/quality trade-offs).
+- [x] 14.1 a reproducible harder-RE benchmark: a stripped `vault` ELF (three staged checks, a
+      per-index transform), reversed with bash; a `crackme` fixture repo and a `re` suite
+      (deepseek-v4.1-flash); only the binary ships, its source stays in bench/benchmarks/
+- [x] 14.2 baseline the weak model(s) and build a timeline of where the seconds go (round-trips,
+      tool-calls-per-reply, wasted turns), ranking the free-speedup levers
+- [x] 14.3 cut round-trips: tried, no measured win, reverted —: sharpen the guidance so independent reads/searches go out in one reply
+- [x] 14.4 RE workflow recipe: not needed — M12 grounding already makes weak models follow it; no unproven prompt additions
+- [x] 14.5 findings reported; the `re` suite kept as a timed regression guard
+
+**Baseline (2026-10-18, bench/runs/, within the $10 cap)**
+- vault pilot `20261018T093526` and vault2 pilot `20261018T093828`: deepseek solved each in 6-7
+  turns / ~26s — orient, strings, objdump, a python keygen, verify. The chained vault2 was no
+  slower; the model reads the arrays from .rodata and inverts them.
+- deepseek `20261018T094003` (6/6 done): mean wall ~31s, turns 6.5, calls/reply ~1.5.
+- glm-5.3-flash-crow `20261018T094205` (6/6 done): mean wall 57.7s, turns 6.8, calls/reply 1.28,
+  but wall ranged 31-130s. The 130s run had only 7 turns, so its time was per-turn latency
+  (generation + upstream queue), not extra round-trips.
+
+**Learned**
+- Both weak models already reverse these reliably and fast (6-8 round-trips, always solved); the
+  M12 grounding did the heavy lifting (they script and verify at once, no flailing). There is no
+  pool of slow or failed runs to optimize against.
+- The one free, controllable lever is batching: glm-flash is inconsistent (some runs one call per
+  reply, 0 batched), and the recon phase (file -> strings -> objdump) often serializes across turns
+  when it could be one reply. Per-turn latency (the 130s outlier) is off the table under
+  "free speedups only".
+
+**14.3 batching nudge — measured, reverted**
+- Sharpened the Explore bullet to name the round-trip cost and cover bash inspections. Measured on
+  glm-5.3-flash-crow (n=6 each): before wall 57.7s / turns 6.8 / calls-per-reply 1.28; after wall
+  45.8s / turns 7.2 / calls-per-reply 1.15. Turns rose and batching fell — no win; the wall drop was
+  just the absence of a latency outlier. Reverted (no prompt change without proof, as M11/M12).
+
+**Learned (M14 so far)**
+- Within "free speedups only", crowbot is already near-optimal for weak-model RE on these crackmes:
+  both models sit at the round-trip floor (6-8 turns: orient, disassemble, script the inversion,
+  verify) and always solve. The grounding from M12 is what makes that happen.
+- The remaining wall-time is per-turn latency (model generation + upstream queue), not round-trips —
+  the 131s glm run had only 7 turns. Cutting that means lowering reasoning effort or picking a
+  faster model, both quality trade-offs the user ruled out. So the honest next decision is the
+  user's: keep "free only" (benchmark stands as a regression guard, little more to win) or open the
+  door to effort/model trade-offs ("speed first"), or raise difficulty (a gdb-only/obfuscated rung)
+  to expose waste where weak models actually struggle.
+
+**Overfitting check — three third-party crackmes (crackmes.one, local only, not committed)**
+To be sure we were not overfitting to the vault style, ran deepseek-v4.1-flash (the cheapest model)
+on three downloaded Linux x86-64 crackmes of rising difficulty:
+- lvl1 `wheredakey` (stack-strcat + strcmp, overlapping-immediate writes): solved, 9 turns / 47s —
+  iterated candidates against the binary to resolve the byte overlap.
+- lvl3 `crackme` (UPX-packed, needs GLIBC_2.38 > the host's 2.35): solved, 16 turns / 84s — it
+  recognised UPX, downloaded the upx tool and unpacked, patched the ELF's scanf version record to
+  run on the older glibc, then read the flag by running it. The plaintext .rodata string was a
+  decoy it saw through; the real flag was a quote.
+- lvl5 `reapermaze` (self-decrypting code: a decoy FNV hash, then an xorshift-keystream-decrypted
+  blob mmap'd RWX and called): solved, 8 turns / 31s — reproduced the xorshift in python, decrypted
+  the blob statically, read the key.
+
+**Learned (M14 complete)**
+- No overfitting: 5/5 solved across vault, vault2 and the three downloads (strcmp, packing+ABI
+  patching, self-modifying code), each in 30-90s, on the cheapest weak model.
+- The weak model is strikingly resourceful: it downloads a missing tool (upx) and patches a binary
+  for ABI compatibility on its own. M12 grounding generalises far past "run the binary".
+- The only inefficiency seen is a `cd <abspath>` prefix on nearly every bash call (lvl3, 19/21),
+  which the M12.2 note did not prevent — but it rides inside single bash calls, so it costs
+  characters, not round-trips. Not a wall-time lever.
+- Conclusion: within "free speedups only", crowbot is already a fast, reliable RE CLI for weak
+  models; the remaining wall-time is per-turn latency (generation + upstream queue). The vault/vault2
+  `re` suite stays as the committed timed regression guard.
+
+## M15 — Batched calls shown grouped, and orient before speculating (2026-10-18)
+- [x] 15.1 the TUI stacks a reply's tool calls with no blank between them (a batch reads as one
+      group), keeping the blank above the first; `Block::Tool { first }` set from the `MessageEnd`
+      boundary, the blank skipped for continuation calls in `Feed::measure`, mirrored in replay
+- [x] 15.2 the prompt: start a task by orienting (fetch the link, read the named files, check the
+      working dir and `git status`) instead of theorizing; ask when the request is unclear or needs
+      info only the user has
+
+## M16 — Fewer turns: pre-orient, persist cwd, best-tool note, batching (2026-10-18)
+Plan: cut turns/tool-calls. Sessions showed the model burns opening turns discovering the
+environment (the <env> block gives only cwd/OS/date/model) and re-`cd`s the full path on every bash
+call (27/27 in the keygenme). $10 cap; measured before/after on the keygenme + re suite, solve rate
+held.
+- [x] 16.1 pre-orient: the first turn is handed a top-level listing + git branch/status/recent
+      commits, as a `Part::Reminder` on the first prompt (once per conversation, top-level runs),
+      so the model starts from facts (src/agent/orient.rs, data/prompts/orient.md, run.rs)
+- [x] 16.2 persist bash cwd: a `cd` carries to the next call (Shared.cwd + a guarded leading-`cd`
+      heuristic in bash), killing the cd-spam; the "don't re-cd" line dropped
+- [x] 16.3 recommended-tools note: a short, evidence-based prompt section (kuna decompiler per
+      decbench.com, requests/httpx over urllib, ripgrep, pwndbg, …) + a full reference doc
+- [x] 16.4 revisit batching: re-measured; no clear one-call-per-reply pattern to target (code tasks are near-minimal), so no nudge added — M14 showed those do not land anyway
+      remains
+- [x] 16.5 measured before/after on a code recon task and the keygenme; kept all three
+
+**Measured (2026-10-18, local; ~$0.3 total)**
+Built pre-M16 (M15) and M16 binaries and ran them back-to-back to control for API-latency drift.
+- Code recon task ("summarize the project + its git state"), M15 → M16:
+  - crow-2 (strong, N=3): turns 3.3 → 3.0, calls 4.3 → 3.7, recon 3.3 → 2.7 — it trusts the
+    handed-over listing/git and skips recon.
+  - deepseek-v4.1-flash (weak, N=5): turns 3.8 → 3.4, calls 5.2 → 5.0, recon 4.4 → 4.6 — flat; it
+    re-does its own recon regardless.
+  - cd-prefix ≈ 0 for both: on a normal repo task the model does not `cd`.
+- Keygenme (N=1 each): M15 36 turns, M16 45; both solved correctly. Variance is enormous (earlier
+  runs were 20/36/45 turns), so this is noise. There the model `cd`-prefixed 44/53 calls under M16 —
+  the cd-spam is a work-in-a-subdir artifact, and the model re-`cd`s by habit even with cwd
+  persisting.
+
+**Learned**
+- A (pre-orient) helps the *stronger* model (and the default glm-flash is strong) by letting it skip
+  recon; the weakest model is flat (sticky habit of re-looking). Kept.
+- B (persist cwd) shows no measured turn/call win — cd-spam is rare (keygenme-only) and behavioural
+  where it occurs — but cwd now persists, which is correct, so kept as hygiene.
+- C (tool note) is tool-choice guidance, not a turn lever; unmeasured but low-risk; kept.
+- Consistent with M14: a weak model's tool-use habits (recon, cd, one-call-per-reply) are sticky;
+  harness nudges move the turn count only for stronger models. The model is the floor.
+
+## M17 — Raise the floor: model benchmark, structural tools, grounding (2026-10-18)
+The M16 finding ("the model is the floor") sets the direction: before more harness nudges a weak
+model ignores, find the best floor and give the model structural capabilities it can't fumble.
+Three strands: a model/effort benchmark, structural tools (webfetch, a decompiler), and stronger
+grounding (auto-verify). In progress.
+
+- [x] 17.1 model benchmark: every account model on the re suite, 3 repeats, default effort, timed.
+- [x] 17.2 fix surfaced by the benchmark: a stream chunk with a null array field (gemini-3.8-flash
+      sends `"tool_calls": null`) no longer drops the run (src/api/wire.rs, `null_as_default`).
+- [x] 17.3 webfetch: no change needed — already browser-impersonating. The M16 research read
+      src/io/http.rs (the API client, UA `crowbot/<ver>`) and missed src/io/fetch.rs, which uses
+      `cffetch::CfClient` (full TLS fingerprint + per-profile cookie jars + a firewall signal).
+- [x] 17.4 decompile tool: a `decompile` tool wrapping kuna, PATH-or-install (name a function to
+      decompile it, or omit it to list the binary's functions; without kuna it returns the install
+      path, objdump the fallback). Validated end-to-end against the stripped `vault` fixture.
+- [x] 17.5 extend grounding (auto-verify): **built, tested, measured.** Mechanism as designed
+      (configured-or-skip, off by default, trust-gated; settings.verify, src/agent/verify.rs, run.rs
+      ~181). Measured verify-on vs -off on the code subset — no solve-rate gain, ~2x wall time (see
+      Measured below). Kept as an opt-in; not recommended on by default.
+
+### 17.5 design — auto-verify (configured-or-skip)
+Catch "declared done but broken": when a top-level run that changed files would end, run the
+project's configured check; a failure is handed back so the model fixes it. Harness-enforced, not a
+prompt nudge a weak model ignores.
+- **Command source (decided): configured-or-skip.** A new `verify` setting (crowbot config /
+  AGENTS.md). Set → run it; unset → skip entirely, never guess. **Off by default, so shipping the
+  mechanism changes nothing until a project opts in** (zero-risk ship; the opt-in benefit is measured
+  before recommending it on).
+- **Trust: free.** `verify` is not in trust.toml `untrusted_keys` (only model/effort are), so an
+  untrusted repo's `verify` is dropped by `trust::admit` — only the user's own or a trusted folder's
+  config can set the command crowbot auto-runs. No malicious-repo auto-exec.
+- **Integration (no new machinery):** run.rs ~181, where `drain_follow` decides end-vs-continue.
+  When the run would be `Done`, call `verify::failure(...)`; on a failure it returns a follow-up
+  (the existing `Part::Reminder`/`deliver` path) and the run continues; on pass/none it ends.
+- **Gate:** top-level (`parent.is_none()`), changed files (`run.before.get().is_some()`, set in
+  batch.rs:88), a `verify` command set, under a retry cap. Only a clean nonzero exit counts as
+  failure (timeout/signal/cancel → skip, so an inconclusive check never loops).
+- **New data/limits:** `settings.verify: Option<String>`; `agent.verify_attempts` (cap 2),
+  `agent.verify_timeout_secs` (300); `model_text.verify_failed`. Shell reuse via a `pub use
+  bash::shell` re-export (write-it-once). New file `src/agent/verify.rs`.
+- **Scope honesty:** a code-task lever (tests/lint after edits); RE already has M12 "run it" and a
+  task-specific success check, so auto-verify won't change RE much.
+- **Measurement:** code suite with `verify` ON (per-repo check from bench/repos.toml) vs OFF
+  (have it: deepseek 14/16; the 2 failures, ufo-fix-join, are the target case). Win = solve rate up,
+  turns not blown up, no loops. Needs battery per-task `verify` config injection (a small follow-up).
+
+**Measured (2026-10-18, deepseek-v4.1-flash, 8-task code subset, 2 repeats, BATTERY_VERIFY=1)**
+- Solve: 13/16 verify-on vs 14/16 off — the one difference is a flaky 2-turn early-stop
+  (mi-fix-rstrip #1, exit 1, no verify involvement), so effectively flat / within noise.
+- ufo-fix-join (the target "declared done but broken" case): still 0/2, turns up 10/14 -> 14/19 —
+  verify fired (the fix cycles ran) but the model could not fix it even with the failure fed back,
+  so it hit the cap and ended failed.
+- Wall time ~2x (39s -> 75s avg): verify runs the project's whole test suite each time (mi-add-nth-
+  last reached ~180s).
+- **Verdict:** no solve-rate gain on this corpus, real wall-time cost. Consistent with "the model is
+  the floor": auto-verify only helps when the model declares done with a failure it *can* fix given
+  feedback — ~empty here (the model either already passed or could not fix regardless). Shipped as a
+  correct, safe opt-in (off by default); not recommended on by default. It would help a stronger
+  model that makes a careless-but-fixable slip, or a project whose check catches a class the model
+  routinely forgets.
+
+**Code comparison (2026-10-18, 8-task subset, 2 repeats, ~$0.22)** — does deepseek hold on code?
+| model | solve | turns | wall | $/run |
+| --- | --- | --- | --- | --- |
+| deepseek-v4.1-flash | 14/16 | 5.9 | 39s | 0.0006 |
+| glm-5.3-flash-crow *(current default)* | 14/16 | 7.0 | 79s | 0.0131 |
+Both failed the *same* task (ufo-fix-join, 2/2); on every task both solved, deepseek used
+equal-or-fewer turns. deepseek wins on code too: same solve rate, fewer turns, 2x faster, ~20x
+cheaper. **Default flipped to deepseek-v4.1-flash** (data/defaults.toml) on this evidence; the user
+chose the flip over keeping the UNCENSORED glm default (deepseek refused none of the RE tasks, and
+the model stays user-overridable). The fake server's models fixture gained deepseek; the json
+goldens moved to deepseek pricing.
+
+**Finding (prompt note → wrong install):** a benchmark model, told to "use kuna", ran
+`uv/pip install kuna` and got the unrelated PyPI package, not the decompiler (a GitHub-release
+binary). 17.4's tool and note now point at the tool and the right source.
+
+**Measured (2026-10-18, re suite, 3 repeats/model, ~$2.93 total, under the $10 cap)**
+Turns is the metric (solved runs); solve = the task's own passcode check.
+
+| model | solve | turns | wall | $/run | out $/1M |
+| --- | --- | --- | --- | --- | --- |
+| deepseek-v4.1-flash | 6/6 | 6.5 | 26s | 0.0007 | 0.12 |
+| kimi-k3 | 6/6 | 6.5 | 53s | 0.0048 | 1.35 |
+| mimo-2.6-flash-crow | 6/6 | 7.0 | 26s | 0.0464 | 1.50 |
+| gpt-6.1-sol | 6/6 | 7.7 | 40s | 0.0047 | 0.90 |
+| glm-5.3-flash-crow *(current default)* | 6/6 | 9.2 | 99s | 0.0137 | 0.60 |
+| crow-2 *(old default)* | 6/6 | 10.5 | 32s | 0.1281 | 5.00 |
+| gemini-3.8-flash *(after 17.2 fix)* | 4/6 | 7.5 | 39s | 0.0047 | 0.34 |
+| qwen-3.8-crow | 4/6 | 16.8 | 184s | 0.2701 | 1.00 |
+| gemini-4-argon | 3/6 | 6.7 | 60s | 0.0148 | 1.70 |
+
+**Learned**
+- deepseek-v4.1-flash wins the re suite outright: 100% solve, fewest turns (tied with kimi-k3),
+  cheapest by ~20x against the current default, and fastest. The cheapest model is also the most
+  turn-efficient at reversing — it reinforces M14's "deepseek carries RE".
+- The current default glm-5.3-flash-crow is mid-pack on RE (9.2 turns, 99s); crow-2 (the old
+  default) solves but takes more turns than the cheap models and costs ~180x deepseek.
+- gemini-3.8-flash was not weak, it was broken (17.2): 0/6 all `bad_stream`, now 4/6.
+- gemini-4-argon (3/6) and qwen-3.8-crow (4/6) genuinely underperform (they finish `done` with a
+  wrong answer, or run long) — not a harness fault.
+- deepseek held on the code suite too (above), so the global default was flipped to it. Still open
+  as possible follow-ups: an effort sweep on the top few models may move turns further, and the code
+  battery suite still names glm-flash (could track the default). Neither is blocking.

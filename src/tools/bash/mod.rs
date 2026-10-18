@@ -3,7 +3,7 @@
 pub mod shell;
 mod spill;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -93,13 +93,18 @@ impl Tool for Bash {
                 .timeout
                 .unwrap_or(limits.bash_timeout_secs.value)
                 .clamp(1, limits.bash_max_timeout_secs.value);
+            // Where the last call left the shell (a `cd` that stuck), else the project root.
+            let cwd = cx
+                .shared
+                .cwd()
+                .unwrap_or_else(|| cx.app.paths.project.clone());
             let mut sink = Sink::new(cx.app.paths.tmp_dir());
             let ended = proc::run(
                 &ShellCommand {
                     program,
                     args: &self.shell.args,
                     command: &args.command,
-                    cwd: &cx.app.paths.project,
+                    cwd: &cwd,
                     env: &self.shell.env,
                     unset: &self.shell.unset,
                     timeout: Duration::from_secs(secs),
@@ -115,6 +120,10 @@ impl Tool for Bash {
                     &[("shell", &self.shell.name), ("error", &e.to_string())],
                 )
             })?;
+            // A leading `cd` carries to the next call, so the model need not repeat it.
+            if let Some(next) = next_cwd(&args.command, &cwd) {
+                cx.shared.set_cwd(next);
+            }
             Ok(self.report(&sink, ended, secs, &cx.app.paths.tmp_dir()))
         })
     }
@@ -200,6 +209,30 @@ impl Bash {
     }
 }
 
+/// Where a `cd` as the command's first statement leaves the shell, so the next call starts there.
+/// CEILING: only a leading, unquoted `cd <dir>`; a `cd` later in the command, or a path with spaces
+/// or shell expansion, is not tracked — the model just repeats it, as it did before.
+fn next_cwd(command: &str, current: &Path) -> Option<PathBuf> {
+    let first = permission::bash::split::split(command)
+        .commands
+        .into_iter()
+        .next()?;
+    let mut words = first.split_whitespace();
+    if words.next()? != "cd" {
+        return None;
+    }
+    let target = words.next().filter(|w| !w.starts_with('-'))?;
+    if words.next().is_some() {
+        return None;
+    }
+    let joined = match Path::new(target).is_absolute() {
+        true => PathBuf::from(target),
+        false => current.join(target),
+    };
+    let path = crate::io::fs::canonical(&joined);
+    crate::io::fs::is_dir(&path).then_some(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,6 +247,24 @@ mod tests {
             )
             .unwrap()
             .asks
+    }
+
+    #[test]
+    fn a_leading_cd_moves_the_working_directory_for_the_next_call() {
+        let root = tempfile::tempdir().unwrap();
+        let sub = root.path().join("sub");
+        crate::io::fs::make_dir(&sub).unwrap();
+        let canon = crate::io::fs::canonical(&sub);
+        // Absolute and relative `cd` both land on the subdir.
+        assert_eq!(
+            next_cwd(&format!("cd {} && ls", sub.display()), root.path()),
+            Some(canon.clone())
+        );
+        assert_eq!(next_cwd("cd sub && ls -la", root.path()), Some(canon));
+        // No `cd`, a missing dir, or a non-plain `cd` leave it unchanged.
+        assert_eq!(next_cwd("objdump -d x", root.path()), None);
+        assert_eq!(next_cwd("cd nope && x", root.path()), None);
+        assert_eq!(next_cwd("cd -", root.path()), None);
     }
 
     #[test]

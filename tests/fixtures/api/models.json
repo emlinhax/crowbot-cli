@@ -2,15 +2,15 @@
   "object": "list",
   "data": [
     {
-      "id": "glm-5.3-flash-crow",
+      "id": "deepseek-v4.1-flash",
       "object": "model",
       "owned_by": "crowbot",
-      "display_name": "GLM 5.3 Flash [UNCENSORED]",
+      "display_name": "DeepSeek V4.1 Flash",
       "description": "Fixture copy of the default.",
       "context_window": 1000000,
-      "max_output_tokens": 32768,
-      "pricing": { "input_per_1m_usd": 0.2, "cached_input_per_1m_usd": 0.1, "output_per_1m_usd": 0.6 },
-      "capabilities": { "streaming": true, "reasoning": true, "tool_calling": true, "temperature": true, "caching": false }
+      "max_output_tokens": 128000,
+      "pricing": { "input_per_1m_usd": 0.03, "cached_input_per_1m_usd": 0.0006, "output_per_1m_usd": 0.12 },
+      "capabilities": { "streaming": true, "reasoning": true, "tool_calling": true, "temperature": true, "caching": true }
     },
     {
       "id": "fake-coder",
@@ -22,6 +22,17 @@
       "max_output_tokens": 8192,
       "pricing": { "input_per_1m_usd": 0.1, "cached_input_per_1m_usd": 0.01, "output_per_1m_usd": 0.5 },
       "capabilities": { "streaming": true, "reasoning": false, "tool_calling": true, "temperature": true, "caching": true }
+    },
+    {
+      "id": "glm-5.3-flash-crow",
+      "object": "model",
+      "owned_by": "crowbot",
+      "display_name": "GLM 5.3 Flash [UNCENSORED]",
+      "description": "Fixture copy of a flash model.",
+      "context_window": 1000000,
+      "max_output_tokens": 32768,
+      "pricing": { "input_per_1m_usd": 0.2, "cached_input_per_1m_usd": 0.1, "output_per_1m_usd": 0.6 },
+      "capabilities": { "streaming": true, "reasoning": true, "tool_calling": true, "temperature": true, "caching": false }
     },
     {
       "id": "crow-2",

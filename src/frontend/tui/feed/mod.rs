@@ -36,6 +36,9 @@ pub enum Block {
     Tool {
         arguments: String,
         result: ToolResult,
+        /// The first call of its reply; a batch's later calls (`false`) stack with no blank above,
+        /// so several calls made in one reply read as one group.
+        first: bool,
     },
     Thinking {
         text: String,
@@ -92,6 +95,9 @@ pub struct Feed {
     compacting: (bool, bool),
     /// The model's context window, to tell a reply cut off by it from one out of output.
     window: u64,
+    /// Whether a tool call has been pushed since the last reply boundary, so a reply's later
+    /// calls stack under its first without a blank between them.
+    batch_open: bool,
 }
 
 impl Feed {
@@ -110,6 +116,7 @@ impl Feed {
             running: Vec::new(),
             compacting: (false, false),
             window: 0,
+            batch_open: false,
         }
     }
 
@@ -247,6 +254,8 @@ impl Feed {
                 self.finish_reasoning(now);
                 self.finish_text();
                 self.outcome_of(message);
+                // A reply's tools follow its MessageEnd; the next one starts a fresh batch.
+                self.batch_open = false;
             }
             AgentEvent::ToolStart {
                 call_id,
@@ -266,9 +275,12 @@ impl Feed {
                     .position(|r| r.call_id == result.call_id)
                     .map(|i| self.running.remove(i).arguments)
                     .unwrap_or_default();
+                let first = !self.batch_open;
+                self.batch_open = true;
                 self.push(Block::Tool {
                     arguments,
                     result: result.clone(),
+                    first,
                 });
             }
             AgentEvent::Unsaved { path, error } => {
@@ -279,6 +291,7 @@ impl Feed {
                 self.finish_reasoning(now);
                 self.finish_text();
                 self.running.clear();
+                self.batch_open = false;
                 let note = match outcome {
                     Outcome::Aborted => Some(words::get().interrupted.clone()),
                     Outcome::Rejected => Some(ui::get().text.declined.clone()),
@@ -329,7 +342,9 @@ impl Feed {
         let mut row = 0;
         self.starts.clear();
         for (i, entry) in self.entries.iter_mut().enumerate() {
-            if i > 0 {
+            // A batch's later calls stack directly under its first, with no blank between them.
+            let batched = matches!(entry.block, Block::Tool { first: false, .. });
+            if i > 0 && !batched {
                 row += 1;
             }
             self.starts.push(row);
@@ -706,6 +721,52 @@ mod tests {
         let narrow = feed.measure(20, now);
         assert!(narrow > wide, "{narrow} vs {wide}");
         assert_eq!(feed.rows(1, 3).len(), 2);
+    }
+
+    #[test]
+    fn calls_batched_in_one_reply_stack_but_a_new_reply_keeps_its_blank() {
+        let now = crate::io::clock::instant();
+        let mut feed = Feed::new();
+        let start = |id: &str, cmd: &str| AgentEvent::ToolStart {
+            call_id: id.into(),
+            name: "bash".into(),
+            arguments: format!(r#"{{"command":"{cmd}"}}"#),
+        };
+        let done = |id: &str, out: &str| AgentEvent::ToolEnd {
+            result: ToolResult {
+                call_id: id.into(),
+                name: "bash".into(),
+                content: out.into(),
+                is_error: false,
+                details: None,
+                asks: Vec::new(),
+                refused: None,
+                usage: None,
+            },
+        };
+        feed.event(&delta(DeltaKind::Text, "Reading."), now);
+        feed.event(&end(None, Finish::ToolCalls), now); // reply ends; its calls are one batch
+        feed.event(&start("c1", "one"), now);
+        feed.event(&done("c1", "1"), now);
+        feed.event(&start("c2", "two"), now);
+        feed.event(&done("c2", "2"), now); // same reply: stacks under c1, no blank
+        feed.event(&end(None, Finish::ToolCalls), now); // a new, tool-only reply
+        feed.event(&start("c3", "three"), now);
+        feed.event(&done("c3", "3"), now); // new batch: blank above
+        assert_eq!(
+            texts(&mut feed, now),
+            [
+                "◆ Reading.",
+                "",
+                "● bash one",
+                "  1",
+                "● bash two",
+                "  2",
+                "",
+                "● bash three",
+                "  3",
+            ]
+        );
     }
 
     #[test]

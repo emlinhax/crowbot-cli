@@ -5,7 +5,9 @@ use crate::agent::batch::{self, Batch};
 use crate::agent::compact::{self, Why};
 use crate::agent::context;
 use crate::agent::model_text;
+use crate::agent::orient;
 use crate::agent::overflow;
+use crate::agent::verify;
 use crate::agent::written;
 use crate::agent::{Run, RunCtx};
 use crate::api::chat::{self, Turn};
@@ -50,6 +52,20 @@ pub(crate) async fn run_under(
         slots: tokio::sync::Semaphore::new(limits::get().subagent.parallel.value),
     };
     let cancel = &run.cancel;
+    // Hand the model the working directory and repo state on the first turn, so it starts from
+    // facts instead of spending turns discovering them (or guessing). Once per conversation,
+    // top-level runs only; rides on the first prompt, never the cached system prompt.
+    let prompt = match parent.is_none() && shared.orient_once() {
+        true => {
+            let text = orient::snapshot(&cx.app.paths).await;
+            let mut parts = prompt;
+            if !text.is_empty() {
+                parts.insert(0, Part::Reminder { text });
+            }
+            parts
+        }
+        false => prompt,
+    };
     say(&run, transcript, prompt);
     let prompt_id = transcript.last_id().unwrap_or_default().to_owned();
     let mut snapped = false;
@@ -59,6 +75,9 @@ pub(crate) async fn run_under(
         None => limits::get().agent.max_turns.value,
     };
     let mut turns = 0;
+    // How many times the configured check ran and failed this run; capped so a check the model
+    // cannot satisfy ends the run rather than looping it.
+    let mut verified = 0;
     // One summary-and-send-again per run, and none after one failed: a model that cannot
     // summarise would only fail again.
     let (mut sent_again, mut summary_failed) = (false, false);
@@ -165,6 +184,23 @@ pub(crate) async fn run_under(
         }
         let queued = shared.drain_follow();
         if queued.is_empty() {
+            // Before ending: if a check is configured and this run changed files, run it; a failure
+            // is handed back so the model fixes it rather than ending broken (capped, so no loop).
+            let changed = run.before.get().is_some();
+            if let Some(parts) = verify::failure(
+                &cx.app.settings,
+                &cx.app.paths,
+                cancel,
+                changed,
+                parent.is_none(),
+                verified,
+            )
+            .await
+            {
+                verified += 1;
+                deliver(&run, transcript, parts);
+                continue;
+            }
             break Outcome::Done;
         }
         for parts in queued {
@@ -374,6 +410,44 @@ mod tests {
         let requests = h.requests();
         assert_eq!(requests.len(), 2);
         assert_eq!(last_message(&requests[1])["content"], "and then?");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failing_check_continues_the_run_until_the_model_fixes_it() {
+        // The model changes a file and stops; the configured check fails until an `ok.flag` exists,
+        // so its failure is handed back; the model creates the flag, the check passes, the run ends.
+        // Needs git: the changed-files gate rides on the run's snapshot (shadow), which is off
+        // without a work tree.
+        let scripted = vec![
+            reply(
+                "",
+                &[("c1", "write", json!({"path": "work.txt", "content": "x"}))],
+                "tool_calls",
+            ),
+            text("I think I'm done."),
+            reply(
+                "",
+                &[("c2", "write", json!({"path": "ok.flag", "content": "x"}))],
+                "tool_calls",
+            ),
+            text("Fixed and done."),
+        ];
+        let Some(mut h) = Harness::new(scripted).await.with_git().await else {
+            return; // no git on this machine
+        };
+        h.app.settings.verify = Some("test -f ok.flag".into());
+        let (ended, _, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let sent = h
+            .requests()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<String>();
+        assert!(
+            sent.contains("test -f ok.flag") && sent.contains("failed after your changes"),
+            "the failing check should have been handed back: {sent}"
+        );
     }
 
     #[tokio::test]

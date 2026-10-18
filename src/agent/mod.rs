@@ -7,12 +7,14 @@ pub mod context;
 pub mod doom_loop;
 pub mod kinds;
 pub mod model_text;
+pub mod orient;
 pub mod overflow;
 pub mod run;
 pub mod setup;
 pub mod system_prompt;
 #[cfg(test)]
 pub mod testing;
+pub mod verify;
 pub mod written;
 
 use tokio_util::sync::CancellationToken;
