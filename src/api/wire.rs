@@ -169,9 +169,20 @@ impl WireMessage {
     }
 }
 
+/// Some gateways send an empty array field as `null` rather than omitting it (gemini-3.8-flash does
+/// this for `tool_calls`); `#[serde(default)]` alone covers a missing field but not a present null,
+/// which would otherwise error "invalid type: null, expected a sequence" and drop the whole stream.
+fn null_as_default<'de, D, T>(de: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de> + Default,
+{
+    Ok(Option::<T>::deserialize(de)?.unwrap_or_default())
+}
+
 #[derive(Debug, Default, Deserialize)]
 pub struct Chunk {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub choices: Vec<Choice>,
     #[serde(default)]
     pub usage: Option<WireUsage>,
@@ -194,7 +205,7 @@ pub struct ChoiceDelta {
     pub content: Option<String>,
     #[serde(default)]
     pub reasoning_content: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub tool_calls: Vec<ToolCallDelta>,
 }
 
@@ -380,6 +391,20 @@ mod tests {
             "{\"path\": \"a.rs\"}"
         );
         assert_eq!(json["tool_calls"][0]["type"], "function");
+    }
+
+    #[test]
+    fn a_null_array_field_is_read_as_empty_not_a_broken_stream() {
+        // gemini-3.8-flash streams `"tool_calls": null` in a content delta; a plain `Vec` default
+        // only covers the field being absent, so without null-tolerance the whole stream is dropped.
+        let chunk: Chunk =
+            serde_json::from_str(r#"{"choices":[{"delta":{"content":"hi","tool_calls":null}}]}"#)
+                .expect("a null tool_calls must parse");
+        assert!(chunk.choices[0].delta.tool_calls.is_empty());
+        assert_eq!(chunk.choices[0].delta.content.as_deref(), Some("hi"));
+        let empty: Chunk =
+            serde_json::from_str(r#"{"choices":null}"#).expect("a null choices must parse");
+        assert!(empty.choices.is_empty());
     }
 
     #[test]
