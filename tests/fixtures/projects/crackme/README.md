@@ -1,6 +1,9 @@
-# vault
+# challenge binaries
 
-A reverse-engineering challenge binary. `./vault <passcode>` accepts exactly one passcode
-and prints "Access granted. Vault unlocked."; everything else is denied.
+Reverse-engineering challenges. Each takes one passcode on the command line and prints
+"Access granted. Vault unlocked." for the right one, "Access denied." otherwise.
 
-The passcode is not stored in the binary — recover it by reversing `./vault`.
+- `./vault`  — recover its passcode by reversing it.
+- `./vault2` — harder: a two-round, chained check.
+
+The passcodes are not stored in the binaries; recover them by reversing.
