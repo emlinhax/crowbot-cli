@@ -691,8 +691,43 @@ speedups only (round-trips + a sharper RE recipe, no effort/quality trade-offs).
 - [x] 14.1 a reproducible harder-RE benchmark: a stripped `vault` ELF (three staged checks, a
       per-index transform), reversed with bash; a `crackme` fixture repo and a `re` suite
       (deepseek-v4.1-flash); only the binary ships, its source stays in bench/benchmarks/
-- [ ] 14.2 baseline the weak model(s) and build a timeline of where the seconds go (round-trips,
+- [x] 14.2 baseline the weak model(s) and build a timeline of where the seconds go (round-trips,
       tool-calls-per-reply, wasted turns), ranking the free-speedup levers
-- [ ] 14.3 cut round-trips: sharpen the guidance so independent reads/searches go out in one reply
+- [x] 14.3 cut round-trips: tried, no measured win, reverted —: sharpen the guidance so independent reads/searches go out in one reply
 - [ ] 14.4 a sharper RE workflow recipe (find the check, reproduce it, script it, verify)
 - [ ] 14.5 the findings, keeping the `re` suite as a timed regression guard
+
+**Baseline (2026-10-18, bench/runs/, within the $10 cap)**
+- vault pilot `20261018T093526` and vault2 pilot `20261018T093828`: deepseek solved each in 6-7
+  turns / ~26s — orient, strings, objdump, a python keygen, verify. The chained vault2 was no
+  slower; the model reads the arrays from .rodata and inverts them.
+- deepseek `20261018T094003` (6/6 done): mean wall ~31s, turns 6.5, calls/reply ~1.5.
+- glm-5.3-flash-crow `20261018T094205` (6/6 done): mean wall 57.7s, turns 6.8, calls/reply 1.28,
+  but wall ranged 31-130s. The 130s run had only 7 turns, so its time was per-turn latency
+  (generation + upstream queue), not extra round-trips.
+
+**Learned**
+- Both weak models already reverse these reliably and fast (6-8 round-trips, always solved); the
+  M12 grounding did the heavy lifting (they script and verify at once, no flailing). There is no
+  pool of slow or failed runs to optimize against.
+- The one free, controllable lever is batching: glm-flash is inconsistent (some runs one call per
+  reply, 0 batched), and the recon phase (file -> strings -> objdump) often serializes across turns
+  when it could be one reply. Per-turn latency (the 130s outlier) is off the table under
+  "free speedups only".
+
+**14.3 batching nudge — measured, reverted**
+- Sharpened the Explore bullet to name the round-trip cost and cover bash inspections. Measured on
+  glm-5.3-flash-crow (n=6 each): before wall 57.7s / turns 6.8 / calls-per-reply 1.28; after wall
+  45.8s / turns 7.2 / calls-per-reply 1.15. Turns rose and batching fell — no win; the wall drop was
+  just the absence of a latency outlier. Reverted (no prompt change without proof, as M11/M12).
+
+**Learned (M14 so far)**
+- Within "free speedups only", crowbot is already near-optimal for weak-model RE on these crackmes:
+  both models sit at the round-trip floor (6-8 turns: orient, disassemble, script the inversion,
+  verify) and always solve. The grounding from M12 is what makes that happen.
+- The remaining wall-time is per-turn latency (model generation + upstream queue), not round-trips —
+  the 131s glm run had only 7 turns. Cutting that means lowering reasoning effort or picking a
+  faster model, both quality trade-offs the user ruled out. So the honest next decision is the
+  user's: keep "free only" (benchmark stands as a regression guard, little more to win) or open the
+  door to effort/model trade-offs ("speed first"), or raise difficulty (a gdb-only/obfuscated rung)
+  to expose waste where weak models actually struggle.
