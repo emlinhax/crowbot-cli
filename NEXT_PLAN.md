@@ -827,9 +827,10 @@ grounding (auto-verify). In progress.
 | glm-5.3-flash-crow *(current default)* | 14/16 | 7.0 | 79s | 0.0131 |
 Both failed the *same* task (ufo-fix-join, 2/2); on every task both solved, deepseek used
 equal-or-fewer turns. deepseek wins on code too: same solve rate, fewer turns, 2x faster, ~20x
-cheaper. So the default-flip to deepseek is justified on evidence across both suites (pending the
-one non-metric call: the current default is an UNCENSORED model, deepseek is not — though deepseek
-refused none of the RE tasks).
+cheaper. **Default flipped to deepseek-v4.1-flash** (data/defaults.toml) on this evidence; the user
+chose the flip over keeping the UNCENSORED glm default (deepseek refused none of the RE tasks, and
+the model stays user-overridable). The fake server's models fixture gained deepseek; the json
+goldens moved to deepseek pricing.
 
 **Finding (prompt note → wrong install):** a benchmark model, told to "use kuna", ran
 `uv/pip install kuna` and got the unrelated PyPI package, not the decompiler (a GitHub-release
@@ -859,6 +860,6 @@ Turns is the metric (solved runs); solve = the task's own passcode check.
 - gemini-3.8-flash was not weak, it was broken (17.2): 0/6 all `bad_stream`, now 4/6.
 - gemini-4-argon (3/6) and qwen-3.8-crow (4/6) genuinely underperform (they finish `done` with a
   wrong answer, or run long) — not a harness fault.
-- Open before flipping the *global* default to deepseek: it must hold on the code suite too (glm was
-  chosen there); and an effort sweep on the top few may move turns. The re suite alone argues for
-  deepseek as at least the RE/default-leaning choice.
+- deepseek held on the code suite too (above), so the global default was flipped to it. Still open
+  as possible follow-ups: an effort sweep on the top few models may move turns further, and the code
+  battery suite still names glm-flash (could track the default). Neither is blocking.
