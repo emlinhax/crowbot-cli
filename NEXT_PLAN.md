@@ -818,9 +818,10 @@ grounding (auto-verify). In progress.
 - [x] 17.4 decompile tool: a `decompile` tool wrapping kuna, PATH-or-install (name a function to
       decompile it, or omit it to list the binary's functions; without kuna it returns the install
       path, objdump the fallback). Validated end-to-end against the stripped `vault` fixture.
-- [~] 17.5 extend grounding (auto-verify): **mechanism built (configured-or-skip, off by default),
-      unit + integration tested; live benchmark measurement still to do.** Design below; built as
-      designed (settings.verify, src/agent/verify.rs, run.rs ~181, trust-gated for free).
+- [x] 17.5 extend grounding (auto-verify): **built, tested, measured.** Mechanism as designed
+      (configured-or-skip, off by default, trust-gated; settings.verify, src/agent/verify.rs, run.rs
+      ~181). Measured verify-on vs -off on the code subset — no solve-rate gain, ~2x wall time (see
+      Measured below). Kept as an opt-in; not recommended on by default.
 
 ### 17.5 design — auto-verify (configured-or-skip)
 Catch "declared done but broken": when a top-level run that changed files would end, run the
@@ -847,6 +848,21 @@ prompt nudge a weak model ignores.
 - **Measurement:** code suite with `verify` ON (per-repo check from bench/repos.toml) vs OFF
   (have it: deepseek 14/16; the 2 failures, ufo-fix-join, are the target case). Win = solve rate up,
   turns not blown up, no loops. Needs battery per-task `verify` config injection (a small follow-up).
+
+**Measured (2026-10-18, deepseek-v4.1-flash, 8-task code subset, 2 repeats, BATTERY_VERIFY=1)**
+- Solve: 13/16 verify-on vs 14/16 off — the one difference is a flaky 2-turn early-stop
+  (mi-fix-rstrip #1, exit 1, no verify involvement), so effectively flat / within noise.
+- ufo-fix-join (the target "declared done but broken" case): still 0/2, turns up 10/14 -> 14/19 —
+  verify fired (the fix cycles ran) but the model could not fix it even with the failure fed back,
+  so it hit the cap and ended failed.
+- Wall time ~2x (39s -> 75s avg): verify runs the project's whole test suite each time (mi-add-nth-
+  last reached ~180s).
+- **Verdict:** no solve-rate gain on this corpus, real wall-time cost. Consistent with "the model is
+  the floor": auto-verify only helps when the model declares done with a failure it *can* fix given
+  feedback — ~empty here (the model either already passed or could not fix regardless). Shipped as a
+  correct, safe opt-in (off by default); not recommended on by default. It would help a stronger
+  model that makes a careless-but-fixable slip, or a project whose check catches a class the model
+  routinely forgets.
 
 **Code comparison (2026-10-18, 8-task subset, 2 repeats, ~$0.22)** — does deepseek hold on code?
 | model | solve | turns | wall | $/run |
