@@ -11,7 +11,7 @@ async fn a_session_welcomes_chats_switches_mode_and_quits() {
     let ended = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         // The message bar and the rule under it, with the model, sit at the bottom from the start.
         assert!(
-            s.bottom_row().contains("glm-5.3-flash-crow"),
+            s.bottom_row().contains("deepseek-v4.1-flash"),
             "{}",
             s.contents()
         );

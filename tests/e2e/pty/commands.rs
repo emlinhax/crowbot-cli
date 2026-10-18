@@ -18,7 +18,7 @@ async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
         s.wait_gone("╭ commands");
         // The bar never leaves the bottom row, whatever opened and closed above it.
         assert!(
-            s.bottom_row().contains("glm-5.3-flash-crow"),
+            s.bottom_row().contains("deepseek-v4.1-flash"),
             "{}",
             s.contents()
         );
@@ -80,7 +80,7 @@ async fn slash_status_shows_the_balance_plan_model_and_mode() {
         s.wait_for("Balance $12.30");
         let screen = s.contents();
         assert!(screen.contains("Plan Pro: 63%"), "{screen}");
-        assert!(screen.contains("Model: glm-5.3-flash-crow"), "{screen}");
+        assert!(screen.contains("Model: deepseek-v4.1-flash"), "{screen}");
         assert!(screen.contains("Mode: MANUAL"), "{screen}");
         assert!(screen.contains("nothing sent yet"), "{screen}");
     })
@@ -96,7 +96,7 @@ async fn slash_effort_sets_what_the_next_requests_carry() {
         s.wait_for("unknown effort");
         s.submit("/effort high");
         s.wait_for("Effort: high for this session.");
-        s.wait_bar("glm-5.3-flash-crow high");
+        s.wait_bar("deepseek-v4.1-flash high");
         s.submit("hi");
         s.wait_for("Hello there!");
     })
