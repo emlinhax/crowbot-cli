@@ -40,3 +40,13 @@ repeats = 3
 [suites.mcp.cap_micros]
 value = 5000000
 reason = "agreed for the MCP battery; about 40 runs with the cheapest model are well under $1"
+
+# M14's: a real crackme binary reversed with bash by the weakest model, timed (wall_ms) so
+# optimizations can be measured. `make battery SUITE=re`.
+[suites.re]
+model = "deepseek-v4.1-flash"
+repeats = 3
+
+[suites.re.cap_micros]
+value = 2000000
+reason = "a reversing run is a couple of minutes of the cheapest model, cents each; $2 a run-set leaves room under the $10 push"

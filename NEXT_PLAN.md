@@ -682,3 +682,17 @@ tasks, and a measured before/after (deepseek-v4.1-flash, a crow-2 reference) the
 - [x] 13.2 the model and effort a session chose are remembered in ~/.crowbot/prefs.json and apply
       next session, above the config files and below a one-off --model/--effort flag
       (src/config/prefs.rs, layered in settings::load; written from the TUI's picker and /effort)
+
+## M14 — Fast reversing for weak models (planned 2026-10-18)
+Plan: measure where a weak model's reverse-engineering wall-time goes, then cut it without dropping
+the solve rate. Probes found wall-time is round-trips (one model call per step; tools in a reply
+already run concurrently), caching is already tuned, and the battery records wall_ms. $10 cap; free
+speedups only (round-trips + a sharper RE recipe, no effort/quality trade-offs).
+- [x] 14.1 a reproducible harder-RE benchmark: a stripped `vault` ELF (three staged checks, a
+      per-index transform), reversed with bash; a `crackme` fixture repo and a `re` suite
+      (deepseek-v4.1-flash); only the binary ships, its source stays in bench/benchmarks/
+- [ ] 14.2 baseline the weak model(s) and build a timeline of where the seconds go (round-trips,
+      tool-calls-per-reply, wasted turns), ranking the free-speedup levers
+- [ ] 14.3 cut round-trips: sharpen the guidance so independent reads/searches go out in one reply
+- [ ] 14.4 a sharper RE workflow recipe (find the check, reproduce it, script it, verify)
+- [ ] 14.5 the findings, keeping the `re` suite as a timed regression guard
