@@ -802,3 +802,48 @@ Built pre-M16 (M15) and M16 binaries and ran them back-to-back to control for AP
 - C (tool note) is tool-choice guidance, not a turn lever; unmeasured but low-risk; kept.
 - Consistent with M14: a weak model's tool-use habits (recon, cd, one-call-per-reply) are sticky;
   harness nudges move the turn count only for stronger models. The model is the floor.
+
+## M17 — Raise the floor: model benchmark, structural tools, grounding (2026-10-18)
+The M16 finding ("the model is the floor") sets the direction: before more harness nudges a weak
+model ignores, find the best floor and give the model structural capabilities it can't fumble.
+Three strands: a model/effort benchmark, structural tools (webfetch, a decompiler), and stronger
+grounding (auto-verify). In progress.
+
+- [x] 17.1 model benchmark: every account model on the re suite, 3 repeats, default effort, timed.
+- [x] 17.2 fix surfaced by the benchmark: a stream chunk with a null array field (gemini-3.8-flash
+      sends `"tool_calls": null`) no longer drops the run (src/api/wire.rs, `null_as_default`).
+- [x] 17.3 webfetch: no change needed — already browser-impersonating. The M16 research read
+      src/io/http.rs (the API client, UA `crowbot/<ver>`) and missed src/io/fetch.rs, which uses
+      `cffetch::CfClient` (full TLS fingerprint + per-profile cookie jars + a firewall signal).
+- [ ] 17.4 decompile tool (kuna): validated locally (stripped vault: found `main` + clean C in
+      ~0.2s each; prebuilt linux/macos/windows; self-contained; --json; ships an agent skill).
+      Open: distribution (bundle / auto-fetch / PATH-or-install / skills mechanism).
+- [ ] 17.5 extend grounding (auto-verify): not started.
+
+**Measured (2026-10-18, re suite, 3 repeats/model, ~$2.93 total, under the $10 cap)**
+Turns is the metric (solved runs); solve = the task's own passcode check.
+
+| model | solve | turns | wall | $/run | out $/1M |
+| --- | --- | --- | --- | --- | --- |
+| deepseek-v4.1-flash | 6/6 | 6.5 | 26s | 0.0007 | 0.12 |
+| kimi-k3 | 6/6 | 6.5 | 53s | 0.0048 | 1.35 |
+| mimo-2.6-flash-crow | 6/6 | 7.0 | 26s | 0.0464 | 1.50 |
+| gpt-6.1-sol | 6/6 | 7.7 | 40s | 0.0047 | 0.90 |
+| glm-5.3-flash-crow *(current default)* | 6/6 | 9.2 | 99s | 0.0137 | 0.60 |
+| crow-2 *(old default)* | 6/6 | 10.5 | 32s | 0.1281 | 5.00 |
+| gemini-3.8-flash *(after 17.2 fix)* | 4/6 | 7.5 | 39s | 0.0047 | 0.34 |
+| qwen-3.8-crow | 4/6 | 16.8 | 184s | 0.2701 | 1.00 |
+| gemini-4-argon | 3/6 | 6.7 | 60s | 0.0148 | 1.70 |
+
+**Learned**
+- deepseek-v4.1-flash wins the re suite outright: 100% solve, fewest turns (tied with kimi-k3),
+  cheapest by ~20x against the current default, and fastest. The cheapest model is also the most
+  turn-efficient at reversing — it reinforces M14's "deepseek carries RE".
+- The current default glm-5.3-flash-crow is mid-pack on RE (9.2 turns, 99s); crow-2 (the old
+  default) solves but takes more turns than the cheap models and costs ~180x deepseek.
+- gemini-3.8-flash was not weak, it was broken (17.2): 0/6 all `bad_stream`, now 4/6.
+- gemini-4-argon (3/6) and qwen-3.8-crow (4/6) genuinely underperform (they finish `done` with a
+  wrong answer, or run long) — not a harness fault.
+- Open before flipping the *global* default to deepseek: it must hold on the code suite too (glm was
+  chosen there); and an effort sweep on the top few may move turns. The re suite alone argues for
+  deepseek as at least the RE/default-leaning choice.
