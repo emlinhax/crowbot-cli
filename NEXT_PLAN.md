@@ -815,10 +815,25 @@ grounding (auto-verify). In progress.
 - [x] 17.3 webfetch: no change needed — already browser-impersonating. The M16 research read
       src/io/http.rs (the API client, UA `crowbot/<ver>`) and missed src/io/fetch.rs, which uses
       `cffetch::CfClient` (full TLS fingerprint + per-profile cookie jars + a firewall signal).
-- [ ] 17.4 decompile tool (kuna): validated locally (stripped vault: found `main` + clean C in
-      ~0.2s each; prebuilt linux/macos/windows; self-contained; --json; ships an agent skill).
-      Open: distribution (bundle / auto-fetch / PATH-or-install / skills mechanism).
+- [x] 17.4 decompile tool: a `decompile` tool wrapping kuna, PATH-or-install (name a function to
+      decompile it, or omit it to list the binary's functions; without kuna it returns the install
+      path, objdump the fallback). Validated end-to-end against the stripped `vault` fixture.
 - [ ] 17.5 extend grounding (auto-verify): not started.
+
+**Code comparison (2026-10-18, 8-task subset, 2 repeats, ~$0.22)** — does deepseek hold on code?
+| model | solve | turns | wall | $/run |
+| --- | --- | --- | --- | --- |
+| deepseek-v4.1-flash | 14/16 | 5.9 | 39s | 0.0006 |
+| glm-5.3-flash-crow *(current default)* | 14/16 | 7.0 | 79s | 0.0131 |
+Both failed the *same* task (ufo-fix-join, 2/2); on every task both solved, deepseek used
+equal-or-fewer turns. deepseek wins on code too: same solve rate, fewer turns, 2x faster, ~20x
+cheaper. So the default-flip to deepseek is justified on evidence across both suites (pending the
+one non-metric call: the current default is an UNCENSORED model, deepseek is not — though deepseek
+refused none of the RE tasks).
+
+**Finding (prompt note → wrong install):** a benchmark model, told to "use kuna", ran
+`uv/pip install kuna` and got the unrelated PyPI package, not the decompiler (a GitHub-release
+binary). 17.4's tool and note now point at the tool and the right source.
 
 **Measured (2026-10-18, re suite, 3 repeats/model, ~$2.93 total, under the $10 cap)**
 Turns is the metric (solved runs); solve = the task's own passcode check.
