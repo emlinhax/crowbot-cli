@@ -35,7 +35,9 @@ async fn a_doubled_slash_sends_a_message_that_starts_with_a_slash() {
     })
     .await;
     let bodies = fake.chat_bodies();
-    assert_eq!(bodies[0]["messages"][1]["content"], "/etc/hosts is odd");
+    // The first user message is prefixed with the opening orientation reminder.
+    let first_user = bodies[0]["messages"][1]["content"].as_str().unwrap();
+    assert!(first_user.ends_with("/etc/hosts is odd"), "{first_user}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

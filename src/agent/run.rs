@@ -5,6 +5,7 @@ use crate::agent::batch::{self, Batch};
 use crate::agent::compact::{self, Why};
 use crate::agent::context;
 use crate::agent::model_text;
+use crate::agent::orient;
 use crate::agent::overflow;
 use crate::agent::written;
 use crate::agent::{Run, RunCtx};
@@ -50,6 +51,20 @@ pub(crate) async fn run_under(
         slots: tokio::sync::Semaphore::new(limits::get().subagent.parallel.value),
     };
     let cancel = &run.cancel;
+    // Hand the model the working directory and repo state on the first turn, so it starts from
+    // facts instead of spending turns discovering them (or guessing). Once per conversation,
+    // top-level runs only; rides on the first prompt, never the cached system prompt.
+    let prompt = match parent.is_none() && shared.orient_once() {
+        true => {
+            let text = orient::snapshot(&cx.app.paths).await;
+            let mut parts = prompt;
+            if !text.is_empty() {
+                parts.insert(0, Part::Reminder { text });
+            }
+            parts
+        }
+        false => prompt,
+    };
     say(&run, transcript, prompt);
     let prompt_id = transcript.last_id().unwrap_or_default().to_owned();
     let mut snapped = false;

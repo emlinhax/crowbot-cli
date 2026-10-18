@@ -7,6 +7,7 @@ pub mod context;
 pub mod doom_loop;
 pub mod kinds;
 pub mod model_text;
+pub mod orient;
 pub mod overflow;
 pub mod run;
 pub mod setup;

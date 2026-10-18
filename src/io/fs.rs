@@ -22,6 +22,10 @@ pub fn exists(path: &Path) -> bool {
     path.exists()
 }
 
+pub fn is_dir(path: &Path) -> bool {
+    path.is_dir()
+}
+
 /// A JSON file as `T`; `Ok(None)` when it does not exist. Errors name the file.
 pub fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> io::Result<Option<T>> {
     let named = |e: io::Error| io::Error::new(e.kind(), format!("{}: {e}", path.display()));

@@ -1,6 +1,7 @@
 //! Session state shared by a run and the frontend driving it, which may change it mid-run.
 
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use tokio_util::sync::CancellationToken;
@@ -30,6 +31,10 @@ pub struct Shared {
     mode: Arc<Mutex<&'static Mode>>,
     /// The mode the model was last told about.
     reminded: Mutex<Option<&'static Mode>>,
+    /// A `cd` the model made that should carry to the next bash call; `None` is the project dir.
+    cwd: Mutex<Option<PathBuf>>,
+    /// Whether the model has been handed the opening orientation (dir listing, git) this session.
+    oriented: Mutex<bool>,
     pub files: Files,
 }
 
@@ -43,6 +48,8 @@ impl Shared {
             prompts: Arc::default(),
             mode: Arc::new(Mutex::new(mode)),
             reminded: Mutex::default(),
+            cwd: Mutex::default(),
+            oriented: Mutex::new(false),
             files: Files::default(),
         }
     }
@@ -60,6 +67,9 @@ impl Shared {
             prompts: Arc::clone(&self.prompts),
             mode: Arc::clone(&self.mode),
             reminded: Mutex::new(Some(self.mode())),
+            cwd: Mutex::new(self.cwd.lock().unwrap().clone()),
+            // A subagent gets its own task, not the top-level orientation.
+            oriented: Mutex::new(true),
             files: self.files.sharing_locks(),
         }
     }
@@ -113,9 +123,26 @@ impl Shared {
         *self.reminded.lock().unwrap() = None;
     }
 
+    /// The directory bash runs in, when the model `cd`'d somewhere that should stick.
+    pub fn cwd(&self) -> Option<PathBuf> {
+        self.cwd.lock().unwrap().clone()
+    }
+
+    /// Remembers where a bash call left the shell, so the next one starts there.
+    pub fn set_cwd(&self, dir: PathBuf) {
+        *self.cwd.lock().unwrap() = Some(dir);
+    }
+
+    /// True the first time only, so the opening orientation is handed over once per conversation.
+    pub fn orient_once(&self) -> bool {
+        !std::mem::replace(&mut self.oriented.lock().unwrap(), true)
+    }
+
     /// A new conversation: the model has been told nothing, read nothing, and nothing waits.
     pub fn start_over(&self) {
         self.forget_reminded();
+        *self.cwd.lock().unwrap() = None;
+        *self.oriented.lock().unwrap() = false;
         self.steer.lock().unwrap().clear();
         self.follow.lock().unwrap().clear();
         self.files.forget_all();

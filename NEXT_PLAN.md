@@ -764,3 +764,19 @@ on three downloaded Linux x86-64 crackmes of rising difficulty:
 - [x] 15.2 the prompt: start a task by orienting (fetch the link, read the named files, check the
       working dir and `git status`) instead of theorizing; ask when the request is unclear or needs
       info only the user has
+
+## M16 — Fewer turns: pre-orient, persist cwd, best-tool note, batching (2026-10-18)
+Plan: cut turns/tool-calls. Sessions showed the model burns opening turns discovering the
+environment (the <env> block gives only cwd/OS/date/model) and re-`cd`s the full path on every bash
+call (27/27 in the keygenme). $10 cap; measured before/after on the keygenme + re suite, solve rate
+held.
+- [x] 16.1 pre-orient: the first turn is handed a top-level listing + git branch/status/recent
+      commits, as a `Part::Reminder` on the first prompt (once per conversation, top-level runs),
+      so the model starts from facts (src/agent/orient.rs, data/prompts/orient.md, run.rs)
+- [x] 16.2 persist bash cwd: a `cd` carries to the next call (Shared.cwd + a guarded leading-`cd`
+      heuristic in bash), killing the cd-spam; the "don't re-cd" line dropped
+- [ ] 16.3 recommended-tools note: a short, evidence-based prompt section (kuna decompiler per
+      decbench.com, requests/httpx over urllib, ripgrep, pwndbg, …) + a full reference doc
+- [ ] 16.4 revisit batching: re-measure after 16.1-16.3; a targeted fix only if a serial pattern
+      remains
+- [ ] 16.5 measured before/after on the keygenme + re suite (deepseek + glm-flash)

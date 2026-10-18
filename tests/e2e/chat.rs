@@ -18,7 +18,10 @@ async fn print_streams_the_reply_and_records_the_session() {
     assert_eq!(body["model"], "glm-5.3-flash-crow");
     assert_eq!(body["stream"], true);
     assert_eq!(body["messages"][0]["role"], "system");
-    assert_eq!(body["messages"][1]["content"], "hi there");
+    // The first user message carries the opening orientation reminder, then the prompt.
+    let first_user = body["messages"][1]["content"].as_str().unwrap();
+    assert!(first_user.ends_with("hi there"), "{first_user}");
+    assert!(first_user.contains("<workspace>"), "{first_user}");
 
     let sessions = sandbox.sessions();
     assert_eq!(sessions.len(), 1);
