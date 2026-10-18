@@ -775,7 +775,7 @@ held.
       so the model starts from facts (src/agent/orient.rs, data/prompts/orient.md, run.rs)
 - [x] 16.2 persist bash cwd: a `cd` carries to the next call (Shared.cwd + a guarded leading-`cd`
       heuristic in bash), killing the cd-spam; the "don't re-cd" line dropped
-- [ ] 16.3 recommended-tools note: a short, evidence-based prompt section (kuna decompiler per
+- [x] 16.3 recommended-tools note: a short, evidence-based prompt section (kuna decompiler per
       decbench.com, requests/httpx over urllib, ripgrep, pwndbg, …) + a full reference doc
 - [ ] 16.4 revisit batching: re-measure after 16.1-16.3; a targeted fix only if a serial pattern
       remains
