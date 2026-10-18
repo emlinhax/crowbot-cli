@@ -89,7 +89,10 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
     }
     // Beside the copy, not in it: the model reaches the servers' data through their tools only.
     let records = parent.path().join("mcp");
-    std::fs::write(home.path().join("config.toml"), config(task, &records))?;
+    std::fs::write(
+        home.path().join("config.toml"),
+        config(repo, task, &records),
+    )?;
 
     let watched = watch(battery, repo, task, home.path(), &copy).await?;
 
@@ -156,8 +159,13 @@ async fn one(battery: &Battery, repo: &Repo, task: &Task, rep: u32) -> anyhow::R
 
 /// The run's crowbot config: none of the servers the machine's own apps list (the runs keep the
 /// real HOME for the repos' builds), and the task's simulated servers, recording into `records`.
-fn config(task: &Task, records: &Path) -> String {
+fn config(repo: &Repo, task: &Task, records: &Path) -> String {
     let mut text = String::from("mcp_discovery = false\n");
+    // Measurement hook: with BATTERY_VERIFY set, the run checks with the repo's own test command
+    // before it ends (the `verify` setting), to measure auto-verify's effect on solve rate.
+    if std::env::var_os("BATTERY_VERIFY").is_some() {
+        text.push_str(&format!("verify = '{}'\n", repo.test));
+    }
     let simulator = slashes(Path::new(env!("CARGO_BIN_EXE_crowbot-fake-mcp")));
     let records = slashes(records);
     for server in &task.mcp {
