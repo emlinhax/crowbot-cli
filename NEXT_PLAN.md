@@ -694,8 +694,8 @@ speedups only (round-trips + a sharper RE recipe, no effort/quality trade-offs).
 - [x] 14.2 baseline the weak model(s) and build a timeline of where the seconds go (round-trips,
       tool-calls-per-reply, wasted turns), ranking the free-speedup levers
 - [x] 14.3 cut round-trips: tried, no measured win, reverted —: sharpen the guidance so independent reads/searches go out in one reply
-- [ ] 14.4 a sharper RE workflow recipe (find the check, reproduce it, script it, verify)
-- [ ] 14.5 the findings, keeping the `re` suite as a timed regression guard
+- [x] 14.4 RE workflow recipe: not needed — M12 grounding already makes weak models follow it; no unproven prompt additions
+- [x] 14.5 findings reported; the `re` suite kept as a timed regression guard
 
 **Baseline (2026-10-18, bench/runs/, within the $10 cap)**
 - vault pilot `20261018T093526` and vault2 pilot `20261018T093828`: deepseek solved each in 6-7
@@ -731,3 +731,28 @@ speedups only (round-trips + a sharper RE recipe, no effort/quality trade-offs).
   user's: keep "free only" (benchmark stands as a regression guard, little more to win) or open the
   door to effort/model trade-offs ("speed first"), or raise difficulty (a gdb-only/obfuscated rung)
   to expose waste where weak models actually struggle.
+
+**Overfitting check — three third-party crackmes (crackmes.one, local only, not committed)**
+To be sure we were not overfitting to the vault style, ran deepseek-v4.1-flash (the cheapest model)
+on three downloaded Linux x86-64 crackmes of rising difficulty:
+- lvl1 `wheredakey` (stack-strcat + strcmp, overlapping-immediate writes): solved, 9 turns / 47s —
+  iterated candidates against the binary to resolve the byte overlap.
+- lvl3 `crackme` (UPX-packed, needs GLIBC_2.38 > the host's 2.35): solved, 16 turns / 84s — it
+  recognised UPX, downloaded the upx tool and unpacked, patched the ELF's scanf version record to
+  run on the older glibc, then read the flag by running it. The plaintext .rodata string was a
+  decoy it saw through; the real flag was a quote.
+- lvl5 `reapermaze` (self-decrypting code: a decoy FNV hash, then an xorshift-keystream-decrypted
+  blob mmap'd RWX and called): solved, 8 turns / 31s — reproduced the xorshift in python, decrypted
+  the blob statically, read the key.
+
+**Learned (M14 complete)**
+- No overfitting: 5/5 solved across vault, vault2 and the three downloads (strcmp, packing+ABI
+  patching, self-modifying code), each in 30-90s, on the cheapest weak model.
+- The weak model is strikingly resourceful: it downloads a missing tool (upx) and patches a binary
+  for ABI compatibility on its own. M12 grounding generalises far past "run the binary".
+- The only inefficiency seen is a `cd <abspath>` prefix on nearly every bash call (lvl3, 19/21),
+  which the M12.2 note did not prevent — but it rides inside single bash calls, so it costs
+  characters, not round-trips. Not a wall-time lever.
+- Conclusion: within "free speedups only", crowbot is already a fast, reliable RE CLI for weak
+  models; the remaining wall-time is per-turn latency (generation + upstream queue). The vault/vault2
+  `re` suite stays as the committed timed regression guard.
