@@ -25,8 +25,10 @@ Union % = share of functions perfect on ≥1 of structural / type / recompile me
   hard sets but cost ~$6/function and minutes each — only for a few critical functions.)
 - **Speed:** kuna ≈ Hex-Rays (~0.11 s/function), far ahead of Ghidra/Binary Ninja.
 - **Pick:** `kuna` (Apache-2.0, single Rust binary, `kuna decompile ./bin main`, `kuna install-skill`;
-  https://kuna.noelo.org). `Ghidra` is the best free full *suite* (GUI + headless scripting). `angr`
-  doubles as symbolic execution. IDA/Hex-Rays and Binary Ninja are paid.
+  https://kuna.noelo.org) — a prebuilt binary from its GitHub releases (github.com/Noelo-Lab/kuna),
+  **not** the unrelated `kuna` on PyPI. crowbot's `decompile` tool wraps it. `Ghidra` is the best
+  free full *suite* (GUI + headless scripting). `angr` doubles as symbolic execution. IDA/Hex-Rays
+  and Binary Ninja are paid.
 
 ## Disassemblers / RE frameworks
 Ghidra (free suite), IDA Pro+Hex-Rays (**paid**, industry standard), Binary Ninja (**paid**, great

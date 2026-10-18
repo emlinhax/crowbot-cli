@@ -216,6 +216,7 @@ pub struct ToolLimits {
     pub bash_spill_max_bytes: Limit<usize>,
     pub bash_spill_keep_days: Limit<u64>,
     pub webfetch_max_bytes: Limit<usize>,
+    pub decompile_timeout_secs: Limit<u64>,
 }
 
 #[derive(Debug, Deserialize)]

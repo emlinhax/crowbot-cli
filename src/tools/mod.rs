@@ -1,6 +1,7 @@
 //! Tools the model can call. Each is one file implementing `Tool`, registered once below.
 
 mod bash;
+mod decompile;
 mod edit;
 pub mod forum;
 mod fs;
@@ -328,6 +329,7 @@ impl Registry {
             Arc::new(bash::Bash::new(shell)),
             Arc::new(glob::Glob),
             Arc::new(grep::Grep),
+            Arc::new(decompile::Decompile),
             Arc::new(webfetch::WebFetch),
             Arc::new(forum::Sections),
             Arc::new(forum::Topics),

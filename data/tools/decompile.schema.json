@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "properties": {
+    "binary": { "type": "string", "description": "Path to the executable or object file to analyse" },
+    "function": { "type": "string", "description": "Name (e.g. main) or 0xADDRESS of the function to decompile; omit to list the binary's functions first" }
+  },
+  "required": ["binary"]
+}

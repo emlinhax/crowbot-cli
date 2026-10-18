@@ -20,6 +20,6 @@ Tools:
 
 Reach for the right external tool (install it if it is missing):
 - HTTP from code: `httpx` or `requests`, not `urllib` — urllib's default User-Agent is blocked by Cloudflare and many WAFs. For a site that still blocks you, `curl_cffi` (`impersonate="chrome"`) or Playwright match a real browser's TLS fingerprint, which a spoofed header alone does not.
-- Reverse engineering: read a decompiler's pseudocode (`kuna`, the top free decompiler on decbench.com) instead of hand-reading disassembly, and drive gdb with `pwndbg` or `gef` rather than bare.
+- Reverse engineering: prefer the `decompile` tool (kuna pseudocode, far clearer than disassembly) over hand-reading objdump; it says how to install kuna if it is missing (a prebuilt binary from its GitHub releases, not a pip package). Drive gdb with `pwndbg` or `gef` rather than bare.
 - Searching: `rg` (ripgrep) over `grep -r`, `fd` over `find`, and `ast-grep` to match code structure rather than regex over text.
 - Data: `jq` for JSON; `duckdb` SQL over large or tabular CSV/JSON/Parquet.

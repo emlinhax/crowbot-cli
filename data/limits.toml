@@ -272,6 +272,10 @@ reason = "a spill is read in the turn that made it; older ones only fill the dis
 value = 5242880
 reason = "larger pages are rarely text a model can use"
 
+[tools.decompile_timeout_secs]
+value = 120
+reason = "kuna decompiles a function in well under a second; two minutes covers a huge binary or a slow mode before something is wrong"
+
 [update.check_interval_secs]
 value = 86400
 reason = "a day: releases come a few times a week, and a check costs a request to GitHub, which allows 60 an hour per address"
