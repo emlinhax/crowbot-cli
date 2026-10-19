@@ -1,15 +1,17 @@
 //! How each kind of block looks: the user's band, the reply under its mark, thinking, cards and
 //! errors.
 
-use super::Block;
+use super::{Block, Decor};
 use crate::api::error::Entry as ErrorEntry;
 use crate::conversation::error::ErrorInfo;
-use crate::frontend::tui::{calls, ui, welcome};
+use crate::conversation::message::ToolResult;
+use crate::frontend::tui::calls::{self, State};
+use crate::frontend::tui::{ui, welcome};
 use crate::text::markdown;
 use crate::text::styled::{Line, Style};
 use crate::text::template::fill;
 
-pub fn render(block: &Block, open: bool, width: usize) -> Vec<Line> {
+pub fn render(block: &Block, open: bool, width: usize, decor: Decor) -> Vec<Line> {
     match block {
         Block::Welcome(info) => welcome::render(info, width),
         Block::User(text) => user_lines(text, width),
@@ -20,7 +22,7 @@ pub fn render(block: &Block, open: bool, width: usize) -> Vec<Line> {
         }
         Block::Tool {
             arguments, result, ..
-        } => calls::finished(&result.name, arguments, result, width),
+        } => tool_lines(arguments, result, open, width, decor),
         Block::Thinking { text, secs } => {
             let words = &ui::get().thinking;
             let header = match secs {
@@ -36,6 +38,40 @@ pub fn render(block: &Block, open: bool, width: usize) -> Vec<Line> {
         }
         Block::Error(error) => error_lines(error, width),
     }
+}
+
+/// A tool card, behind its depth/batch gutter. An open `task` shows only its header — its
+/// subagent's cards follow it as indented child entries.
+fn tool_lines(
+    arguments: &str,
+    result: &ToolResult,
+    open: bool,
+    width: usize,
+    decor: Decor,
+) -> Vec<Line> {
+    let cols = decor.cols();
+    let inner = width.saturating_sub(cols * 2);
+    let card = if open && result.name == "task" {
+        let state = if result.is_error {
+            State::Failed
+        } else {
+            State::Done
+        };
+        vec![calls::header(&result.name, arguments, state).truncate(inner)]
+    } else {
+        calls::finished(&result.name, arguments, result, inner)
+    };
+    if cols == 0 {
+        return card;
+    }
+    let rail = Line::styled("│ ".repeat(cols), Style::fg("muted"));
+    card.into_iter()
+        .map(|line| {
+            let mut out = rail.clone();
+            out.extend(line);
+            out
+        })
+        .collect()
 }
 
 /// A thinking header, then the text under a gutter.

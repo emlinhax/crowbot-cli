@@ -37,15 +37,16 @@ pub fn header(tool: &str, arguments: &str, state: State<'_>) -> Line {
     line
 }
 
-/// A subagent's latest call, under the `task` card that is waiting on it.
-pub fn step(tool: &str, arguments: &str) -> Line {
+/// A subagent's call, under the `task` card waiting on it, indented by its depth in the subtree.
+pub fn step(tool: &str, arguments: &str, depth: usize) -> Line {
     let mut call = tool.to_owned();
     if let Some(title) = tool_card::title(tool, arguments) {
         call.push(' ');
         call.push_str(&title);
     }
     let text = template::fill(&ui::get().task.step, &[("call", &call)]);
-    Line::styled(text, Style::fg("muted"))
+    let indent = "  ".repeat(depth);
+    Line::styled(format!("{indent}{text}"), Style::fg("muted"))
 }
 
 /// The finished card: header, then the body its spec asks for, indented under it.
@@ -108,11 +109,17 @@ fn body(tool: &str, result: &ToolResult, width: usize) -> Vec<Line> {
             lines[skip..].iter().map(|l| dim(l)).collect()
         }
         Body::Summary => {
+            // Strict: a result with no details (an unfinished subagent call) shows no summary line
+            // rather than a `?: 0` placeholder.
             let text = spec
                 .summary
-                .and_then(|s| summarize(&s, result, false))
+                .and_then(|s| summarize(&s, result, true))
                 .unwrap_or_default();
-            vec![Line::styled(text, Style::fg("muted")).truncate(width)]
+            if text.is_empty() {
+                Vec::new()
+            } else {
+                vec![Line::styled(text, Style::fg("muted")).truncate(width)]
+            }
         }
     }
 }

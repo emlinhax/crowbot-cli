@@ -51,10 +51,13 @@ impl Feed {
                         .unwrap_or_default();
                     let first = !batch_open;
                     batch_open = true;
+                    // CEILING: a replayed `task` shows flat (no child cards); the parent session
+                    // file has no child messages. Upgrade: reconstruct from result.details.session.
                     self.push(Block::Tool {
                         arguments,
                         result: result.clone(),
                         first,
+                        depth: 0,
                     });
                 }
             }
