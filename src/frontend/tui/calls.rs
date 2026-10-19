@@ -57,6 +57,21 @@ pub fn finished(tool: &str, arguments: &str, result: &ToolResult, width: usize) 
     };
     let mut lines = vec![header(tool, arguments, state).truncate(width)];
     let inner = width.saturating_sub(2);
+    let indent = |l: Line| {
+        let mut indented = Line::plain("  ");
+        indented.extend(l);
+        indented
+    };
+    // A multi-line command (a heredoc or piped script) is in the args but off the one-line header;
+    // show it, capped, so the input is not invisible.
+    if let Some(command) = tool_card::input(tool, arguments) {
+        let max = spec(tool).max_lines.unwrap_or_default();
+        let shown: Vec<Line> = command
+            .lines()
+            .map(|l| Line::styled(l, Style::fg("muted")).truncate(inner))
+            .collect();
+        lines.extend(capped(shown, max).into_iter().map(indent));
+    }
     let body = if result.is_error {
         let max = limits::get().tui.error_lines.value;
         result
@@ -68,11 +83,7 @@ pub fn finished(tool: &str, arguments: &str, result: &ToolResult, width: usize) 
     } else {
         body(tool, result, inner)
     };
-    lines.extend(body.into_iter().map(|l| {
-        let mut indented = Line::plain("  ");
-        indented.extend(l);
-        indented
-    }));
+    lines.extend(body.into_iter().map(indent));
     lines
 }
 
@@ -279,6 +290,39 @@ mod tests {
         assert_eq!(summary("read", read).trim(), "lines 1-5 of 9");
         assert_eq!(summary("read", json!({"files": 3})).trim(), "3 files");
         assert_eq!(summary("read", json!({"entries": 4})).trim(), "4 entries");
+    }
+
+    #[test]
+    fn a_multi_line_command_shows_its_input_above_the_output() {
+        let card = finished(
+            "bash",
+            "{\"command\":\"python3 - <<EOF\\nprint(42)\\nEOF\"}",
+            &result("output-line", None, false),
+            60,
+        );
+        let texts: Vec<String> = card.iter().map(Line::text).collect();
+        let input_at = texts.iter().position(|t| t.contains("print(42)"));
+        let output_at = texts.iter().position(|t| t.contains("output-line"));
+        assert!(input_at.is_some(), "the script is shown: {texts:?}");
+        assert!(
+            input_at < output_at,
+            "input comes above the output: {texts:?}"
+        );
+    }
+
+    #[test]
+    fn a_decompile_card_names_the_binary_and_function() {
+        let card = finished(
+            "decompile",
+            r#"{"binary":"vault","function":"main"}"#,
+            &result("int main(void) {\n  return 0;\n}", None, false),
+            60,
+        );
+        assert_eq!(
+            card[0].to_tagged(),
+            "[done]● [/][bold]decompile[/] [muted]vault main[/]"
+        );
+        assert!(card[1].text().contains("int main"), "{:?}", card[1].text());
     }
 
     #[test]

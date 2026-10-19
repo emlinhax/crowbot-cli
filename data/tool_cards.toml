@@ -57,6 +57,12 @@ summary = { count = "paths", one = "{n} path", many = "{n} paths" }
 body = "head"
 max_lines = 3
 
+[decompile]
+title = ["binary", "function"]
+title_join = " "
+body = "head"
+max_lines = 6
+
 [todowrite]
 title = []
 body = "head"
