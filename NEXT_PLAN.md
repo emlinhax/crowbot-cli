@@ -907,3 +907,30 @@ Turns is the metric (solved runs); solve = the task's own passcode check.
 - deepseek held on the code suite too (above), so the global default was flipped to it. Still open
   as possible follow-ups: an effort sweep on the top few models may move turns further, and the code
   battery suite still names glm-flash (could track the default). Neither is blocking.
+
+## M18 — Feed hierarchy, card details, visible command input (2026-10-19)
+The transcript read flat with gaps. Three fixes, built as planned.
+- [x] 18.1 card details: a `[decompile]` section (binary + function + pseudocode head); a title
+      fallback so any unknown-arg tool (every MCP tool) shows its first scalar arg values instead of
+      a bare name (an explicit `title = []` stays bare). data/tool_cards.toml, src/frontend/tool_card.rs.
+- [x] 18.2 visible command input: a multi-line bash command (a heredoc or `python3 -c -` script) now
+      shows full, capped, as a muted preamble above the output — it was off the one-line header.
+      src/frontend/tool_card.rs `input()`, src/frontend/tui/calls.rs.
+- [x] 18.3 collapsible subagent tree: a `task`'s child calls, once discarded, are captured as a tree
+      and flattened into indented child cards, collapsed to the count by default, expanded like
+      thinking (click / Ctrl-T); nested subagents indent per depth. `Block::Tool.depth`, a
+      buffer-then-flatten-on-task-end so parallel subagents never interleave. src/frontend/tui/feed/*.
+- [x] 18.4 batch rail: a reply's ≥2 adjacent calls share a `│ ` left rail (a lone call none); the
+      draw cache keys on (width, Decor) so a card re-renders when a sibling joins its batch.
+- [x] 18.5 replay reconstructs the tree from each task result's linked child session
+      (details.session), through a loader in conversation.rs so the feed stays UI-only; a missing
+      child leaves the task flat. An empty/undetailed summary now shows no line, not `?: 0`.
+
+**Learned**
+- Two card systems: `Check::preview` feeds only the permission prompt; the transcript card is built
+  from the call's arguments JSON + tool_cards.toml, which is why decompile/MCP showed nothing and the
+  fix was data, not the preview.
+- Keeping subagent children as flat sibling entries with a `depth` field (not a parent-owned subtree)
+  kept the width cache, the row→block click/copy map, and `measure` simple; collapse is a depth
+  "floor" in measure. The one real correctness risk — interleaved parallel-subagent children — is
+  handled by buffering on the running task and flattening only at its end.
