@@ -934,3 +934,35 @@ The transcript read flat with gaps. Three fixes, built as planned.
   kept the width cache, the row→block click/copy map, and `measure` simple; collapse is a depth
   "floor" in measure. The one real correctness risk — interleaved parallel-subagent children — is
   handled by buffering on the running task and flattening only at its end.
+
+## M19 — Fewer turns: repeated-call guard + guarded finish (2026-10-20)
+From the three-pass study of recorded weak-model sessions (waste is ~90% execution/harness). Two
+string-free fixes, chosen with the user.
+- [x] 19.1 repeated-call guard: `doom_loop` now counts interleaved identical (name, args) calls
+      across the turn (not just a consecutive run), gated on the output not changing — fulfils its
+      own documented CEILING. Catches the #1 flailing signature (stale-cache re-decompile marathons).
+- [x] 19.2 guarded `finish` tool: ends a run after a batch only if every other call in it succeeded;
+      routes through the same end path as a no-tool reply, so M17.5 auto-verify composes. Prompt
+      nudges the model to batch it with its last action.
+
+**Measured (deepseek, mcp re + mutation tasks, 2 repeats, ~$0.02)**
+- **A works as designed.** The guard fired on `mcp-re-fix-prototype` (the stale-cache marathon); its
+  after-runs were 9/9 turns with no 15–20 turn marathons (before: 15, 17, 20 among 12 runs, mean
+  10.5). It catches genuine futile loops with no downside — but they are the rare extreme, so the
+  aggregate effect is a safety-net, not a broad turn cut. Correctly did NOT fire on diverse-query
+  flailing (a 21-turn tracker run of distinct searches — different args, different results).
+- **B is adopted but neutral on turns.** `finish` was called in 3/8 sessions — but every time
+  **alone, as its own final turn** (db-fix: update, verify, then finish-alone), never batched with
+  the action. So it *replaced* the free-text "Done" turn with a finish-call turn: same round-trip,
+  **zero turns saved** (db-fix stayed at 4). The weak model adopts the tool yet keeps its
+  done-in-a-fresh-turn habit.
+
+**Learned**
+- The reconciliation of "the model is the floor": a harness fix that needs **no model behavior
+  change** works (A — the guard fires on futile loops on its own); one that needs a **behavior
+  change** (B — optimistically batch `finish` with the action) hits the same sticky-habit wall as
+  batching, pre-orient and auto-verify did. The confirmation turn is structurally irreducible without
+  the model signalling "done" *inside* the action turn, which weak models won't do.
+- Both kept (safe): A is a no-downside safety-net against extreme flailing; B is adopted, composes
+  with auto-verify, and is a foundation a stronger model would batch — but neutral on turns for weak
+  models today. Not recommended as a turn lever until a model batches it.
