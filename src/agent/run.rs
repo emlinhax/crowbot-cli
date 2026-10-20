@@ -133,6 +133,8 @@ pub(crate) async fn run_under(
                 _ => {}
             }
 
+            // The model ends the run by calling `finish`, if the rest of its batch succeeded.
+            let mut finishing = false;
             if !calls.is_empty() {
                 let batch = if finish == Finish::Length {
                     // A reply cut off mid-call may carry truncated arguments; never run those.
@@ -143,6 +145,11 @@ pub(crate) async fn run_under(
                     batch::run(&run, history, &calls).await
                 };
                 let Batch { results, stop } = batch;
+                finishing = calls.iter().any(|c| c.name == tools::FINISH)
+                    && results
+                        .iter()
+                        .filter(|r| r.name != tools::FINISH)
+                        .all(|r| !r.is_error);
                 // The snapshot goes in the file before the changes it lets /undo take back; only
                 // the frontend's run writes one, its subagents' changes included.
                 if let Some(before) = run.before.get().filter(|_| !snapped && parent.is_none()) {
@@ -178,7 +185,8 @@ pub(crate) async fn run_under(
                 record(cx, transcript, Message::User { parts });
                 continue;
             }
-            if calls.is_empty() {
+            // `finish` ends the run through the same path as an empty reply, so auto-verify composes.
+            if finishing || calls.is_empty() {
                 break;
             }
         }
@@ -447,6 +455,87 @@ mod tests {
         assert!(
             sent.contains("test -f ok.flag") && sent.contains("failed after your changes"),
             "the failing check should have been handed back: {sent}"
+        );
+    }
+
+    #[tokio::test]
+    async fn finish_ends_a_successful_batch_with_no_further_turn() {
+        let h = Harness::new(vec![
+            reply(
+                "",
+                &[
+                    ("c1", "write", json!({"path": "ok.txt", "content": "x"})),
+                    ("c2", "finish", json!({"summary": "wrote it"})),
+                ],
+                "tool_calls",
+            ),
+            text("this reply must not run"),
+        ])
+        .await;
+        let (ended, _, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        assert_eq!(ended.turns, 1, "the run ended after the finishing batch");
+        assert_eq!(h.requests().len(), 1, "no further turn was taken");
+    }
+
+    #[tokio::test]
+    async fn finish_does_not_end_the_run_when_a_sibling_call_fails() {
+        let h = Harness::new(vec![
+            reply(
+                "",
+                &[
+                    ("c1", "read", json!({"path": "nope.txt"})), // missing file: errors
+                    ("c2", "finish", json!({})),
+                ],
+                "tool_calls",
+            ),
+            text("recovered"),
+        ])
+        .await;
+        let (ended, _, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        assert_eq!(
+            h.requests().len(),
+            2,
+            "a failed sibling means finish is ignored and the run goes on"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_finish_still_runs_a_configured_verify() {
+        // finish after a change, but a configured check fails until `ok.flag` exists: the run must
+        // continue (finish routes through auto-verify, not around it).
+        let scripted = vec![
+            reply(
+                "",
+                &[
+                    ("c1", "write", json!({"path": "work.txt", "content": "x"})),
+                    ("c2", "finish", json!({})),
+                ],
+                "tool_calls",
+            ),
+            reply(
+                "",
+                &[("c3", "write", json!({"path": "ok.flag", "content": "x"}))],
+                "tool_calls",
+            ),
+            text("done now"),
+        ];
+        let Some(mut h) = Harness::new(scripted).await.with_git().await else {
+            return; // no git on this machine
+        };
+        h.app.settings.verify = Some("test -f ok.flag".into());
+        let (ended, _, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let sent = h
+            .requests()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<String>();
+        assert!(
+            sent.contains("failed after your changes"),
+            "the configured verify ran after finish: {sent}"
         );
     }
 

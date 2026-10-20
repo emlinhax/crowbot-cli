@@ -1,0 +1,1 @@
+Call this when the task is complete, to end without a separate "done" message. Put it in the SAME batch as your last action or the command that verifies it (the test you expect to pass, say): the run ends only if every other call in the batch succeeds, so if the action or check fails you just see the error and carry on — an optimistic finish costs nothing.

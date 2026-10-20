@@ -28,6 +28,10 @@ title = ["description"]
 body = "summary"
 summary = { count = "calls", one = "{agent}: {n} call", many = "{agent}: {n} calls" }
 
+[finish]
+title = ["summary"]
+body = "none"
+
 [edit]
 body = "diff"
 max_lines = 20
