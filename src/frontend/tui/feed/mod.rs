@@ -429,6 +429,9 @@ impl Feed {
         for i in 0..self.entries.len() {
             let depth = self.entries[i].depth();
             if depth > floor {
+                // A hidden entry shares its start with the row below, where lines kept from when
+                // it was shown would otherwise draw.
+                self.entries[i].drawn = None;
                 self.starts.push(row);
                 continue;
             }
@@ -873,6 +876,17 @@ mod tests {
         assert_eq!(
             texts(&mut feed, now),
             ["● task find the parser", "  explore: 2 calls"]
+        );
+        // Re-collapsed with a block below: the gap between them stays blank.
+        feed.push(Block::User("next".into()));
+        assert_eq!(texts(&mut feed, now)[2], "");
+        assert!(feed.toggle(0));
+        texts(&mut feed, now);
+        assert!(feed.toggle(0));
+        assert_eq!(
+            texts(&mut feed, now)[2],
+            "",
+            "no hidden child draws in the gap"
         );
     }
 
