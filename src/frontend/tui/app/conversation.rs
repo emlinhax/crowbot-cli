@@ -27,7 +27,7 @@ pub(super) enum Switch {
 impl Tui<'_> {
     /// A conversation read back from its file: shown as it was, with where it stood.
     pub(super) fn resumed(&mut self, messages: &[Message], resumed: &Resumed, gone: Option<&str>) {
-        self.feed.replay(messages);
+        self.feed.replay(messages, &child_messages);
         self.context_tokens = last_input(messages);
         let cost = units::usd_micros(resumed.spent_micros);
         let text = template::fill(
@@ -121,7 +121,7 @@ impl Tui<'_> {
         self.shared.start_over();
         self.feed = Feed::new();
         self.feed.set_welcome(self.welcome());
-        self.feed.replay(&transcript.messages);
+        self.feed.replay(&transcript.messages, &child_messages);
         self.view = View::default();
         self.context_tokens = last_input(&transcript.messages);
         if let Some(snapshot) = &undone.snapshot {
@@ -188,4 +188,12 @@ fn last_input(messages: &[Message]) -> Option<u64> {
         Message::Assistant(reply) => reply.usage.map(|u| u.input),
         _ => None,
     })
+}
+
+/// A subagent's messages, from the session file its `task` result linked, so replay can show its
+/// calls under the task; empty when the file is gone or unreadable, leaving that task flat.
+fn child_messages(path: &str) -> Vec<Message> {
+    Transcript::open(std::path::Path::new(path))
+        .map(|(transcript, _)| transcript.messages)
+        .unwrap_or_default()
 }

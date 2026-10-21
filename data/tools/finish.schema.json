@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": { "type": "string", "description": "A one-line note on what was accomplished" }
+  }
+}

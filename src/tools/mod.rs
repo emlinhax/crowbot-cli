@@ -3,6 +3,7 @@
 mod bash;
 mod decompile;
 mod edit;
+mod finish;
 pub mod forum;
 mod fs;
 mod glob;
@@ -21,6 +22,7 @@ mod webfetch;
 mod write;
 
 pub use bash::shell;
+pub use finish::NAME as FINISH;
 pub use target::plan_file;
 pub use task::NAME as TASK;
 
@@ -341,6 +343,7 @@ impl Registry {
             Arc::new(question::Question),
             Arc::new(plan_exit::PlanExit),
             Arc::new(task::Task),
+            Arc::new(finish::Finish),
         ];
         let mut registry = Self {
             entries: Vec::new(),

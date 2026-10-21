@@ -76,17 +76,52 @@ pub fn title(tool: &str, arguments: &str) -> Option<String> {
     let args: Value = serde_json::from_str(arguments).unwrap_or(Value::Null);
     let spec = spec(tool);
     let items = spec.title_items.unwrap_or_default();
-    let present: Vec<String> = spec
-        .title
-        .unwrap_or_default()
+    let keys = spec.title.unwrap_or_default();
+    // An empty list (`title = []`) is a deliberate no-title; a non-empty one that matched nothing
+    // (an MCP tool titles by its own arg names) falls back to its values below.
+    let wanted = !keys.is_empty();
+    let present: Vec<String> = keys
         .into_iter()
         .filter_map(|key| arg_text(at(Some(&args), &key)?, items))
         .collect();
     let title = match spec.title_join {
         Some(sep) => (!present.is_empty()).then(|| present.join(&sep)),
         None => present.into_iter().next(),
-    }?;
+    };
+    let title = title.or_else(|| wanted.then(|| fallback(&args, items)).flatten())?;
     Some(title.lines().next().unwrap_or_default().to_owned())
+}
+
+/// When a tool's named title args are all absent — an MCP tool titles by its own argument names —
+/// show its first few scalar argument values, so the card is not a bare tool name.
+fn fallback(args: &Value, items: usize) -> Option<String> {
+    let obj = args.as_object()?;
+    let parts: Vec<String> = obj.values().filter_map(scalar).take(items.max(1)).collect();
+    (!parts.is_empty()).then(|| parts.join(" "))
+}
+
+fn scalar(value: &Value) -> Option<String> {
+    match value {
+        Value::String(s) => {
+            let line = s.lines().next().unwrap_or_default();
+            (!line.is_empty()).then(|| line.to_owned())
+        }
+        Value::Number(n) => Some(n.to_string()),
+        Value::Bool(b) => Some(b.to_string()),
+        _ => None,
+    }
+}
+
+/// The full value of a call's primary title arg when it spans more than one line — a heredoc or
+/// piped script inside a bash `command` — so the card can show input the one-line header drops.
+pub fn input(tool: &str, arguments: &str) -> Option<String> {
+    let args: Value = serde_json::from_str(arguments).ok()?;
+    let key = spec(tool)
+        .title?
+        .into_iter()
+        .find(|k| at(Some(&args), k).is_some())?;
+    let text = at(Some(&args), &key)?.as_str()?;
+    (text.lines().count() > 1).then(|| text.to_owned())
 }
 
 /// The `[default]` section every tool falls back to.
@@ -138,6 +173,30 @@ mod tests {
         assert_eq!(forum.as_deref(), Some("uc · aimbot"));
         let batch = title("read", r#"{"path":["a.rs","b.rs"]}"#);
         assert_eq!(batch.as_deref(), Some("a.rs, b.rs"));
+        // No args at all: still nothing to show.
         assert_eq!(title("frobnicate", "{}"), None);
+    }
+
+    #[test]
+    fn an_unknown_tool_falls_back_to_its_arg_values() {
+        // decompile's own section surfaces binary + function.
+        let dec = title("decompile", r#"{"binary":"vault","function":"main"}"#);
+        assert_eq!(dec.as_deref(), Some("vault main"));
+        // An MCP tool titles by its own arg names, not the default keys: show the values.
+        let mcp = title("ida_decompile", r#"{"address":"0x401000"}"#);
+        assert_eq!(mcp.as_deref(), Some("0x401000"));
+        // A deliberately title-less tool stays bare.
+        assert_eq!(title("todowrite", r#"{"todos":[]}"#), None);
+    }
+
+    #[test]
+    fn a_multi_line_command_is_offered_as_input_a_single_line_is_not() {
+        let script = r#"{"command":"python3 - <<EOF\nprint(42)\nEOF"}"#;
+        assert_eq!(
+            input("bash", script).as_deref(),
+            Some("python3 - <<EOF\nprint(42)\nEOF")
+        );
+        assert_eq!(input("bash", r#"{"command":"ls -la"}"#), None);
+        assert_eq!(input("read", r#"{"path":"a.rs"}"#), None);
     }
 }

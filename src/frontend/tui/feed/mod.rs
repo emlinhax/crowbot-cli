@@ -39,6 +39,8 @@ pub enum Block {
         /// The first call of its reply; a batch's later calls (`false`) stack with no blank above,
         /// so several calls made in one reply read as one group.
         first: bool,
+        /// Nesting under a subagent: 0 top-level, ≥1 a `task`'s descendants, indented by rails.
+        depth: usize,
     },
     Thinking {
         text: String,
@@ -48,22 +50,49 @@ pub enum Block {
     Error(ErrorInfo),
 }
 
+/// The left-gutter a tool card draws behind: `depth` subagent-tree rails, plus one batch rail when
+/// the call is one of a reply's grouped calls. Part of the draw cache key, so a card re-renders
+/// when a sibling joins its batch.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+struct Decor {
+    depth: usize,
+    rail: bool,
+}
+
+impl Decor {
+    /// How many columns of gutter precede the card.
+    fn cols(self) -> usize {
+        self.depth + usize::from(self.rail)
+    }
+}
+
 struct Entry {
     block: Block,
-    /// A thinking block shows its text.
+    /// A thinking block shows its text; a `task` shows its subagent's child cards.
     open: bool,
-    /// The block drawn at a width; cleared when it is toggled.
-    drawn: Option<(usize, Vec<Line>)>,
+    /// The block drawn at a width and gutter; cleared when either changes.
+    drawn: Option<(usize, Decor, Vec<Line>)>,
 }
 
 impl Entry {
-    fn lines(&mut self, width: usize) -> &[Line] {
-        if self.drawn.as_ref().is_none_or(|(w, _)| *w != width) {
-            self.drawn = Some((width, render(&self.block, self.open, width)));
+    fn lines(&mut self, width: usize, decor: Decor) -> &[Line] {
+        if self
+            .drawn
+            .as_ref()
+            .is_none_or(|(w, d, _)| *w != width || *d != decor)
+        {
+            self.drawn = Some((width, decor, render(&self.block, self.open, width, decor)));
         }
         self.drawn
             .as_ref()
-            .map_or(&[], |(_, lines)| lines.as_slice())
+            .map_or(&[], |(_, _, lines)| lines.as_slice())
+    }
+
+    fn depth(&self) -> usize {
+        match &self.block {
+            Block::Tool { depth, .. } => *depth,
+            _ => 0,
+        }
     }
 }
 
@@ -72,8 +101,57 @@ struct Running {
     name: String,
     arguments: String,
     since: Instant,
-    /// A subagent's latest call, by tool and arguments, for the `task` call that started it.
-    step: Option<(String, String)>,
+    /// The subagent's calls so far (a tree — a subagent's own subagents nest), for the `task` call
+    /// that started it: shown live, then flattened into the transcript when the task ends.
+    children: Vec<SubCall>,
+}
+
+/// One call a subagent made, captured from its `Child` events.
+struct SubCall {
+    call_id: String,
+    name: String,
+    arguments: String,
+    result: Option<ToolResult>,
+    children: Vec<SubCall>,
+}
+
+/// Routes a subagent's event into the captured tree: a `Child` descends one call-id level (so a
+/// subagent's own subagents nest), a `ToolStart` adds a call, a `ToolEnd` fills its result.
+fn route(nodes: &mut Vec<SubCall>, event: &AgentEvent) {
+    match event {
+        AgentEvent::Child { call_id, event } => {
+            if let Some(node) = nodes.iter_mut().find(|c| c.call_id == *call_id) {
+                route(&mut node.children, event);
+            }
+        }
+        AgentEvent::ToolStart {
+            call_id,
+            name,
+            arguments,
+        } => nodes.push(SubCall {
+            call_id: call_id.clone(),
+            name: name.clone(),
+            arguments: arguments.clone(),
+            result: None,
+            children: Vec::new(),
+        }),
+        AgentEvent::ToolEnd { result } => {
+            if let Some(node) = nodes.iter_mut().find(|c| c.call_id == result.call_id) {
+                node.result = Some(result.clone());
+            }
+        }
+        _ => {}
+    }
+}
+
+/// A subagent's captured calls as live one-liners, each indented by its depth.
+fn child_lines(subs: &[SubCall], depth: usize, width: usize) -> Vec<Line> {
+    let mut lines = Vec::new();
+    for sc in subs {
+        lines.push(calls::step(&sc.name, &sc.arguments, depth).truncate(width));
+        lines.extend(child_lines(&sc.children, depth + 1, width));
+    }
+    lines
 }
 
 pub struct Feed {
@@ -199,33 +277,37 @@ impl Feed {
         self.copy_text(start)
     }
 
-    /// Opens or closes the thinking block at `index`; `false` when it is not one.
+    /// Opens or closes the thinking block or subagent task at `index`; `false` when it is neither.
     pub fn toggle(&mut self, index: usize) -> bool {
-        match self.entries.get_mut(index) {
-            Some(entry) if matches!(entry.block, Block::Thinking { .. }) => {
-                entry.open = !entry.open;
-                entry.drawn = None;
-                true
-            }
-            _ => false,
+        let togglable = matches!(
+            self.entries.get(index).map(|e| &e.block),
+            Some(Block::Thinking { .. })
+        ) || (self.is_task(index) && self.has_children(index));
+        if togglable && let Some(entry) = self.entries.get_mut(index) {
+            entry.open = !entry.open;
+            entry.drawn = None;
+            return true;
         }
+        false
     }
 
-    /// Opens every thinking block, or closes them all when all are open; new ones follow suit.
+    /// Opens every thinking block and subagent task, or closes them all when all are open; new
+    /// ones follow suit.
     pub fn toggle_all(&mut self) {
-        let thinking = self
-            .entries
-            .iter_mut()
-            .filter(|e| matches!(e.block, Block::Thinking { .. }));
-        let mut all: Vec<&mut Entry> = thinking.collect();
-        let open = if all.is_empty() {
+        let idxs: Vec<usize> = (0..self.entries.len())
+            .filter(|&i| {
+                matches!(self.entries[i].block, Block::Thinking { .. })
+                    || (self.is_task(i) && self.has_children(i))
+            })
+            .collect();
+        let open = if idxs.is_empty() {
             !self.open_thinking
         } else {
-            !all.iter().all(|e| e.open)
+            !idxs.iter().all(|&i| self.entries[i].open)
         };
-        for entry in &mut all {
-            entry.open = open;
-            entry.drawn = None;
+        for &i in &idxs {
+            self.entries[i].open = open;
+            self.entries[i].drawn = None;
         }
         self.open_thinking = open;
     }
@@ -266,14 +348,16 @@ impl Feed {
                 name: name.clone(),
                 arguments: arguments.clone(),
                 since: now,
-                step: None,
+                children: Vec::new(),
             }),
             AgentEvent::ToolEnd { result } => {
-                let arguments = self
+                let removed = self
                     .running
                     .iter()
                     .position(|r| r.call_id == result.call_id)
-                    .map(|i| self.running.remove(i).arguments)
+                    .map(|i| self.running.remove(i));
+                let (arguments, children) = removed
+                    .map(|r| (r.arguments, r.children))
                     .unwrap_or_default();
                 let first = !self.batch_open;
                 self.batch_open = true;
@@ -281,7 +365,10 @@ impl Feed {
                     arguments,
                     result: result.clone(),
                     first,
+                    depth: 0,
                 });
+                // A subagent's captured calls follow its task card, indented a level deeper.
+                self.flatten(children, 1);
             }
             AgentEvent::Unsaved { path, error } => {
                 let text = fill(&words::get().unsaved, &[("path", path), ("error", error)]);
@@ -318,14 +405,10 @@ impl Feed {
                     self.notice(&text, role);
                 }
             }
-            // A subagent's work shows as the latest call under the task that started it.
+            // A subagent's calls are captured under the task that started it, to show as its tree.
             AgentEvent::Child { call_id, event } => {
-                if let AgentEvent::ToolStart {
-                    name, arguments, ..
-                } = event.innermost()
-                    && let Some(task) = self.running.iter_mut().find(|r| r.call_id == *call_id)
-                {
-                    task.step = Some((name.clone(), arguments.clone()));
+                if let Some(task) = self.running.iter_mut().find(|r| r.call_id == *call_id) {
+                    route(&mut task.children, event);
                 }
             }
             // The session words what an MCP server's event says, as a notice.
@@ -341,14 +424,31 @@ impl Feed {
     pub fn measure(&mut self, width: usize, now: Instant) -> usize {
         let mut row = 0;
         self.starts.clear();
-        for (i, entry) in self.entries.iter_mut().enumerate() {
-            // A batch's later calls stack directly under its first, with no blank between them.
-            let batched = matches!(entry.block, Block::Tool { first: false, .. });
-            if i > 0 && !batched {
+        // Entries deeper than `floor` sit under a collapsed task and draw nothing.
+        let mut floor = usize::MAX;
+        for i in 0..self.entries.len() {
+            let depth = self.entries[i].depth();
+            if depth > floor {
+                // A hidden entry shares its start with the row below, where lines kept from when
+                // it was shown would otherwise draw.
+                self.entries[i].drawn = None;
+                self.starts.push(row);
+                continue;
+            }
+            floor = if self.is_task(i) && !self.entries[i].open {
+                depth
+            } else {
+                usize::MAX
+            };
+            let decor = Decor {
+                depth,
+                rail: self.batch_rail(i),
+            };
+            if i > 0 && !self.stacks_up(i) {
                 row += 1;
             }
             self.starts.push(row);
-            row += entry.lines(width).len();
+            row += self.entries[i].lines(width, decor).len();
         }
         self.live = self.live_lines(width, now);
         if !self.live.is_empty() && !self.entries.is_empty() {
@@ -357,6 +457,81 @@ impl Feed {
         self.live_start = row;
         self.total = row + self.live.len();
         self.total
+    }
+
+    /// A `task` whose subagent made calls; only these (and thinking) toggle open.
+    fn is_task(&self, i: usize) -> bool {
+        self.entries.get(i).is_some_and(
+            |e| matches!(&e.block, Block::Tool { result, .. } if result.name == "task"),
+        )
+    }
+
+    /// Whether entry `i` is followed by deeper (subagent-child) entries.
+    fn has_children(&self, i: usize) -> bool {
+        let depth = self.entries.get(i).map_or(0, Entry::depth);
+        self.entries.get(i + 1).is_some_and(|e| e.depth() > depth)
+    }
+
+    /// Whether entry `i` draws directly under the one before it with no blank: a subagent's child,
+    /// or a reply's batched call stacking under an adjacent sibling.
+    fn stacks_up(&self, i: usize) -> bool {
+        if self.entries.get(i).map_or(0, Entry::depth) >= 1 {
+            return true;
+        }
+        let continues = matches!(
+            self.entries.get(i).map(|e| &e.block),
+            Some(Block::Tool { first: false, .. })
+        );
+        continues
+            && i > 0
+            && self
+                .entries
+                .get(i - 1)
+                .is_some_and(|e| matches!(e.block, Block::Tool { .. }) && e.depth() == 0)
+    }
+
+    /// Whether tool `i` is one of ≥2 grouped calls of a reply, so it shares the batch rail.
+    fn batch_rail(&self, i: usize) -> bool {
+        let depth0_tool = |j: usize| {
+            self.entries
+                .get(j)
+                .is_some_and(|e| matches!(e.block, Block::Tool { .. }) && e.depth() == 0)
+        };
+        let continues = |j: usize| {
+            self.entries.get(j).is_some_and(|e| {
+                matches!(e.block, Block::Tool { first: false, .. }) && e.depth() == 0
+            })
+        };
+        // A batch when the next call continues it, or this call continues an adjacent one before it.
+        // Children flattened between two task calls break adjacency, so those tasks share no rail.
+        depth0_tool(i) && (continues(i + 1) || (continues(i) && i > 0 && depth0_tool(i - 1)))
+    }
+
+    /// Lays a subagent's captured calls, depth-first, into indented child entries after its task.
+    fn flatten(&mut self, subs: Vec<SubCall>, depth: usize) {
+        for sc in subs {
+            let result = sc.result.unwrap_or_else(|| ToolResult {
+                call_id: sc.call_id,
+                name: sc.name,
+                content: String::new(),
+                is_error: false,
+                details: None,
+                asks: Vec::new(),
+                refused: None,
+                usage: None,
+            });
+            self.entries.push(Entry {
+                block: Block::Tool {
+                    arguments: sc.arguments,
+                    result,
+                    first: false,
+                    depth,
+                },
+                open: false,
+                drawn: None,
+            });
+            self.flatten(sc.children, depth + 1);
+        }
     }
 
     /// Rows `from..to` of the last `measure`, each with the block it belongs to.
@@ -370,7 +545,7 @@ impl Feed {
                 let lines = self.entries[i]
                     .drawn
                     .as_ref()
-                    .map_or(&[][..], |(_, l)| l.as_slice());
+                    .map_or(&[][..], |(_, _, l)| l.as_slice());
                 match lines.get(row - self.starts[i]) {
                     Some(line) => (line.clone(), Some(i)),
                     None => (Line::default(), None),
@@ -411,9 +586,7 @@ impl Feed {
                             calls::header(&tool.name, &tool.arguments, State::Running(frame))
                                 .truncate(width),
                         ];
-                        if let Some((name, arguments)) = &tool.step {
-                            lines.push(calls::step(name, arguments).truncate(width));
-                        }
+                        lines.extend(child_lines(&tool.children, 0, width));
                         lines
                     })
                     .collect(),
@@ -688,9 +861,134 @@ mod tests {
             usage: None,
         };
         feed.event(&AgentEvent::ToolEnd { result }, now);
+        // Collapsed by default: the subagent's read is kept but hidden, the count stands in.
         assert_eq!(
             texts(&mut feed, now),
             ["● task find the parser", "  explore: 2 calls"]
+        );
+        // Toggling the task reveals its child, indented under a rail; toggling again hides it.
+        assert!(feed.toggle(0));
+        assert_eq!(
+            texts(&mut feed, now),
+            ["● task find the parser", "│ ● read src/parse.rs"]
+        );
+        assert!(feed.toggle(0));
+        assert_eq!(
+            texts(&mut feed, now),
+            ["● task find the parser", "  explore: 2 calls"]
+        );
+        // Re-collapsed with a block below: the gap between them stays blank.
+        feed.push(Block::User("next".into()));
+        assert_eq!(texts(&mut feed, now)[2], "");
+        assert!(feed.toggle(0));
+        texts(&mut feed, now);
+        assert!(feed.toggle(0));
+        assert_eq!(
+            texts(&mut feed, now)[2],
+            "",
+            "no hidden child draws in the gap"
+        );
+    }
+
+    #[test]
+    fn parallel_subagents_keep_each_tasks_children_together() {
+        let now = crate::io::clock::instant();
+        let mut feed = Feed::new();
+        let start = |id: &str, name: &str, args: &str| AgentEvent::ToolStart {
+            call_id: id.into(),
+            name: name.into(),
+            arguments: args.into(),
+        };
+        let child = |task: &str, ev: AgentEvent| AgentEvent::Child {
+            call_id: task.into(),
+            event: Box::new(ev),
+        };
+        let task_end = |id: &str, calls: u64| AgentEvent::ToolEnd {
+            result: ToolResult {
+                call_id: id.into(),
+                name: "task".into(),
+                content: "done".into(),
+                details: Some(serde_json::json!({"agent": "explore", "calls": calls})),
+                is_error: false,
+                asks: Vec::new(),
+                refused: None,
+                usage: None,
+            },
+        };
+        // Two task calls in one reply; their child calls arrive interleaved as they run.
+        feed.event(&start("t1", "task", r#"{"description":"first"}"#), now);
+        feed.event(&start("t2", "task", r#"{"description":"second"}"#), now);
+        feed.event(&child("t1", start("a1", "read", r#"{"path":"1a"}"#)), now);
+        feed.event(&child("t2", start("b1", "read", r#"{"path":"2a"}"#)), now);
+        feed.event(&child("t1", start("a2", "read", r#"{"path":"1b"}"#)), now);
+        feed.event(&task_end("t1", 2), now);
+        feed.event(&task_end("t2", 1), now);
+        feed.toggle_all(); // open both tasks
+        // Each task's children stay contiguous under it, not interleaved.
+        assert_eq!(
+            texts(&mut feed, now),
+            [
+                "● task first",
+                "│ ● read 1a",
+                "│ ● read 1b",
+                "",
+                "● task second",
+                "│ ● read 2a",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_nested_subagent_indents_a_grandchild_and_collapse_nests() {
+        let now = crate::io::clock::instant();
+        let mut feed = Feed::new();
+        let start = |id: &str, name: &str, args: &str| AgentEvent::ToolStart {
+            call_id: id.into(),
+            name: name.into(),
+            arguments: args.into(),
+        };
+        let child = |task: &str, ev: AgentEvent| AgentEvent::Child {
+            call_id: task.into(),
+            event: Box::new(ev),
+        };
+        // Outer task → inner task → a read, two levels deep.
+        feed.event(&start("t1", "task", r#"{"description":"outer"}"#), now);
+        feed.event(
+            &child("t1", start("t2", "task", r#"{"description":"inner"}"#)),
+            now,
+        );
+        feed.event(
+            &child(
+                "t1",
+                child("t2", start("c3", "read", r#"{"path":"deep.rs"}"#)),
+            ),
+            now,
+        );
+        feed.event(
+            &AgentEvent::ToolEnd {
+                result: ToolResult {
+                    call_id: "t1".into(),
+                    name: "task".into(),
+                    content: "done".into(),
+                    details: Some(serde_json::json!({"agent": "explore", "calls": 1})),
+                    is_error: false,
+                    asks: Vec::new(),
+                    refused: None,
+                    usage: None,
+                },
+            },
+            now,
+        );
+        // Collapsed: only the outer task.
+        assert_eq!(texts(&mut feed, now), ["● task outer", "  explore: 1 call"]);
+        // Open the outer: the inner task shows (depth 1), its grandchild still hidden.
+        assert!(feed.toggle(0));
+        assert_eq!(texts(&mut feed, now), ["● task outer", "│ ● task inner"]);
+        // Open the inner (entry 1): the grandchild shows a level deeper.
+        assert!(feed.toggle(1));
+        assert_eq!(
+            texts(&mut feed, now),
+            ["● task outer", "│ ● task inner", "│ │ ● read deep.rs"]
         );
     }
 
@@ -758,12 +1056,12 @@ mod tests {
             [
                 "◆ Reading.",
                 "",
-                "● bash one",
-                "  1",
-                "● bash two",
-                "  2",
+                "│ ● bash one", // the two calls of one reply share a left rail
+                "│   1",
+                "│ ● bash two",
+                "│   2",
                 "",
-                "● bash three",
+                "● bash three", // a lone call of its own reply: no rail
                 "  3",
             ]
         );

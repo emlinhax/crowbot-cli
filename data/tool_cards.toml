@@ -28,6 +28,10 @@ title = ["description"]
 body = "summary"
 summary = { count = "calls", one = "{agent}: {n} call", many = "{agent}: {n} calls" }
 
+[finish]
+title = ["summary"]
+body = "none"
+
 [edit]
 body = "diff"
 max_lines = 20
@@ -56,6 +60,12 @@ summary = { count = "paths", one = "{n} path", many = "{n} paths" }
 [webfetch]
 body = "head"
 max_lines = 3
+
+[decompile]
+title = ["binary", "function"]
+title_join = " "
+body = "head"
+max_lines = 6
 
 [todowrite]
 title = []
