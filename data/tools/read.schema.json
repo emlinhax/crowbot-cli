@@ -2,10 +2,26 @@
   "type": "object",
   "properties": {
     "path": {
-      "description": "File or directory to read, or a list of files to read at once",
+      "description": "File or directory to read, or a list of files to read at once; a list item may be an object with its own path, offset and limit",
       "oneOf": [
         { "type": "string" },
-        { "type": "array", "items": { "type": "string" } }
+        {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "properties": {
+                  "path": { "type": "string" },
+                  "offset": { "type": "integer", "description": "First line to show of this file, 1-based" },
+                  "limit": { "type": "integer", "description": "Number of lines to show of this file" }
+                },
+                "required": ["path"]
+              }
+            ]
+          }
+        }
       ]
     },
     "offset": { "type": "integer", "description": "First line to show, 1-based" },

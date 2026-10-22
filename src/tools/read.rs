@@ -33,7 +33,7 @@ struct Text {
 
 #[derive(Deserialize)]
 pub struct Args {
-    path: Many<String>,
+    path: Many<Item>,
     #[serde(default)]
     offset: Option<usize>,
     #[serde(default)]
@@ -42,17 +42,48 @@ pub struct Args {
     depth: Option<usize>,
 }
 
+/// A path, or a path with its own lines, so one call reads different parts of several files (or
+/// two parts of one).
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Item {
+    Path(String),
+    Part {
+        path: String,
+        #[serde(default)]
+        offset: Option<usize>,
+        #[serde(default)]
+        limit: Option<usize>,
+    },
+}
+
 impl Args {
-    fn paths(&self) -> (&[String], Page) {
+    /// Each path with what to show of it: its own lines, else the call's.
+    fn parts(&self) -> Vec<(&str, Page)> {
         let page = Page {
             offset: self.offset,
             limit: self.limit,
             depth: self.depth,
         };
-        (
-            self.path.capped(limits::get().tools.read_batch_max.value),
-            page,
-        )
+        self.path
+            .capped(limits::get().tools.read_batch_max.value)
+            .iter()
+            .map(|item| match item {
+                Item::Path(path) => (path.as_str(), page),
+                Item::Part {
+                    path,
+                    offset,
+                    limit,
+                } => (
+                    path.as_str(),
+                    Page {
+                        offset: offset.or(page.offset),
+                        limit: limit.or(page.limit),
+                        ..page
+                    },
+                ),
+            })
+            .collect()
     }
 }
 
@@ -74,9 +105,8 @@ impl Tool for Read {
     }
 
     fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let (paths, _) = args.paths();
         let mut asks = Vec::new();
-        for path in paths {
+        for (path, _) in args.parts() {
             let target = target::resolve(&cx.app.paths, path)?;
             asks.extend(target::asks(catalog::READ.name, &target));
         }
@@ -89,14 +119,14 @@ impl Tool for Read {
         cx: &'a ToolCx<'a>,
     ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let (paths, page) = args.paths();
-            if let [path] = paths {
+            let parts = args.parts();
+            if let [(path, page)] = parts[..] {
                 return one(cx, path, page);
             }
             let budget = limits::get().tools.read_batch_bytes.value;
             let (mut used, mut read) = (0, 0);
-            let mut parts = Vec::new();
-            for path in paths {
+            let mut shown = Vec::new();
+            for (path, page) in parts {
                 // A soft cap: the file that crosses it stays whole, and the rest are only named.
                 let out = if used < budget {
                     one(cx, path, page).unwrap_or_else(Output::error)
@@ -105,9 +135,9 @@ impl Tool for Read {
                 };
                 used += out.content.len();
                 read += usize::from(!out.is_error);
-                parts.push((format!("{path}:"), out.content));
+                shown.push((format!("{path}:"), out.content));
             }
-            let content = many::join(parts);
+            let content = many::join(shown);
             if read == 0 {
                 return Err(content);
             }
@@ -306,6 +336,33 @@ mod tests {
         assert_eq!(out.details, Some(json!({"files": 2})));
         let path = crate::io::fs::canonical(&project.app.paths.project.join("b.txt"));
         assert!(project.shared.files.check_fresh(&path, "b.txt").is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_listed_file_can_carry_its_own_lines() {
+        let project = Project::new();
+        let text: String = (1..=9).map(|n| format!("line {n}\n")).collect();
+        project.write("a.txt", &text);
+        project.write("b.txt", &text);
+        let out = read(
+            &project,
+            json!({"path": [
+                {"path": "a.txt", "offset": 2, "limit": 1},
+                {"path": "a.txt", "offset": 8},
+                "b.txt",
+            ], "limit": 1}),
+        )
+        .await;
+        assert!(!out.is_error);
+        for part in [
+            "a.txt:\n     2\tline 2\n",
+            "a.txt:\n     8\tline 8\n",
+            "b.txt:\n     1\tline 1\n",
+        ] {
+            assert!(out.content.contains(part), "{part:?} in {}", out.content);
+        }
+        assert!(!out.content.contains("line 9"), "{}", out.content);
+        assert_eq!(out.details, Some(json!({"files": 3})));
     }
 
     #[tokio::test]

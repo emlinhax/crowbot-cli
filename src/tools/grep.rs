@@ -5,6 +5,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 use serde_json::json;
 
+use super::many::Many;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx, target};
 use crate::data;
 use crate::permission::catalog;
@@ -32,7 +33,7 @@ struct Text {
 pub struct Args {
     pattern: String,
     #[serde(default)]
-    path: Option<String>,
+    path: Option<Many<String>>,
     #[serde(default)]
     glob: Option<String>,
     #[serde(default)]
@@ -41,6 +42,16 @@ pub struct Args {
     context: usize,
     #[serde(default)]
     output: Shape,
+}
+
+impl Args {
+    /// Where to search: the listed files and directories, else the working directory.
+    fn paths(&self) -> Vec<&str> {
+        match self.path.as_ref().map(Many::all) {
+            Some(paths) if !paths.is_empty() => paths.iter().map(String::as_str).collect(),
+            _ => vec!["."],
+        }
+    }
 }
 
 /// What the search answers with.
@@ -63,8 +74,12 @@ impl Tool for Grep {
     }
 
     fn check(&self, args: &Self::Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let root = target::resolve(&cx.app.paths, args.path.as_deref().unwrap_or("."))?;
-        Ok(Check::new(target::asks(catalog::SEARCH.name, &root)))
+        let mut asks = Vec::new();
+        for path in args.paths() {
+            let root = target::resolve(&cx.app.paths, path)?;
+            asks.extend(target::asks(catalog::SEARCH.name, &root));
+        }
+        Ok(Check::new(asks))
     }
 
     fn run<'a>(
@@ -73,7 +88,11 @@ impl Tool for Grep {
         cx: &'a ToolCx<'a>,
     ) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
-            let root = target::search_root(&cx.app.paths, args.path.as_deref())?;
+            let roots = args
+                .paths()
+                .into_iter()
+                .map(|path| target::search_root(&cx.app.paths, Some(path)).map(|t| t.path))
+                .collect::<Result<Vec<_>, _>>()?;
             let base = io::fs::canonical(&cx.app.paths.project);
             let limits = &limits::get().tools;
             let max = limits.max_results.value;
@@ -85,7 +104,7 @@ impl Tool for Grep {
                 Shape::Count => Report::Counts,
             };
             let query = io::search::Grep {
-                root: root.path.clone(),
+                roots,
                 pattern: args.pattern,
                 glob: args.glob,
                 ignore_case: args.ignore_case,
@@ -187,5 +206,24 @@ mod tests {
         assert_eq!(files, ["a.txt", "b.txt"]);
         let counts = grep(json!({"pattern": "hit", "glob": "b.txt", "output": "count"})).await;
         assert_eq!(counts, "b.txt: 2");
+    }
+
+    #[tokio::test]
+    async fn searches_a_list_of_paths_each_file_once() {
+        let project = Project::new();
+        project.write("a.txt", "hit\n");
+        project.write("d/b.txt", "hit\n");
+        project.write("c.txt", "hit\n");
+        let out = project
+            .run(
+                &Grep,
+                json!({"pattern": "hit", "path": ["a.txt", "d", "d/b.txt"], "output": "files"}),
+            )
+            .await;
+        assert_eq!(out.content, "a.txt\nd/b.txt");
+        let missing = project
+            .run(&Grep, json!({"pattern": "hit", "path": ["a.txt", "nope"]}))
+            .await;
+        assert!(missing.is_error, "{}", missing.content);
     }
 }

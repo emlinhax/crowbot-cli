@@ -1,6 +1,7 @@
 //! File search, embedded from ripgrep's crates so nothing needs downloading. Honors .gitignore.
 //! `glob` and `grep` run off the async threads themselves.
 
+use std::collections::HashSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -135,7 +136,8 @@ pub fn tree(root: &Path, depth: usize) -> Vec<TreeEntry> {
 }
 
 pub struct Grep {
-    pub root: PathBuf,
+    /// Files and directories searched in turn; a file under two of them is searched once.
+    pub roots: Vec<PathBuf>,
     pub pattern: String,
     pub glob: Option<String>,
     pub ignore_case: bool,
@@ -162,10 +164,18 @@ fn grep_in(query: &Grep) -> Result<(Vec<FileHits>, bool), String> {
         .build();
     let mut files: Vec<FileHits> = Vec::new();
     let mut lines = 0;
-    for entry in walk_files(&query.root) {
+    let mut seen = HashSet::new();
+    let entries = query
+        .roots
+        .iter()
+        .flat_map(|root| walk_files(root).map(move |entry| (root, entry)));
+    for (root, entry) in entries {
         let path = entry.path();
+        if !seen.insert(path.to_path_buf()) {
+            continue;
+        }
         if let Some(filter) = &filter {
-            let relative = relative_slashes(&query.root, path);
+            let relative = relative_slashes(root, path);
             let name = entry.file_name().to_string_lossy();
             if !filter.is_match(&relative) && !filter.is_match(name.as_ref()) {
                 continue;
@@ -327,7 +337,7 @@ mod tests {
     fn grep_finds_lines_respects_filters_and_caps() {
         let dir = tree();
         let query = Grep {
-            root: dir.path().to_path_buf(),
+            roots: vec![dir.path().to_path_buf()],
             pattern: r"\brun\b".into(),
             glob: Some("*.rs".into()),
             ignore_case: false,
@@ -359,7 +369,7 @@ mod tests {
     fn grep_reports_context_files_or_counts() {
         let dir = tree();
         let query = |report| Grep {
-            root: dir.path().to_path_buf(),
+            roots: vec![dir.path().to_path_buf()],
             pattern: "run".into(),
             glob: Some("main.rs".into()),
             ignore_case: false,
