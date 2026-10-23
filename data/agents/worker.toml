@@ -1,6 +1,6 @@
-# A kind of subagent the `task` tool starts; see explore.toml for the keys. `except` leaves out
-# tools a `*` would give it: handing over the session's plan is the parent's.
-id = "general"
+# A role the `task` tool can start; see reader.toml for the keys. `except` leaves out tools a `*`
+# would give it: handing over the session's plan is the parent's.
+id = "worker"
 summary = "Does one self-contained piece of work with the tools you have: changes files, runs commands, checks the result, and reports what it did."
 tools = ["*"]
 except = ["plan_exit"]

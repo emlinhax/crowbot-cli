@@ -109,14 +109,26 @@ alone. Outside one, they take back the conversation only. When a request nears t
 the model and sent ahead of the last ones (`compaction.keep_tokens`), word for word; `/compact`
 does it by hand.
 
-The model can hand a self-contained job to a subagent with the `task` tool: `explore` reads and
-searches and changes nothing, `general` has the same tools as the session. Kinds are files in
-`data/agents/`. A subagent runs under the session's mode and asks through its permission cards; a
-plain No to one of its calls stops the whole run. Its reply is the tool's result (its card shows
-its latest call while it works), its cost is the session's, and its edits are the prompt's for
-`/undo`. Its conversation is saved beside the session's, in a folder named for it, so `/resume`
-lists sessions only. `--json` wraps a subagent's events in `{"type":"child","call_id":…}`; add up
-cost from `message_end` events at any depth, or from the task's `tool_end` usage, not both.
+The model can hand a self-contained job to a subagent with the `task` tool, naming one of the roles
+the session prompt lists, so it picks by the job and what that job costs: `reader` reads and
+searches and changes nothing, `worker` has the session's tools and does one piece of work,
+`researcher` reads the web and answers with its sources. A role is a file: the built-in ones are
+in `data/agents/`, and the user's are `~/.crowbot/agents/<id>.toml`, saying what it is for, which
+tools it gets and what it adds to the prompt. `/models` is a tab per agent — the main agent, then
+each role — with the model, the reasoning effort, the description and the role's own prompt on it;
+those words are written to the role's file, `+` adds a role, and `delete` removes a user's role or
+hides a built-in one. A role is off until you turn it on: an off role is not named to the model and
+`task` cannot name it. With no role on, `task` still hands work over — it dispatches `general`, a
+role with no words of its own, so the subagent runs on the session's own model, effort and tools. A role may also pin a `model` and an `effort` in its file; `/models` sets a role's model and
+effort for this machine, which beats the pin, and a pinned model crowbot no longer serves falls
+back to the session's. A
+subagent on a model of its own is told so, its cost counts in the session's either way, and it runs
+under the session's mode and asks through its permission cards; a plain No to one of its calls
+stops the whole run. Its reply is the tool's result (its card shows its latest call while it
+works), and its edits are the prompt's for `/undo`. Its conversation is saved beside the session's,
+in a folder named for it, so `/resume` lists sessions only. `--json` wraps a subagent's events in
+`{"type":"child","call_id":…}`; add up cost from `message_end` events at any depth, or from the
+task's `tool_end` usage, not both.
 
 | Key | Does |
 |---|---|
@@ -140,7 +152,7 @@ session, `/help` lists the commands:
 | Command | Does |
 |---|---|
 | `/new` (or `/clear`) | a fresh conversation in a new session file; the last one stays saved |
-| `/models`, `/effort [level]`, `/mode [id]` | model, reasoning effort or permission mode for the rest of the session |
+| `/models`, `/effort [level]`, `/mode [id]` | model, reasoning effort or permission mode for the rest of the session; `/models` is a tab per agent, where each role's model, effort and description are set, a role is added, and one is deleted |
 | `/resume` | go on with an earlier session in this project |
 | `/undo`, `/retry` | take back the last prompt and what followed it, files too; `/retry` then sends it again |
 | `/compact [focus]` | summarise earlier turns now, keeping `focus` in mind |
@@ -231,7 +243,7 @@ and the legacy SSE transport are not supported yet (`grep -rn CEILING: src/mcp s
 | `data/endpoints.toml` | crowbot's origins and endpoints, and the variables that override them. |
 | `src/io/` | The only code that touches the network, files, processes, terminal or clock; `clippy.toml` bans the raw calls elsewhere. crowbot's API goes through reqwest, the rest of the web (webfetch, forums) through cffetch. |
 | `src/api/` | crowbot's endpoints, errors, streaming chat, retries, pairing and signup. |
-| `src/agent/` | The run loop, tool batches, what the model is sent, subagents (`child.rs`, kinds in `kinds.rs`), and the session setup both frontends share. |
+| `src/agent/` | The run loop, tool batches, what the model is sent, subagents (`child.rs`, roles in `roles.rs`), and the session setup both frontends share. |
 | `src/live/` | What a run shares with its tools and frontend while it is going: events, prompts, state, files read. |
 | `src/conversation/` | Messages, parts and errors as a conversation holds them. |
 | `src/tools/` | One file or folder per tool behind the `Tool` trait, registered in `tools/mod.rs`. |

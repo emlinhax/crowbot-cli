@@ -35,6 +35,11 @@ pub enum Next {
     Close(Option<String>),
     /// Use this model from the next turn on; the card closes.
     UseModel(String),
+    /// Ask for this reasoning effort from the next turn on, or the model's own (`None`).
+    UseEffort(Option<String>),
+    /// Say this and stay on the card: a role was added, changed or deleted, so the session's
+    /// prompt, which names them, is written again.
+    Roles(String),
     /// Go on with the session in this file; the card closes.
     Resume(std::path::PathBuf),
 }
@@ -70,6 +75,12 @@ pub trait Card {
     /// Typed or pasted text, for a card with a line open for it.
     fn insert(&mut self, _text: &str) {}
     fn render(&self, width: usize) -> Vec<Line>;
+    /// The card drawn into the rows it has, for one that lays itself out by height (`/models`).
+    /// The rest draw their content and let the frame keep the bottom of it.
+    fn render_in(&self, width: usize, height: usize) -> Vec<Line> {
+        let _ = height;
+        self.render(width)
+    }
     /// A job the card asked for has come to `done`.
     fn finished(&mut self, _done: Done) -> Next {
         Next::Stay

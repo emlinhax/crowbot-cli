@@ -54,6 +54,9 @@ pub struct Going {
 
 impl Setup {
     pub async fn load(app: &App, from: Option<Continue<'_>>) -> anyhow::Result<Self> {
+        // A role file that will not parse fails the start, naming it, like a config file: a role
+        // missing without a word would leave the agent unable to dispatch it.
+        crate::agent::roles::load(&app.paths)?;
         // CEILING: a slow server holds the first screen for up to `mcp.start_secs`. Upgrade:
         // start servers behind the welcome screen and hold only the first request for them.
         let (catalog, shadow, mut mcp) = tokio::join!(

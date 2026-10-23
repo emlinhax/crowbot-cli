@@ -1,6 +1,5 @@
-//! A table to pick one row of, in a card in place of the editor: `/models` picks the model for
-//! the rest of the session, `/resume` a session to go on with. ↑↓ move, → or Enter picks, Esc or
-//! ← closes.
+//! A table to pick one row of, in a card in place of the editor: `/resume` picks a session to go
+//! on with. ↑↓ move, → or Enter picks, Esc or ← closes.
 
 use std::path::PathBuf;
 
@@ -10,8 +9,6 @@ use crate::frontend::tui::keymap::Action;
 use crate::frontend::tui::rows;
 use crate::frontend::tui::ui;
 use crate::io::term::KeyEvent;
-use crate::models::Catalog;
-use crate::models::table as models;
 use crate::session::list::Summary;
 use crate::session::table as sessions;
 use crate::text::styled::{Line, Style};
@@ -31,34 +28,10 @@ pub struct Picker {
 }
 
 enum Pick {
-    Model(String),
     Session(PathBuf),
 }
 
 impl Picker {
-    /// The model catalog, opened on the model in use.
-    pub fn models(catalog: &Catalog, current: &str) -> Self {
-        let words = &ui::get().picker;
-        Self {
-            picks: catalog
-                .models
-                .iter()
-                .map(|m| Pick::Model(m.id.clone()))
-                .collect(),
-            rows: models::rows(catalog, current),
-            aligns: models::aligns(),
-            drop: models::drop_order(),
-            selected: catalog
-                .models
-                .iter()
-                .position(|m| m.id == current)
-                .unwrap_or(0),
-            note: Some(models::source_note(catalog)),
-            title: &words.title,
-            hint: &words.hint,
-        }
-    }
-
     /// Sessions to go on with, newest first.
     pub fn sessions(list: Vec<Summary>) -> Self {
         let words = &ui::get().resume;
@@ -83,7 +56,6 @@ impl Card for Picker {
             }
             Some(Action::Right | Action::Submit) => {
                 return match self.picks.get(self.selected) {
-                    Some(Pick::Model(id)) => Next::UseModel(id.clone()),
                     Some(Pick::Session(path)) => Next::Resume(path.clone()),
                     None => Next::Close(None),
                 };
@@ -122,50 +94,8 @@ mod tests {
     use super::*;
     use crate::frontend::tui::keymap::press;
     use crate::io::term::KeyCode;
-    use crate::models::{self as catalogs, Source};
-
     fn key(picker: &mut Picker, action: Action) -> Next {
         picker.key(Some(action), &press(KeyCode::Null))
-    }
-
-    fn catalog() -> Catalog {
-        Catalog {
-            models: catalogs::snapshot(),
-            source: Source::Snapshot,
-            fetched_at: None,
-            note: None,
-        }
-    }
-
-    #[test]
-    fn opens_on_the_current_model_and_picks_with_enter_or_right() {
-        let catalog = catalog();
-        let second = catalog.models[1].id.clone();
-        let mut picker = Picker::models(&catalog, &second);
-        assert!(matches!(key(&mut picker, Action::Submit), Next::UseModel(id) if id == second));
-        key(&mut picker, Action::Up);
-        let first = catalog.models[0].id.clone();
-        assert!(matches!(key(&mut picker, Action::Right), Next::UseModel(id) if id == first));
-        assert!(matches!(
-            key(&mut picker, Action::Escape),
-            Next::Close(None)
-        ));
-    }
-
-    #[test]
-    fn rows_line_up_inside_the_box_at_any_width() {
-        let catalog = catalog();
-        let picker = Picker::models(&catalog, "crow-2");
-        for width in [50, 80, 140] {
-            let lines = picker.render(width);
-            assert!(lines.iter().all(|l| l.width() <= width), "width {width}");
-            let text: Vec<String> = lines.iter().map(Line::text).collect();
-            assert!(text[1].contains("model"), "{text:?}");
-            assert!(
-                text.iter().any(|l| l.starts_with("│ › ●  crow-2")),
-                "{text:?}"
-            );
-        }
     }
 
     #[test]

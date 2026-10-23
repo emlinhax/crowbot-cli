@@ -53,6 +53,7 @@ pub async fn run(
     let Setup {
         model,
         effort,
+        catalog,
         tools,
         shared,
         mut transcript,
@@ -64,7 +65,13 @@ pub async fn run(
     if let Some(gone) = gone {
         term::warn(&words::model_gone(&gone, &model.id));
     }
-    let system = system_prompt::build(&app.paths, &model.id, &mcp.connected(), true);
+    let system = system_prompt::build(
+        &app.paths,
+        &model.id,
+        effort.as_deref(),
+        &mcp.connected(),
+        true,
+    );
 
     let out = Printer {
         format,
@@ -84,6 +91,7 @@ pub async fn run(
     }
     let cx = RunCtx {
         app,
+        catalog: &catalog,
         model: &model,
         effort: effort.as_deref(),
         system: &system,

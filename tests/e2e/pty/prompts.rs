@@ -104,7 +104,7 @@ fn task_fetching(fake: &Fake, after: &[Reply]) {
     let mut replies = vec![
         Reply::call(
             "task",
-            r#"{"description": "fetch the page", "prompt": "fetch it", "subagent_type": "explore"}"#,
+            r#"{"description": "fetch the page", "prompt": "fetch it", "subagent_type": "reader"}"#,
         ),
         Reply::call("webfetch", r#"{"url": "{base}/web/ok"}"#),
     ];
@@ -122,13 +122,16 @@ async fn a_subagents_permission_card_is_answered_in_the_session() {
         &fake,
         &[Reply::text("CHILD: fetched"), Reply::text("Parent: done.")],
     );
-    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+    // Subagents are off until a role is on, as a user turns one on in /models.
+    let sandbox = Sandbox::default();
+    sandbox.write_home("prefs.json", r#"{"enabled":["reader"]}"#);
+    in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.submit("fetch it for me");
         s.wait_for("╭ webfetch");
         s.send("1");
         s.wait_for("Parent: done.");
         assert!(!s.contents().contains("CHILD: fetched"), "{}", s.contents());
-        s.wait_for("explore: 1 call");
+        s.wait_for("reader: 1 call");
     })
     .await;
     assert_eq!(fake.hits("/web/ok"), 1);
@@ -141,12 +144,14 @@ async fn a_subagents_requests_count_in_the_sessions_cost() {
         Reply::text("One."),
         Reply::call(
             "task",
-            r#"{"description": "look", "prompt": "look", "subagent_type": "explore"}"#,
+            r#"{"description": "look", "prompt": "look", "subagent_type": "reader"}"#,
         ),
         Reply::text("child"),
         Reply::text("Two."),
     ]);
-    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+    let sandbox = Sandbox::default();
+    sandbox.write_home("prefs.json", r#"{"enabled":["reader"]}"#);
+    in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.submit("first");
         s.wait_for("One.");
         let one = cost(&s.bottom_row());
@@ -172,7 +177,9 @@ async fn turning_down_a_subagents_call_stops_the_run() {
     for decline in ["2", "\x1b"] {
         let fake = Fake::start().await;
         task_fetching(&fake, &[Reply::text("never")]);
-        in_session(&fake, Sandbox::default(), Some(ENV_KEY), move |s| {
+        let sandbox = Sandbox::default();
+        sandbox.write_home("prefs.json", r#"{"enabled":["reader"]}"#);
+        in_session(&fake, sandbox, Some(ENV_KEY), move |s| {
             s.submit("fetch it for me");
             s.wait_for("╭ webfetch");
             s.send(decline);

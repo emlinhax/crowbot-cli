@@ -19,6 +19,7 @@ use crate::io::http::Http;
 use crate::live::event::{AgentEvent, Ended};
 use crate::live::state::Shared;
 use crate::mode;
+use crate::models::Catalog;
 use crate::session::transcript::Transcript;
 use crate::snapshot::Shadow;
 use crate::tools::Registry;
@@ -71,6 +72,8 @@ pub struct Harness {
     script: Script,
     in_flight: Arc<InFlight>,
     pub model: Model,
+    /// What a role may pick from: the test's model, and a second one a role's file may pin.
+    pub catalog: Catalog,
     pub shadow: Shadow,
 }
 
@@ -115,6 +118,11 @@ impl Harness {
 
         let dir = tempfile::tempdir().unwrap();
         let mut app = App::for_tests(dir.path());
+        // Subagents are off until a role is on, so a test that dispatches turns them on first,
+        // as a user does.
+        for role in crate::agent::roles::builtin() {
+            crate::config::prefs::set_enabled(&app.paths, &role.id, true);
+        }
         let http = Http::new(std::time::Duration::from_secs(5)).unwrap();
         app.api = Api::redirected(http, "k", &base);
         let model = crate::testing::model(false);
@@ -123,6 +131,18 @@ impl Harness {
             app,
             script,
             in_flight,
+            catalog: Catalog {
+                models: vec![
+                    model.clone(),
+                    Model {
+                        id: "role-model".into(),
+                        ..model.clone()
+                    },
+                ],
+                source: crate::models::Source::Snapshot,
+                fetched_at: None,
+                note: None,
+            },
             model,
             shadow: Shadow::none("no git in these tests".into()),
         }
@@ -185,6 +205,7 @@ impl Harness {
         };
         let cx = RunCtx {
             app: &self.app,
+            catalog: &self.catalog,
             model: &self.model,
             effort: None,
             system: "sys",

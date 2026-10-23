@@ -33,9 +33,14 @@ impl<'a> Tui<'a> {
         self.cards.retain(|(id, _)| shared.prompts.waiting(*id));
         // The command popup floats over the conversation instead of growing the bar.
         let mut floating = Vec::new();
+        // What is left above the bar, which a card that fills the screen lays itself out in.
+        let room = height.saturating_sub(live.len() + 1);
         let card = match &self.panel {
-            Some(card) => Some(card.render(width)),
-            None => self.cards.front().map(|(_, card)| card.render(width)),
+            Some(card) => Some(card.render_in(width, room)),
+            None => self
+                .cards
+                .front()
+                .map(|(_, card)| card.render_in(width, room)),
         };
         match card {
             Some(lines) => live.extend(lines),

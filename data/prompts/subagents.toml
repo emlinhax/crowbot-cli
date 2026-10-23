@@ -1,0 +1,22 @@
+# The subagents the `task` tool can start, named in the system prompt so the agent knows which
+# one a job belongs to. {roles} is one line per role (see data/agents/); omitted when there are
+# none.
+frame = """
+<subagents>
+The `task` tool can hand one self-contained job to a subagent. Pick the role by what the job needs: the cheapest one that can do it. A role marked with a model runs on that model, not yours.
+{roles}
+A subagent knows nothing of this conversation: put the whole job in `prompt`, and say what its reply must hold.
+</subagents>"""
+# One role; {id} its id, {summary} what it is for, {model} the model it runs on when that is not
+# yours, empty otherwise, and {effort} the same for its reasoning effort.
+role = "- `{id}`: {summary}{model}{effort}"
+model = " (runs on {model})"
+effort = " (effort {effort})"
+
+# A subagent running on a model or effort of its own is told so, since its system prompt is the
+# session's; {model} and {effort} are that role's.
+own = """
+<role-model>
+You run on {model}{effort} rather than the model the user is talking to. Do the job in front of you as well as that model can: it is chosen for the work, not to save on it.
+</role-model>"""
+own_effort = " at effort {effort}"

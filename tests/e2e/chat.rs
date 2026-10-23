@@ -102,12 +102,14 @@ async fn json_mode_nests_a_subagents_events_in_its_task_call() {
     fake.script([
         Reply::call(
             "task",
-            r#"{"description": "look", "prompt": "find it", "subagent_type": "explore"}"#,
+            r#"{"description": "look", "prompt": "find it", "subagent_type": "reader"}"#,
         ),
         Reply::text("found it"),
         Reply::text("It is found."),
     ]);
     let sandbox = Sandbox::default();
+    // Subagents are off until a role is on.
+    sandbox.write_home("prefs.json", r#"{"enabled":["reader"]}"#);
     let run = sandbox.run(&fake.url, &["--json", "go"], WITH_KEY).await;
     // The subagent's file has a fresh name each run; everything else is the contract.
     let stdout: String = run

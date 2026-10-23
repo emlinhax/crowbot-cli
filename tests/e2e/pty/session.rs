@@ -1,6 +1,6 @@
 //! Chatting, switching mode, thinking blocks and the context share.
 
-use super::harness::{CTRL_C, CTRL_T, DOWN, ENTER, SHIFT_TAB, in_session, in_session_with};
+use super::harness::{CTRL_C, CTRL_T, DOWN, ENTER, ESC, SHIFT_TAB, in_session, in_session_with};
 use crate::Sandbox;
 use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
 
@@ -73,10 +73,16 @@ async fn the_context_share_follows_a_switch_of_model_at_once() {
         s.wait_bar("ctx 10%");
         s.submit("/models");
         s.wait_for("╭ Models");
-        s.send(DOWN);
-        s.send(ENTER);
-        s.wait_for("Model: fake-coder for this session.");
+        // The card opens on the main agent's model row; Enter opens its models, and the one in use
+        // is first, so the next one down is the switch.
+        s.key(ENTER);
+        s.wait_for("Main model");
+        s.key(DOWN);
+        s.key(ENTER);
+        // The card stays open on the form, and the bar shows the model it now runs on.
         s.wait_bar("ctx 76%");
+        s.key(ESC);
+        s.wait_gone("╭ Models");
     })
     .await;
 }
@@ -165,6 +171,7 @@ async fn undo_puts_back_the_files_the_prompt_changed() {
     ]);
     let sandbox = Sandbox::default();
     sandbox.write_home("config.toml", "mode = \"auto\"\n");
+    sandbox.write_home("prefs.json", r#"{"enabled":["worker"]}"#);
     sandbox.write_project("a.txt", "one");
     let git = std::process::Command::new("git")
         .args(["init", "--quiet"])
@@ -224,7 +231,7 @@ async fn undo_puts_back_what_a_subagent_changed() {
     fake.script([
         Reply::call(
             "task",
-            r#"{"description": "make it", "prompt": "write b.txt", "subagent_type": "general"}"#,
+            r#"{"description": "make it", "prompt": "write b.txt", "subagent_type": "worker"}"#,
         ),
         Reply::call("write", r#"{"path": "b.txt", "content": "new"}"#),
         Reply::text("wrote b.txt"),
@@ -232,6 +239,7 @@ async fn undo_puts_back_what_a_subagent_changed() {
     ]);
     let sandbox = Sandbox::default();
     sandbox.write_home("config.toml", "mode = \"auto\"\n");
+    sandbox.write_home("prefs.json", r#"{"enabled":["worker"]}"#);
     let git = std::process::Command::new("git")
         .args(["init", "--quiet"])
         .current_dir(sandbox.project())

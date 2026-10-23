@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use super::harness::{BACKSPACE, DOWN, ENTER, LEFT, TAB, in_session};
+use super::harness::{BACKSPACE, DOWN, ENTER, ESC, RIGHT, TAB, in_session};
 use crate::Sandbox;
 use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
 
@@ -30,16 +30,18 @@ async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
         s.send(DOWN);
         s.send(ENTER);
         s.wait_for("╭ Models");
-        s.wait_for("fake-coder");
+        // The main agent's row, then the roles it can hand work to.
+        s.wait_for("Main");
+        s.wait_for("reader");
         s.wait_gone("╭ commands");
         let picked = s.contents();
-        // ← closes the picker, like Esc.
-        s.send(LEFT);
+        // Esc closes the card.
+        s.key(ESC);
         s.wait_gone("╭ Models");
         picked
     })
     .await;
-    assert!(ended.out.contains("/models"), "{}", ended.out);
+    assert!(ended.out.contains("╭ Models"), "{}", ended.out);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -105,6 +107,57 @@ async fn slash_effort_sets_what_the_next_requests_carry() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_roles_model_set_in_the_card_is_the_one_its_subagent_runs_on() {
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::call(
+            "task",
+            r#"{"description": "look", "prompt": "look", "subagent_type": "reader"}"#,
+        ),
+        Reply::text("child answer"),
+        Reply::text("done"),
+    ]);
+    let sandbox = Sandbox::default();
+    let home = sandbox.home().to_path_buf();
+    let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
+        s.submit("/models");
+        s.wait_for("╭ Models");
+        // The reader's tab: the first row turns it on with an arrow, which is what opts the
+        // feature in; the next row is its model.
+        s.key(TAB);
+        s.key(RIGHT);
+        s.wait_for("is on");
+        s.key(DOWN);
+        s.key(ENTER);
+        // The session's model is the first row, the way back to it; two rows down is a model of
+        // its own.
+        s.wait_for("the session's model (deepseek-v4.1-flash)");
+        s.key(DOWN);
+        s.key(DOWN);
+        s.key(ENTER);
+        // The card stays open on the form, showing what the role now runs on.
+        s.wait_for("fake-coder");
+        s.key(ESC);
+        s.wait_gone("╭ Models");
+        s.submit("look it up");
+        s.wait_for("done");
+    })
+    .await;
+    // The subagent's request, the second one, went to the role's own model.
+    let bodies = fake.chat_bodies();
+    assert_eq!(bodies[1]["model"], "fake-coder", "{:?}", bodies[1]["model"]);
+    // And the choice is remembered for the next session.
+    let prefs: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(ended.sandbox.home().join("prefs.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(prefs["roles"]["reader"]["model"], "fake-coder", "{prefs}");
+    // The card's first row is what turned subagents on.
+    assert_eq!(prefs["enabled"], serde_json::json!(["reader"]), "{prefs}");
+    let _ = home;
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn slash_init_asks_for_an_agents_md_that_the_next_conversation_reads() {
     let fake = Fake::start().await;
     fake.script([Reply::sse("hello.sse"), Reply::sse("hello.sse")]);
@@ -140,11 +193,16 @@ async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.submit("/models");
         s.wait_for("╭ Models");
-        // The list opens on the model in use; the next one down is picked with Enter.
-        s.send(DOWN);
-        s.send(ENTER);
-        s.wait_for("Model: fake-coder for this session.");
+        // The main agent's model row opens the catalog, on the model in use; the next one down is
+        // picked with Enter, which comes back to the form.
+        s.key(ENTER);
+        s.wait_for("Main model");
+        s.key(DOWN);
+        s.key(ENTER);
+        s.wait_for("fake-coder");
         assert!(s.bottom_row().contains("fake-coder"), "{}", s.contents());
+        s.key(ESC);
+        s.wait_gone("╭ Models");
         s.submit("hi");
         s.wait_for("Hello there!");
     })

@@ -28,7 +28,7 @@ pub const ENTER: &str = "\r";
 pub const TAB: &str = "\t";
 pub const ESC: &str = "\x1b";
 pub const DOWN: &str = "\x1b[B";
-pub const LEFT: &str = "\x1b[D";
+pub const RIGHT: &str = "\x1b[C";
 pub const SHIFT_TAB: &str = "\x1b[Z";
 pub const CTRL_C: &str = "\x03";
 pub const CTRL_D: &str = "\x04";
@@ -102,6 +102,13 @@ impl Session {
     pub fn send(&mut self, bytes: &str) {
         self.writer.write_all(bytes.as_bytes()).unwrap();
         self.writer.flush().unwrap();
+    }
+
+    /// One key, with the pause a person leaves after it: two sent together can read as a paste,
+    /// and a pasted Enter is a newline rather than a choice.
+    pub fn key(&mut self, bytes: &str) {
+        self.send(bytes);
+        std::thread::sleep(KEY_GAP);
     }
 
     /// Types like a person: one key at a time, far slower than a paste.

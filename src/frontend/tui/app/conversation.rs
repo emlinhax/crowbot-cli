@@ -69,7 +69,7 @@ impl Tui<'_> {
                     if going.model.id != self.next.model.id {
                         self.next.switch(&self.app.paths, going.model);
                     }
-                    self.next.asked = going.effort;
+                    self.next.ask(&self.app.paths, going.effort);
                     self.shared.set_mode(going.mode);
                     gone = going.gone;
                 }

@@ -1,0 +1,22 @@
+description = "The task tool refuses a role this machine does not have, and tells the model which ones it does"
+args = ["-p", "pick a role"]
+
+[home_files]
+"prefs.json" = '{"enabled": ["reader"]}'
+
+[[reply]]
+calls = [{ name = "task", arguments = '{"description": "pick a role", "prompt": "Do it.", "subagent_type": "nobody"}' }]
+
+[[reply]]
+text = "There is no such subagent, so I did nothing."
+
+[expect]
+exit = 0
+stdout = "There is no such subagent, so I did nothing.\n"
+stderr_contains = ["› task pick a role", "There is no role called `nobody`"]
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "tool"
+contains = "There is no role called `nobody`. The roles: `reader`."

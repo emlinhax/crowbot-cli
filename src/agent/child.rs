@@ -1,9 +1,9 @@
 //! A subagent's run: a conversation of its own, kept beside its parent's, run under the run whose
-//! `task` call starts it. It answers with its last reply.
+//! `task` call starts it, on the model its role binds. It answers with its last reply.
 
 use std::path::PathBuf;
 
-use crate::agent::kinds::{self, Kind};
+use crate::agent::roles::{self, Role};
 use crate::agent::{Run, RunCtx, run};
 use crate::conversation::message::{Message, Part, Usage};
 use crate::live::event::{AgentEvent, Ended, Outcome};
@@ -23,11 +23,11 @@ pub struct Done {
     pub usage: Usage,
 }
 
-/// Runs `prompt` as a subagent of `kind`, started by `parent`'s call `call_id`. What it says
+/// Runs `prompt` as a subagent of `role`, started by `parent`'s call `call_id`. What it says
 /// reaches the frontend wrapped in that call; it asks the user through `parent`'s prompts.
 // CEILING: every call starts a fresh subagent, which knows nothing of an earlier one. Upgrade: a
 // `task_id` argument that reopens its file with `Transcript::open`.
-pub async fn run_child(parent: &Run<'_>, call_id: &str, kind: &Kind, prompt: String) -> Done {
+pub async fn run_child(parent: &Run<'_>, call_id: &str, role: &Role, prompt: String) -> Done {
     let cx = parent.cx;
     // It waits for one of its parent's places, or for the interrupt that ends the wait.
     let slot = tokio::select! {
@@ -47,7 +47,9 @@ pub async fn run_child(parent: &Run<'_>, call_id: &str, kind: &Kind, prompt: Str
             usage: Usage::default(),
         };
     };
-    let tools = kinds::tools(kind, cx.tools, parent.depth() + 1);
+    let tools = roles::tools(role, cx.tools, parent.depth() + 1);
+    // The role's own model and effort, when it has them: a cheap reader, a strong worker.
+    let (model, effort) = role.binding(cx.catalog, &cx.app.paths, (cx.model, cx.effort));
     let shared = parent.shared.child(parent.cancel.clone());
     let session = parent
         .session
@@ -59,14 +61,18 @@ pub async fn run_child(parent: &Run<'_>, call_id: &str, kind: &Kind, prompt: Str
         Parent {
             session,
             call: call_id.to_owned(),
-            agent: kind.id.clone(),
+            agent: role.id.clone(),
         },
     );
-    // The parent's prompt and the kind's words, the same for every subagent of this kind, so
-    // the vendor can cache them.
+    // The parent's prompt and the role's words, the same for every subagent of this role, so the
+    // vendor can cache them.
     // CEILING: its tool list differs from the parent's, so the parent's cached prefix is not
     // reused. Upgrade: send the parent's tools and refuse the others at the gate.
-    let system = format!("{}\n\n{}", cx.system, kind.prompt.trim());
+    let mut system = format!("{}\n\n{}", cx.system, role.prompt.trim());
+    if model.id != cx.model.id || effort.as_deref() != cx.effort {
+        system.push_str("\n\n");
+        system.push_str(&roles::said(&model, effort.as_deref()));
+    }
     let emit = |event: AgentEvent| {
         (cx.emit)(AgentEvent::Child {
             call_id: call_id.to_owned(),
@@ -75,8 +81,9 @@ pub async fn run_child(parent: &Run<'_>, call_id: &str, kind: &Kind, prompt: Str
     };
     let child = RunCtx {
         app: cx.app,
-        model: cx.model,
-        effort: cx.effort,
+        catalog: cx.catalog,
+        model: &model,
+        effort: effort.as_deref(),
         system: &system,
         tools: &tools,
         emit: &emit,
@@ -120,7 +127,7 @@ mod tests {
     use crate::session::transcript::Transcript;
 
     fn task(prompt: &str) -> String {
-        let args = json!({"description": "look", "prompt": prompt, "subagent_type": "explore"});
+        let args = json!({"description": "look", "prompt": prompt, "subagent_type": "reader"});
         reply("", &[("c1", "task", args)], "tool_calls")
     }
 
@@ -134,7 +141,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_subagent_answers_in_a_file_of_its_own_with_explores_tools() {
+    async fn a_subagent_answers_in_a_file_of_its_own_with_a_readers_tools() {
         let h = Harness::new(vec![
             task("find the parser"),
             text("THE CHILD'S ANSWER"),
@@ -168,7 +175,7 @@ mod tests {
             .unwrap();
         let header: Value = serde_json::from_str(text.lines().next().unwrap()).unwrap();
         assert_eq!(header["parent"]["call"], "c1");
-        assert_eq!(header["parent"]["agent"], "explore");
+        assert_eq!(header["parent"]["agent"], "reader");
         // Lists of the project's sessions show the parent's file only.
         assert_eq!(list::list(&h.app.paths).len(), 1);
         assert_eq!(list::latest(&h.app.paths).as_deref(), Some(parent));
@@ -239,7 +246,7 @@ mod tests {
     #[tokio::test]
     async fn a_subagent_stops_at_its_own_turn_limit_and_cannot_start_another() {
         let limit = crate::config::limits::get().subagent.max_turns.value;
-        let again = json!({"description": "x", "prompt": "x", "subagent_type": "explore"});
+        let again = json!({"description": "x", "prompt": "x", "subagent_type": "reader"});
         let mut replies = vec![task("go deeper")];
         replies
             .extend((0..limit).map(|_| reply("", &[("c9", "task", again.clone())], "tool_calls")));
@@ -270,7 +277,7 @@ mod tests {
         let place = crate::config::limits::get().subagent.parallel.value;
         let calls: Vec<(String, Value)> = (0..place + 1)
             .map(|i| {
-                let args = json!({"description": "x", "prompt": "x", "subagent_type": "explore"});
+                let args = json!({"description": "x", "prompt": "x", "subagent_type": "reader"});
                 (format!("c{i}"), args)
             })
             .collect();
@@ -298,8 +305,7 @@ mod tests {
     }
 
     fn general(id: &str, prompt: &str) -> (String, &'static str, Value) {
-        let args =
-            json!({"description": "change it", "prompt": prompt, "subagent_type": "general"});
+        let args = json!({"description": "change it", "prompt": prompt, "subagent_type": "worker"});
         (id.to_owned(), "task", args)
     }
 
@@ -323,7 +329,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_general_subagents_edits_are_the_parent_prompts_for_undo() {
+    async fn a_workers_edits_are_the_parent_prompts_for_undo() {
         let calls = [general("c1", "make a file"), general("c2", "make another")];
         let calls: Vec<(&str, &str, Value)> = calls
             .iter()
@@ -360,7 +366,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn under_plan_a_general_subagent_cannot_write() {
+    async fn under_plan_a_worker_subagent_cannot_write() {
         let calls = [general("c1", "make a file")];
         let calls: Vec<(&str, &str, Value)> = calls
             .iter()

@@ -1,6 +1,6 @@
-//! Hands one job to a subagent of a kind in data/agents/ and gives back its reply. The kinds and
-//! what each is for fill the description and the schema's choices, so a new kind needs no edit
-//! here.
+//! Hands one job to a subagent of a role in data/agents/ (and ~/.crowbot/agents/) and gives back
+//! its reply. The roles themselves are named in the system prompt, which is written again when one
+//! is added; this tool only says what a role is for, so a new role needs no edit here.
 
 use std::sync::LazyLock;
 
@@ -10,7 +10,7 @@ use serde_json::json;
 
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::agent::child::{self, Done};
-use crate::agent::kinds::{self, Kind};
+use crate::agent::roles::{self, Role};
 use crate::data;
 use crate::live::event::Outcome;
 use crate::permission::catalog;
@@ -21,18 +21,11 @@ use crate::text::template::fill;
 pub const NAME: &str = "task";
 
 static SPEC: LazyLock<Spec> = LazyLock::new(|| {
-    let agents: Vec<String> = kinds::all()
-        .iter()
-        .map(|k| fill(&TEXT.agent, &[("id", &k.id), ("summary", &k.summary)]))
-        .collect();
-    let description = fill(
+    Spec::load(
+        NAME,
         data::raw!("tools/task.md"),
-        &[("agents", &agents.join("\n"))],
-    );
-    let mut spec = Spec::load(NAME, &description, data::raw!("tools/task.schema.json"));
-    let ids: Vec<&str> = kinds::all().iter().map(|k| k.id.as_str()).collect();
-    spec.parameters["properties"]["subagent_type"]["enum"] = json!(ids);
-    spec
+        data::raw!("tools/task.schema.json"),
+    )
 });
 
 static TEXT: LazyLock<Text> = data::load!("tools/task.toml");
@@ -40,7 +33,6 @@ static TEXT: LazyLock<Text> = data::load!("tools/task.toml");
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Text {
-    agent: String,
     unknown_agent: String,
     no_answer: String,
     turn_limit: String,
@@ -70,22 +62,22 @@ impl Tool for Task {
         true
     }
 
-    fn check(&self, args: &Args, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
-        let kind = kind(&args.subagent_type)?;
+    fn check(&self, args: &Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+        let role = role(&args.subagent_type, cx)?;
         Ok(Check::new(vec![Ask::new(
             catalog::TASK.name,
-            kind.id.clone(),
+            role.id.clone(),
         )]))
     }
 
     fn run<'a>(&'a self, args: Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
             let run = cx.run.ok_or_else(|| TEXT.no_run.clone())?;
-            let kind = kind(&args.subagent_type).map_err(|e| e.to_string())?;
-            let done = child::run_child(run, cx.call_id, kind, args.prompt).await;
+            let role = role(&args.subagent_type, cx).map_err(|e| e.to_string())?;
+            let done = child::run_child(run, cx.call_id, &role, args.prompt).await;
             let out = said(&done).with_usage(done.usage);
             Ok(out.with_details(json!({
-                "agent": kind.id,
+                "agent": role.id,
                 "description": args.description,
                 "session": done.session.display().to_string(),
                 "outcome": done.ended.outcome,
@@ -96,15 +88,22 @@ impl Tool for Task {
     }
 }
 
-fn kind(id: &str) -> Result<&'static Kind, Refusal> {
-    kinds::get(id).ok_or_else(|| {
-        let ids: Vec<String> = kinds::all().iter().map(|k| format!("`{}`", k.id)).collect();
-        let why = fill(
-            &TEXT.unknown_agent,
-            &[("id", id), ("kinds", &ids.join(", "))],
-        );
-        Refusal::Refused(why)
-    })
+/// The role `id` names as the machine has it now: a role the user added mid-session dispatches
+/// without a restart, and a machine with no roles at all has the fallback one.
+fn role(id: &str, cx: &ToolCx<'_>) -> Result<Role, Refusal> {
+    let roles = roles::dispatchable(&cx.app.paths);
+    roles
+        .iter()
+        .find(|role| role.id == id)
+        .cloned()
+        .ok_or_else(|| {
+            let ids: Vec<String> = roles.iter().map(|r| format!("`{}`", r.id)).collect();
+            let why = fill(
+                &TEXT.unknown_agent,
+                &[("id", id), ("roles", &ids.join(", "))],
+            );
+            Refusal::Refused(why)
+        })
 }
 
 /// What the model is told of the subagent's run: its reply, or why there is none.
@@ -132,19 +131,36 @@ fn said(done: &Done) -> Output {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::Value;
-
     use super::*;
 
     #[test]
-    fn the_kinds_fill_the_description_and_the_choices() {
-        let spec = &*SPEC;
-        assert!(
-            spec.description.contains("- `explore`: "),
-            "{}",
-            spec.description
-        );
-        let choices = &spec.parameters["properties"]["subagent_type"]["enum"];
-        assert_eq!(choices, &Value::from(vec!["explore", "general"]));
+    fn a_role_this_machine_does_not_have_is_refused_by_name() {
+        let project = crate::tools::testing::Project::new();
+        crate::config::prefs::set_enabled(&project.app.paths, "worker", true);
+        let cx = project.cx();
+        let why = role("nobody", &cx).unwrap_err().to_string();
+        assert!(why.contains("no role called `nobody`"), "{why}");
+        assert!(why.contains("`worker`"), "{why}");
+        assert_eq!(role("worker", &cx).unwrap().id, "worker");
+        // A role that is off is not one this machine dispatches either.
+        let why = role("reader", &cx).unwrap_err().to_string();
+        assert!(why.contains("no role called `reader`"), "{why}");
+    }
+
+    #[test]
+    fn with_no_role_on_the_fallback_is_dispatched_on_the_sessions_settings() {
+        let project = crate::tools::testing::Project::new();
+        let cx = project.cx();
+        // Nothing is enabled, so `task` names the fallback role rather than refusing everything.
+        let fallback = role("general", &cx).unwrap();
+        assert!(fallback.model.is_none() && fallback.effort.is_none());
+        assert_eq!(fallback.tools, vec!["*".to_owned()]);
+        // A role that is off is still not dispatchable by name.
+        assert!(role("reader", &cx).is_err());
+    }
+
+    #[test]
+    fn the_schema_leaves_the_role_open_since_the_prompt_names_them() {
+        assert!(SPEC.parameters["properties"]["subagent_type"]["enum"].is_null());
     }
 }

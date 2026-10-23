@@ -82,9 +82,10 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
         check(&merged, &project)?;
     }
     // The model and effort the user last chose: above the config files, below a one-off flag.
+    // A role's own choice is not a setting; it is read where the role is started.
     merge(
         &mut merged,
-        toml::Table::try_from(crate::config::prefs::load(paths))?,
+        toml::Table::try_from(crate::config::prefs::settings(paths))?,
     );
     merge(&mut merged, toml::Table::try_from(flags)?);
     let mut settings: Settings = toml::Value::Table(merged).try_into()?;
