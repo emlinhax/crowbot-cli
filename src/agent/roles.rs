@@ -310,7 +310,9 @@ fn file_text(role: &Role) -> String {
         // A literal block cannot hold its own delimiter; an escaped string can hold anything.
         out.push_str(&format!("prompt = {}\n", quoted(prompt)));
     } else {
-        out.push_str(&format!("prompt = {fence}\n{prompt}\n{fence}\n"));
+        // The fence closes on the prompt's last line, as the built-in files do, so the value has
+        // no newline the prompt did not have.
+        out.push_str(&format!("prompt = {fence}\n{prompt}{fence}\n"));
     }
     if let Some(model) = &role.model {
         out.push_str(&format!("model = {}\n", quoted(model)));
@@ -450,6 +452,32 @@ mod tests {
         );
         let err = load(&paths).unwrap_err().to_string();
         assert!(err.contains("named for its id"), "{err}");
+    }
+
+    #[test]
+    fn a_saved_role_is_the_file_the_loader_reads_and_stays_readable() {
+        let (_dir, paths) = paths();
+        let mut role = new_role("tester", "Runs the tests.", true);
+        role.prompt = "Run them.\nThen say what failed.".into();
+        let file = save(&paths, &role).unwrap();
+        let text = io::fs::read_string(&file).unwrap().unwrap();
+        // The header says where the keys are explained, and the prompt keeps its lines.
+        assert!(text.starts_with("# "), "{text}");
+        assert!(
+            text.contains("prompt = '''\nRun them.\nThen say what failed.'''"),
+            "{text}"
+        );
+        let loaded = load(&paths).unwrap();
+        let back = find(&loaded, "tester").unwrap();
+        assert_eq!(back.summary, "Runs the tests.");
+        assert_eq!(back.prompt, "Run them.\nThen say what failed.");
+        assert_eq!(back.tools, vec!["*".to_owned()]);
+        // A prompt holding the literal block's own delimiter is written as a quoted string.
+        let mut odd = role.clone();
+        odd.prompt = "It's ''' here".into();
+        save(&paths, &odd).unwrap();
+        let back = load(&paths).unwrap();
+        assert_eq!(find(&back, "tester").unwrap().prompt, "It's ''' here");
     }
 
     #[test]
