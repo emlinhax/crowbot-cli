@@ -5,10 +5,3 @@ text = """# A role the `task` tool can start, written by /models. Every key is i
 # all of them, `except` leaves some out), `prompt` is added to the session's system prompt for it,
 # and `model`/`effort` are optional: without them it runs on the session's.
 """
-
-# What a dispatch falls back to when the user deleted every role: one role, on the session's own
-# model and effort, with the session's tools. It is not a tab in /models: adding any role replaces
-# it, and the `task` tool keeps working either way.
-[fallback]
-id = "general"
-summary = "Does one self-contained piece of work with the tools and model of the session itself."

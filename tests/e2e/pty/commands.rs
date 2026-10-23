@@ -122,8 +122,12 @@ async fn a_roles_model_set_in_the_card_is_the_one_its_subagent_runs_on() {
     let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.submit("/models");
         s.wait_for("╭ Models");
-        // The reader's tab, then its model row.
+        // The reader's tab: the first row turns it on, which is what opts the feature in; the
+        // next one is its model.
         s.key(TAB);
+        s.key(ENTER);
+        s.wait_for("is on");
+        s.key(DOWN);
         s.key(ENTER);
         // The session's model is the first row, the way back to it; two rows down is a model of
         // its own.
@@ -148,6 +152,8 @@ async fn a_roles_model_set_in_the_card_is_the_one_its_subagent_runs_on() {
     )
     .unwrap();
     assert_eq!(prefs["roles"]["reader"]["model"], "fake-coder", "{prefs}");
+    // The card's first row is what turned subagents on.
+    assert_eq!(prefs["enabled"], serde_json::json!(["reader"]), "{prefs}");
     let _ = home;
 }
 

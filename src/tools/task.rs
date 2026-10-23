@@ -136,11 +136,15 @@ mod tests {
     #[test]
     fn a_role_this_machine_does_not_have_is_refused_by_name() {
         let project = crate::tools::testing::Project::new();
+        crate::config::prefs::set_enabled(&project.app.paths, "worker", true);
         let cx = project.cx();
         let why = role("nobody", &cx).unwrap_err().to_string();
         assert!(why.contains("no role called `nobody`"), "{why}");
-        assert!(why.contains("`reader`"), "{why}");
+        assert!(why.contains("`worker`"), "{why}");
         assert_eq!(role("worker", &cx).unwrap().id, "worker");
+        // A role that is off is not one this machine dispatches either.
+        let why = role("reader", &cx).unwrap_err().to_string();
+        assert!(why.contains("no role called `reader`"), "{why}");
     }
 
     #[test]

@@ -75,6 +75,9 @@ impl Setup {
         let mode_too = from.as_ref().is_some_and(|f| f.mode);
         let going = going_on(app, &catalog, recorded, mode_too)?;
         let mut tools = Registry::builtin(app.settings.shell.as_deref());
+        // Subagents are off unless the user turned a role on; the prompt and the tool list both
+        // follow, and `/models` flips this while the session runs.
+        tools.set_subagents(!crate::agent::roles::dispatchable(&app.paths).is_empty());
         crate::tools::mcp::join(&mut mcp, &mut tools);
         Ok(Self {
             catalog,

@@ -1,6 +1,6 @@
 description = "A configured MCP server's tools reach the model after crowbot's own and run in AUTO; the server gets its env but never crowbot's key, and what is not text is named"
 args = ["--mode", "auto", "-p", "use the tools"]
-home_files = { "config.toml" = "[mcp.fake]\ncommand = '{fake_mcp}'\nenv = { FAKE_TOKEN = 't0ken' }\n" }
+home_files = { "config.toml" = "[mcp.fake]\ncommand = '{fake_mcp}'\nenv = { FAKE_TOKEN = 't0ken' }\n", "prefs.json" = '{"enabled":["reader"]}' }
 
 [[reply]]
 calls = [

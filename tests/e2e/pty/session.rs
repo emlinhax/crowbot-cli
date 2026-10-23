@@ -171,6 +171,7 @@ async fn undo_puts_back_the_files_the_prompt_changed() {
     ]);
     let sandbox = Sandbox::default();
     sandbox.write_home("config.toml", "mode = \"auto\"\n");
+    sandbox.write_home("prefs.json", r#"{"enabled":["worker"]}"#);
     sandbox.write_project("a.txt", "one");
     let git = std::process::Command::new("git")
         .args(["init", "--quiet"])
@@ -238,6 +239,7 @@ async fn undo_puts_back_what_a_subagent_changed() {
     ]);
     let sandbox = Sandbox::default();
     sandbox.write_home("config.toml", "mode = \"auto\"\n");
+    sandbox.write_home("prefs.json", r#"{"enabled":["worker"]}"#);
     let git = std::process::Command::new("git")
         .args(["init", "--quiet"])
         .current_dir(sandbox.project())

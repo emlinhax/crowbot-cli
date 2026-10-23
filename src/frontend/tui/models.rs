@@ -29,11 +29,14 @@ use crate::text::template::fill;
 struct RoleView {
     role: Role,
     choice: Choice,
+    /// Whether the user turned it on: subagents are off until they do.
+    enabled: bool,
 }
 
 /// What a tab shows, top to bottom.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Field {
+    State,
     Model,
     Effort,
     Summary,
@@ -122,6 +125,7 @@ impl Models {
             .into_iter()
             .map(|role| RoleView {
                 choice: chosen.get(&role.id).cloned().unwrap_or_default(),
+                enabled: prefs::enabled(&self.paths, &role.id),
                 role,
             })
             .collect();
@@ -185,6 +189,7 @@ impl Models {
             ]
         } else {
             vec![
+                Field::State,
                 Field::Model,
                 Field::Effort,
                 Field::Summary,
@@ -223,6 +228,15 @@ impl Models {
         let len = self.add_tab() + 1;
         self.tab = (self.tab as isize + step).rem_euclid(len as isize) as usize;
         self.field = 0;
+    }
+
+    /// Whether the tab at `index` is a role the user turned on.
+    fn role_on(&self, index: usize) -> bool {
+        match self.target(index) {
+            Some(Target::Role(i)) => self.roles.get(i).is_some_and(|view| view.enabled),
+            Some(Target::Main) => true,
+            None => true,
+        }
     }
 
     /// The tab's name, for the bar and the model table's title.
@@ -358,6 +372,27 @@ impl Models {
         }
     }
 
+    /// Turns a role on or off: subagents are a feature the user opts into, and a role that is off
+    /// is not named to the model and cannot be dispatched.
+    fn toggle(&mut self, target: Target) -> Next {
+        let Target::Role(i) = target else {
+            return Next::Stay;
+        };
+        let (id, on) = {
+            let view = &self.roles[i];
+            (view.role.id.clone(), !view.enabled)
+        };
+        prefs::set_enabled(&self.paths, &id, on);
+        self.reload();
+        let words = &ui::get().models;
+        let say = if on {
+            fill(&words.turned_on, &[("role", &id)])
+        } else {
+            fill(&words.turned_off, &[("role", &id)])
+        };
+        Next::Roles(say)
+    }
+
     /// Does what Enter on the selected field means.
     fn activate(&mut self) -> Next {
         let Some(field) = self.field() else {
@@ -365,6 +400,7 @@ impl Models {
         };
         let target = self.target(self.tab).unwrap_or(Target::Main);
         match field {
+            Field::State => self.toggle(target),
             Field::Model => {
                 let (_, _, selected) = self.model_rows(target);
                 self.stage = Stage::Models { target, selected };
@@ -498,7 +534,7 @@ impl Models {
                 return Next::Error(fill(&words.name_taken, &[("id", &role.id)]));
             }
         }
-        prefs::unhide_role(&self.paths, &role.id);
+        prefs::set_enabled(&self.paths, &role.id, true);
         match roles::save(&self.paths, &role) {
             Ok(path) => {
                 let id = role.id.clone();
@@ -565,6 +601,8 @@ impl Models {
             }
             let style = if last == active {
                 Style::fg("accent").bold()
+            } else if self.role_on(last) {
+                Style::default()
             } else {
                 Style::fg("muted")
             };
@@ -601,6 +639,19 @@ impl Models {
         let words = &ui::get().models;
         let muted = || Style::fg("muted");
         match field {
+            Field::State => {
+                let on = self
+                    .tab_role()
+                    .is_some_and(|role| prefs::enabled(&self.paths, &role.id));
+                let (text, style) = if on {
+                    (words.on.clone(), Style::fg("accent").bold())
+                } else {
+                    (words.off.clone(), muted())
+                };
+                let mut line = Line::styled(text, style);
+                line.push(format!("  {}", words.state_hint), muted());
+                (&words.state, line)
+            }
             Field::Model => {
                 let target = self.target(self.tab).unwrap_or(Target::Main);
                 let own = match target {
@@ -748,15 +799,24 @@ impl Models {
         let Some(role) = self.tab_role() else {
             return self.main_details(width, rows);
         };
-        let mut lines = vec![Line::styled(&words.told, muted.clone())];
-        let session_model = self.session.model.clone().unwrap_or_default();
-        let line = roles::line(
-            role,
-            &self.paths,
-            &session_model,
-            self.session.effort.as_deref(),
-        );
-        lines.extend(Line::plain(&line).wrap(width, &Line::plain("  ")));
+        let on = prefs::enabled(&self.paths, &role.id);
+        let note = if on {
+            fill(&words.state_on_note, &[("role", &role.id)])
+        } else {
+            words.state_off_note.clone()
+        };
+        let mut lines = vec![Line::styled(note, muted.clone())];
+        if on {
+            lines.push(Line::styled(&words.told, muted.clone()));
+            let session_model = self.session.model.clone().unwrap_or_default();
+            let line = roles::line(
+                role,
+                &self.paths,
+                &session_model,
+                self.session.effort.as_deref(),
+            );
+            lines.extend(Line::plain(&line).wrap(width, &Line::plain("  ")));
+        }
         if lines.len() >= rows {
             lines.truncate(rows);
             return lines;
@@ -779,23 +839,29 @@ impl Models {
     fn main_details(&self, width: usize, rows: usize) -> Vec<Line> {
         let words = &ui::get().models;
         let muted = Style::fg("muted");
+        let on: Vec<&RoleView> = self.roles.iter().filter(|view| view.enabled).collect();
         let mut lines = vec![Line::styled(&words.system_prompt, muted.clone())];
         lines.extend(Line::plain(&words.system_prompt_note).wrap(width, &Line::default()));
         let left = rows.saturating_sub(lines.len() + 2);
-        if left > 1 && !self.roles.is_empty() {
+        if left > 1 {
             lines.push(Line::default());
-            lines.push(Line::styled(&words.told, muted.clone()));
-            let session_model = self.session.model.clone().unwrap_or_default();
-            for view in &self.roles {
-                let line = roles::line(
-                    &view.role,
-                    &self.paths,
-                    &session_model,
-                    self.session.effort.as_deref(),
-                );
-                lines.extend(Line::plain(&line).wrap(width, &Line::plain("  ")));
-                if lines.len() >= rows {
-                    break;
+            if on.is_empty() {
+                // Subagents are off: the model is told of no role, and `task` is not offered.
+                lines.extend(Line::plain(&words.subagents_off).wrap(width, &Line::default()));
+            } else {
+                lines.push(Line::styled(&words.told, muted.clone()));
+                let session_model = self.session.model.clone().unwrap_or_default();
+                for view in on {
+                    let line = roles::line(
+                        &view.role,
+                        &self.paths,
+                        &session_model,
+                        self.session.effort.as_deref(),
+                    );
+                    lines.extend(Line::plain(&line).wrap(width, &Line::plain("  ")));
+                    if lines.len() >= rows {
+                        break;
+                    }
                 }
             }
         }
@@ -1047,10 +1113,14 @@ mod tests {
     use crate::io::term::KeyCode;
     use crate::models::Source;
 
+    /// A home with the built-in roles on, as a user who wants subagents has them.
     fn paths() -> (tempfile::TempDir, Paths) {
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths::at(dir.path().join("home"), dir.path().join("proj"));
         crate::io::fs::make_dir(&paths.home).unwrap();
+        for role in roles::builtin() {
+            prefs::set_enabled(&paths, &role.id, true);
+        }
         (dir, paths)
     }
 
@@ -1143,6 +1213,52 @@ mod tests {
     }
 
     #[test]
+    fn every_role_starts_off_and_the_state_row_turns_one_on() {
+        let (dir, _) = (tempfile::tempdir().unwrap(), ());
+        let paths = Paths::at(dir.path().join("home"), dir.path().join("proj"));
+        crate::io::fs::make_dir(&paths.home).unwrap();
+        // No role is on yet, so the main tab says subagents are off.
+        let catalog = catalog();
+        let model = catalog.models[0].clone();
+        let mut card = Models::new(&catalog, &paths, (&model, Some("high")));
+        let body = drawn(&card);
+        assert!(body.contains("No role is on"), "{body}");
+        // A role's tab says it is off, and the row turns it on.
+        key(&mut card, Action::Tab);
+        assert!(drawn(&card).contains("Off: the model is told of no such role"));
+        let Next::Roles(said) = key(&mut card, Action::Submit) else {
+            panic!("the state row toggles: {}", drawn(&card));
+        };
+        assert!(said.contains("reader"), "{said}");
+        assert!(prefs::enabled(&paths, "reader"));
+        assert!(drawn(&card).contains("is on"), "{}", drawn(&card));
+        // And off again.
+        assert!(matches!(key(&mut card, Action::Submit), Next::Roles(_)));
+        assert!(!prefs::enabled(&paths, "reader"));
+    }
+
+    #[test]
+    fn the_wire_leaves_task_out_until_a_role_is_on() {
+        let (_dir, paths) = paths();
+        let tools = crate::tools::Registry::builtin(None);
+        let named = |tools: &crate::tools::Registry| {
+            tools
+                .wire()
+                .iter()
+                .any(|tool| tool["function"]["name"] == crate::tools::TASK)
+        };
+        // A registry a session built: on, because the test's home has roles on.
+        tools.set_subagents(!roles::dispatchable(&paths).is_empty());
+        assert!(named(&tools));
+        for role in roles::builtin() {
+            prefs::set_enabled(&paths, &role.id, false);
+        }
+        tools.set_subagents(!roles::dispatchable(&paths).is_empty());
+        assert!(!named(&tools));
+        assert!(!named(&tools));
+    }
+
+    #[test]
     fn a_tab_per_agent_and_every_row_fits_the_screen() {
         let (_dir, paths) = paths();
         let card = card(&paths);
@@ -1179,6 +1295,7 @@ mod tests {
         let mut card = card(&paths);
         key(&mut card, Action::Tab);
         assert!(drawn(&card).contains("reader"), "{}", drawn(&card));
+        key(&mut card, Action::Down);
         key(&mut card, Action::Submit);
         assert!(drawn(&card).contains("reader"), "{}", drawn(&card));
         // The session's model is the first row; the next one is a model of its own.
@@ -1196,6 +1313,7 @@ mod tests {
         let (_dir, paths) = paths();
         let mut card = card(&paths);
         key(&mut card, Action::Tab);
+        key(&mut card, Action::Down);
         key(&mut card, Action::Down);
         assert!(drawn(&card).contains("effort"), "{}", drawn(&card));
         // It follows the session first; one step right is the lowest level.
@@ -1243,8 +1361,9 @@ mod tests {
         let (_dir, paths) = paths();
         let mut card = card(&paths);
         key(&mut card, Action::Tab);
-        key(&mut card, Action::Down);
-        key(&mut card, Action::Down);
+        for _ in 0..3 {
+            key(&mut card, Action::Down);
+        }
         key(&mut card, Action::Submit);
         assert!(drawn(&card).contains("What it is for"), "{}", drawn(&card));
         // The line opens on the description it has; kill it and type the new one.
@@ -1307,7 +1426,7 @@ mod tests {
         roles::save(&paths, &role).unwrap();
         card.reload();
         key(&mut card, Action::Tab);
-        for _ in 0..5 {
+        for _ in 0..6 {
             key(&mut card, Action::Down);
         }
         key(&mut card, Action::Submit);
@@ -1340,7 +1459,7 @@ mod tests {
         let (_dir, paths) = paths();
         let mut card = card(&paths);
         key(&mut card, Action::Tab);
-        for _ in 0..5 {
+        for _ in 0..6 {
             key(&mut card, Action::Down);
         }
         key(&mut card, Action::Submit);

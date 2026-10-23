@@ -2,6 +2,7 @@ description = "A role file's pinned model reaches the prompt and the child is to
 args = ["-p", "ask the tester"]
 
 [home_files]
+"prefs.json" = '{"enabled": ["tester"]}'
 "agents/tester.toml" = '''
 id = "tester"
 summary = "Checks one thing and reports whether it holds."

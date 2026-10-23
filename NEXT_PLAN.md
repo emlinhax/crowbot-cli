@@ -996,6 +996,12 @@ session prompt lists, so a new role needs no code change.
 - [x] 20.6 tests: `Role::binding`'s order and the user-file override, the card's rows and the
       file it writes, the refusal by name; e2e scenarios for a reader's tools, a worker's edits in
       AUTO, a role file's pinned model reaching the child's prompt, and an unknown role refused.
+- [x] 20.9 roles are on or off, and off is the default: `prefs.json` `enabled` lists the ones
+      turned on, a role that is off is not named in `<subagents>` and cannot be dispatched, and
+      with none on the `task` tool is left out of the request entirely (the registry's wire
+      filters it on a flag `/models` flips), so the model is not told of subagents at all. The
+      card's first row per role is its `state`; `+` turns a new role on. The fallback role of 20.8
+      went: a machine with nothing on simply has no subagents.
 - [x] 20.8 the card's spare rows say what the tab does: a role's line in `<subagents>`, the words
       it adds to the system prompt, and for the main agent where its prompt is assembled. The
       fields scroll with the selection, and the model table's window keeps the selected row and

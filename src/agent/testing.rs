@@ -118,6 +118,11 @@ impl Harness {
 
         let dir = tempfile::tempdir().unwrap();
         let mut app = App::for_tests(dir.path());
+        // Subagents are off until a role is on, so a test that dispatches turns them on first,
+        // as a user does.
+        for role in crate::agent::roles::builtin() {
+            crate::config::prefs::set_enabled(&app.paths, &role.id, true);
+        }
         let http = Http::new(std::time::Duration::from_secs(5)).unwrap();
         app.api = Api::redirected(http, "k", &base);
         let model = crate::testing::model(false);

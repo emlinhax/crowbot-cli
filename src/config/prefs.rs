@@ -26,6 +26,10 @@ pub struct Prefs {
     /// choice kept here. A role added again with the same id leaves this list.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hidden: Vec<String>,
+    /// The roles this machine turned on. Every role starts off: subagents are a feature the user
+    /// opts into, and until one is on the model is not told of them at all.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub enabled: Vec<String>,
 }
 
 /// What one role runs on, either part optional.
@@ -67,8 +71,25 @@ pub fn settings(paths: &Paths) -> Prefs {
     Prefs {
         roles: BTreeMap::new(),
         hidden: Vec::new(),
+        enabled: Vec::new(),
         ..load(paths)
     }
+}
+
+/// Whether the user turned `role` on.
+pub fn enabled(paths: &Paths, role: &str) -> bool {
+    load(paths).enabled.iter().any(|id| id == role)
+}
+
+/// Turns `role` on or off; a deleted built-in of that id comes back on.
+pub fn set_enabled(paths: &Paths, role: &str, on: bool) {
+    let mut prefs = load(paths);
+    prefs.enabled.retain(|id| id != role);
+    if on {
+        prefs.enabled.push(role.to_owned());
+        prefs.hidden.retain(|id| id != role);
+    }
+    save(paths, &prefs);
 }
 
 /// Whether the user deleted `role` from the list.
@@ -83,13 +104,7 @@ pub fn hide_role(paths: &Paths, role: &str) {
         prefs.hidden.push(role.to_owned());
     }
     prefs.roles.remove(role);
-    save(paths, &prefs);
-}
-
-/// Forgets that `role` was deleted, so a built-in of that id shows again.
-pub fn unhide_role(paths: &Paths, role: &str) {
-    let mut prefs = load(paths);
-    prefs.hidden.retain(|id| id != role);
+    prefs.enabled.retain(|id| id != role);
     save(paths, &prefs);
 }
 
@@ -195,6 +210,22 @@ mod tests {
     }
 
     #[test]
+    fn a_role_is_off_until_it_is_turned_on_and_a_deleted_one_comes_back_on() {
+        let (_dir, paths) = paths();
+        assert!(!enabled(&paths, "reader"));
+        set_enabled(&paths, "reader", true);
+        set_enabled(&paths, "worker", true);
+        assert!(enabled(&paths, "reader") && enabled(&paths, "worker"));
+        set_enabled(&paths, "worker", false);
+        assert!(!enabled(&paths, "worker"));
+        // A deleted built-in is off too, and turning it on brings it back.
+        hide_role(&paths, "reader");
+        assert!(!enabled(&paths, "reader") && hidden(&paths, "reader"));
+        set_enabled(&paths, "reader", true);
+        assert!(enabled(&paths, "reader") && !hidden(&paths, "reader"));
+    }
+
+    #[test]
     fn a_deleted_role_is_remembered_and_can_come_back() {
         let (_dir, paths) = paths();
         remember_role(
@@ -212,7 +243,8 @@ mod tests {
         assert!(settings(&paths).hidden.is_empty());
         hide_role(&paths, "reader");
         assert_eq!(load(&paths).hidden, vec!["reader".to_owned()]);
-        unhide_role(&paths, "reader");
+        // Turning it on brings a deleted built-in back.
+        set_enabled(&paths, "reader", true);
         assert!(!hidden(&paths, "reader"));
     }
 

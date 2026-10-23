@@ -1,6 +1,9 @@
 description = "A task call runs a reader subagent with its own tools; only its answer comes back, and only the parent's reply is printed"
 args = ["-p", "where is the parser?"]
 
+[home_files]
+"prefs.json" = '{"enabled": ["reader"]}'
+
 [[reply]]
 calls = [{ name = "task", arguments = '{"description": "find the parser", "prompt": "Find the parser and reply with its path.", "subagent_type": "reader"}' }]
 

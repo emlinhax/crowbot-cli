@@ -122,7 +122,10 @@ async fn a_subagents_permission_card_is_answered_in_the_session() {
         &fake,
         &[Reply::text("CHILD: fetched"), Reply::text("Parent: done.")],
     );
-    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+    // Subagents are off until a role is on, as a user turns one on in /models.
+    let sandbox = Sandbox::default();
+    sandbox.write_home("prefs.json", r#"{"enabled":["reader"]}"#);
+    in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.submit("fetch it for me");
         s.wait_for("╭ webfetch");
         s.send("1");
@@ -146,7 +149,9 @@ async fn a_subagents_requests_count_in_the_sessions_cost() {
         Reply::text("child"),
         Reply::text("Two."),
     ]);
-    in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+    let sandbox = Sandbox::default();
+    sandbox.write_home("prefs.json", r#"{"enabled":["reader"]}"#);
+    in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.submit("first");
         s.wait_for("One.");
         let one = cost(&s.bottom_row());
@@ -172,7 +177,9 @@ async fn turning_down_a_subagents_call_stops_the_run() {
     for decline in ["2", "\x1b"] {
         let fake = Fake::start().await;
         task_fetching(&fake, &[Reply::text("never")]);
-        in_session(&fake, Sandbox::default(), Some(ENV_KEY), move |s| {
+        let sandbox = Sandbox::default();
+        sandbox.write_home("prefs.json", r#"{"enabled":["reader"]}"#);
+        in_session(&fake, sandbox, Some(ENV_KEY), move |s| {
             s.submit("fetch it for me");
             s.wait_for("╭ webfetch");
             s.send(decline);

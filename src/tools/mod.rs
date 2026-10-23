@@ -303,6 +303,9 @@ impl<T: Tool> AnyTool for T {
 /// The tools a run offers, in the order the model is shown them.
 pub struct Registry {
     entries: Vec<Entry>,
+    /// Whether `task` is offered at all. Subagents are a feature the user turns on a role for, so
+    /// with none on the model is not told of them; the session flips this when `/models` does.
+    subagents: Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[derive(Clone)]
@@ -347,6 +350,7 @@ impl Registry {
         ];
         let mut registry = Self {
             entries: Vec::new(),
+            subagents: Arc::new(std::sync::atomic::AtomicBool::new(true)),
         };
         for tool in tools {
             registry
@@ -384,7 +388,21 @@ impl Registry {
             .filter(|e| names.contains(&e.tool.spec().name.as_str()))
             .cloned()
             .collect();
-        Self { entries }
+        Self {
+            entries,
+            subagents: Arc::clone(&self.subagents),
+        }
+    }
+
+    /// Whether `task` is offered: the session sets this from the roles the user turned on.
+    pub fn set_subagents(&self, on: bool) {
+        self.subagents
+            .store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// The flag above, for the session to flip when `/models` turns a role on or off.
+    pub fn subagents(&self) -> Arc<std::sync::atomic::AtomicBool> {
+        Arc::clone(&self.subagents)
     }
 
     pub fn get(&self, name: &str) -> Option<&Arc<dyn AnyTool>> {
@@ -402,9 +420,14 @@ impl Registry {
         self.each_name().collect::<Vec<_>>().join(", ")
     }
 
-    /// The `tools` array of a chat request.
+    /// The `tools` array of a chat request: every tool, but `task` only while a role is on.
     pub fn wire(&self) -> Vec<Value> {
-        self.entries.iter().map(|e| e.wire.clone()).collect()
+        let subagents = self.subagents.load(std::sync::atomic::Ordering::Relaxed);
+        self.entries
+            .iter()
+            .filter(|entry| subagents || entry.tool.spec().name != TASK)
+            .map(|e| e.wire.clone())
+            .collect()
     }
 }
 

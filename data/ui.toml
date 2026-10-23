@@ -107,7 +107,18 @@ title = "Models"
 main = "Main"
 new = "+"
 tab_separator = "│"
-# The form's field names, as their rows read.
+# The form's field names, as their rows read. `state` is whether the role is on at all.
+state = "state"
+on = "on"
+off = "off"
+state_hint = "enter or ← → to switch"
+# What the tab says under the form, by whether the role is on.
+state_on_note = "`{role}` is on: the model is told of it, and `task` may start it."
+state_off_note = "Off: the model is told of no such role, and `task` is not offered at all while every role is off."
+turned_on = "`{role}` is on: `task` may start it."
+turned_off = "`{role}` is off: the model is told of it no more."
+# The main agent's tab, with subagents off.
+subagents_off = "No role is on, so subagents are off: the model is told of no role and is not offered `task`. Turn one on to use them."
 model = "model"
 effort = "effort"
 summary = "description"

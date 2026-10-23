@@ -111,6 +111,7 @@ pub async fn run(
         tools: &tools,
         emit: &emit,
     };
+    let subagents = tools.subagents();
 
     let raw = term::Raw::fullscreen()?;
     let mut tui = Tui::new(
@@ -118,6 +119,7 @@ pub async fn run(
         catalog,
         (model, effort),
         (&shared, &shadow, &mcp),
+        subagents,
         initial,
         session_file,
     );
@@ -198,6 +200,8 @@ struct Tui<'a> {
     /// switch of model shows its own share at once.
     context_tokens: Option<u64>,
     account: AccountView,
+    /// Whether `task` is offered, which follows the roles the user turned on.
+    subagents: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl<'a> Tui<'a> {
@@ -206,6 +210,7 @@ impl<'a> Tui<'a> {
         catalog: Catalog,
         (model, effort): (Model, Option<String>),
         (shared, shadow, mcp): (&'a Shared, &'a Shadow, &'a Servers),
+        subagents: std::sync::Arc<std::sync::atomic::AtomicBool>,
         initial: Option<String>,
         session_file: String,
     ) -> Self {
@@ -243,6 +248,7 @@ impl<'a> Tui<'a> {
             earlier: Vec::new(),
             context_tokens: None,
             account: AccountView::new(),
+            subagents,
         };
         tui.feed.set_welcome(tui.welcome());
         tui

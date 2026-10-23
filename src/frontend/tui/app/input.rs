@@ -185,6 +185,10 @@ impl<'a> Tui<'a> {
             // written again.
             Next::Roles(said) => {
                 self.feed.notice(&said, "done");
+                // The prompt names the roles that are on, and `task` is offered only while one is.
+                let on = !crate::agent::roles::dispatchable(&self.app.paths).is_empty();
+                self.subagents
+                    .store(on, std::sync::atomic::Ordering::Relaxed);
                 self.next.reload(&self.app.paths);
             }
             Next::Resume(path) => {
