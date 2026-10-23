@@ -115,9 +115,10 @@ searches and changes nothing, `worker` has the session's tools and does one piec
 `researcher` reads the web and answers with its sources. A role is a file: the built-in ones are
 in `data/agents/`, and the user's are `~/.crowbot/agents/<id>.toml`, saying what it is for, which
 tools it gets and what it adds to the prompt. `/models` is a tab per agent — the main agent, then
-each role — with the model, the reasoning effort and the description on it; a description is
-written to the role's file, `+` adds a role, and `delete` removes a user's role or hides a built-in
-one. A role may also pin a `model` and an `effort` in its file; `/models` sets a role's model and
+each role — with the model, the reasoning effort, the description and the role's own prompt on it;
+those words are written to the role's file, `+` adds a role, and `delete` removes a user's role or
+hides a built-in one. With every role deleted, `task` still runs one unnamed-by-choice role on the
+session's own model, effort and tools. A role may also pin a `model` and an `effort` in its file; `/models` sets a role's model and
 effort for this machine, which beats the pin, and a pinned model crowbot no longer serves falls
 back to the session's. A
 subagent on a model of its own is told so, its cost counts in the session's either way, and it runs

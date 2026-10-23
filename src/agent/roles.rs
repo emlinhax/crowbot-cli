@@ -33,6 +33,14 @@ static HEADER: LazyLock<Header> = data::load!("agents.toml");
 #[serde(deny_unknown_fields)]
 struct Header {
     text: String,
+    fallback: Fallback,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Fallback {
+    id: String,
+    summary: String,
 }
 
 /// Everything data/prompts/subagents.toml says: the section the system prompt carries, and the
@@ -166,35 +174,55 @@ pub fn said(model: &Model, effort: Option<&str>) -> String {
         .to_owned()
 }
 
-/// The system prompt's section naming every role, with the model each runs on where that is not
-/// the session's, so the agent picks a role by its cost as well as its job.
-pub fn section(paths: &Paths, model: &str, effort: Option<&str>) -> Option<String> {
-    // An unreadable role file is reported where the roles are listed; the prompt goes without.
-    let roles = load(paths).ok()?;
+/// The line the model is told of one role: what it is for, and the model it runs on where that is
+/// not the session's, since a cheap reader against a strong worker is a cost decision too.
+pub fn line(role: &Role, paths: &Paths, model: &str, effort: Option<&str>) -> String {
+    let own_model = role.own_model(paths, model).map_or_else(String::new, |id| {
+        template::fill(&TEXT.model, &[("model", &id)])
+    });
+    let own_effort = role
+        .own_effort(paths, effort)
+        .map_or_else(String::new, |level| {
+            template::fill(&TEXT.effort, &[("effort", &level)])
+        });
+    template::fill(
+        &TEXT.role,
+        &[
+            ("id", &role.id),
+            ("summary", &role.summary),
+            ("model", &own_model),
+            ("effort", &own_effort),
+        ],
+    )
+}
+
+/// The role a dispatch falls back to when the user deleted every one of them: the session's own
+/// model, effort and tools, under the name data/agents.toml gives it, so `task` still works for a
+/// machine that wants no roles of its own.
+pub fn fallback() -> Role {
+    let mut role: Role = data::parse(data::raw!("agents/_template.toml"), "agents/_template.toml");
+    role.id = HEADER.fallback.id.clone();
+    role.summary = HEADER.fallback.summary.clone();
+    role
+}
+
+/// The roles a dispatch may name: the machine's own, or the one fallback role when it has none.
+pub fn dispatchable(paths: &Paths) -> Vec<Role> {
+    let roles = load(paths).unwrap_or_default();
     if roles.is_empty() {
-        return None;
+        vec![fallback()]
+    } else {
+        roles
     }
+}
+
+/// The system prompt's section naming every role, each as `line` words it.
+pub fn section(paths: &Paths, model: &str, effort: Option<&str>) -> Option<String> {
+    // With no role of its own the machine still dispatches, so the fallback is named too.
+    let roles = dispatchable(paths);
     let lines: Vec<String> = roles
         .iter()
-        .map(|role| {
-            let own_model = role.own_model(paths, model).map_or_else(String::new, |id| {
-                template::fill(&TEXT.model, &[("model", &id)])
-            });
-            let own_effort = role
-                .own_effort(paths, effort)
-                .map_or_else(String::new, |level| {
-                    template::fill(&TEXT.effort, &[("effort", &level)])
-                });
-            template::fill(
-                &TEXT.role,
-                &[
-                    ("id", &role.id),
-                    ("summary", &role.summary),
-                    ("model", &own_model),
-                    ("effort", &own_effort),
-                ],
-            )
-        })
+        .map(|role| line(role, paths, model, effort))
         .collect();
     Some(
         template::fill(&TEXT.frame, &[("roles", &lines.join("\n"))])
@@ -240,11 +268,12 @@ pub fn valid_id(id: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
-/// A role about to be added: the built-in template's prompt and tools, under `id` and `summary`.
-pub fn new_role(id: &str, summary: &str, everything: bool) -> Role {
+/// A role about to be added: the built-in template's prompt and tools, with an empty summary for
+/// the user to write.
+pub fn new_role(id: &str, everything: bool) -> Role {
     let mut role: Role = data::parse(data::raw!("agents/_template.toml"), "agents/_template.toml");
     role.id = id.to_owned();
-    role.summary = summary.to_owned();
+    role.summary = String::new();
     if !everything {
         role.tools = vec![
             "read".into(),
@@ -455,9 +484,39 @@ mod tests {
     }
 
     #[test]
+    fn a_machine_with_no_roles_dispatches_one_on_the_sessions_own_settings() {
+        let (_dir, paths) = paths();
+        assert_eq!(load(&paths).unwrap().len(), builtin().len());
+        for role in builtin() {
+            prefs::hide_role(&paths, &role.id);
+        }
+        assert!(load(&paths).unwrap().is_empty());
+        let roles = dispatchable(&paths);
+        assert_eq!(roles.len(), 1);
+        let only = &roles[0];
+        // It is the fallback role, and it pins nothing: the session's model and effort apply.
+        assert_eq!(only.id, HEADER.fallback.id);
+        assert!(only.model.is_none() && only.effort.is_none());
+        assert_eq!(only.tools, vec!["*".to_owned()]);
+        // The prompt still names it, so the agent knows what to call.
+        let section = section(&paths, "m", None).unwrap();
+        assert!(
+            section.contains(&format!("`{}`", HEADER.fallback.id)),
+            "{section}"
+        );
+        // Adding a role of the machine's own puts the fallback away.
+        let mut role = new_role("tester", true);
+        role.summary = "Tests.".into();
+        save(&paths, &role).unwrap();
+        assert_eq!(dispatchable(&paths).len(), 1);
+        assert_eq!(dispatchable(&paths)[0].id, "tester");
+    }
+
+    #[test]
     fn a_saved_role_is_the_file_the_loader_reads_and_stays_readable() {
         let (_dir, paths) = paths();
-        let mut role = new_role("tester", "Runs the tests.", true);
+        let mut role = new_role("tester", true);
+        role.summary = "Runs the tests.".into();
         role.prompt = "Run them.\nThen say what failed.".into();
         let file = save(&paths, &role).unwrap();
         let text = io::fs::read_string(&file).unwrap().unwrap();

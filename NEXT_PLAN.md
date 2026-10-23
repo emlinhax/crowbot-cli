@@ -996,6 +996,12 @@ session prompt lists, so a new role needs no code change.
 - [x] 20.6 tests: `Role::binding`'s order and the user-file override, the card's rows and the
       file it writes, the refusal by name; e2e scenarios for a reader's tools, a worker's edits in
       AUTO, a role file's pinned model reaching the child's prompt, and an unknown role refused.
+- [x] 20.8 the card's spare rows say what the tab does: a role's line in `<subagents>`, the words
+      it adds to the system prompt, and for the main agent where its prompt is assembled. The
+      fields scroll with the selection, and the model table's window keeps the selected row and
+      its mark inside the card, so a short terminal cannot lose the arrow. Deleting every role
+      leaves one fallback role (`data/agents.toml` `[fallback]`) on the session's own model,
+      effort and tools, so `task` still works.
 - [x] 20.7 the card's first pass was a flat list with a bare effort list; a tab per agent with the
       fields on it, an effort cycled in place (level in its colour, with what it means), and the
       description editable there is what made it usable without the file. A card that lays itself

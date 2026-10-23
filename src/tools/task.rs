@@ -89,9 +89,9 @@ impl Tool for Task {
 }
 
 /// The role `id` names as the machine has it now: a role the user added mid-session dispatches
-/// without a restart.
+/// without a restart, and a machine with no roles at all has the fallback one.
 fn role(id: &str, cx: &ToolCx<'_>) -> Result<Role, Refusal> {
-    let roles = roles::load(&cx.app.paths).unwrap_or_else(|_| roles::builtin().to_vec());
+    let roles = roles::dispatchable(&cx.app.paths);
     roles
         .iter()
         .find(|role| role.id == id)

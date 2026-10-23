@@ -112,6 +112,9 @@ model = "model"
 effort = "effort"
 summary = "description"
 summary_hint = "what it is for"
+prompt = "prompt"
+prompt_hint = "the words added to the system prompt for it"
+more_lines = "+{n} more"
 tools = "tools"
 delete = "delete"
 name = "name"
@@ -132,12 +135,12 @@ effort_set = "Effort: {effort} for this session."
 # What a role's tools read as, and the two sets a new role may start from.
 tools_all = "everything the session has"
 tools_all_but = "everything but {names}"
-tools_read = "read, grep, glob, webfetch"
 # A new role's tab.
 name_hint = "a name: letters, digits, - and _"
 create_hint = "Create the role"
-# What it is for, edited in place; the line that opens says which.
+# What it is for, and the words it adds to the prompt, edited in place.
 edit_summary = "What it is for"
+edit_prompt = "What it adds to the system prompt"
 edit_name = "Its name"
 field_prompt = "› "
 # Deleting a role, and what it does to its file.
@@ -151,6 +154,12 @@ targets_hint = "↑↓ move · enter choose · esc back"
 input_hint = "enter save · esc back"
 confirm_hint = "enter delete · esc keep"
 title_model = "{target} model"
+# The room under the form: what the model is told of this role, then the words it adds.
+told = "the model is told"
+added = "added to the system prompt"
+# The main agent's tab has no role of its own; the room says where its prompt comes from.
+system_prompt = "the system prompt"
+system_prompt_note = "data/prompts/system.md, then the forums, the MCP servers, this project's AGENTS.md, the roles below and the environment. A role's tab holds the words it adds to it."
 # What happened, said above the card.
 saved = "Role `{id}` saved to {path}."
 created = "Role `{id}` added. Edit {path} to change its prompt."

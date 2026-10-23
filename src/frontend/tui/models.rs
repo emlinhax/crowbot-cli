@@ -31,20 +31,14 @@ struct RoleView {
     choice: Choice,
 }
 
-/// A role being described in the `+` tab, before it exists.
-struct Draft {
-    name: String,
-    summary: String,
-    /// Whether it gets every tool the session has, rather than reading only.
-    everything: bool,
-}
-
 /// What a tab shows, top to bottom.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Field {
     Model,
     Effort,
     Summary,
+    /// The words added to the session's system prompt for this role: its tab's lower half.
+    Prompt,
     Tools,
     Delete,
     Name,
@@ -80,8 +74,10 @@ enum Stage {
 #[derive(Clone, Copy)]
 enum Edit {
     Summary(Target),
+    Prompt(Target),
     Name,
-    Draft,
+    DraftSummary,
+    DraftPrompt,
 }
 
 pub struct Models {
@@ -90,7 +86,8 @@ pub struct Models {
     /// The session's own model and effort: the first tab, and every role's fallback.
     session: Choice,
     roles: Vec<RoleView>,
-    draft: Draft,
+    /// The role the `+` tab is describing; its `id` is the name typed so far.
+    draft: Role,
     /// 0 is the main agent, 1..=roles.len() a role, and the last tab is `+`.
     tab: usize,
     field: usize,
@@ -108,11 +105,7 @@ impl Models {
                 effort: session.1.map(str::to_owned),
             },
             roles: Vec::new(),
-            draft: Draft {
-                name: String::new(),
-                summary: String::new(),
-                everything: true,
-            },
+            draft: roles::new_role("", true),
             tab: 0,
             field: 0,
             stage: Stage::Form,
@@ -183,15 +176,34 @@ impl Models {
         if self.tab == 0 {
             vec![Field::Model, Field::Effort]
         } else if self.tab == self.add_tab() {
-            vec![Field::Name, Field::Summary, Field::Tools, Field::Create]
+            vec![
+                Field::Name,
+                Field::Summary,
+                Field::Prompt,
+                Field::Tools,
+                Field::Create,
+            ]
         } else {
             vec![
                 Field::Model,
                 Field::Effort,
                 Field::Summary,
+                Field::Prompt,
                 Field::Tools,
                 Field::Delete,
             ]
+        }
+    }
+
+    /// The role the tab is about, if it is a role's: the draft for `+`.
+    fn tab_role(&self) -> Option<&Role> {
+        if self.tab == self.add_tab() {
+            Some(&self.draft)
+        } else {
+            self.target(self.tab).and_then(|target| match target {
+                Target::Main => None,
+                Target::Role(i) => self.roles.get(i).map(|view| &view.role),
+            })
         }
     }
 
@@ -367,9 +379,9 @@ impl Models {
                 let level = values[(at + 1) % values.len()].clone();
                 self.apply_effort(target, level)
             }
-            Field::Name => self.edit(Edit::Name, self.draft.name.clone()),
+            Field::Name => self.edit(Edit::Name, self.draft.id.clone()),
             Field::Summary if self.tab == self.add_tab() => {
-                self.edit(Edit::Draft, self.draft.summary.clone())
+                self.edit(Edit::DraftSummary, self.draft.summary.clone())
             }
             Field::Summary => match target {
                 Target::Role(i) => {
@@ -377,8 +389,21 @@ impl Models {
                 }
                 Target::Main => Next::Stay,
             },
+            Field::Prompt if self.tab == self.add_tab() => {
+                self.edit(Edit::DraftPrompt, self.draft.prompt.clone())
+            }
+            Field::Prompt => match target {
+                Target::Role(i) => {
+                    self.edit(Edit::Prompt(target), self.roles[i].role.prompt.clone())
+                }
+                Target::Main => Next::Stay,
+            },
             Field::Tools if self.tab == self.add_tab() => {
-                self.draft.everything = !self.draft.everything;
+                let everything = self.draft.tools.iter().any(|tool| tool == "*");
+                let mut draft = roles::new_role(&self.draft.id, !everything);
+                draft.summary = self.draft.summary.clone();
+                draft.prompt = self.draft.prompt.clone();
+                self.draft = draft;
                 Next::Stay
             }
             Field::Tools => Next::Stay,
@@ -401,7 +426,7 @@ impl Models {
     /// Keeps what an edit line handed back.
     fn edited(&mut self, edit: Edit, text: &str) -> Next {
         match edit {
-            Edit::Summary(Target::Role(_)) if text.is_empty() => {
+            Edit::Summary(Target::Role(_)) | Edit::DraftSummary if text.is_empty() => {
                 Next::Error(ui::get().models.summary_bad.clone())
             }
             Edit::Summary(target) => {
@@ -412,12 +437,24 @@ impl Models {
                 role.summary = text.to_owned();
                 self.save(target, role)
             }
+            Edit::Prompt(target) => {
+                let Target::Role(i) = target else {
+                    return Next::Stay;
+                };
+                let mut role = self.roles[i].role.clone();
+                role.prompt = text.to_owned();
+                self.save(target, role)
+            }
             Edit::Name => {
-                self.draft.name = text.to_owned();
+                self.draft.id = text.to_owned();
                 Next::Stay
             }
-            Edit::Draft => {
+            Edit::DraftSummary => {
                 self.draft.summary = text.to_owned();
+                Next::Stay
+            }
+            Edit::DraftPrompt => {
+                self.draft.prompt = text.to_owned();
                 Next::Stay
             }
         }
@@ -444,34 +481,31 @@ impl Models {
     /// Adds the role described in the `+` tab.
     fn create(&mut self) -> Next {
         let words = &ui::get().models;
-        let id = self.draft.name.trim().to_owned();
-        let summary = self.draft.summary.trim().to_owned();
-        if !roles::valid_id(&id) {
+        let mut role = self.draft.clone();
+        role.id = role.id.trim().to_owned();
+        role.summary = role.summary.trim().to_owned();
+        if !roles::valid_id(&role.id) {
             return Next::Error(words.name_bad.clone());
         }
-        if summary.is_empty() {
+        if role.summary.is_empty() {
             return Next::Error(words.summary_bad.clone());
         }
-        if self.roles.iter().any(|view| view.role.id == id)
-            || roles::find(roles::builtin(), &id).is_some()
+        if self.roles.iter().any(|view| view.role.id == role.id)
+            || roles::find(roles::builtin(), &role.id).is_some()
         {
             // A built-in role the user deleted comes back with this file.
-            if !prefs::hidden(&self.paths, &id) {
-                return Next::Error(fill(&words.name_taken, &[("id", &id)]));
+            if !prefs::hidden(&self.paths, &role.id) {
+                return Next::Error(fill(&words.name_taken, &[("id", &role.id)]));
             }
         }
-        prefs::unhide_role(&self.paths, &id);
-        let role = roles::new_role(&id, &summary, self.draft.everything);
+        prefs::unhide_role(&self.paths, &role.id);
         match roles::save(&self.paths, &role) {
             Ok(path) => {
+                let id = role.id.clone();
                 self.reload();
                 self.tab = self.roles.iter().position(|v| v.role.id == id).unwrap_or(0) + 1;
                 self.field = 0;
-                self.draft = Draft {
-                    name: String::new(),
-                    summary: String::new(),
-                    everything: true,
-                };
+                self.draft = roles::new_role("", true);
                 Next::Roles(fill(
                     &words.created,
                     &[("id", &id), ("path", &path.display().to_string())],
@@ -635,7 +669,7 @@ impl Models {
                         .unwrap_or_default(),
                 };
                 let text = if text.is_empty() {
-                    self.draft.tools(words)
+                    self.draft_tools()
                 } else {
                     text
                 };
@@ -645,12 +679,35 @@ impl Models {
                 &words.delete,
                 Line::styled(words.delete_hint.clone(), Style::fg("warn")),
             ),
+            Field::Prompt => {
+                let text = self
+                    .tab_role()
+                    .map(|role| role.prompt.trim().to_owned())
+                    .unwrap_or_default();
+                if text.is_empty() {
+                    return (
+                        &words.prompt,
+                        Line::styled(words.prompt_hint.clone(), muted()),
+                    );
+                }
+                // One row holds the first line; the pane under the form holds it all.
+                let first = text.lines().next().unwrap_or_default();
+                let more = text.lines().count().saturating_sub(1);
+                let mut line = Line::plain(first);
+                if more > 0 {
+                    line.push(
+                        format!("  {}", fill(&words.more_lines, &[("n", &more.to_string())])),
+                        muted(),
+                    );
+                }
+                (&words.prompt, line)
+            }
             Field::Name => (
                 &words.name,
-                if self.draft.name.is_empty() {
+                if self.draft.id.is_empty() {
                     Line::styled(words.name_hint.clone(), muted())
                 } else {
-                    Line::plain(self.draft.name.clone())
+                    Line::plain(self.draft.id.clone())
                 },
             ),
             Field::Create => (
@@ -660,12 +717,89 @@ impl Models {
         }
     }
 
-    /// The form: the tab's rows, with the tab bar above them.
-    fn form(&self, width: usize) -> Vec<Line> {
+    /// The tools the draft would get, as its row says.
+    fn draft_tools(&self) -> String {
+        tools_text(&self.draft, &ui::get().models)
+    }
+
+    /// The form in `rows` rows: the tab bar, then the fields, scrolled so the selected one is in
+    /// view, then whatever room is left for what the tab is for.
+    fn form(&self, width: usize, rows: usize) -> Vec<Line> {
         let mut lines = vec![self.tabs(width), Line::default()];
-        for (index, field) in self.fields().into_iter().enumerate() {
-            lines.push(self.row(index, field, width));
+        let budget = rows.saturating_sub(lines.len());
+        let fields = self.fields();
+        let start = (self.field + 1).saturating_sub(budget);
+        for (index, field) in fields.iter().enumerate().skip(start).take(budget) {
+            lines.push(self.row(index, *field, width));
         }
+        let left = rows.saturating_sub(lines.len());
+        if left > 0 {
+            lines.push(Line::default());
+            lines.extend(self.details(width, left.saturating_sub(1)));
+        }
+        lines
+    }
+
+    /// The room under the form, spent on what the tab actually does: the line the model is given
+    /// for a role, then the words added to its prompt.
+    fn details(&self, width: usize, rows: usize) -> Vec<Line> {
+        let words = &ui::get().models;
+        let muted = Style::fg("muted");
+        let Some(role) = self.tab_role() else {
+            return self.main_details(width, rows);
+        };
+        let mut lines = vec![Line::styled(&words.told, muted.clone())];
+        let session_model = self.session.model.clone().unwrap_or_default();
+        let line = roles::line(
+            role,
+            &self.paths,
+            &session_model,
+            self.session.effort.as_deref(),
+        );
+        lines.extend(Line::plain(&line).wrap(width, &Line::plain("  ")));
+        if lines.len() >= rows {
+            lines.truncate(rows);
+            return lines;
+        }
+        lines.push(Line::default());
+        lines.push(Line::styled(&words.added, muted.clone()));
+        let prompt = role.prompt.trim();
+        if prompt.is_empty() {
+            lines.push(Line::styled(&words.prompt_hint, muted));
+        } else {
+            for paragraph in prompt.split('\n') {
+                lines.extend(Line::plain(paragraph).wrap(width, &Line::default()));
+            }
+        }
+        lines.truncate(rows);
+        lines
+    }
+
+    /// The main agent's tab has no role to describe, so the room says what its prompt is made of.
+    fn main_details(&self, width: usize, rows: usize) -> Vec<Line> {
+        let words = &ui::get().models;
+        let muted = Style::fg("muted");
+        let mut lines = vec![Line::styled(&words.system_prompt, muted.clone())];
+        lines.extend(Line::plain(&words.system_prompt_note).wrap(width, &Line::default()));
+        let left = rows.saturating_sub(lines.len() + 2);
+        if left > 1 && !self.roles.is_empty() {
+            lines.push(Line::default());
+            lines.push(Line::styled(&words.told, muted.clone()));
+            let session_model = self.session.model.clone().unwrap_or_default();
+            for view in &self.roles {
+                let line = roles::line(
+                    &view.role,
+                    &self.paths,
+                    &session_model,
+                    self.session.effort.as_deref(),
+                );
+                lines.extend(Line::plain(&line).wrap(width, &Line::plain("  ")));
+                if lines.len() >= rows {
+                    break;
+                }
+            }
+        }
+        lines.truncate(rows);
         lines
     }
 
@@ -717,17 +851,6 @@ fn tools_text(role: &Role, words: &crate::frontend::tui::ui::ModelsText) -> Stri
     }
 }
 
-impl Draft {
-    /// The tools a new role gets, as the row says.
-    fn tools(&self, words: &crate::frontend::tui::ui::ModelsText) -> String {
-        if self.everything {
-            words.tools_all.clone()
-        } else {
-            words.tools_read.clone()
-        }
-    }
-}
-
 impl Card for Models {
     fn key(&mut self, action: Option<Action>, key: &KeyEvent) -> Next {
         match &mut self.stage {
@@ -753,7 +876,11 @@ impl Card for Models {
                             return self.apply_effort(target, level);
                         }
                         Some(Field::Tools) if self.tab == self.add_tab() => {
-                            self.draft.everything = !self.draft.everything;
+                            let everything = self.draft.tools.iter().any(|tool| tool == "*");
+                            let mut draft = roles::new_role(&self.draft.id, !everything);
+                            draft.summary = self.draft.summary.clone();
+                            draft.prompt = self.draft.prompt.clone();
+                            self.draft = draft;
                         }
                         _ => {}
                     }
@@ -821,10 +948,17 @@ impl Card for Models {
     fn render_in(&self, width: usize, height: usize) -> Vec<Line> {
         let words = &ui::get().models;
         let inner = boxed::inner(width);
-        // The box's two rules and the hint under it take three rows; the rest is the body.
-        let body_rows = height.saturating_sub(3).max(3);
+        // Two rules and the hint under them take three rows; a card that cannot hold those is
+        // not drawn at all, rather than cut off at the top by the frame.
+        let Some(body_rows) = height.checked_sub(3).filter(|rows| *rows >= 1) else {
+            return Vec::new();
+        };
         let (title, hint, mut body) = match &self.stage {
-            Stage::Form => (words.title.clone(), words.hint.clone(), self.form(inner)),
+            Stage::Form => (
+                words.title.clone(),
+                words.hint.clone(),
+                self.form(inner, body_rows),
+            ),
             Stage::Models { target, selected } => {
                 let (rows, _, _) = self.model_rows(*target);
                 let title = fill(&words.title_model, &[("target", &self.name(self.tab))]);
@@ -832,19 +966,20 @@ impl Card for Models {
                     Line::styled(&title, Style::default().bold()),
                     Line::default(),
                 ];
+                // The title, the blank and the table's header take three rows of the body.
                 lines.extend(table_rows(
                     rows,
                     *selected,
-                    body_rows.saturating_sub(2),
+                    body_rows.saturating_sub(3),
                     inner.saturating_sub(rows::MARK),
                 ));
                 (words.title.clone(), words.targets_hint.clone(), lines)
             }
             Stage::Edit { edit, editor } => {
                 let title = match edit {
-                    Edit::Summary(_) => words.edit_summary.clone(),
+                    Edit::Summary(_) | Edit::DraftSummary => words.edit_summary.clone(),
+                    Edit::Prompt(_) | Edit::DraftPrompt => words.edit_prompt.clone(),
                     Edit::Name => words.edit_name.clone(),
-                    Edit::Draft => words.edit_summary.clone(),
                 };
                 let mut lines = vec![
                     Line::styled(&title, Style::default().bold()),
@@ -852,7 +987,7 @@ impl Card for Models {
                 ];
                 lines.extend(editor.render(
                     inner.saturating_sub(2),
-                    body_rows.saturating_sub(4).max(1),
+                    body_rows.saturating_sub(2).max(1),
                     &Line::plain(&words.field_prompt),
                     "",
                 ));
@@ -944,6 +1079,67 @@ mod tests {
             .map(Line::text)
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[test]
+    fn a_selected_model_keeps_its_mark_in_a_window_smaller_than_the_list() {
+        let (_dir, paths) = paths();
+        let mut card = card(&paths);
+        key(&mut card, Action::Submit);
+        // To the last model, which is off the end of a short window.
+        for _ in 0..20 {
+            key(&mut card, Action::Down);
+        }
+        let Stage::Models { selected, .. } = card.stage else {
+            panic!("the table stays open");
+        };
+        let last = catalog().models.len() - 1;
+        assert_eq!(selected, last);
+        let lines = card.render_in(60, 12);
+        let text: Vec<String> = lines.iter().map(Line::text).collect();
+        let body = text.join("\n");
+        assert!(body.contains("gemini-3.8-flash"), "{body}");
+        // The arrow is on the selected model, and the table was scrolled to it.
+        assert!(
+            text.iter()
+                .any(|l| l.contains("›") && l.contains("gemini-3.8-flash")),
+            "{body}"
+        );
+        assert!(lines.len() <= 12, "{} lines", lines.len());
+    }
+
+    #[test]
+    fn the_fields_scroll_to_keep_the_selected_one_in_view() {
+        let (_dir, paths) = paths();
+        let mut card = card(&paths);
+        key(&mut card, Action::Tab);
+        // Down to `delete`, the last field, in a card only just tall enough.
+        for _ in 0..8 {
+            key(&mut card, Action::Down);
+        }
+        let body = card
+            .render_in(60, 12)
+            .iter()
+            .map(Line::text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(body.contains("Delete this role"), "{body}");
+        assert!(body.contains("› delete"), "{body}");
+    }
+
+    #[test]
+    fn the_room_under_the_form_says_what_the_model_is_told_and_adds() {
+        let (_dir, paths) = paths();
+        let mut card = card(&paths);
+        key(&mut card, Action::Tab);
+        let body = drawn(&card);
+        assert!(body.contains("the model is told"), "{body}");
+        assert!(body.contains("added to the system prompt"), "{body}");
+        assert!(body.contains("You are a subagent"), "{body}");
+        // And the main agent's tab says where its own prompt comes from.
+        let main = self::card(&paths);
+        let body = drawn(&main);
+        assert!(body.contains("data/prompts/system.md"), "{body}");
     }
 
     #[test]
@@ -1084,6 +1280,8 @@ mod tests {
         key(&mut card, Action::Submit);
         card.insert("Runs the tests and reports what failed.");
         key(&mut card, Action::Submit);
+        // Down past the prompt and the tools to the row that creates it.
+        key(&mut card, Action::Down);
         key(&mut card, Action::Down);
         key(&mut card, Action::Down);
         let Next::Roles(said) = key(&mut card, Action::Submit) else {
@@ -1104,10 +1302,12 @@ mod tests {
         let (_dir, paths) = paths();
         let mut card = card(&paths);
         // The reader's own file, so the deletion removes it.
-        roles::save(&paths, &roles::new_role("reader", "Reads.", true)).unwrap();
+        let mut role = roles::new_role("reader", true);
+        role.summary = "Reads.".into();
+        roles::save(&paths, &role).unwrap();
         card.reload();
         key(&mut card, Action::Tab);
-        for _ in 0..4 {
+        for _ in 0..5 {
             key(&mut card, Action::Down);
         }
         key(&mut card, Action::Submit);
@@ -1140,7 +1340,7 @@ mod tests {
         let (_dir, paths) = paths();
         let mut card = card(&paths);
         key(&mut card, Action::Tab);
-        for _ in 0..4 {
+        for _ in 0..5 {
             key(&mut card, Action::Down);
         }
         key(&mut card, Action::Submit);
