@@ -9,7 +9,7 @@
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::api::models::Model;
 use crate::config::paths::Paths;
@@ -25,6 +25,15 @@ const SOURCES: &[&str] = &[
     data::raw!("agents/worker.toml"),
     data::raw!("agents/researcher.toml"),
 ];
+
+/// The comment every role file `/models` writes opens with.
+static HEADER: LazyLock<Header> = data::load!("agents.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Header {
+    text: String,
+}
 
 /// Everything data/prompts/subagents.toml says: the section the system prompt carries, and the
 /// note a role's subagent is given when it runs on a model of its own.
@@ -48,16 +57,16 @@ static BUILTIN: LazyLock<Vec<Role>> = LazyLock::new(|| {
         .collect()
 });
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Role {
     pub id: String,
     pub summary: String,
     /// The parent's tools it gets, by name; `*` is all of them.
-    tools: Vec<String>,
+    pub tools: Vec<String>,
     /// Tools a `*` leaves out.
     #[serde(default)]
-    except: Vec<String>,
+    pub except: Vec<String>,
     pub prompt: String,
     /// The model it runs on instead of the session's: a cheap one for reading, a strong one for
     /// work that has to land.
@@ -119,10 +128,15 @@ pub fn builtin() -> &'static [Role] {
     &BUILTIN
 }
 
-/// Every role this machine has: the built-in ones, then each file in ~/.crowbot/agents/, which
-/// overrides the built-in of its id and may add one of its own.
+/// Every role this machine has: the built-in ones the user did not delete, then each file in
+/// ~/.crowbot/agents/, which overrides the built-in of its id and may add one of its own.
 pub fn load(paths: &Paths) -> anyhow::Result<Vec<Role>> {
-    let mut roles = builtin().to_vec();
+    let deleted = prefs::load(paths).hidden;
+    let mut roles: Vec<Role> = builtin()
+        .iter()
+        .filter(|role| !deleted.contains(&role.id))
+        .cloned()
+        .collect();
     for (id, file, text) in user_files(paths)? {
         let role: Role =
             toml::from_str(&text).map_err(|e| anyhow::anyhow!("{}: {e}", file.display()))?;
@@ -218,25 +232,93 @@ fn user_files(paths: &Paths) -> anyhow::Result<Vec<(String, PathBuf, String)>> {
     Ok(files)
 }
 
-/// Writes a new role's file into the user's folder, from the built-in template; `Err` when the
-/// name is not one a file can hold or the role already exists. Returns the file written.
-pub fn write_new(paths: &Paths, id: &str) -> anyhow::Result<PathBuf> {
-    let valid = !id.is_empty()
+/// Whether `id` can name a role: it becomes a file name, and the model is told it.
+pub fn valid_id(id: &str) -> bool {
+    !id.is_empty()
         && id
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    if !valid {
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// A role about to be added: the built-in template's prompt and tools, under `id` and `summary`.
+pub fn new_role(id: &str, summary: &str, everything: bool) -> Role {
+    let mut role: Role = data::parse(data::raw!("agents/_template.toml"), "agents/_template.toml");
+    role.id = id.to_owned();
+    role.summary = summary.to_owned();
+    if !everything {
+        role.tools = vec![
+            "read".into(),
+            "grep".into(),
+            "glob".into(),
+            "webfetch".into(),
+        ];
+        role.except = Vec::new();
+    }
+    role
+}
+
+/// Writes `role`'s file into the user's folder: what `/models` changes, and what a new role is.
+/// The file is the source, so a built-in role edited here keeps the edit across sessions.
+pub fn save(paths: &Paths, role: &Role) -> anyhow::Result<PathBuf> {
+    if !valid_id(&role.id) {
         anyhow::bail!("a role's name is letters, digits, `-` and `_`");
     }
     let dir = paths.roles_dir();
     io::fs::make_dir(&dir)?;
-    let file = dir.join(format!("{id}.toml"));
-    if io::fs::exists(&file) {
-        anyhow::bail!("there is already a role called `{id}`");
-    }
-    let text = template::fill(data::raw!("agents/_template.toml"), &[("id", id)]);
+    let file = dir.join(format!("{}.toml", role.id));
+    let text = format!("{}{}", HEADER.text, file_text(role));
     io::fs::write_atomic(&file, text.as_bytes(), io::fs::Access::Private)?;
     Ok(file)
+}
+
+/// Deletes a role: a user's file goes, and a built-in one is remembered as deleted, since its
+/// file ships with the build.
+pub fn remove(paths: &Paths, role: &Role) -> anyhow::Result<()> {
+    let file = paths.roles_dir().join(format!("{}.toml", role.id));
+    if io::fs::exists(&file) {
+        io::fs::remove(&file)?;
+    }
+    if builtin().iter().any(|built| built.id == role.id) {
+        prefs::hide_role(paths, &role.id);
+    }
+    Ok(())
+}
+
+/// The role's file as text: the keys the loader reads, its prompt in a literal block so it stays
+/// readable by hand.
+fn file_text(role: &Role) -> String {
+    let quoted = |text: &str| toml::Value::String(text.to_owned()).to_string();
+    let list = |items: &[String]| {
+        items
+            .iter()
+            .map(|item| quoted(item))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let mut out = format!(
+        "id = {}\nsummary = {}\ntools = [{}]\n",
+        quoted(&role.id),
+        quoted(&role.summary),
+        list(&role.tools)
+    );
+    if !role.except.is_empty() {
+        out.push_str(&format!("except = [{}]\n", list(&role.except)));
+    }
+    let prompt = role.prompt.trim();
+    let fence = "'''";
+    if prompt.contains(fence) {
+        // A literal block cannot hold its own delimiter; an escaped string can hold anything.
+        out.push_str(&format!("prompt = {}\n", quoted(prompt)));
+    } else {
+        out.push_str(&format!("prompt = {fence}\n{prompt}\n{fence}\n"));
+    }
+    if let Some(model) = &role.model {
+        out.push_str(&format!("model = {}\n", quoted(model)));
+    }
+    if let Some(level) = &role.effort {
+        out.push_str(&format!("effort = {}\n", quoted(level)));
+    }
+    out
 }
 
 /// The tools a subagent of `role` gets from its parent's `registry`, `depth` runs below the

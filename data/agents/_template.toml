@@ -1,9 +1,8 @@
-# A role the `task` tool can start, as /models writes a new one into ~/.crowbot/agents/. {id} is
-# filled in from the name given. `summary` is what the model is told it is for; `tools` are the
-# session's tools by name (`*` is all of them, `except` leaves some out); `prompt` is added to the
-# session's system prompt for it. `model` and `effort` may be added: without them it runs on the
-# session's.
-id = "{id}"
+# A role the `task` tool can start: what /models fills in for a new one. `summary` is what the
+# model is told it is for; `tools` are the session's tools by name (`*` is all of them, `except`
+# leaves some out); `prompt` is added to the session's system prompt for it. `model` and `effort`
+# are optional: without them it runs on the session's.
+id = "template"
 summary = "Does one self-contained piece of work with the session's tools: changes files, runs commands, checks the result, and reports what it did."
 tools = ["*"]
 except = ["plan_exit"]

@@ -175,20 +175,15 @@ impl<'a> Tui<'a> {
                     self.feed.notice(&message, "done");
                 }
             }
-            Next::UseModel(id) => {
-                self.panel = None;
-                self.switch_model(&id);
-            }
-            Next::UseEffort(level) => {
-                self.panel = None;
-                match level {
-                    Some(level) => self.set_effort(level),
-                    None => self.ask_effort(None),
-                }
-            }
+            // The card stays open: `/models` is a form, and the next field is usually next.
+            Next::UseModel(id) => self.switch_model(&id),
+            Next::UseEffort(level) => match level {
+                Some(level) => self.set_effort(level),
+                None => self.ask_effort(None),
+            },
             // The roles changed: the prompt names them and the model each runs on, so it is
             // written again.
-            Next::Added(said) | Next::RoleChanged(said) => {
+            Next::Roles(said) => {
                 self.feed.notice(&said, "done");
                 self.next.reload(&self.app.paths);
             }

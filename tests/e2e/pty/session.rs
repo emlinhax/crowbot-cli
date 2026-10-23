@@ -1,6 +1,6 @@
 //! Chatting, switching mode, thinking blocks and the context share.
 
-use super::harness::{CTRL_C, CTRL_T, DOWN, ENTER, SHIFT_TAB, in_session, in_session_with};
+use super::harness::{CTRL_C, CTRL_T, DOWN, ENTER, ESC, SHIFT_TAB, in_session, in_session_with};
 use crate::Sandbox;
 use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
 
@@ -73,14 +73,16 @@ async fn the_context_share_follows_a_switch_of_model_at_once() {
         s.wait_bar("ctx 10%");
         s.submit("/models");
         s.wait_for("╭ Models");
-        // The list opens on the main agent's model row; Enter opens its models, and the one in use
+        // The card opens on the main agent's model row; Enter opens its models, and the one in use
         // is first, so the next one down is the switch.
-        s.send(ENTER);
+        s.key(ENTER);
         s.wait_for("Main model");
-        s.send(DOWN);
-        s.send(ENTER);
-        s.wait_for("Model: fake-coder for this session.");
+        s.key(DOWN);
+        s.key(ENTER);
+        // The card stays open on the form, and the bar shows the model it now runs on.
         s.wait_bar("ctx 76%");
+        s.key(ESC);
+        s.wait_gone("╭ Models");
     })
     .await;
 }

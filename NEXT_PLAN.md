@@ -980,10 +980,14 @@ session prompt lists, so a new role needs no code change.
 - [x] 20.2 per-role model and effort, resolved user's `/models` choice → the role file's pin → the
       session's (`Role::binding`); a pinned model the catalog no longer serves falls back to the
       session's, so a stale pin never blocks a dispatch.
-- [x] 20.3 `/models` is a card: a `Main` row, a `Roles` heading, one row per role (muted while it
-      follows the session) and `+ Add a role…`, which writes a new file from
-      `data/agents/_template.toml`; a role's first choice is the session's, which clears its own.
-      Choices live in `~/.crowbot/prefs.json` under `roles.<id>`. `crowbot models` is unchanged.
+- [x] 20.3 `/models` is a full-height card with a tab per agent: the main agent, then each role,
+      then `+` to add one. Each tab shows `model`, `effort`, `description` and (for a role) `tools`
+      and `delete`; ↑↓ picks a field, ←→ changes a value in place, Enter opens the model table or a
+      line for the description, and the description is written to the role's file. `+` asks for a
+      name, a description and a tools preset, then writes the role. `delete` removes a user's file
+      or, for a built-in, remembers it as hidden in `~/.crowbot/prefs.json` (`hidden`), so the
+      shipped file is never needed for that. A role's first model choice is the session's, which
+      clears its own; choices live under `roles.<id>`. `crowbot models` is unchanged.
 - [x] 20.4 the system prompt names every role and the model it runs on (`<subagents>`,
       data/prompts/subagents.toml); `subagent_type` keeps an open schema and the refusal names the
       roles this machine has: "There is no role called `nobody`. The roles: …".
@@ -992,6 +996,11 @@ session prompt lists, so a new role needs no code change.
 - [x] 20.6 tests: `Role::binding`'s order and the user-file override, the card's rows and the
       file it writes, the refusal by name; e2e scenarios for a reader's tools, a worker's edits in
       AUTO, a role file's pinned model reaching the child's prompt, and an unknown role refused.
+- [x] 20.7 the card's first pass was a flat list with a bare effort list; a tab per agent with the
+      fields on it, an effort cycled in place (level in its colour, with what it means), and the
+      description editable there is what made it usable without the file. A card that lays itself
+      out by height (`Card::render_in`) fills the screen instead of leaving the transcript around
+      it.
 
 **Learned**
 - The schema's `enum` had to go: roles are files the user can add mid-session, and a schema is
@@ -1001,3 +1010,6 @@ session prompt lists, so a new role needs no code change.
 - A pin belongs to the file, the choice to the machine: reading the file for the pin and
   `prefs.json` for the override keeps a role reproducible on a second machine while `/models` can
   still tune it here, and lets a dispatch fall back rather than fail when the catalog moves.
+- A built-in role's file ships inside the binary, so "delete" cannot be a file removal: hiding it
+  in `prefs.json` is the same choice kept where the machine keeps its other choices, and adding a
+  role with that name brings it back.

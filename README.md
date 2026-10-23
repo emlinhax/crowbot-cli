@@ -113,10 +113,13 @@ The model can hand a self-contained job to a subagent with the `task` tool, nami
 the session prompt lists, so it picks by the job and what that job costs: `reader` reads and
 searches and changes nothing, `worker` has the session's tools and does one piece of work,
 `researcher` reads the web and answers with its sources. A role is a file: the built-in ones are
-in `data/agents/`, and a user role is `~/.crowbot/agents/<id>.toml` (`/models` → `+ Add a role…`
-writes a starter), saying what it is for, which tools it gets and what it adds to the prompt. A
-role may pin a `model` and an `effort`; `/models` sets a role's model and effort for this machine,
-which beats the pin, and a pinned model crowbot no longer serves falls back to the session's. A
+in `data/agents/`, and the user's are `~/.crowbot/agents/<id>.toml`, saying what it is for, which
+tools it gets and what it adds to the prompt. `/models` is a tab per agent — the main agent, then
+each role — with the model, the reasoning effort and the description on it; a description is
+written to the role's file, `+` adds a role, and `delete` removes a user's role or hides a built-in
+one. A role may also pin a `model` and an `effort` in its file; `/models` sets a role's model and
+effort for this machine, which beats the pin, and a pinned model crowbot no longer serves falls
+back to the session's. A
 subagent on a model of its own is told so, its cost counts in the session's either way, and it runs
 under the session's mode and asks through its permission cards; a plain No to one of its calls
 stops the whole run. Its reply is the tool's result (its card shows its latest call while it
@@ -147,7 +150,7 @@ session, `/help` lists the commands:
 | Command | Does |
 |---|---|
 | `/new` (or `/clear`) | a fresh conversation in a new session file; the last one stays saved |
-| `/models`, `/effort [level]`, `/mode [id]` | model, reasoning effort or permission mode for the rest of the session; `/models` also sets each role's model and effort, or adds a role |
+| `/models`, `/effort [level]`, `/mode [id]` | model, reasoning effort or permission mode for the rest of the session; `/models` is a tab per agent, where each role's model, effort and description are set, a role is added, and one is deleted |
 | `/resume` | go on with an earlier session in this project |
 | `/undo`, `/retry` | take back the last prompt and what followed it, files too; `/retry` then sends it again |
 | `/compact [focus]` | summarise earlier turns now, keeping `focus` in mind |

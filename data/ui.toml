@@ -101,41 +101,63 @@ live = "Thinking… {secs}s"
 gutter = "│ "
 
 # `/models` inside a session: the main agent's model and effort, then one line per role a subagent
-# can be started as, each configured apart.
+# can be started as, each configured apart. One tab per agent; the last tab adds a role.
 [models]
 title = "Models"
-# The main agent's rows, then each role's.
 main = "Main"
+new = "+"
+tab_separator = "│"
+# The form's field names, as their rows read.
 model = "model"
-effort_row = "effort"
-unset = "—"
-# The heading over the roles, and the row that writes a new role's file.
-roles = "Roles"
-new = "+ Add a role…"
-new_title = "Add a role"
-new_note = "Writes ~/.crowbot/agents/{id}.toml. Edit that file to say what it is for, which tools it gets and what it adds to the prompt."
-name = "Name: "
-name_taken = "There is already a role called `{id}`."
-name_bad = "A role's name is letters, digits, `-` and `_`."
-created = "Role `{id}` added. Edit {path} to say what it is for."
-# A role's own setting is written at once; this says so and which model it now runs on.
+effort = "effort"
+summary = "description"
+summary_hint = "what it is for"
+tools = "tools"
+delete = "delete"
+name = "name"
+create = "create"
+# A value a role inherits from the session, rather than having its own.
+follow_model = "(the session's)"
+follow_effort = "the session's ({effort})"
+follow_hint = "← → to set its own"
+effort_default = "the model's own default"
+# The model table's first row for a role: the way back to the session's model.
+session_model = "the session's model ({model})"
+# A role's own setting is written at once; this says so.
 role_model = "Role {role}: {model}."
 role_effort = "Role {role}: effort {effort}."
 role_session = "Role {role}: the session's {what} again."
 switched = "Model: {model} for this session."
-effort = "Effort: {effort} for this session."
-hint = "↑↓ move · enter configure · esc close"
-input_hint = "enter add · esc back"
-# The choices for a role's own setting: the session's, then the models or the levels.
+effort_set = "Effort: {effort} for this session."
+# What a role's tools read as, and the two sets a new role may start from.
+tools_all = "everything the session has"
+tools_all_but = "everything but {names}"
+tools_read = "read, grep, glob, webfetch"
+# A new role's tab.
+name_hint = "a name: letters, digits, - and _"
+create_hint = "Create the role"
+# What it is for, edited in place; the line that opens says which.
+edit_summary = "What it is for"
+edit_name = "Its name"
+field_prompt = "› "
+# Deleting a role, and what it does to its file.
+delete_hint = "Delete this role…"
+delete_title = "Delete `{role}`?"
+delete_built_in = "It is one of the built-in roles, so it is hidden rather than removed: adding a role with the same name brings it back."
+delete_file = "Its file {path} is removed. A conversation already using it is unaffected."
+# The card's own keys, by stage.
+hint = "↑↓ field · ←→ change · enter edit · tab next · esc close"
 targets_hint = "↑↓ move · enter choose · esc back"
+input_hint = "enter save · esc back"
+confirm_hint = "enter delete · esc keep"
 title_model = "{target} model"
-title_effort = "{target} effort"
-# A role's row that follows the session: `{value}` is what the session uses.
-follow = "the session's ({value})"
-session_model = "the session's model"
-session_effort = "the session's effort"
-# The main agent's effort row that clears it, back to the model's own default.
-effort_default = "the model's own default"
+# What happened, said above the card.
+saved = "Role `{id}` saved to {path}."
+created = "Role `{id}` added. Edit {path} to change its prompt."
+deleted = "Role `{id}` deleted."
+name_taken = "There is already a role called `{id}`."
+name_bad = "A role's name is letters, digits, `-` and `_`."
+summary_bad = "A role needs a description, so the model knows when to use it."
 
 # `/resume` inside a session: this project's earlier sessions.
 [resume]

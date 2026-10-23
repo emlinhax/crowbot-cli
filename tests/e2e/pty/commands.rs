@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use super::harness::{BACKSPACE, DOWN, ENTER, LEFT, TAB, in_session};
+use super::harness::{BACKSPACE, DOWN, ENTER, ESC, TAB, in_session};
 use crate::Sandbox;
 use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
 
@@ -35,13 +35,13 @@ async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
         s.wait_for("reader");
         s.wait_gone("╭ commands");
         let picked = s.contents();
-        // ← closes the card, like Esc.
-        s.send(LEFT);
+        // Esc closes the card.
+        s.key(ESC);
         s.wait_gone("╭ Models");
         picked
     })
     .await;
-    assert!(ended.out.contains("/models"), "{}", ended.out);
+    assert!(ended.out.contains("╭ Models"), "{}", ended.out);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -122,23 +122,18 @@ async fn a_roles_model_set_in_the_card_is_the_one_its_subagent_runs_on() {
     let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.submit("/models");
         s.wait_for("╭ Models");
-        s.wait_quiet();
-        // Down past the main agent's two rows to the reader's model row.
-        s.send(DOWN);
-        s.send(DOWN);
-        // A frame between the keys: the harness's own CEILING, a busy draw can bunch them into a
-        // paste, and a pasted Enter is a newline rather than a choice.
-        s.wait_quiet();
-        s.send(ENTER);
-        // The choices open on the session's own model, which is the first way back to it.
-        s.wait_for("the session's (deepseek-v4.1-flash)");
-        s.send(DOWN);
-        s.wait_quiet();
-        s.send(ENTER);
-        s.wait_for("Role reader: fake-coder.");
-        // The card stays open on the list, showing what the role now runs on.
+        // The reader's tab, then its model row.
+        s.key(TAB);
+        s.key(ENTER);
+        // The session's model is the first row, the way back to it; two rows down is a model of
+        // its own.
+        s.wait_for("the session's model (deepseek-v4.1-flash)");
+        s.key(DOWN);
+        s.key(DOWN);
+        s.key(ENTER);
+        // The card stays open on the form, showing what the role now runs on.
         s.wait_for("fake-coder");
-        s.send(LEFT);
+        s.key(ESC);
         s.wait_gone("╭ Models");
         s.submit("look it up");
         s.wait_for("done");
@@ -193,13 +188,15 @@ async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
         s.submit("/models");
         s.wait_for("╭ Models");
         // The main agent's model row opens the catalog, on the model in use; the next one down is
-        // picked with Enter.
-        s.send(ENTER);
+        // picked with Enter, which comes back to the form.
+        s.key(ENTER);
         s.wait_for("Main model");
-        s.send(DOWN);
-        s.send(ENTER);
-        s.wait_for("Model: fake-coder for this session.");
+        s.key(DOWN);
+        s.key(ENTER);
+        s.wait_for("fake-coder");
         assert!(s.bottom_row().contains("fake-coder"), "{}", s.contents());
+        s.key(ESC);
+        s.wait_gone("╭ Models");
         s.submit("hi");
         s.wait_for("Hello there!");
     })

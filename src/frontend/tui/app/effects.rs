@@ -127,7 +127,7 @@ impl<'a> Tui<'a> {
         let text = &ui::get().text;
         let words = &ui::get().models;
         let mut note = match &effort {
-            Some(level) => template::fill(&words.effort, &[("effort", level)]),
+            Some(level) => template::fill(&words.effort_set, &[("effort", level)]),
             None => text.effort_default.clone(),
         };
         if effort

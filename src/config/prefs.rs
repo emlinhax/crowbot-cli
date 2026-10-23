@@ -22,6 +22,10 @@ pub struct Prefs {
     /// session's.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub roles: BTreeMap<String, Choice>,
+    /// Built-in roles the user deleted: their files ship with the build, so the deletion is a
+    /// choice kept here. A role added again with the same id leaves this list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hidden: Vec<String>,
 }
 
 /// What one role runs on, either part optional.
@@ -57,13 +61,36 @@ pub fn load(paths: &Paths) -> Prefs {
     prefs
 }
 
-/// The model and effort alone, as a settings layer: `roles` is the roles' own business, not a
-/// setting.
+/// The model and effort alone, as a settings layer: the roles' choices and deletions are not
+/// settings.
 pub fn settings(paths: &Paths) -> Prefs {
     Prefs {
         roles: BTreeMap::new(),
+        hidden: Vec::new(),
         ..load(paths)
     }
+}
+
+/// Whether the user deleted `role` from the list.
+pub fn hidden(paths: &Paths, role: &str) -> bool {
+    load(paths).hidden.iter().any(|id| id == role)
+}
+
+/// Remembers that `role` is deleted, keeping every other role's state.
+pub fn hide_role(paths: &Paths, role: &str) {
+    let mut prefs = load(paths);
+    if !prefs.hidden.iter().any(|id| id == role) {
+        prefs.hidden.push(role.to_owned());
+    }
+    prefs.roles.remove(role);
+    save(paths, &prefs);
+}
+
+/// Forgets that `role` was deleted, so a built-in of that id shows again.
+pub fn unhide_role(paths: &Paths, role: &str) {
+    let mut prefs = load(paths);
+    prefs.hidden.retain(|id| id != role);
+    save(paths, &prefs);
 }
 
 /// Remembers `model`, keeping the effort already remembered.
@@ -165,6 +192,28 @@ mod tests {
         // Clearing both parts forgets the role.
         remember_role(&paths, "worker", Choice::default());
         assert!(!load(&paths).roles.contains_key("worker"));
+    }
+
+    #[test]
+    fn a_deleted_role_is_remembered_and_can_come_back() {
+        let (_dir, paths) = paths();
+        remember_role(
+            &paths,
+            "reader",
+            Choice {
+                model: Some("crow-2".into()),
+                effort: None,
+            },
+        );
+        hide_role(&paths, "reader");
+        assert!(hidden(&paths, "reader"));
+        // Its own choice goes with it, and the setting layer carries neither.
+        assert!(!load(&paths).roles.contains_key("reader"));
+        assert!(settings(&paths).hidden.is_empty());
+        hide_role(&paths, "reader");
+        assert_eq!(load(&paths).hidden, vec!["reader".to_owned()]);
+        unhide_role(&paths, "reader");
+        assert!(!hidden(&paths, "reader"));
     }
 
     #[test]
