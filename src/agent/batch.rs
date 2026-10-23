@@ -234,6 +234,9 @@ async fn clear<'a>(
         Refusal::Refused(why) => Refused::new("check", why),
     })?;
     asks.extend(check.asks);
+    // Before the policy: a file another subagent holds is no one else's to approve.
+    run.may_change(&asks)
+        .map_err(|why| Refused::new("claimed", why))?;
 
     let lock = locks
         .entry(mode.id.as_str())

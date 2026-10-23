@@ -4,6 +4,7 @@
     "description": { "type": "string", "description": "A few words for the job, shown to the user" },
     "prompt": { "type": "string", "description": "The whole job: what to find or do, and what to reply with" },
     "subagent_type": { "type": "string", "description": "The kind of subagent", "enum": [] },
+    "scope": { "type": "array", "items": { "type": "string" }, "description": "The files and directories the subagent may change, e.g. [\"src/parser\", \"tests/parser_*.rs\"]; give subagents that change files at the same time scopes that do not overlap" },
     "model": { "type": "string", "description": "A model id from the subagent models listed in the system prompt; leave it out to use the kind's" }
   },
   "required": ["description", "prompt", "subagent_type"]

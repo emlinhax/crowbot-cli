@@ -967,9 +967,9 @@ string-free fixes, chosen with the user.
   with auto-verify, and is a foundation a stronger model would batch — but neutral on turns for weak
   models today. Not recommended as a turn lever until a model batches it.
 
-## M20 — Subagent models and agent files (2026-10-23)
+## M20 — Subagent models, agent files, scopes and claims (2026-10-23)
 Every subagent ran on the chat's model and only the two built-in kinds existed, so cheap searches
-paid strong-model prices and a kind of one's own meant a rebuild.
+paid strong-model prices and parallel `general` subagents could edit the same file.
 - [x] 20.1 a model and effort per kind: `[subagents]` / `[subagents.kinds.<id>]` in config, picks in
       prefs.json, one resolver (src/agent/roles.rs: call → kind → agent file → every kind → chat),
       no silent fallback; `RunCtx` carries the catalog and the choices; costs were already per model.
@@ -979,4 +979,26 @@ paid strong-model prices and a kind of one's own meant a rebuild.
       each kind's model and the models a call may name.
 - [x] 20.4 agent files in Claude Code's shape (src/agent/agent_file.rs), user then trusted project,
       a later kind replacing an earlier one; `when` hints feed the task description; `base: replace`.
-      A project's agent files join its settings in the trust prompt. docs/agents.md and examples.
+      A project's agent files join its settings in the trust prompt.
+- [x] 20.5 scopes and claims (src/agent/claims.rs): one table per prompt; a subagent's scope and
+      claims are checked at the gate for `edit`/`write`/`fs`; `claim` widens a scope or waits for
+      the holder; circular waits are refused; overlapping scopes do not start; subagents that can
+      change files are told who else is at work. `claim` is never offered to the session's own run.
+- [x] 20.6 a subagent that ends with `finish` and no words answers with its summary.
+
+**Learned** (a manual run of each feature against a small repo with planted bugs, deepseek-v4.1-flash
+for the chat and every kind)
+- Routing by description works: reviewer, tester, planner, researcher and debugger were each picked
+  from their agent file's `description`/`when` without being named, and stayed read-only where told.
+- The chat model gave parallel `general` subagents disjoint scopes unprompted once the task
+  description asked for it, and gave the debugger a scope of its own.
+- Wording decided behaviour twice. "Cannot change files outside its scope" read as a wall, and the
+  model asked the user instead of delegating; saying a scope is a starting point and that the
+  subagent claims the rest fixed it. The model also read files it was about to delegate, until told
+  not to.
+- With `wait: true` the second of two subagents wanting one file waited for the first and then
+  chose not to duplicate its work; an overlapping launch was refused and relaunched after.
+- A vendor error (HTTP 422) on one model was routed around by the chat model naming another model
+  for the retried task: the per-call `model` is useful beyond cost.
+- The roster and claim rules only go to kinds that can change files; read-only kinds are spared the
+  words.

@@ -146,6 +146,13 @@ session's, or with `base: replace` stands alone beside the environment block. A 
 built-in kind replaces it; an untrusted project's files wait for the folder to be trusted, like its
 settings. `docs/agents.md` explains how kinds are put together; `docs/agents/` has examples to copy.
 
+Subagents started together are told of each other. Give one a `scope` (paths it may change; a
+directory covers what is under it, `*` matches anything) and `edit`, `write` and `fs` outside it are
+refused, as is any change to a path a running subagent holds, the session's own included, until it
+ends. A subagent asks for more with `claim`: granted when no one holds the path, otherwise it hears
+who does and may wait for them (a wait on someone waiting on it is refused). A task whose scope
+overlaps a running one's does not start. The shell is not checked; see `src/agent/claims.rs`.
+
 | Key | Does |
 |---|---|
 | Enter | send; while crowbot works, queue the message for when it is done |

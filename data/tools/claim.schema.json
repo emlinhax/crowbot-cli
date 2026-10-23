@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "properties": {
+    "paths": { "type": "array", "items": { "type": "string" }, "description": "Files or directories to change, e.g. [\"src/lexer.rs\"]" },
+    "wait": { "type": "boolean", "description": "Wait for the subagent holding them to finish, instead of hearing who holds them" }
+  },
+  "required": ["paths"]
+}

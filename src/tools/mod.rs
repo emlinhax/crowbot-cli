@@ -1,6 +1,7 @@
 //! Tools the model can call. Each is one file implementing `Tool`, registered once below.
 
 mod bash;
+mod claim;
 mod decompile;
 mod edit;
 mod finish;
@@ -22,6 +23,7 @@ mod webfetch;
 mod write;
 
 pub use bash::shell;
+pub use claim::NAME as CLAIM;
 pub use finish::NAME as FINISH;
 pub use target::plan_file;
 pub use task::NAME as TASK;
@@ -343,6 +345,7 @@ impl Registry {
             Arc::new(question::Question),
             Arc::new(plan_exit::PlanExit),
             Arc::new(task::Task::new()),
+            Arc::new(claim::Claim),
             Arc::new(finish::Finish),
         ];
         let mut registry = Self {
@@ -405,6 +408,15 @@ impl Registry {
     /// The `tools` array of a chat request.
     pub fn wire(&self) -> Vec<Value> {
         self.entries.iter().map(|e| e.wire.clone()).collect()
+    }
+
+    /// `wire`, leaving out the tools named in `except`.
+    pub fn wire_except(&self, except: &[&str]) -> Vec<Value> {
+        self.entries
+            .iter()
+            .filter(|e| !except.contains(&e.tool.spec().name.as_str()))
+            .map(|e| e.wire.clone())
+            .collect()
     }
 }
 

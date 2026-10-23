@@ -32,6 +32,9 @@ summary = [
   { count = "calls", one = "{agent}: {n} call", many = "{agent}: {n} calls" },
 ]
 
+[claim]
+title = ["paths"]
+
 [finish]
 title = ["summary"]
 body = "none"

@@ -3,6 +3,7 @@
 pub mod agent_file;
 pub mod batch;
 pub mod child;
+pub mod claims;
 pub mod compact;
 pub mod context;
 pub mod doom_loop;
@@ -65,9 +66,38 @@ pub(crate) struct Run<'a> {
     // CEILING: the places are per run, so a subagent waiting on its own subagents holds one
     // meanwhile; moot while `subagent.max_depth` is 1. Upgrade: one pool for the whole tree.
     slots: tokio::sync::Semaphore,
+    /// Which subagent may change which files; the frontend's run's is the one in use.
+    claims: claims::Table,
+    /// The `task` call that started this run, which its claims are held under; `None` for the
+    /// frontend's.
+    call: Option<String>,
 }
 
 impl Run<'_> {
+    /// The table every run under the frontend's shares.
+    pub(crate) fn claims(&self) -> &claims::Table {
+        &self.root().claims
+    }
+
+    /// Whether this run may change what `asks` would change, as other subagents hold files.
+    pub(crate) fn may_change(&self, asks: &[crate::permission::gate::Ask]) -> Result<(), String> {
+        let edits = asks
+            .iter()
+            .filter(|a| a.permission == crate::permission::catalog::EDIT.name);
+        for path in edits.flat_map(|a| &a.patterns) {
+            self.claims().may_change(self.call.as_deref(), path)?;
+        }
+        Ok(())
+    }
+
+    /// Widens this subagent's scope by `patterns`, waiting for their holders when `wait`.
+    pub(crate) async fn claim(&self, patterns: &[String], wait: bool) -> Result<String, String> {
+        let table = self.claims();
+        table
+            .claim(self.call.as_deref(), patterns, wait, &self.cancel)
+            .await
+    }
+
     /// How many runs started this one: 0 for a frontend's.
     pub(crate) fn depth(&self) -> usize {
         self.parent.map_or(0, |p| p.depth() + 1)

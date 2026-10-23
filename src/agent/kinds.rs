@@ -167,11 +167,20 @@ pub fn tools(kind: &Kind, registry: &Registry, depth: usize) -> Registry {
         true => registry.each_name().collect(),
         false => kind.tools.iter().map(String::as_str).collect(),
     };
-    let names: Vec<&str> = named
+    let mut names: Vec<&str> = named
         .into_iter()
         .filter(|name| !kind.except.iter().any(|e| e == name))
         .filter(|name| !(deepest && *name == crate::tools::TASK))
         .collect();
+    // A subagent that can change files can claim them too, whatever its list names, unless it
+    // leaves `claim` out on purpose.
+    let claim = crate::tools::CLAIM;
+    let changes = names
+        .iter()
+        .any(|n| crate::agent::claims::CHANGING.contains(n));
+    if changes && !names.contains(&claim) && !kind.except.iter().any(|e| e == claim) {
+        names.push(claim);
+    }
     registry.subset(&names)
 }
 
@@ -250,6 +259,29 @@ mod tests {
             .filter(|n| !["plan_exit", crate::tools::TASK].contains(n))
             .collect();
         assert_eq!(general.each_name().collect::<Vec<_>>(), want);
+    }
+
+    #[test]
+    fn a_kind_that_can_change_files_can_claim_them_and_one_that_reads_cannot() {
+        let registry = Registry::builtin(None);
+        let mut kind = get("explore").unwrap().clone();
+        assert!(
+            tools(&kind, &registry, 1)
+                .get(crate::tools::CLAIM)
+                .is_none()
+        );
+        kind.tools = vec!["read".into(), "edit".into()];
+        assert!(
+            tools(&kind, &registry, 1)
+                .get(crate::tools::CLAIM)
+                .is_some()
+        );
+        kind.except = vec![crate::tools::CLAIM.into()];
+        assert!(
+            tools(&kind, &registry, 1)
+                .get(crate::tools::CLAIM)
+                .is_none()
+        );
     }
 
     #[test]

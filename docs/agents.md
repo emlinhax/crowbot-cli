@@ -1,7 +1,7 @@
 # Subagents and agent files
 
 How the `task` tool's subagents are put together: where kinds come from, what each one is told,
-and which tools and model it gets. The README says how
+which tools and model it gets, and how several work at once without colliding. The README says how
 to use them; this says why they are the way they are. The examples in `docs/agents/` are agent
 files to copy.
 
@@ -78,7 +78,9 @@ kind's prompt and the environment block (directory, platform, date, model). That
 persona that the session's guidance would only distract, but it drops the project's instructions,
 so the kind's prompt has to carry whatever it needs.
 
-**First message.** The job, as the `task` call wrote it in `prompt`.
+**First message.** The job, as the `task` call wrote it in `prompt`. A kind that can change files
+also gets, ahead of the job, who else is at work and the rules for scopes (below). A read-only kind
+is spared that text: it cannot collide with anyone.
 
 **What a good kind prompt says**, as the built-in ones and the examples do:
 
@@ -93,8 +95,12 @@ so the kind's prompt has to carry whatever it needs.
 ## Tools
 
 A kind's tools are a subset of the session's: the names in `tools` (or all of them for `*` or no
-list), minus `except`. `task` is never given at the depth limit, so a subagent is never offered a call it
-could not make.
+list), minus `except`. Two are adjusted on top of that:
+
+- `task` is never given at the depth limit, so a subagent is never offered a call it could not make.
+- `claim` is added for any kind that has `edit`, `write` or `fs`, unless its `except` names it. A
+  subagent that can change files needs it to reach past its scope. The session's own run is never
+  offered `claim`, since only subagents hold files.
 
 Tools are where a kind's limits are enforced; the prompt only explains them. A read-only kind is
 read-only because it has no tool that changes anything, not because its prompt says so. The mode
@@ -121,6 +127,28 @@ silently. Costs are priced per request with the model it went to, so a cheap kin
 The system prompt lists each kind's model and the models a call may name, with their prices and
 windows, so the model can pick a stronger or cheaper one for one job. In testing it also used this to
 retry on another model after a vendor error.
+
+## Working at the same time: scopes and claims
+
+Subagents of one batch start together, so two `general` subagents could otherwise edit one file
+blind. `src/agent/claims.rs` keeps one table per prompt:
+
+- A `task` call may give a `scope`: the paths its subagent may change (a directory covers what is
+  under it; `*` matches anything). A scope that overlaps a running subagent's does not start.
+- At the permission gate, `edit`, `write` and `fs` are refused outside a scoped subagent's scope, and
+  on any path a running subagent holds. That includes the session's own run until the holder ends.
+- `claim` widens a subagent's scope when nobody holds the path. Otherwise it says who does and what
+  they are doing. With `wait: true` it waits for them to finish, unless they are themselves waiting
+  on the caller, which would never end.
+- A subagent with no scope may change anything nobody holds.
+
+The table answers for the agent that started the subagents. That agent is blocked waiting on their
+results and cannot be asked mid-batch.
+
+Known ceilings, each marked `CEILING:` in `claims.rs`: the shell is not checked (a `bash` command
+that writes files is not seen; the roster tells subagents to change files only through the tools),
+overlap is judged from the part of a pattern before its first wildcard and so errs towards refusing,
+and paths compare case-sensitively. The upgrade for the first is a git worktree per scoped subagent.
 
 ## The examples
 

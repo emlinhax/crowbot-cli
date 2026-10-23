@@ -9,7 +9,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
-use crate::agent::child::{self, Done};
+use crate::agent::child::{self, Done, Job};
+use crate::agent::claims;
 use crate::agent::kinds::{self, Kind};
 use crate::agent::roles::Source;
 use crate::data;
@@ -67,6 +68,8 @@ pub struct Args {
     subagent_type: String,
     #[serde(default)]
     model: Option<String>,
+    #[serde(default)]
+    scope: Vec<String>,
 }
 
 pub struct Task {
@@ -113,13 +116,20 @@ impl Tool for Task {
             let run = cx.run.ok_or_else(|| TEXT.no_run.clone())?;
             let kind = kind(&args.subagent_type).map_err(|e| e.to_string())?;
             let on = run.subagent(kind, args.model.as_deref())?;
-            let done = child::run_child(run, cx.call_id, kind, &on, args.prompt).await;
+            let scope: Vec<String> = args.scope.iter().map(|p| claims::normalize(p)).collect();
+            let job = Job {
+                description: args.description.clone(),
+                prompt: args.prompt,
+                scope: scope.clone(),
+            };
+            let done = child::run_child(run, cx.call_id, kind, &on, job).await?;
             let out = said(&done).with_usage(done.usage);
             Ok(out.with_details(json!({
                 "agent": kind.id,
                 "model": on.model.id,
                 "effort": on.effort,
                 "model_from": on.source.label(&kind.id),
+                "scope": scope,
                 "description": args.description,
                 "session": done.session.display().to_string(),
                 "outcome": done.ended.outcome,

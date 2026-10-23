@@ -3,6 +3,7 @@
 
 use std::path::PathBuf;
 
+use crate::agent::claims::{self, Holder, Table};
 use crate::agent::kinds::{self, Base, Kind};
 use crate::agent::roles::{self, Resolved};
 use crate::agent::system_prompt;
@@ -65,6 +66,60 @@ pub async fn run_child(
     call_id: &str,
     kind: &Kind,
     on: &Resolved,
+    job: Job,
+) -> Result<Done, String> {
+    let claims = parent.claims();
+    claims.register(Holder {
+        call: call_id.to_owned(),
+        kind: kind.id.clone(),
+        job: job.description,
+        model: on.model.id.clone(),
+        scope: job.scope,
+    })?;
+    // Released however the run ends, so no file stays held by a subagent that is gone.
+    let _held = Release(claims, call_id);
+    // Subagents started in one batch all register before any is told who else is at work.
+    tokio::task::yield_now().await;
+    Ok(run_held(parent, call_id, kind, on, job.prompt).await)
+}
+
+/// What a subagent's last reply says: its words, else the summary it ended with through
+/// `finish`, which a subagent that ends that way often writes instead.
+fn answer(reply: &Assistant) -> Option<String> {
+    let said = Part::text_of(&reply.parts);
+    if !said.trim().is_empty() {
+        return Some(said);
+    }
+    let call = reply
+        .tool_calls()
+        .find(|c| c.name == crate::tools::FINISH)?;
+    let args: serde_json::Value = serde_json::from_str(&call.arguments).ok()?;
+    let summary = args.get("summary")?.as_str()?.trim();
+    (!summary.is_empty()).then(|| summary.to_owned())
+}
+
+/// What a `task` call hands its subagent.
+pub struct Job {
+    /// A few words for it, as the others are told.
+    pub description: String,
+    pub prompt: String,
+    /// What it may change; empty, any file no other subagent holds.
+    pub scope: Vec<String>,
+}
+
+struct Release<'a>(&'a Table, &'a str);
+
+impl Drop for Release<'_> {
+    fn drop(&mut self) {
+        self.0.release(self.1);
+    }
+}
+
+async fn run_held(
+    parent: &Run<'_>,
+    call_id: &str,
+    kind: &Kind,
+    on: &Resolved,
     prompt: String,
 ) -> Done {
     let cx = parent.cx;
@@ -119,8 +174,25 @@ pub async fn run_child(
         emit: &emit,
         shadow: cx.shadow,
     };
-    let prompt = vec![Part::Text { text: prompt }];
-    let ended = run::run_under(&child, &mut transcript, &shared, prompt, Some(parent)).await;
+    // Who else is at work matters to a subagent that can change files; one that only reads is
+    // spared the rules.
+    let mut prompt = vec![Part::Text { text: prompt }];
+    if claims::CHANGING
+        .iter()
+        .any(|name| tools.get(name).is_some())
+    {
+        let text = parent.claims().roster(call_id);
+        prompt.insert(0, Part::Reminder { text });
+    }
+    let ended = run::run_under(
+        &child,
+        &mut transcript,
+        &shared,
+        prompt,
+        Some(parent),
+        Some(call_id),
+    )
+    .await;
     let last = transcript.messages.iter().rev().find_map(|m| match m {
         Message::Assistant(reply) => Some(reply),
         _ => None,
@@ -139,21 +211,6 @@ pub async fn run_child(
             .count(),
         usage: transcript.usage(),
     }
-}
-
-/// What a subagent's last reply says: its words, else the summary it ended with through
-/// `finish`, which a subagent that ends that way often writes instead.
-fn answer(reply: &Assistant) -> Option<String> {
-    let said = Part::text_of(&reply.parts);
-    if !said.trim().is_empty() {
-        return Some(said);
-    }
-    let call = reply
-        .tool_calls()
-        .find(|c| c.name == crate::tools::FINISH)?;
-    let args: serde_json::Value = serde_json::from_str(&call.arguments).ok()?;
-    let summary = args.get("summary")?.as_str()?.trim();
-    (!summary.is_empty()).then(|| summary.to_owned())
 }
 
 #[cfg(test)]
@@ -678,6 +735,12 @@ mod tests {
         );
     }
 
+    fn scoped(id: &str, kind: &str, scope: &[&str]) -> (String, String, Value) {
+        let (id, name, mut args) = task_call(id, kind, None);
+        args["scope"] = json!(scope);
+        (id, name, args)
+    }
+
     /// The task results' contents, in call order.
     fn task_results(transcript: &Transcript) -> Vec<(bool, String)> {
         transcript
@@ -688,6 +751,82 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[tokio::test]
+    async fn subagents_in_one_batch_are_told_of_each_other_and_overlapping_scopes_are_refused() {
+        let batch = tasks(&[
+            scoped("c1", "general", &["src/parser"]),
+            scoped("c2", "general", &["docs"]),
+            scoped("c3", "general", &["src/parser/lex.rs"]),
+        ]);
+        let h = Harness::new(vec![batch, text("one"), text("two"), text("done")]).await;
+        let (ended, transcript, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let results = task_results(&transcript);
+        assert!(!results[0].0 && !results[1].0, "{results:?}");
+        assert!(
+            results[2].0 && results[2].1.contains("Not started"),
+            "{results:?}"
+        );
+        // Each started subagent's first message names its own scope and the other's.
+        let firsts: Vec<String> = h.requests()[1..3]
+            .iter()
+            .map(|r| r["messages"][1]["content"].as_str().unwrap().to_owned())
+            .collect();
+        let parser = firsts
+            .iter()
+            .find(|m| m.contains("job for general"))
+            .unwrap();
+        assert!(
+            firsts.iter().all(|m| m.contains("Working alongside you")),
+            "{firsts:?}"
+        );
+        assert!(parser.contains("Your scope"), "{parser}");
+        assert!(
+            firsts
+                .iter()
+                .any(|m| m.contains("files you may change: src/parser."))
+        );
+        assert!(
+            firsts
+                .iter()
+                .any(|m| m.contains("files you may change: docs."))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_scoped_subagent_cannot_write_outside_its_scope_until_it_claims_the_file() {
+        let write = |id: &str| {
+            reply(
+                "",
+                &[(id, "write", json!({"path": "notes.txt", "content": "x"}))],
+                "tool_calls",
+            )
+        };
+        let claim = reply(
+            "",
+            &[("k1", "claim", json!({"paths": ["notes.txt"]}))],
+            "tool_calls",
+        );
+        let h = Harness::new(vec![
+            tasks(&[scoped("c1", "general", &["src"])]),
+            write("w1"),
+            claim,
+            write("w2"),
+            text("wrote it"),
+            text("done"),
+        ])
+        .await;
+        let (ended, _, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let requests = h.requests();
+        let said = |i: usize| last_message(&requests[i])["content"].to_string();
+        assert!(said(2).contains("outside your scope"), "{}", said(2));
+        assert!(said(3).contains("Granted"), "{}", said(3));
+        assert!(!said(4).contains("outside your scope"), "{}", said(4));
+        let written = crate::io::fs::read_string(&h.app.paths.project.join("notes.txt"));
+        assert_eq!(written.unwrap().as_deref(), Some("x"));
     }
 
     #[tokio::test]
