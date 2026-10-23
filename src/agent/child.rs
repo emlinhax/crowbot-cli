@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::agent::kinds::{self, Kind};
 use crate::agent::{Run, RunCtx, run};
-use crate::conversation::message::{Message, Part, Usage};
+use crate::conversation::message::{Assistant, Message, Part, Usage};
 use crate::live::event::{AgentEvent, Ended, Outcome};
 use crate::session::entry::Parent;
 use crate::session::transcript::Transcript;
@@ -90,9 +90,7 @@ pub async fn run_child(parent: &Run<'_>, call_id: &str, kind: &Kind, prompt: Str
     });
     Done {
         ended,
-        answer: last
-            .map(|reply| Part::text_of(&reply.parts))
-            .filter(|text| !text.trim().is_empty()),
+        answer: last.and_then(answer),
         error: last
             .and_then(|reply| reply.error.as_ref())
             .map(crate::api::error::headline),
@@ -104,6 +102,21 @@ pub async fn run_child(parent: &Run<'_>, call_id: &str, kind: &Kind, prompt: Str
             .count(),
         usage: transcript.usage(),
     }
+}
+
+/// What a subagent's last reply says: its words, else the summary it ended with through
+/// `finish`, which a subagent that ends that way often writes instead.
+fn answer(reply: &Assistant) -> Option<String> {
+    let said = Part::text_of(&reply.parts);
+    if !said.trim().is_empty() {
+        return Some(said);
+    }
+    let call = reply
+        .tool_calls()
+        .find(|c| c.name == crate::tools::FINISH)?;
+    let args: serde_json::Value = serde_json::from_str(&call.arguments).ok()?;
+    let summary = args.get("summary")?.as_str()?.trim();
+    (!summary.is_empty()).then(|| summary.to_owned())
 }
 
 #[cfg(test)]
@@ -428,5 +441,25 @@ mod tests {
         let (h, outcome) = asked(Reply::Unavailable).await;
         assert_eq!(outcome, Outcome::Done);
         assert_eq!(h.requests().len(), 4);
+    }
+
+    #[tokio::test]
+    async fn a_subagent_that_ends_with_finish_answers_with_its_summary() {
+        let summary = "Typed parser.py; behaviour unchanged.";
+        let finish = reply(
+            "",
+            &[("f1", "finish", json!({ "summary": summary }))],
+            "tool_calls",
+        );
+        let h = Harness::new(vec![task("type it"), finish, text("done")]).await;
+        let (ended, transcript, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let result = transcript.messages.iter().find_map(|m| match m {
+            Message::Tool(r) if r.name == "task" => Some(r.clone()),
+            _ => None,
+        });
+        let result = result.unwrap();
+        assert!(!result.is_error);
+        assert_eq!(result.content, summary);
     }
 }
