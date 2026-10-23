@@ -179,6 +179,10 @@ impl<'a> Tui<'a> {
                 self.panel = None;
                 self.switch_model(&id);
             }
+            Next::Assign { kind, role } => {
+                self.panel = None;
+                self.assign(kind.as_deref(), role);
+            }
             Next::Resume(path) => {
                 self.panel = None;
                 return Step::Session(Switch::Resume(path));

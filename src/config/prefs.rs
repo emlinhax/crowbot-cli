@@ -7,6 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::config::paths::Paths;
+use crate::config::subagents::{Role, Subagents};
 use crate::{effort, io};
 
 #[derive(Default, Serialize, Deserialize)]
@@ -15,6 +16,9 @@ pub struct Prefs {
     pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort: Option<String>,
+    /// Picked with `/models`; layered like `model`, a kind at a time.
+    #[serde(default, skip_serializing_if = "Subagents::is_empty")]
+    pub subagents: Subagents,
 }
 
 /// The remembered choices, or none when there is no file, it will not load, or its effort is one
@@ -29,6 +33,7 @@ pub fn load(paths: &Paths) -> Prefs {
     {
         prefs.effort = None;
     }
+    prefs.subagents = prefs.subagents.cleaned();
     prefs
 }
 
@@ -43,6 +48,14 @@ pub fn remember_model(paths: &Paths, model: &str) {
 pub fn remember_effort(paths: &Paths, effort: &str) {
     let mut prefs = load(paths);
     prefs.effort = Some(effort.to_owned());
+    save(paths, &prefs);
+}
+
+/// Remembers `role` for `kind` (every kind when `None`); an empty one forgets the entry, so the
+/// config files' choice, or the inherited one, shows through again.
+pub fn remember_role(paths: &Paths, kind: Option<&str>, role: Role) {
+    let mut prefs = load(paths);
+    prefs.subagents.set(kind, role);
     save(paths, &prefs);
 }
 
@@ -72,6 +85,37 @@ mod tests {
         let prefs = load(&paths);
         assert_eq!(prefs.model.as_deref(), Some("crow-2"));
         assert_eq!(prefs.effort.as_deref(), Some(effort::ids()[0]));
+    }
+
+    #[test]
+    fn a_role_is_remembered_beside_the_chat_model_and_inherit_removes_its_key() {
+        let (_dir, paths) = paths();
+        remember_model(&paths, "crow-2");
+        let explore = Role {
+            model: Some("kimi-k3".into()),
+            effort: Some(effort::ids()[0].into()),
+        };
+        remember_role(&paths, Some("explore"), explore.clone());
+        let prefs = load(&paths);
+        assert_eq!(prefs.model.as_deref(), Some("crow-2"));
+        assert_eq!(prefs.subagents.role(Some("explore")), explore);
+        let file: serde_json::Value = io::fs::read_json(&paths.prefs()).unwrap().unwrap();
+        assert_eq!(file["subagents"]["kinds"]["explore"]["model"], "kimi-k3");
+
+        let theirs = Role {
+            model: Some("crow-2".into()),
+            effort: None,
+        };
+        remember_role(&paths, Some("only-in-another-project"), theirs.clone());
+        assert_eq!(
+            load(&paths).subagents.role(Some("only-in-another-project")),
+            theirs
+        );
+        remember_role(&paths, Some("only-in-another-project"), Role::default());
+        remember_role(&paths, Some("explore"), Role::default());
+        let file: serde_json::Value = io::fs::read_json(&paths.prefs()).unwrap().unwrap();
+        assert!(file.get("subagents").is_none(), "{file}");
+        assert_eq!(file["model"], "crow-2");
     }
 
     #[test]

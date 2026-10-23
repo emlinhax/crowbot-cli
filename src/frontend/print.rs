@@ -51,6 +51,7 @@ pub async fn run(
     }
     let from = resume.map(|path| Continue { path, mode: false });
     let Setup {
+        catalog,
         model,
         effort,
         tools,
@@ -64,7 +65,9 @@ pub async fn run(
     if let Some(gone) = gone {
         term::warn(&words::model_gone(&gone, &model.id));
     }
-    let system = system_prompt::build(&app.paths, &model.id, &mcp.connected(), true);
+    let subagents = &app.settings.subagents;
+    let models = system_prompt::subagent_models(&catalog, subagents, &model.id);
+    let system = system_prompt::build(&app.paths, &model.id, &mcp.connected(), true, &models);
 
     let out = Printer {
         format,
@@ -86,6 +89,8 @@ pub async fn run(
         app,
         model: &model,
         effort: effort.as_deref(),
+        catalog: &catalog,
+        subagents,
         system: &system,
         tools: &tools,
         emit: &emit,

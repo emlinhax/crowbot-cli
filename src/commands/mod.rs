@@ -48,6 +48,17 @@ pub struct Session {
     pub snapshots_off: Option<String>,
     /// Each MCP server config.toml names, and how it stands.
     pub mcp: Vec<crate::mcp::Standing>,
+    /// What each kind of subagent runs on, kind by kind.
+    pub subagents: Vec<Seat>,
+}
+
+/// What one kind of subagent runs on, and where that came from.
+#[derive(Clone, Debug)]
+pub struct Seat {
+    pub kind: String,
+    pub model: String,
+    pub effort: Option<String>,
+    pub from: String,
 }
 
 impl Ctx<'_> {
@@ -95,9 +106,11 @@ pub enum Effect {
     CopyLastReply,
     /// Send this to the model as the user's next message (the transcript shows the command).
     Send(String),
-    /// Open the session's model picker, after fetching a fresh list when asked.
+    /// Open the session's model card, at `role`'s model list if given, after fetching a fresh
+    /// list when asked.
     PickModel {
         refresh: bool,
+        role: Option<crate::agent::roles::RoleId>,
     },
     /// Open the session's account card.
     Account,

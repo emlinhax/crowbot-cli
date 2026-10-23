@@ -4,6 +4,8 @@
 use std::path::PathBuf;
 
 use crate::agent::kinds::{self, Kind};
+use crate::agent::roles::{self, Resolved};
+use crate::agent::system_prompt;
 use crate::agent::{Run, RunCtx, run};
 use crate::conversation::message::{Assistant, Message, Part, Usage};
 use crate::live::event::{AgentEvent, Ended, Outcome};
@@ -23,11 +25,40 @@ pub struct Done {
     pub usage: Usage,
 }
 
-/// Runs `prompt` as a subagent of `kind`, started by `parent`'s call `call_id`. What it says
-/// reaches the frontend wrapped in that call; it asks the user through `parent`'s prompts.
+impl Run<'_> {
+    /// What a subagent of `kind` started by this run would run on, `asked` being the call's own
+    /// pick.
+    pub(crate) fn subagent(&self, kind: &Kind, asked: Option<&str>) -> Result<Resolved, String> {
+        let cx = self.cx;
+        let chat = roles::Chat {
+            model: cx.model,
+            effort: cx.effort,
+        };
+        roles::resolve(&kind.id, asked, cx.subagents, cx.catalog, &chat)
+    }
+}
+
+/// What a subagent of `kind` on `model` is told: the parent's prompt, told the model it runs on,
+/// then the kind's words, the same for every subagent of this kind on one model so the vendor can
+/// cache them.
+// CEILING: its tool list differs from the parent's, so the parent's cached prefix is not reused.
+// Upgrade: send the parent's tools and refuse the others at the gate.
+fn system_for(cx: &RunCtx<'_>, kind: &Kind, model: &str) -> String {
+    let base = system_prompt::retarget(cx.system, &cx.model.id, model);
+    format!("{base}\n\n{}", kind.prompt.trim())
+}
+
+/// Runs `prompt` as a subagent of `kind` on `on`, started by `parent`'s call `call_id`. What it
+/// says reaches the frontend wrapped in that call; it asks the user through `parent`'s prompts.
 // CEILING: every call starts a fresh subagent, which knows nothing of an earlier one. Upgrade: a
 // `task_id` argument that reopens its file with `Transcript::open`.
-pub async fn run_child(parent: &Run<'_>, call_id: &str, kind: &Kind, prompt: String) -> Done {
+pub async fn run_child(
+    parent: &Run<'_>,
+    call_id: &str,
+    kind: &Kind,
+    on: &Resolved,
+    prompt: String,
+) -> Done {
     let cx = parent.cx;
     // It waits for one of its parent's places, or for the interrupt that ends the wait.
     let slot = tokio::select! {
@@ -62,11 +93,7 @@ pub async fn run_child(parent: &Run<'_>, call_id: &str, kind: &Kind, prompt: Str
             agent: kind.id.clone(),
         },
     );
-    // The parent's prompt and the kind's words, the same for every subagent of this kind, so
-    // the vendor can cache them.
-    // CEILING: its tool list differs from the parent's, so the parent's cached prefix is not
-    // reused. Upgrade: send the parent's tools and refuse the others at the gate.
-    let system = format!("{}\n\n{}", cx.system, kind.prompt.trim());
+    let system = system_for(cx, kind, &on.model.id);
     let emit = |event: AgentEvent| {
         (cx.emit)(AgentEvent::Child {
             call_id: call_id.to_owned(),
@@ -75,8 +102,10 @@ pub async fn run_child(parent: &Run<'_>, call_id: &str, kind: &Kind, prompt: Str
     };
     let child = RunCtx {
         app: cx.app,
-        model: cx.model,
-        effort: cx.effort,
+        model: &on.model,
+        effort: on.effort.as_deref(),
+        catalog: cx.catalog,
+        subagents: cx.subagents,
         system: &system,
         tools: &tools,
         emit: &emit,
@@ -443,23 +472,194 @@ mod tests {
         assert_eq!(h.requests().len(), 4);
     }
 
+    use crate::config::subagents::Role;
+
+    fn on(model: &str) -> Role {
+        Role {
+            model: Some(model.into()),
+            effort: None,
+        }
+    }
+
+    fn task_call(id: &str, kind: &str, model: Option<&str>) -> (String, String, Value) {
+        let mut args = json!({"description": kind, "prompt": format!("job for {kind}"), "subagent_type": kind});
+        if let Some(model) = model {
+            args["model"] = json!(model);
+        }
+        (id.to_owned(), "task".to_owned(), args)
+    }
+
+    fn tasks(calls: &[(String, String, Value)]) -> String {
+        let calls: Vec<(&str, &str, Value)> = calls
+            .iter()
+            .map(|(id, name, args)| (id.as_str(), name.as_str(), args.clone()))
+            .collect();
+        reply("", &calls, "tool_calls")
+    }
+
+    /// The model each request asked for, the parent's first.
+    fn models(h: &Harness) -> Vec<String> {
+        h.requests()
+            .iter()
+            .map(|r| r["model"].as_str().unwrap().to_owned())
+            .collect()
+    }
+
+    /// The child sessions' files beside the parent's; none when no subagent ever ran.
+    fn children(transcript: &Transcript) -> Vec<std::path::PathBuf> {
+        let folder = transcript.path().unwrap().with_extension("");
+        crate::io::fs::list_dir(&folder)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|f| folder.join(f.name))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn an_explore_task_sends_the_explore_model_and_the_parent_keeps_the_chat_model() {
+        let mut h = Harness::new(vec![task("find it"), text("found"), text("done")]).await;
+        let explore = h.catalog.models[0].id.clone();
+        h.subagents.set(Some("explore"), on(&explore));
+        let (ended, transcript, _) = h.run(&shared("plan"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        assert_eq!(
+            models(&h),
+            [h.model.id.clone(), explore.clone(), h.model.id.clone()]
+        );
+        // The subagent is told the model it runs on, not the chat's.
+        let result = transcript.messages.iter().find_map(|m| match m {
+            Message::Tool(r) if r.name == "task" => r.details.clone(),
+            _ => None,
+        });
+        assert_eq!(result.unwrap()["model"], explore.as_str());
+    }
+
+    #[tokio::test]
+    async fn an_explore_and_a_general_task_in_one_batch_run_on_their_own_models() {
+        let batch = tasks(&[
+            task_call("c1", "explore", None),
+            task_call("c2", "general", None),
+        ]);
+        let mut h = Harness::new(vec![batch, text("one"), text("two"), text("done")]).await;
+        let (explore, general) = (
+            h.catalog.models[0].id.clone(),
+            h.catalog.models[1].id.clone(),
+        );
+        h.subagents.set(Some("explore"), on(&explore));
+        h.subagents.set(Some("general"), on(&general));
+        let (ended, _, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let requests = h.requests();
+        assert_eq!(requests.len(), 4);
+        // The two subagents ask in either order; each by its own tools.
+        for child in &requests[1..3] {
+            let want = match tool_names(child).len() {
+                4 => &explore,
+                _ => &general,
+            };
+            assert_eq!(child["model"].as_str(), Some(want.as_str()));
+        }
+        assert_ne!(requests[1]["model"], requests[2]["model"]);
+        assert_eq!(requests[0]["model"], h.model.id.as_str());
+        assert_eq!(requests[3]["model"], h.model.id.as_str());
+    }
+
+    #[tokio::test]
+    async fn a_model_the_call_names_is_sent_and_an_unknown_one_is_refused_before_any_request() {
+        let picked = {
+            let h = Harness::new(Vec::new()).await;
+            h.catalog.models[2].id.clone()
+        };
+        let named = tasks(&[task_call("c1", "explore", Some(&picked))]);
+        let h = Harness::new(vec![named, text("found"), text("done")]).await;
+        h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(models(&h)[1], picked);
+
+        let typo = tasks(&[task_call("c1", "explore", Some("no-such-model"))]);
+        let h = Harness::new(vec![typo, text("done")]).await;
+        let (_, transcript, _) = h.run(&shared("auto"), |_, _| {}).await;
+        // The parent's two requests only: nothing went to a subagent.
+        assert_eq!(models(&h), [h.model.id.clone(), h.model.id.clone()]);
+        let refused = transcript.messages.iter().find_map(|m| match m {
+            Message::Tool(r) if r.name == "task" => Some(r.clone()),
+            _ => None,
+        });
+        let refused = refused.unwrap();
+        assert!(
+            refused.is_error && refused.content.contains("no-such-model"),
+            "{refused:?}"
+        );
+        assert!(children(&transcript).is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_new_default_leaves_a_finished_tasks_recorded_model_alone() {
+        let mut h = Harness::new(vec![
+            task("first"),
+            text("one"),
+            text("done"),
+            task("second"),
+            text("two"),
+            text("done"),
+        ])
+        .await;
+        let (before, after) = (
+            h.catalog.models[0].id.clone(),
+            h.catalog.models[1].id.clone(),
+        );
+        h.subagents.set(Some("explore"), on(&before));
+        let (_, first, _) = h.run(&shared("plan"), |_, _| {}).await;
+        h.subagents.set(Some("explore"), on(&after));
+        h.run(&shared("plan"), |_, _| {}).await;
+        assert_eq!(models(&h)[4], after);
+
+        let files = children(&first);
+        assert_eq!(files.len(), 1);
+        let (child, resumed) = Transcript::open(&files[0]).unwrap();
+        assert_eq!(resumed.state.unwrap().model, before);
+        let replied = child.messages.iter().find_map(|m| match m {
+            Message::Assistant(reply) => Some(reply.model.clone()),
+            _ => None,
+        });
+        assert_eq!(replied.as_deref(), Some(before.as_str()));
+        let (parent, _) = Transcript::open(first.path().unwrap()).unwrap();
+        let details = parent.messages.iter().find_map(|m| match m {
+            Message::Tool(r) if r.name == "task" => r.details.clone(),
+            _ => None,
+        });
+        assert_eq!(details.unwrap()["model"], before.as_str());
+    }
+
+    /// The task results' contents, in call order.
+    fn task_results(transcript: &Transcript) -> Vec<(bool, String)> {
+        transcript
+            .messages
+            .iter()
+            .filter_map(|m| match m {
+                Message::Tool(r) if r.name == "task" => Some((r.is_error, r.content.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
     #[tokio::test]
     async fn a_subagent_that_ends_with_finish_answers_with_its_summary() {
-        let summary = "Typed parser.py; behaviour unchanged.";
         let finish = reply(
             "",
-            &[("f1", "finish", json!({ "summary": summary }))],
+            &[(
+                "f1",
+                "finish",
+                json!({"summary": "Typed parser.py; behaviour unchanged."}),
+            )],
             "tool_calls",
         );
         let h = Harness::new(vec![task("type it"), finish, text("done")]).await;
         let (ended, transcript, _) = h.run(&shared("auto"), |_, _| {}).await;
         assert_eq!(ended.outcome, Outcome::Done);
-        let result = transcript.messages.iter().find_map(|m| match m {
-            Message::Tool(r) if r.name == "task" => Some(r.clone()),
-            _ => None,
-        });
-        let result = result.unwrap();
-        assert!(!result.is_error);
-        assert_eq!(result.content, summary);
+        let results = task_results(&transcript);
+        assert_eq!(
+            results[0],
+            (false, "Typed parser.py; behaviour unchanged.".to_owned())
+        );
     }
 }

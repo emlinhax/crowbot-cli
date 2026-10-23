@@ -22,9 +22,10 @@ use futures_util::stream::FuturesUnordered;
 use tokio::sync::mpsc;
 
 use crate::agent::setup::{Continue, Setup};
+use crate::agent::{kinds, roles};
 use crate::api::models::Model;
 use crate::app::App;
-use crate::commands::Session;
+use crate::commands::{Seat, Session};
 use crate::config::limits;
 use crate::frontend::tui::card::{self, Card};
 use crate::frontend::tui::command::Work;
@@ -163,7 +164,6 @@ pub async fn run(
 
 struct Tui<'a> {
     app: &'a App,
-    catalog: Catalog,
     next: NextTurn,
     shared: &'a Shared,
     /// Keeps the files as they were before each prompt changed them, for /undo.
@@ -217,8 +217,12 @@ impl<'a> Tui<'a> {
         }
         let mut tui = Self {
             app,
-            catalog,
-            next: NextTurn::new(&app.paths, model, effort, mcp.connected()),
+            next: NextTurn::new(
+                &app.paths,
+                (model, effort),
+                mcp.connected(),
+                (catalog, app.settings.subagents.clone()),
+            ),
             shared,
             shadow,
             mcp,
@@ -265,7 +269,31 @@ impl<'a> Tui<'a> {
             file: self.session_file.clone(),
             snapshots_off: self.shadow.off(),
             mcp: self.mcp.report(),
+            subagents: self.seats(),
         }
+    }
+
+    /// What each kind of subagent would run on if started now.
+    fn seats(&self) -> Vec<Seat> {
+        let next = &self.next;
+        kinds::all()
+            .iter()
+            .map(|kind| {
+                let id = Some(kind.id.as_str());
+                let (model, source) = roles::chosen(id, None, &next.subagents, &next.model.id);
+                let effort = roles::chosen_effort(id, &next.subagents, next.effort());
+                let effort = match next.catalog.get(model) {
+                    Some(served) => served.effort(effort),
+                    None => effort,
+                };
+                Seat {
+                    kind: kind.id.clone(),
+                    model: model.to_owned(),
+                    effort: effort.map(str::to_owned),
+                    from: source.label(&kind.id),
+                }
+            })
+            .collect()
     }
 
     fn welcome(&self) -> welcome::Info {

@@ -21,6 +21,7 @@ mod progress;
 mod questions;
 mod queue;
 mod replace;
+mod roles;
 mod rows;
 mod screen;
 mod signup;

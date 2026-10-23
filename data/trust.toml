@@ -1,6 +1,6 @@
 # What a project's .crowbot/config.toml may set before the folder is trusted: what crowbot runs on,
 # never what it may do (mode or shell could run commands unasked). Deny rules are kept too.
-untrusted_keys = ["model", "effort"]
+untrusted_keys = ["model", "effort", "subagents"]
 
 # Settings whose values may be secrets (an MCP server's environment and headers): listed by name,
 # never by value, wherever what an untrusted folder asked for is shown. `mask` stands for each.

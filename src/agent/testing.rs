@@ -14,11 +14,13 @@ use crate::agent::{RunCtx, run};
 use crate::api::Api;
 use crate::api::models::Model;
 use crate::app::App;
+use crate::config::subagents::Subagents;
 use crate::conversation::message::Part;
 use crate::io::http::Http;
 use crate::live::event::{AgentEvent, Ended};
 use crate::live::state::Shared;
 use crate::mode;
+use crate::models::Catalog;
 use crate::session::transcript::Transcript;
 use crate::snapshot::Shadow;
 use crate::tools::Registry;
@@ -71,6 +73,9 @@ pub struct Harness {
     script: Script,
     in_flight: Arc<InFlight>,
     pub model: Model,
+    pub catalog: Catalog,
+    /// What subagents run on; set it before `run`.
+    pub subagents: Subagents,
     pub shadow: Shadow,
 }
 
@@ -118,12 +123,23 @@ impl Harness {
         let http = Http::new(std::time::Duration::from_secs(5)).unwrap();
         app.api = Api::redirected(http, "k", &base);
         let model = crate::testing::model(false);
+        // The bundled models, and the run's own, for subagents to be put on.
+        let mut models = crate::models::snapshot();
+        models.push(model.clone());
+        let catalog = Catalog {
+            models,
+            source: crate::models::Source::Snapshot,
+            fetched_at: None,
+            note: None,
+        };
         Self {
             _dir: dir,
             app,
             script,
             in_flight,
             model,
+            catalog,
+            subagents: Subagents::default(),
             shadow: Shadow::none("no git in these tests".into()),
         }
     }
@@ -187,6 +203,8 @@ impl Harness {
             app: &self.app,
             model: &self.model,
             effort: None,
+            catalog: &self.catalog,
+            subagents: &self.subagents,
             system: "sys",
             tools: &registry,
             emit: &emit,

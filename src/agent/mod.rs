@@ -9,6 +9,7 @@ pub mod kinds;
 pub mod model_text;
 pub mod orient;
 pub mod overflow;
+pub mod roles;
 pub mod run;
 pub mod setup;
 pub mod system_prompt;
@@ -21,8 +22,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::api::models::Model;
 use crate::app::App;
+use crate::config::subagents::Subagents;
 use crate::live::event::AgentEvent;
 use crate::live::state::Shared;
+use crate::models::Catalog;
 use crate::snapshot::Shadow;
 use crate::tools::Registry;
 
@@ -31,6 +34,10 @@ pub struct RunCtx<'a> {
     pub app: &'a App,
     pub model: &'a Model,
     pub effort: Option<&'a str>,
+    /// What a subagent's model is looked up in.
+    pub catalog: &'a Catalog,
+    /// What subagents run on, as `/models` last left it.
+    pub subagents: &'a Subagents,
     pub system: &'a str,
     pub tools: &'a Registry,
     pub emit: &'a (dyn Fn(AgentEvent) + Send + Sync),

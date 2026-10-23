@@ -128,7 +128,7 @@ async fn a_subagents_permission_card_is_answered_in_the_session() {
         s.send("1");
         s.wait_for("Parent: done.");
         assert!(!s.contents().contains("CHILD: fetched"), "{}", s.contents());
-        s.wait_for("explore: 1 call");
+        s.wait_for("explore on deepseek-v4.1-flash: 1 call");
     })
     .await;
     assert_eq!(fake.hits("/web/ok"), 1);

@@ -11,6 +11,7 @@ use serde_json::json;
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
 use crate::agent::child::{self, Done};
 use crate::agent::kinds::{self, Kind};
+use crate::agent::roles::Source;
 use crate::data;
 use crate::live::event::Outcome;
 use crate::permission::catalog;
@@ -47,6 +48,7 @@ struct Text {
     failed: String,
     rejected: String,
     no_run: String,
+    runs_on: String,
 }
 
 #[derive(Deserialize)]
@@ -54,6 +56,8 @@ pub struct Args {
     description: String,
     prompt: String,
     subagent_type: String,
+    #[serde(default)]
+    model: Option<String>,
 }
 
 pub struct Task;
@@ -70,22 +74,35 @@ impl Tool for Task {
         true
     }
 
-    fn check(&self, args: &Args, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+    /// A model that cannot be had is refused here, before anyone is asked or anything is sent.
+    fn check(&self, args: &Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let kind = kind(&args.subagent_type)?;
-        Ok(Check::new(vec![Ask::new(
-            catalog::TASK.name,
-            kind.id.clone(),
-        )]))
+        let check = Check::new(vec![Ask::new(catalog::TASK.name, kind.id.clone())]);
+        let Some(run) = cx.run else {
+            return Ok(check);
+        };
+        let on = run.subagent(kind, args.model.as_deref())?;
+        Ok(match on.source {
+            Source::Chat => check,
+            from => check.with_preview(fill(
+                &TEXT.runs_on,
+                &[("model", &on.model.id), ("from", &from.label(&kind.id))],
+            )),
+        })
     }
 
     fn run<'a>(&'a self, args: Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
             let run = cx.run.ok_or_else(|| TEXT.no_run.clone())?;
             let kind = kind(&args.subagent_type).map_err(|e| e.to_string())?;
-            let done = child::run_child(run, cx.call_id, kind, args.prompt).await;
+            let on = run.subagent(kind, args.model.as_deref())?;
+            let done = child::run_child(run, cx.call_id, kind, &on, args.prompt).await;
             let out = said(&done).with_usage(done.usage);
             Ok(out.with_details(json!({
                 "agent": kind.id,
+                "model": on.model.id,
+                "effort": on.effort,
+                "model_from": on.source.label(&kind.id),
                 "description": args.description,
                 "session": done.session.display().to_string(),
                 "outcome": done.ended.outcome,

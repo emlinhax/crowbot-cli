@@ -26,7 +26,11 @@ summary = { count = "lines", one = "{n} line", many = "{n} lines" }
 [task]
 title = ["description"]
 body = "summary"
-summary = { count = "calls", one = "{agent}: {n} call", many = "{agent}: {n} calls" }
+# A session from before subagents had models of their own names no model.
+summary = [
+  { count = "calls", one = "{agent} on {model}: {n} call", many = "{agent} on {model}: {n} calls" },
+  { count = "calls", one = "{agent}: {n} call", many = "{agent}: {n} calls" },
+]
 
 [finish]
 title = ["summary"]

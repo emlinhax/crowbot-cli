@@ -3,7 +3,8 @@
   "properties": {
     "description": { "type": "string", "description": "A few words for the job, shown to the user" },
     "prompt": { "type": "string", "description": "The whole job: what to find or do, and what to reply with" },
-    "subagent_type": { "type": "string", "description": "The kind of subagent", "enum": [] }
+    "subagent_type": { "type": "string", "description": "The kind of subagent", "enum": [] },
+    "model": { "type": "string", "description": "A model id from the subagent models listed in the system prompt; leave it out to use the kind's" }
   },
   "required": ["description", "prompt", "subagent_type"]
 }

@@ -1,0 +1,14 @@
+# What the subagent model resolver (src/agent/roles.rs) says; {placeholders} are filled in.
+unknown_model = "`{model}` ({from}) is not a model crowbot serves; see `crowbot models`."
+not_allowed = "`{model}` is not one of the models a task may name ({choices}); leave `model` out to use {kind}'s."
+
+# What `/models <role>` names the chat and every kind at once; a kind goes by its own id.
+chat = "chat"
+every = "subagents"
+
+# Where a subagent's model came from, as `{from}` above and in /models and /status.
+[from]
+call = "named by the task call"
+kind = "subagents.kinds.{kind}"
+subagents = "subagents"
+chat = "the chat model"

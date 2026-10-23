@@ -40,6 +40,9 @@ pub struct Settings {
     pub mcp: std::collections::BTreeMap<String, crate::mcp::config::Server>,
     /// Whether crowbot offers the MCP servers the user's other apps list.
     pub mcp_discovery: bool,
+    /// The model and effort subagents run on, when not the chat's.
+    #[serde(default)]
+    pub subagents: crate::config::subagents::Subagents,
     /// What an untrusted project's config asked for and did not get.
     #[serde(skip)]
     pub untrusted: Option<trust::Untrusted>,
@@ -95,6 +98,7 @@ pub fn load(paths: &Paths, flags: &Overrides) -> anyhow::Result<Settings> {
     if let Some(level) = &settings.effort {
         effort::find(level)?;
     }
+    settings.subagents.check()?;
     mode::find(&settings.mode)?;
     Ok(settings)
 }
@@ -250,6 +254,47 @@ mod tests {
             ..Overrides::default()
         };
         assert_eq!(load(&paths, &flags).unwrap().model, "flag");
+    }
+
+    #[test]
+    fn a_remembered_role_merges_over_the_configs_per_key_and_never_touches_the_chat_model() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
+        let config = "model = 'chat'\n[subagents]\nmodel = 'all'\n[subagents.kinds.explore]\nmodel = 'cfg'\neffort = 'low'";
+        io::fs::write_atomic(
+            &paths.user_config(),
+            config.as_bytes(),
+            io::fs::Access::Shared,
+        )
+        .unwrap();
+        let role = crate::config::subagents::Role {
+            model: Some("picked".into()),
+            effort: None,
+        };
+        crate::config::prefs::remember_role(&paths, Some("explore"), role);
+        let settings = load(&paths, &Overrides::default()).unwrap();
+        let explore = settings.subagents.role(Some("explore"));
+        assert_eq!(explore.model.as_deref(), Some("picked"));
+        assert_eq!(explore.effort.as_deref(), Some("low"));
+        assert_eq!(settings.subagents.model.as_deref(), Some("all"));
+        assert_eq!(settings.model, "chat");
+
+        // A kind only another project's agent files define loads, and an unknown effort does not.
+        io::fs::write_atomic(
+            &paths.user_config(),
+            b"[subagents.kinds.elsewhere]\nmodel = 'x'",
+            io::fs::Access::Shared,
+        )
+        .unwrap();
+        assert!(load(&paths, &Overrides::default()).is_ok());
+        io::fs::write_atomic(
+            &paths.user_config(),
+            b"[subagents]\neffort = 'ludicrous'",
+            io::fs::Access::Shared,
+        )
+        .unwrap();
+        let err = format!("{:#}", load(&paths, &Overrides::default()).unwrap_err());
+        assert!(err.contains("ludicrous"), "{err}");
     }
 
     fn project_with(config: &str) -> (tempfile::TempDir, Paths) {

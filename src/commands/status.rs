@@ -26,6 +26,8 @@ struct Text {
     no_context: String,
     undo_files: String,
     undo_conversation: String,
+    subagent: String,
+    subagent_effort: String,
     mcp_none: String,
     mcp_name: String,
     mcp_found: String,
@@ -91,6 +93,24 @@ fn render(
         Some(why) => fill(&TEXT.undo_conversation, &[("why", why)]),
     };
     let mcp = servers(&session.mcp);
+    let subagents: Vec<String> = session
+        .subagents
+        .iter()
+        .map(|s| {
+            let mut fields = vec![
+                ("kind", s.kind.as_str()),
+                ("model", &s.model),
+                ("from", &s.from),
+            ];
+            match &s.effort {
+                Some(effort) => {
+                    fields.push(("effort", effort));
+                    fill(&TEXT.subagent_effort, &fields)
+                }
+                None => fill(&TEXT.subagent, &fields),
+            }
+        })
+        .collect();
     let context = match session.context_pct {
         Some(pct) => fill(&TEXT.context, &[("pct", &pct.to_string())]),
         None => TEXT.no_context.clone(),
@@ -100,6 +120,7 @@ fn render(
         &[
             ("account", &account),
             ("model", &model),
+            ("subagents", &subagents.join("; ")),
             ("mode", &session.mode),
             ("context", &context),
             ("undo", &undo),
@@ -138,6 +159,7 @@ fn servers(servers: &[Standing]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::Seat;
 
     fn session() -> Session {
         Session {
@@ -165,6 +187,20 @@ mod tests {
                     state: State::Running { tools: 1 },
                 },
             ],
+            subagents: vec![
+                Seat {
+                    kind: "explore".into(),
+                    model: "kimi-k3".into(),
+                    effort: Some("low".into()),
+                    from: "subagents.kinds.explore".into(),
+                },
+                Seat {
+                    kind: "general".into(),
+                    model: "crow-2".into(),
+                    effort: None,
+                    from: "the chat model".into(),
+                },
+            ],
         }
     }
 
@@ -184,6 +220,7 @@ mod tests {
         for want in [
             "Account: Logged in with device key …9999. Balance $12.30.",
             "Model: crow-2, effort high",
+            "Subagents: explore on kimi-k3, effort low (subagents.kinds.explore); general on crow-2 (the chat model)",
             "Mode: MANUAL",
             "Context: 12% of the window",
             "This session: about $0.042",

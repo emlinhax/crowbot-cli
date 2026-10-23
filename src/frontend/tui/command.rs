@@ -3,6 +3,7 @@
 
 use futures_util::future::BoxFuture;
 
+use crate::agent::roles::RoleId;
 use crate::api::account::{self, Me};
 use crate::api::error::ApiError;
 use crate::app::App;
@@ -14,7 +15,8 @@ use crate::text::template;
 /// What finished in the background.
 pub enum Work {
     Command(anyhow::Result<Outcome>),
-    Catalog(Catalog),
+    /// A fresh list, and the role the card it was fetched for opens on.
+    Catalog(Catalog, Option<RoleId>),
     /// The account as the key of generation `changes` (`Api::key_changes`) sees it.
     Account {
         changes: u64,
@@ -55,8 +57,8 @@ pub fn start<'a>(
 }
 
 /// A fresh model list, fetched without holding up input.
-pub fn refresh_catalog(app: &App) -> BoxFuture<'_, Work> {
-    Box::pin(async move { Work::Catalog(models::load(&app.api, &app.paths, true).await) })
+pub fn refresh_catalog(app: &App, role: Option<RoleId>) -> BoxFuture<'_, Work> {
+    Box::pin(async move { Work::Catalog(models::load(&app.api, &app.paths, true).await, role) })
 }
 
 /// Where the account stands now, tagged with the key it was asked with.

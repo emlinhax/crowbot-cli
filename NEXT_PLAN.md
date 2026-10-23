@@ -966,3 +966,13 @@ string-free fixes, chosen with the user.
 - Both kept (safe): A is a no-downside safety-net against extreme flailing; B is adopted, composes
   with auto-verify, and is a foundation a stronger model would batch — but neutral on turns for weak
   models today. Not recommended as a turn lever until a model batches it.
+
+## M20 — Subagent models (2026-10-23)
+Every subagent ran on the chat's model, so cheap searches paid strong-model prices.
+- [x] 20.1 a model and effort per kind: `[subagents]` / `[subagents.kinds.<id>]` in config, picks in
+      prefs.json, one resolver (src/agent/roles.rs: call → kind → every kind → chat), no silent
+      fallback; `RunCtx` carries the catalog and the choices; costs were already per model.
+- [x] 20.2 `/models` opens a roles card (chat, every kind, each kind) over the existing picker; a
+      pick is a model then an effort; `/models <role>`; `/status` and the task card name the model.
+- [x] 20.3 a `task` call may name a `model` (gated by `subagents.choices`); the system prompt lists
+      each kind's model and the models a call may name.

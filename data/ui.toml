@@ -106,6 +106,31 @@ title = "Models"
 hint = "↑↓ move · → or enter select · esc close"
 switched = "Model: {model} for this session."
 
+# `/models` inside a session: what the chat and each kind of subagent run on (roles.rs). A pick
+# goes to the model list, then, for a subagent, its effort. {placeholders} are filled in.
+[roles]
+title = "Models"
+hint = "↑↓ move · → or enter change · esc close"
+model_title = "{role}: model"
+effort_title = "{role}: effort"
+step_hint = "↑↓ move · → or enter select · esc back"
+# The columns of the roles table.
+columns = ["role", "model", "effort", "from", "in", "out"]
+chat = "chat"
+every = "subagents (every kind)"
+kind = "  {kind}"
+default_effort = "the model's default"
+no_effort = "—"
+unavailable = "{model} (unavailable)"
+# Where a role's model came from.
+picked = "picked"
+config = "config"
+inherits = "inherits {from}"
+inherit_model = "inherit ({model})"
+inherit_effort = "inherit ({effort})"
+assigned = "{role} runs on {model}, effort {effort}, from the next task."
+note = "Picks are kept in {path}; a subagent's own choice beats every kind's, which beats the chat's."
+
 # `/resume` inside a session: this project's earlier sessions.
 [resume]
 title = "Sessions"

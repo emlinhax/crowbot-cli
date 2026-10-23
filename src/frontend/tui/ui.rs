@@ -32,6 +32,7 @@ pub struct Ui {
     pub thinking: ThinkingText,
     pub status: StatusText,
     pub picker: PickerText,
+    pub roles: RolesText,
     pub resume: ResumeText,
     pub undo: UndoText,
     pub task: TaskText,
@@ -213,6 +214,30 @@ pub struct PickerText {
     pub title: String,
     pub hint: String,
     pub switched: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RolesText {
+    pub title: String,
+    pub hint: String,
+    pub model_title: String,
+    pub effort_title: String,
+    pub step_hint: String,
+    pub columns: Vec<String>,
+    pub chat: String,
+    pub every: String,
+    pub kind: String,
+    pub default_effort: String,
+    pub no_effort: String,
+    pub unavailable: String,
+    pub picked: String,
+    pub config: String,
+    pub inherits: String,
+    pub inherit_model: String,
+    pub inherit_effort: String,
+    pub assigned: String,
+    pub note: String,
 }
 
 #[derive(Debug, Deserialize)]

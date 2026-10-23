@@ -5,4 +5,5 @@ pub mod limits;
 pub mod paths;
 pub mod prefs;
 pub mod settings;
+pub mod subagents;
 pub mod trust;
