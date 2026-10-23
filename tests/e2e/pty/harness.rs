@@ -28,6 +28,7 @@ pub const ENTER: &str = "\r";
 pub const TAB: &str = "\t";
 pub const ESC: &str = "\x1b";
 pub const DOWN: &str = "\x1b[B";
+pub const RIGHT: &str = "\x1b[C";
 pub const SHIFT_TAB: &str = "\x1b[Z";
 pub const CTRL_C: &str = "\x03";
 pub const CTRL_D: &str = "\x04";

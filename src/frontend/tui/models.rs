@@ -929,6 +929,11 @@ impl Card for Models {
                 Some(Action::Left | Action::Right) => {
                     let forward = action == Some(Action::Right);
                     match self.field() {
+                        // The row says Enter or an arrow switches it, so both do.
+                        Some(Field::State) => {
+                            let target = self.target(self.tab).unwrap_or(Target::Main);
+                            return self.toggle(target);
+                        }
                         Some(Field::Effort) => {
                             let values = self.efforts();
                             let target = self.target(self.tab).unwrap_or(Target::Main);

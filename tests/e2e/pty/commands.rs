@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use super::harness::{BACKSPACE, DOWN, ENTER, ESC, TAB, in_session};
+use super::harness::{BACKSPACE, DOWN, ENTER, ESC, RIGHT, TAB, in_session};
 use crate::Sandbox;
 use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
 
@@ -122,10 +122,10 @@ async fn a_roles_model_set_in_the_card_is_the_one_its_subagent_runs_on() {
     let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
         s.submit("/models");
         s.wait_for("╭ Models");
-        // The reader's tab: the first row turns it on, which is what opts the feature in; the
-        // next one is its model.
+        // The reader's tab: the first row turns it on with an arrow, which is what opts the
+        // feature in; the next row is its model.
         s.key(TAB);
-        s.key(ENTER);
+        s.key(RIGHT);
         s.wait_for("is on");
         s.key(DOWN);
         s.key(ENTER);
