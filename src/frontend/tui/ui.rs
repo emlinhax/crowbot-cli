@@ -223,7 +223,7 @@ pub struct ModelsText {
     pub state_off_note: String,
     pub turned_on: String,
     pub turned_off: String,
-    pub subagents_off: String,
+    pub fallback_note: String,
     pub model: String,
     pub effort: String,
     pub summary: String,

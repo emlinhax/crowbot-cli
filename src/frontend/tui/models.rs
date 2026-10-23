@@ -803,7 +803,7 @@ impl Models {
         let note = if on {
             fill(&words.state_on_note, &[("role", &role.id)])
         } else {
-            words.state_off_note.clone()
+            fill(&words.state_off_note, &[("role", &role.id)])
         };
         let mut lines = vec![Line::styled(note, muted.clone())];
         if on {
@@ -846,8 +846,8 @@ impl Models {
         if left > 1 {
             lines.push(Line::default());
             if on.is_empty() {
-                // Subagents are off: the model is told of no role, and `task` is not offered.
-                lines.extend(Line::plain(&words.subagents_off).wrap(width, &Line::default()));
+                // No role is on: `task` still works, on the session's own model and tools.
+                lines.extend(Line::plain(&words.fallback_note).wrap(width, &Line::default()));
             } else {
                 lines.push(Line::styled(&words.told, muted.clone()));
                 let session_model = self.session.model.clone().unwrap_or_default();
@@ -1222,15 +1222,15 @@ mod tests {
         let (dir, _) = (tempfile::tempdir().unwrap(), ());
         let paths = Paths::at(dir.path().join("home"), dir.path().join("proj"));
         crate::io::fs::make_dir(&paths.home).unwrap();
-        // No role is on yet, so the main tab says subagents are off.
+        // No role is on yet, so the main tab says a dispatch uses the session's own settings.
         let catalog = catalog();
         let model = catalog.models[0].clone();
         let mut card = Models::new(&catalog, &paths, (&model, Some("high")));
         let body = drawn(&card);
-        assert!(body.contains("No role is on"), "{body}");
+        assert!(body.contains("`general`"), "{body}");
         // A role's tab says it is off, and the row turns it on.
         key(&mut card, Action::Tab);
-        assert!(drawn(&card).contains("Off: the model is told of no such role"));
+        assert!(drawn(&card).contains("Off: the model is not told of `reader`"));
         let Next::Roles(said) = key(&mut card, Action::Submit) else {
             panic!("the state row toggles: {}", drawn(&card));
         };
@@ -1240,27 +1240,6 @@ mod tests {
         // And off again.
         assert!(matches!(key(&mut card, Action::Submit), Next::Roles(_)));
         assert!(!prefs::enabled(&paths, "reader"));
-    }
-
-    #[test]
-    fn the_wire_leaves_task_out_until_a_role_is_on() {
-        let (_dir, paths) = paths();
-        let tools = crate::tools::Registry::builtin(None);
-        let named = |tools: &crate::tools::Registry| {
-            tools
-                .wire()
-                .iter()
-                .any(|tool| tool["function"]["name"] == crate::tools::TASK)
-        };
-        // A registry a session built: on, because the test's home has roles on.
-        tools.set_subagents(!roles::dispatchable(&paths).is_empty());
-        assert!(named(&tools));
-        for role in roles::builtin() {
-            prefs::set_enabled(&paths, &role.id, false);
-        }
-        tools.set_subagents(!roles::dispatchable(&paths).is_empty());
-        assert!(!named(&tools));
-        assert!(!named(&tools));
     }
 
     #[test]

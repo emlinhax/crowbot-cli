@@ -148,6 +148,18 @@ mod tests {
     }
 
     #[test]
+    fn with_no_role_on_the_fallback_is_dispatched_on_the_sessions_settings() {
+        let project = crate::tools::testing::Project::new();
+        let cx = project.cx();
+        // Nothing is enabled, so `task` names the fallback role rather than refusing everything.
+        let fallback = role("general", &cx).unwrap();
+        assert!(fallback.model.is_none() && fallback.effort.is_none());
+        assert_eq!(fallback.tools, vec!["*".to_owned()]);
+        // A role that is off is still not dispatchable by name.
+        assert!(role("reader", &cx).is_err());
+    }
+
+    #[test]
     fn the_schema_leaves_the_role_open_since_the_prompt_names_them() {
         assert!(SPEC.parameters["properties"]["subagent_type"]["enum"].is_null());
     }

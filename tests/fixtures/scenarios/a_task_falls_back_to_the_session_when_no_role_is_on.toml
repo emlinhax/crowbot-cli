@@ -1,0 +1,41 @@
+description = "With no role turned on, task still dispatches one on the session's own model and tools"
+args = ["-p", "have it look"]
+
+[[reply]]
+calls = [{ name = "task", arguments = '{"description": "look", "prompt": "Find the parser and reply with its path.", "subagent_type": "general"}' }]
+
+[[reply]]
+text = "CHILD: src/parse.rs"
+
+[[reply]]
+text = "It is in src/parse.rs."
+
+[expect]
+exit = 0
+stdout = "It is in src/parse.rs.\n"
+stderr_contains = ["› task look"]
+
+# The fallback role is the one the prompt names, since no role is on.
+[[expect.requests]]
+index = 0
+message = 0
+role = "system"
+contains = "- `general`: Does one self-contained piece of work with the tools and model of the session itself."
+
+[[expect.requests]]
+index = 1
+message = 0
+role = "system"
+contains = "You are a subagent"
+
+# It runs on the session's own tools, `task` excepted as every subagent's is.
+[[expect.tools]]
+index = 1
+has = ["read", "write", "edit", "bash"]
+lacks = ["task", "plan_exit"]
+
+[[expect.requests]]
+index = 2
+message = -1
+role = "tool"
+contains = "CHILD: src/parse.rs"

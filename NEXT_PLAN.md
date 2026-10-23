@@ -997,11 +997,12 @@ session prompt lists, so a new role needs no code change.
       file it writes, the refusal by name; e2e scenarios for a reader's tools, a worker's edits in
       AUTO, a role file's pinned model reaching the child's prompt, and an unknown role refused.
 - [x] 20.9 roles are on or off, and off is the default: `prefs.json` `enabled` lists the ones
-      turned on, a role that is off is not named in `<subagents>` and cannot be dispatched, and
-      with none on the `task` tool is left out of the request entirely (the registry's wire
-      filters it on a flag `/models` flips), so the model is not told of subagents at all. The
-      card's first row per role is its `state`; `+` turns a new role on. The fallback role of 20.8
-      went: a machine with nothing on simply has no subagents.
+      turned on, and a role that is off is left out of `<subagents>` and refused by name. With
+      none on, `task` still dispatches: `data/agents.toml` `[fallback]` names one role (`general`)
+      with no words, no pinned model and every tool, so the subagent runs on the session's own
+      model, effort, tools and prompt — the feature degrades to "a copy of me" instead of
+      vanishing. The card's first row per role is its `state` (Enter or ← →); `+` turns a new role
+      on, and the main tab says what a dispatch falls back to while nothing is on.
 - [x] 20.8 the card's spare rows say what the tab does: a role's line in `<subagents>`, the words
       it adds to the system prompt, and for the main agent where its prompt is assembled. The
       fields scroll with the selection, and the model table's window keeps the selected row and

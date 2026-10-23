@@ -33,6 +33,14 @@ static HEADER: LazyLock<Header> = data::load!("agents.toml");
 #[serde(deny_unknown_fields)]
 struct Header {
     text: String,
+    fallback: Fallback,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Fallback {
+    id: String,
+    summary: String,
 }
 
 /// Everything data/prompts/subagents.toml says: the section the system prompt carries, and the
@@ -188,23 +196,31 @@ pub fn line(role: &Role, paths: &Paths, model: &str, effort: Option<&str>) -> St
     )
 }
 
-/// The roles a dispatch may name: the ones the user turned on. Subagents are a feature the user
-/// opts into, so with none on there is nothing to dispatch and the model is told of none.
+/// The role a dispatch falls back to when the user turned no role on: the session's own model,
+/// effort and tools, under the name data/agents.toml gives it, so `task` still hands work over
+/// rather than the feature vanishing with the last role.
+pub fn fallback() -> Role {
+    let mut role: Role = data::parse(data::raw!("agents/_template.toml"), "agents/_template.toml");
+    role.id = HEADER.fallback.id.clone();
+    role.summary = HEADER.fallback.summary.clone();
+    role
+}
+
+/// The roles a dispatch may name: the ones the user turned on, or the one fallback role when none
+/// is on. A role that is off is not dispatchable and is not named to the model.
 pub fn dispatchable(paths: &Paths) -> Vec<Role> {
-    load(paths)
+    let on: Vec<Role> = load(paths)
         .unwrap_or_default()
         .into_iter()
         .filter(|role| prefs::enabled(paths, &role.id))
-        .collect()
+        .collect();
+    if on.is_empty() { vec![fallback()] } else { on }
 }
 
-/// The system prompt's section naming every role that is on, each as `line` words it; none at all
-/// when subagents are off, so the model is not told of them.
+/// The system prompt's section naming every role a dispatch may name, each as `line` words it:
+/// the ones that are on, or the fallback role when none is.
 pub fn section(paths: &Paths, model: &str, effort: Option<&str>) -> Option<String> {
     let roles = dispatchable(paths);
-    if roles.is_empty() {
-        return None;
-    }
     let lines: Vec<String> = roles
         .iter()
         .map(|role| line(role, paths, model, effort))
@@ -469,12 +485,21 @@ mod tests {
     }
 
     #[test]
-    fn no_role_is_on_until_one_is_turned_on() {
+    fn with_no_role_on_a_dispatch_uses_the_sessions_own_settings() {
         let (_dir, paths) = paths();
         assert_eq!(load(&paths).unwrap().len(), builtin().len());
-        // Off by default: nothing to dispatch, and nothing named to the model.
-        assert!(dispatchable(&paths).is_empty());
-        assert!(section(&paths, "m", None).is_none());
+        // Off by default: the fallback role is what a dispatch names, on the session's settings.
+        let roles = dispatchable(&paths);
+        assert_eq!(roles.len(), 1);
+        assert_eq!(roles[0].id, HEADER.fallback.id);
+        assert!(roles[0].model.is_none() && roles[0].effort.is_none());
+        assert_eq!(roles[0].tools, vec!["*".to_owned()]);
+        let told = section(&paths, "m", None).unwrap();
+        assert!(
+            told.contains(&format!("`{}`", HEADER.fallback.id)),
+            "{told}"
+        );
+        // One role on puts the fallback away; that role is the only one named.
         prefs::set_enabled(&paths, "reader", true);
         let roles = dispatchable(&paths);
         assert_eq!(roles.len(), 1);
@@ -482,10 +507,14 @@ mod tests {
         let told = section(&paths, "m", None).unwrap();
         assert!(told.contains("`reader`"), "{told}");
         assert!(!told.contains("`worker`"), "{told}");
-        // Off again, and the model hears of none of them.
+        assert!(
+            !told.contains(&format!("`{}`", HEADER.fallback.id)),
+            "{told}"
+        );
+        // Off again, and the fallback is back rather than nothing.
         prefs::set_enabled(&paths, "reader", false);
-        assert!(dispatchable(&paths).is_empty());
-        assert!(section(&paths, "m", None).is_none());
+        assert_eq!(dispatchable(&paths)[0].id, HEADER.fallback.id);
+        assert!(section(&paths, "m", None).is_some());
     }
 
     #[test]
