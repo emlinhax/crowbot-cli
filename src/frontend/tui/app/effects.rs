@@ -10,6 +10,7 @@ use crate::frontend::tui::account::Account;
 use crate::frontend::tui::command::{self, Work};
 use crate::frontend::tui::forums::Forums;
 use crate::frontend::tui::login::Login;
+use crate::frontend::tui::models::Models;
 use crate::frontend::tui::picker::Picker;
 use crate::frontend::tui::signup::Signup;
 use crate::frontend::tui::toast::Toast;
@@ -25,7 +26,7 @@ impl<'a> Tui<'a> {
         let outcome: CommandOutcome = match done {
             Work::Catalog(catalog) => {
                 self.catalog = catalog;
-                self.panel = Some(Box::new(Picker::models(&self.catalog, &self.next.model.id)));
+                self.open_models();
                 return Step::Continue;
             }
             Work::Command(Err(e)) => {
@@ -68,9 +69,7 @@ impl<'a> Tui<'a> {
                 Effect::PickModel { refresh: true } => {
                     return Step::Work(command::refresh_catalog(self.app));
                 }
-                Effect::PickModel { refresh: false } => {
-                    self.panel = Some(Box::new(Picker::models(&self.catalog, &self.next.model.id)));
-                }
+                Effect::PickModel { refresh: false } => self.open_models(),
                 Effect::Forums { login } => match Forums::open(&self.app.paths, login.as_deref()) {
                     Ok(card) => self.panel = Some(Box::new(card)),
                     Err(e) => self.feed.notice(&format!("{e:#}"), "error"),
@@ -107,18 +106,44 @@ impl<'a> Tui<'a> {
         self.toast = Some(Toast::new(&ui::get().text.copied, clock::instant()));
     }
 
+    /// Opens the `/models` card: the main agent's model and effort, then each role's.
+    pub(super) fn open_models(&mut self) {
+        let card = Models::new(
+            &self.catalog,
+            &self.app.paths,
+            (&self.next.model, self.next.effort()),
+        );
+        self.panel = Some(Box::new(card));
+    }
+
     /// Asks for `effort` from the next turn on, and remembers it for the next session.
     pub(super) fn set_effort(&mut self, effort: String) {
+        self.ask_effort(Some(effort));
+    }
+
+    /// Asks for `effort` (`None`: the model's own), remembering it and writing the prompt again,
+    /// since it names each role's effort.
+    pub(super) fn ask_effort(&mut self, effort: Option<String>) {
         let text = &ui::get().text;
-        let mut note = template::fill(&text.effort_set, &[("effort", &effort)]);
-        if self.next.model.effort(Some(&effort)).is_none() {
+        let words = &ui::get().models;
+        let mut note = match &effort {
+            Some(level) => template::fill(&words.effort, &[("effort", level)]),
+            None => text.effort_default.clone(),
+        };
+        if effort
+            .as_deref()
+            .is_some_and(|level| self.next.model.effort(Some(level)).is_none())
+        {
             note.push_str(&template::fill(
                 &text.effort_unsent,
                 &[("model", &self.next.model.id)],
             ));
         }
-        prefs::remember_effort(&self.app.paths, &effort);
-        self.next.asked = Some(effort);
+        match &effort {
+            Some(level) => prefs::remember_effort(&self.app.paths, level),
+            None => prefs::forget_effort(&self.app.paths),
+        }
+        self.next.ask(&self.app.paths, effort);
         self.feed.notice(&note, "done");
     }
 
@@ -129,7 +154,7 @@ impl<'a> Tui<'a> {
         };
         prefs::remember_model(&self.app.paths, id);
         self.next.switch(&self.app.paths, model);
-        let text = template::fill(&ui::get().picker.switched, &[("model", id)]);
+        let text = template::fill(&ui::get().models.switched, &[("model", id)]);
         self.feed.notice(&text, "done");
     }
 }

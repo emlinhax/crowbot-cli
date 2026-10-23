@@ -102,7 +102,7 @@ async fn json_mode_nests_a_subagents_events_in_its_task_call() {
     fake.script([
         Reply::call(
             "task",
-            r#"{"description": "look", "prompt": "find it", "subagent_type": "explore"}"#,
+            r#"{"description": "look", "prompt": "find it", "subagent_type": "reader"}"#,
         ),
         Reply::text("found it"),
         Reply::text("It is found."),

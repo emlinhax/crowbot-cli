@@ -73,6 +73,10 @@ async fn the_context_share_follows_a_switch_of_model_at_once() {
         s.wait_bar("ctx 10%");
         s.submit("/models");
         s.wait_for("╭ Models");
+        // The list opens on the main agent's model row; Enter opens its models, and the one in use
+        // is first, so the next one down is the switch.
+        s.send(ENTER);
+        s.wait_for("Main model");
         s.send(DOWN);
         s.send(ENTER);
         s.wait_for("Model: fake-coder for this session.");
@@ -224,7 +228,7 @@ async fn undo_puts_back_what_a_subagent_changed() {
     fake.script([
         Reply::call(
             "task",
-            r#"{"description": "make it", "prompt": "write b.txt", "subagent_type": "general"}"#,
+            r#"{"description": "make it", "prompt": "write b.txt", "subagent_type": "worker"}"#,
         ),
         Reply::call("write", r#"{"path": "b.txt", "content": "new"}"#),
         Reply::text("wrote b.txt"),

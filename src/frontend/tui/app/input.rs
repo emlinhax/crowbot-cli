@@ -179,6 +179,19 @@ impl<'a> Tui<'a> {
                 self.panel = None;
                 self.switch_model(&id);
             }
+            Next::UseEffort(level) => {
+                self.panel = None;
+                match level {
+                    Some(level) => self.set_effort(level),
+                    None => self.ask_effort(None),
+                }
+            }
+            // The roles changed: the prompt names them and the model each runs on, so it is
+            // written again.
+            Next::Added(said) | Next::RoleChanged(said) => {
+                self.feed.notice(&said, "done");
+                self.next.reload(&self.app.paths);
+            }
             Next::Resume(path) => {
                 self.panel = None;
                 return Step::Session(Switch::Resume(path));

@@ -966,3 +966,38 @@ string-free fixes, chosen with the user.
 - Both kept (safe): A is a no-downside safety-net against extreme flailing; B is adopted, composes
   with auto-verify, and is a foundation a stronger model would batch — but neutral on turns for weak
   models today. Not recommended as a turn lever until a model batches it.
+
+## M20 — Roles: per-role models and dispatch (2026-10-23)
+Plan: a subagent's kind was a name baked into code (`explore`, `general`), so a cheap reader and a
+strong worker cost the same and a third use case meant a third constant. Roles instead: every role
+is a file (three built in, then any the user writes), each may pin the model and effort it runs on,
+and `/models` sets those per role for the machine. The `task` tool names a role by id, which the
+session prompt lists, so a new role needs no code change.
+- [x] 20.1 roles as files: `data/agents/reader.toml`, `worker.toml`, `researcher.toml` replace the
+      kinds; `src/agent/kinds.rs` becomes `roles.rs`; a file in `~/.crowbot/agents/<id>.toml`
+      overrides the built-in of its id and may add one. A file that will not parse fails the
+      session's start, naming it, like a config file.
+- [x] 20.2 per-role model and effort, resolved user's `/models` choice → the role file's pin → the
+      session's (`Role::binding`); a pinned model the catalog no longer serves falls back to the
+      session's, so a stale pin never blocks a dispatch.
+- [x] 20.3 `/models` is a card: a `Main` row, a `Roles` heading, one row per role (muted while it
+      follows the session) and `+ Add a role…`, which writes a new file from
+      `data/agents/_template.toml`; a role's first choice is the session's, which clears its own.
+      Choices live in `~/.crowbot/prefs.json` under `roles.<id>`. `crowbot models` is unchanged.
+- [x] 20.4 the system prompt names every role and the model it runs on (`<subagents>`,
+      data/prompts/subagents.toml); `subagent_type` keeps an open schema and the refusal names the
+      roles this machine has: "There is no role called `nobody`. The roles: …".
+- [x] 20.5 a subagent on a model or effort of its own is told so with a `<role-model>` note after
+      its role's prompt, since its system prompt is otherwise the session's.
+- [x] 20.6 tests: `Role::binding`'s order and the user-file override, the card's rows and the
+      file it writes, the refusal by name; e2e scenarios for a reader's tools, a worker's edits in
+      AUTO, a role file's pinned model reaching the child's prompt, and an unknown role refused.
+
+**Learned**
+- The schema's `enum` had to go: roles are files the user can add mid-session, and a schema is
+  built once, so an enum would have listed whatever existed at build time and refused the rest
+  before the tool ever ran. Naming them in the prompt section — written per session from the
+  machine's own folder — keeps one list of roles, and the tool's own refusal is the backstop.
+- A pin belongs to the file, the choice to the machine: reading the file for the pin and
+  `prefs.json` for the override keeps a role reproducible on a second machine while `/models` can
+  still tune it here, and lets a dispatch fall back rather than fail when the catalog moves.

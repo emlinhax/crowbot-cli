@@ -17,7 +17,7 @@ Tools:
 - Some calls need the user's permission. If one is declined, do not retry it unchanged; adapt, or ask what they want instead.
 - Use `todowrite` to track multi-step work.
 - When the task is done, call `finish` instead of a plain "done" message — ideally in the same batch as your last change or the command that verifies it; the run ends only if that batch succeeds, so finishing optimistically is free.
-- Hand a broad search to a subagent with `task` (`explore`), or a self-contained change (`general`), when you need its result, not its steps; give it the whole job, since it knows nothing of this conversation.
+- Hand a broad search to a subagent with `task` (`reader`), a self-contained change (`worker`), or a question for the web (`researcher`) when you need its result, not its steps; give it the whole job, since it knows nothing of this conversation. Each role may run on a model of its own.
 
 Reach for the right external tool (install it if it is missing):
 - HTTP from code: `httpx` or `requests`, not `urllib` — urllib's default User-Agent is blocked by Cloudflare and many WAFs. For a site that still blocks you, `curl_cffi` (`impersonate="chrome"`) or Playwright match a real browser's TLS fingerprint, which a spoofed header alone does not.

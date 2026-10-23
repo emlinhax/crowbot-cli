@@ -35,6 +35,13 @@ pub enum Next {
     Close(Option<String>),
     /// Use this model from the next turn on; the card closes.
     UseModel(String),
+    /// Ask for this reasoning effort from the next turn on, or the model's own (`None`).
+    UseEffort(Option<String>),
+    /// Say this and stay on the card: a role was added, and the list shows it.
+    Added(String),
+    /// Say this and stay on the card: a role's model or effort changed, so the session's prompt,
+    /// which names them, is written again.
+    RoleChanged(String),
     /// Go on with the session in this file; the card closes.
     Resume(std::path::PathBuf),
 }

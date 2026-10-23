@@ -31,7 +31,7 @@ pub struct Ui {
     pub palette: PaletteText,
     pub thinking: ThinkingText,
     pub status: StatusText,
-    pub picker: PickerText,
+    pub models: ModelsText,
     pub resume: ResumeText,
     pub undo: UndoText,
     pub task: TaskText,
@@ -207,12 +207,37 @@ pub struct ResumeText {
     pub saved: String,
 }
 
+/// `/models`: the main agent's model and effort, then the roles, each configured apart.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PickerText {
+pub struct ModelsText {
     pub title: String,
-    pub hint: String,
+    pub main: String,
+    pub model: String,
+    pub effort_row: String,
+    pub unset: String,
+    pub roles: String,
+    pub new: String,
+    pub new_title: String,
+    pub new_note: String,
+    pub name: String,
+    pub name_taken: String,
+    pub name_bad: String,
+    pub created: String,
+    pub role_model: String,
+    pub role_effort: String,
+    pub role_session: String,
     pub switched: String,
+    pub effort: String,
+    pub hint: String,
+    pub input_hint: String,
+    pub targets_hint: String,
+    pub title_model: String,
+    pub title_effort: String,
+    pub follow: String,
+    pub session_model: String,
+    pub session_effort: String,
+    pub effort_default: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -323,7 +348,7 @@ pub struct Text {
     pub copied: String,
     pub nothing_to_copy: String,
     pub busy: String,
-    pub effort_set: String,
+    pub effort_default: String,
     pub effort_unsent: String,
     pub new_conversation: String,
     pub new_saved: String,

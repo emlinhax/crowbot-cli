@@ -14,6 +14,7 @@ mod forums;
 mod keymap;
 mod layout;
 mod login;
+mod models;
 mod palette;
 mod paste;
 mod picker;

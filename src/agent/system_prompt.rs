@@ -45,7 +45,13 @@ struct Forums {
 
 /// Reminders a mode can name in data/modes/*.toml; one line per prompt file. `servers` are the
 /// session's MCP servers; `headless` is a run nobody can answer (`-p`, `--json`).
-pub fn build(paths: &Paths, model: &str, servers: &[Connected], headless: bool) -> String {
+pub fn build(
+    paths: &Paths,
+    model: &str,
+    effort: Option<&str>,
+    servers: &[Connected],
+    headless: bool,
+) -> String {
     let cwd = paths.project.display().to_string();
     let date = io::clock::today();
     let env = template::fill(
@@ -62,6 +68,7 @@ pub fn build(paths: &Paths, model: &str, servers: &[Connected], headless: bool) 
         forums(paths),
         mcp(servers),
         project(paths),
+        crate::agent::roles::section(paths, model, effort),
         headless.then(|| HEADLESS.trim_end().to_owned()),
         Some(env.trim_end().to_owned()),
     ];
@@ -159,7 +166,7 @@ mod tests {
             server("long", Some("x".repeat(max + 10))),
             server("quiet", None),
         ];
-        let prompt = build(&paths, "m", &servers, false);
+        let prompt = build(&paths, "m", None, &servers, false);
         let named = prompt.find("The user connected these MCP servers: ida, long, quiet.");
         let ida = prompt.find("<mcp-server-instructions server=\"ida\">\nOpen a database first.");
         let project = prompt.find("<project-instructions");
@@ -168,17 +175,17 @@ mod tests {
         assert!(!prompt.contains("server=\"quiet\""), "{prompt}");
         assert!(prompt.contains("they run past"), "{prompt}");
         assert!(!prompt.contains(&"x".repeat(max + 1)));
-        assert!(!build(&paths, "m", &[], false).contains("<mcp-servers>"));
+        assert!(!build(&paths, "m", None, &[], false).contains("<mcp-servers>"));
     }
 
     #[test]
     fn a_headless_run_is_told_nobody_will_answer() {
         let root = tempfile::tempdir().unwrap();
         let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
-        let headless = build(&paths, "m", &[], true);
+        let headless = build(&paths, "m", None, &[], true);
         let at = headless.find("<headless>").unwrap();
         assert!(at < headless.find("<env>").unwrap(), "{headless}");
-        assert!(!build(&paths, "m", &[], false).contains("<headless>"));
+        assert!(!build(&paths, "m", None, &[], false).contains("<headless>"));
     }
 
     #[test]
@@ -193,12 +200,12 @@ mod tests {
             )
             .unwrap();
         };
-        let bare = build(&paths, "m", &[], false);
+        let bare = build(&paths, "m", None, &[], false);
         assert!(!bare.contains("<project-instructions"));
         write("CLAUDE.md", "Use tabs.");
-        assert!(build(&paths, "m", &[], false).contains("file=\"CLAUDE.md\">\nUse tabs."));
+        assert!(build(&paths, "m", None, &[], false).contains("file=\"CLAUDE.md\">\nUse tabs."));
         write("AGENTS.md", "Run make test.");
-        let prompt = build(&paths, "m", &[], false);
+        let prompt = build(&paths, "m", None, &[], false);
         assert!(
             prompt.contains("Run make test.") && !prompt.contains("Use tabs."),
             "{prompt}"
@@ -206,7 +213,7 @@ mod tests {
         assert!(prompt.find("Run make test.") < prompt.find("<env>"));
         let max = limits::get().agent.instructions_bytes.value;
         write("AGENTS.md", &"é".repeat(max));
-        let prompt = build(&paths, "m", &[], false);
+        let prompt = build(&paths, "m", None, &[], false);
         assert!(prompt.contains("is left out"), "the cut is not said");
         assert!(prompt.len() < bare.len() + max + 1000);
     }
@@ -217,7 +224,7 @@ mod tests {
         let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
         // With no store yet, the seed is what there is to browse.
         let seed = &crate::forums::data().seed[0];
-        let prompt = build(&paths, "m", &[], false);
+        let prompt = build(&paths, "m", None, &[], false);
         assert!(
             prompt.contains(&format!(
                 "- {} ({})\n  {}",
@@ -229,6 +236,6 @@ mod tests {
         );
         assert!(prompt.find("<forums>") < prompt.find("<env>"));
         crate::forums::store::remove(&paths, seed).unwrap();
-        assert!(!build(&paths, "m", &[], false).contains("<forums>"));
+        assert!(!build(&paths, "m", None, &[], false).contains("<forums>"));
     }
 }

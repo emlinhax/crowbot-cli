@@ -1,7 +1,9 @@
-# A kind of subagent the `task` tool starts. `summary` is what the model is told it is for;
-# `tools` are the parent's tools it gets, by name (never `task`: data/limits.toml
-# subagent.max_depth); `prompt` is added to the parent's system prompt for it.
-id = "explore"
+# A role the `task` tool can start: one file per role in data/agents/, and one more per role the
+# user adds in ~/.crowbot/agents/ (same keys; a user's file wins over the built-in of its id).
+# `summary` is what the model is told it is for; `tools` are the parent's tools it gets, by name
+# (never `task`: data/limits.toml subagent.max_depth); `prompt` is added to the parent's system
+# prompt for it. `model` and `effort` are optional: with neither, it runs on the session's.
+id = "reader"
 summary = "Searches and reads: finds where something is in the project or on the web, and reports what it found. Changes nothing."
 tools = ["read", "grep", "glob", "webfetch"]
 prompt = '''

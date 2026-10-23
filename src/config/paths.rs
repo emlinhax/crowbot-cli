@@ -71,9 +71,14 @@ impl Paths {
         self.home.join("mcp.json")
     }
 
-    /// The model and effort the user last chose, remembered across sessions.
+    /// The model and effort the user last chose, and each role's, remembered across sessions.
     pub fn prefs(&self) -> PathBuf {
         self.home.join("prefs.json")
+    }
+
+    /// A file per role the user added or overrode: `~/.crowbot/agents/<id>.toml`.
+    pub fn roles_dir(&self) -> PathBuf {
+        self.home.join("agents")
     }
 
     /// Whether the user said no to installing, so they are not asked again.

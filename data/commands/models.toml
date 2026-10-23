@@ -1,5 +1,5 @@
 name = "models"
-summary = "Pick the model for this session; on the command line, list them with prices and limits"
+summary = "In a session, pick the model and effort of the agent and of each role; on the command line, list the models with prices and limits"
 usage = "models [--refresh]"
 
 [text]

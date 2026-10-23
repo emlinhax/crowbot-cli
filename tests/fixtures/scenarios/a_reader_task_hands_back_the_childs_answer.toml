@@ -1,8 +1,8 @@
-description = "A task call runs an explore subagent with its own tools; only its answer comes back, and only the parent's reply is printed"
+description = "A task call runs a reader subagent with its own tools; only its answer comes back, and only the parent's reply is printed"
 args = ["-p", "where is the parser?"]
 
 [[reply]]
-calls = [{ name = "task", arguments = '{"description": "find the parser", "prompt": "Find the parser and reply with its path.", "subagent_type": "explore"}' }]
+calls = [{ name = "task", arguments = '{"description": "find the parser", "prompt": "Find the parser and reply with its path.", "subagent_type": "reader"}' }]
 
 [[reply]]
 text = "CHILD: it is in src/parse.rs"

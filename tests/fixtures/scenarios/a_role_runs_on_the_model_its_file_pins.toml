@@ -1,0 +1,49 @@
+description = "A role file's pinned model reaches the prompt and the child is told it runs on it, not the session's"
+args = ["-p", "ask the tester"]
+
+[home_files]
+"agents/tester.toml" = '''
+id = "tester"
+summary = "Checks one thing and reports whether it holds."
+tools = ["read"]
+model = "crow-2"
+prompt = "You check the one thing you are asked about, then say whether it holds."
+'''
+
+[[reply]]
+calls = [{ name = "task", arguments = '{"description": "ask the tester", "prompt": "Does the parser exist? Answer yes or no.", "subagent_type": "tester"}' }]
+
+[[reply]]
+text = "Yes."
+
+[[reply]]
+text = "The tester says yes."
+
+[expect]
+exit = 0
+stdout = "The tester says yes.\n"
+stderr_contains = ["› task ask the tester"]
+
+[[expect.tools]]
+index = 1
+names = ["read"]
+
+# The session prompt names the role and the model it runs on.
+[[expect.requests]]
+index = 0
+message = 0
+role = "system"
+contains = "- `tester`: Checks one thing and reports whether it holds. (runs on crow-2)"
+
+# Its own system prompt says which model it is on.
+[[expect.requests]]
+index = 1
+message = 0
+role = "system"
+contains = "You run on crow-2 rather than the model the user is talking to."
+
+[[expect.requests]]
+index = 2
+message = -1
+role = "tool"
+contains = "Yes."

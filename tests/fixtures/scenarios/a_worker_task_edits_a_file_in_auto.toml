@@ -1,9 +1,9 @@
-description = "In AUTO a general subagent reads and edits a file; the parent passes on its answer"
+description = "In AUTO a worker subagent reads and edits a file; the parent passes on its answer"
 args = ["--mode", "auto", "-p", "fix the sum"]
 project = "calc"
 
 [[reply]]
-calls = [{ name = "task", arguments = '{"description": "fix the sum", "prompt": "Fix the sum in src/calc.txt and say what you changed.", "subagent_type": "general"}' }]
+calls = [{ name = "task", arguments = '{"description": "fix the sum", "prompt": "Fix the sum in src/calc.txt and say what you changed.", "subagent_type": "worker"}' }]
 
 [[reply]]
 calls = [{ name = "read", arguments = '{"path": "src/calc.txt"}' }]

@@ -104,7 +104,7 @@ fn task_fetching(fake: &Fake, after: &[Reply]) {
     let mut replies = vec![
         Reply::call(
             "task",
-            r#"{"description": "fetch the page", "prompt": "fetch it", "subagent_type": "explore"}"#,
+            r#"{"description": "fetch the page", "prompt": "fetch it", "subagent_type": "reader"}"#,
         ),
         Reply::call("webfetch", r#"{"url": "{base}/web/ok"}"#),
     ];
@@ -128,7 +128,7 @@ async fn a_subagents_permission_card_is_answered_in_the_session() {
         s.send("1");
         s.wait_for("Parent: done.");
         assert!(!s.contents().contains("CHILD: fetched"), "{}", s.contents());
-        s.wait_for("explore: 1 call");
+        s.wait_for("reader: 1 call");
     })
     .await;
     assert_eq!(fake.hits("/web/ok"), 1);
@@ -141,7 +141,7 @@ async fn a_subagents_requests_count_in_the_sessions_cost() {
         Reply::text("One."),
         Reply::call(
             "task",
-            r#"{"description": "look", "prompt": "look", "subagent_type": "explore"}"#,
+            r#"{"description": "look", "prompt": "look", "subagent_type": "reader"}"#,
         ),
         Reply::text("child"),
         Reply::text("Two."),

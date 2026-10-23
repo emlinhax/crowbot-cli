@@ -95,7 +95,8 @@ pub enum Effect {
     CopyLastReply,
     /// Send this to the model as the user's next message (the transcript shows the command).
     Send(String),
-    /// Open the session's model picker, after fetching a fresh list when asked.
+    /// Open the session's `/models` card: the main agent's model and effort, then each role's,
+    /// after fetching a fresh list when asked.
     PickModel {
         refresh: bool,
     },

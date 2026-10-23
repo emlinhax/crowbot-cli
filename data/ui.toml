@@ -72,7 +72,7 @@ spent = "Spent about {cost} this session."
 copied = "✓ Copied"
 nothing_to_copy = "Nothing to copy yet: crowbot has not replied."
 busy = "Finish or interrupt the reply first (Esc)."
-effort_set = "Effort: {effort} for this session."
+effort_default = "Effort: the model's own default again."
 effort_unsent = " {model} does not reason, so it sends none."
 new_conversation = "A new conversation."
 new_saved = "A new conversation. The last one is saved in {path}."
@@ -100,11 +100,42 @@ untimed = "Thought"
 live = "Thinking… {secs}s"
 gutter = "│ "
 
-# `/models` inside a session.
-[picker]
+# `/models` inside a session: the main agent's model and effort, then one line per role a subagent
+# can be started as, each configured apart.
+[models]
 title = "Models"
-hint = "↑↓ move · → or enter select · esc close"
+# The main agent's rows, then each role's.
+main = "Main"
+model = "model"
+effort_row = "effort"
+unset = "—"
+# The heading over the roles, and the row that writes a new role's file.
+roles = "Roles"
+new = "+ Add a role…"
+new_title = "Add a role"
+new_note = "Writes ~/.crowbot/agents/{id}.toml. Edit that file to say what it is for, which tools it gets and what it adds to the prompt."
+name = "Name: "
+name_taken = "There is already a role called `{id}`."
+name_bad = "A role's name is letters, digits, `-` and `_`."
+created = "Role `{id}` added. Edit {path} to say what it is for."
+# A role's own setting is written at once; this says so and which model it now runs on.
+role_model = "Role {role}: {model}."
+role_effort = "Role {role}: effort {effort}."
+role_session = "Role {role}: the session's {what} again."
 switched = "Model: {model} for this session."
+effort = "Effort: {effort} for this session."
+hint = "↑↓ move · enter configure · esc close"
+input_hint = "enter add · esc back"
+# The choices for a role's own setting: the session's, then the models or the levels.
+targets_hint = "↑↓ move · enter choose · esc back"
+title_model = "{target} model"
+title_effort = "{target} effort"
+# A role's row that follows the session: `{value}` is what the session uses.
+follow = "the session's ({value})"
+session_model = "the session's model"
+session_effort = "the session's effort"
+# The main agent's effort row that clears it, back to the model's own default.
+effort_default = "the model's own default"
 
 # `/resume` inside a session: this project's earlier sessions.
 [resume]
