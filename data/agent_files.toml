@@ -1,0 +1,23 @@
+# Agent files: kinds of subagent the user writes, Claude Code's shape (src/agent/agent_file.rs).
+# ~/.crowbot/agents/*.md, then a trusted project's .crowbot/agents/*.md; a kind of the same name
+# as an earlier one replaces it.
+extension = "md"
+
+# Claude Code's tool names, as crowbot calls them. Any other name is lowercased.
+[aliases]
+multiedit = "edit"
+notebookedit = "edit"
+ls = "read"
+
+# What crowbot says of an agent file; {placeholders} are filled in.
+[text]
+no_header = "{file}: no `---` header; an agent file starts with one naming `name` and `description`."
+unclosed = "{file}: the `---` header is never closed."
+bad_line = "{file}: header line `{line}` is not `key: value`."
+missing = "{file}: the header needs `{key}`."
+unknown_key = "{file}: unknown header key `{key}` (known: {keys})."
+bad_base = "{file}: `base` is `append` or `replace`, not `{value}`."
+bad_effort = "{file}: unknown effort `{value}`."
+bad_name = "{file}: `name` is letters, digits, `-` and `_`, not `{value}`."
+empty = "{file}: no prompt after the header."
+unknown_tool = "{file}: no tool `{tool}`; it is left out."

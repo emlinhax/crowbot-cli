@@ -18,17 +18,21 @@ pub struct App {
     pub api: Api,
     /// Everything else on the web: webfetch and forums.
     pub fetch: Fetch,
+    /// What was wrong with the user's agent files, or left out of them, to say once.
+    pub agent_notes: Vec<String>,
 }
 
 impl App {
     pub fn load(flags: &Overrides) -> anyhow::Result<Self> {
         let paths = Paths::resolve()?;
+        let agent_notes = crate::agent::kinds::init(&paths);
         let settings = settings::load(&paths, flags)?;
         // An unreadable auth.json leaves the run keyless, so `logout` and `login --status` still
         // work.
         let key = auth::load(&paths).ok().flatten().map(|k| k.secret);
         let mut app = Self::assemble(paths, settings, key)?;
         app.flags = flags.clone();
+        app.agent_notes = agent_notes;
         Ok(app)
     }
 
@@ -51,6 +55,7 @@ impl App {
             paths,
             settings,
             flags: Overrides::default(),
+            agent_notes: Vec::new(),
         })
     }
 }

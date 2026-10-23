@@ -133,10 +133,18 @@ choices = ["deepseek-v4.1-flash", "kimi-k3"]   # optional: what a task call may 
 model = "gemini-3.8-flash"
 ```
 
-A `task` call may name a `model` for its one job; then the kind's own, every kind's, and last the
-chat's. A model crowbot does not serve, or one outside `choices`, fails the call
+A `task` call may name a `model` for its one job; then the kind's own, its agent file's, every
+kind's, and last the chat's. A model crowbot does not serve, or one outside `choices`, fails the call
 rather than falling back. The task card, `/status` and `--json` (`details.model`, `model_from`) say
 what each subagent ran on.
+
+Kinds of your own are agent files in Claude Code's shape, in `~/.crowbot/agents/*.md` or a trusted
+project's `.crowbot/agents/*.md`: a `---` header with `name`, `description`, and optionally `when`
+(the jobs to pick it for), `tools` (Claude Code's names are understood; left out, every tool),
+`except`, `model` (`inherit` is none) and `effort`, then the prompt. The prompt follows the
+session's, or with `base: replace` stands alone beside the environment block. A file named like a
+built-in kind replaces it; an untrusted project's files wait for the folder to be trusted, like its
+settings. `docs/agents.md` explains how kinds are put together; `docs/agents/` has examples to copy.
 
 | Key | Does |
 |---|---|
@@ -281,7 +289,8 @@ and the legacy SSE transport are not supported yet (`grep -rn CEILING: src/mcp s
 
 Settings layer, later wins: `data/defaults.toml`, `~/.crowbot/config.toml`,
 `./.crowbot/config.toml`, flags; `[[permission]]` rules append. A project config may set `model`,
-`effort`, `subagents` and deny rules; anything else needs the folder trusted (a session shows what it asks for
+`effort`, `subagents` and deny rules; anything else, and the project's agent files, needs the folder
+trusted (a session shows what it asks for
 and remembers a yes in `~/.crowbot/trusted.json`; a headless run ignores those settings, with a
 note on stderr). Permanent allowances go in `~/.crowbot/config.toml`, e.g. `permission = "bash"`,
 `pattern = "cargo *"`, `action = "allow"`.

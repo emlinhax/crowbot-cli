@@ -10,5 +10,6 @@ every = "subagents"
 [from]
 call = "named by the task call"
 kind = "subagents.kinds.{kind}"
+agent = "{kind}'s agent file"
 subagents = "subagents"
 chat = "the chat model"

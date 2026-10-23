@@ -342,7 +342,7 @@ impl Registry {
             Arc::new(todowrite::TodoWrite),
             Arc::new(question::Question),
             Arc::new(plan_exit::PlanExit),
-            Arc::new(task::Task),
+            Arc::new(task::Task::new()),
             Arc::new(finish::Finish),
         ];
         let mut registry = Self {

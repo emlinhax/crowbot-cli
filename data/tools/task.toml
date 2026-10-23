@@ -1,5 +1,6 @@
 # What the task tool says to the model; {placeholders} are filled in.
 agent = "- `{id}`: {summary}"
+agent_when = "- `{id}`: {summary} Pick it for: {when}"
 unknown_agent = "There is no kind of subagent called `{id}`. The kinds: {kinds}."
 no_answer = "The subagent finished without a reply."
 turn_limit = "The subagent stopped after {turns} requests, its limit, before it finished. Its last words: {answer}"

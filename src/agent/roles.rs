@@ -30,6 +30,7 @@ struct Text {
 struct From {
     call: String,
     kind: String,
+    agent: String,
     subagents: String,
     chat: String,
 }
@@ -72,11 +73,14 @@ impl RoleId {
     }
 }
 
-/// Where a resolved choice came from.
+/// Where a resolved choice came from: the call, the user's settings for the kind, the kind's
+/// own agent file, the settings for every kind, or the chat.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Source {
     Call,
     Kind,
+    /// The kind's agent file (agent/agent_file.rs).
+    Agent,
     Subagents,
     Chat,
 }
@@ -87,6 +91,7 @@ impl Source {
         match self {
             Self::Call => from.call.clone(),
             Self::Kind => fill(&from.kind, &[("kind", kind)]),
+            Self::Agent => fill(&from.agent, &[("kind", kind)]),
             Self::Subagents => from.subagents.clone(),
             Self::Chat => from.chat.clone(),
         }
@@ -115,9 +120,11 @@ pub fn chosen<'a>(
     chat: &'a str,
 ) -> (&'a str, Source) {
     let own = kind.and_then(|id| subagents.kinds.get(id)?.model.as_deref());
+    let file = kind.and_then(|id| kinds::get(id)?.model.as_deref());
     asked
         .map(|m| (m, Source::Call))
         .or(own.map(|m| (m, Source::Kind)))
+        .or(file.map(|m| (m, Source::Agent)))
         .or(subagents.model.as_deref().map(|m| (m, Source::Subagents)))
         .unwrap_or((chat, Source::Chat))
 }
@@ -129,6 +136,7 @@ pub fn chosen_effort<'a>(
     chat: Option<&'a str>,
 ) -> Option<&'a str> {
     kind.and_then(|id| subagents.kinds.get(id)?.effort.as_deref())
+        .or(kind.and_then(|id| kinds::get(id)?.effort.as_deref()))
         .or(subagents.effort.as_deref())
         .or(chat)
 }

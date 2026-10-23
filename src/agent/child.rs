@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use crate::agent::kinds::{self, Kind};
+use crate::agent::kinds::{self, Base, Kind};
 use crate::agent::roles::{self, Resolved};
 use crate::agent::system_prompt;
 use crate::agent::{Run, RunCtx, run};
@@ -40,12 +40,20 @@ impl Run<'_> {
 
 /// What a subagent of `kind` on `model` is told: the parent's prompt, told the model it runs on,
 /// then the kind's words, the same for every subagent of this kind on one model so the vendor can
-/// cache them.
+/// cache them; or, for an agent file that replaces it, the kind's words and the environment alone.
 // CEILING: its tool list differs from the parent's, so the parent's cached prefix is not reused.
 // Upgrade: send the parent's tools and refuse the others at the gate.
 fn system_for(cx: &RunCtx<'_>, kind: &Kind, model: &str) -> String {
-    let base = system_prompt::retarget(cx.system, &cx.model.id, model);
-    format!("{base}\n\n{}", kind.prompt.trim())
+    match kind.base {
+        Base::Append => {
+            let base = system_prompt::retarget(cx.system, &cx.model.id, model);
+            format!("{base}\n\n{}", kind.prompt.trim())
+        }
+        Base::Replace => {
+            let env = system_prompt::env(&cx.app.paths, model);
+            format!("{}\n\n{env}", kind.prompt.trim())
+        }
+    }
 }
 
 /// Runs `prompt` as a subagent of `kind` on `on`, started by `parent`'s call `call_id`. What it
@@ -472,6 +480,9 @@ mod tests {
         assert_eq!(h.requests().len(), 4);
     }
 
+    use super::system_for;
+    use crate::agent::RunCtx;
+    use crate::agent::kinds::{self, Base};
     use crate::config::subagents::Role;
 
     fn on(model: &str) -> Role {
@@ -628,6 +639,43 @@ mod tests {
             _ => None,
         });
         assert_eq!(details.unwrap()["model"], before.as_str());
+    }
+
+    #[tokio::test]
+    async fn an_agent_file_that_replaces_the_prompt_keeps_only_its_words_and_the_environment() {
+        let h = Harness::new(Vec::new()).await;
+        let emit = |_: AgentEvent| {};
+        let registry = crate::tools::Registry::builtin(None);
+        let parent = format!(
+            "THE SESSION PROMPT\n\n{}",
+            crate::agent::system_prompt::env(&h.app.paths, &h.model.id)
+        );
+        let cx = RunCtx {
+            app: &h.app,
+            model: &h.model,
+            effort: None,
+            catalog: &h.catalog,
+            subagents: &h.subagents,
+            system: &parent,
+            tools: &registry,
+            emit: &emit,
+            shadow: &h.shadow,
+        };
+        let mut kind = kinds::get("explore").unwrap().clone();
+        kind.prompt = "ONLY THIS".into();
+
+        let appended = system_for(&cx, &kind, "cheap");
+        assert!(appended.starts_with("THE SESSION PROMPT"), "{appended}");
+        assert!(appended.ends_with("ONLY THIS") && appended.contains("Model: cheap"));
+
+        kind.base = Base::Replace;
+        let replaced = system_for(&cx, &kind, "cheap");
+        assert!(replaced.starts_with("ONLY THIS"), "{replaced}");
+        assert!(!replaced.contains("THE SESSION PROMPT"), "{replaced}");
+        assert!(
+            replaced.contains("Model: cheap") && replaced.contains("<env>"),
+            "{replaced}"
+        );
     }
 
     /// The task results' contents, in call order.

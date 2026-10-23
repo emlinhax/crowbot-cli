@@ -24,6 +24,7 @@ struct Data {
     question: String,
     declined: String,
     ignored: String,
+    agent_file: String,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -70,6 +71,28 @@ pub fn admit(
         keys,
     });
     Ok((safe, untrusted))
+}
+
+/// `untrusted`, the project config's left-out settings, with the project's agent files `agents`
+/// added: an agent file's prompt steers what its subagents do, so it waits for trust too.
+pub fn with_agents(
+    paths: &Paths,
+    untrusted: Option<Untrusted>,
+    agents: &[PathBuf],
+) -> Option<Untrusted> {
+    if agents.is_empty() {
+        return untrusted;
+    }
+    let shown = agents.iter().map(|file| {
+        let file = file.strip_prefix(&paths.project).unwrap_or(file);
+        template::fill(&DATA.agent_file, &[("file", &file.display().to_string())])
+    });
+    let mut untrusted = untrusted.unwrap_or_else(|| Untrusted {
+        file: paths.project_agents(),
+        keys: Vec::new(),
+    });
+    untrusted.keys.extend(shown);
+    Some(untrusted)
 }
 
 /// Deny rules may come from an untrusted folder too: under last-match-wins an appended deny can
@@ -155,7 +178,7 @@ fn rule_line(rule: &toml::Value) -> String {
     )
 }
 
-fn is_trusted(paths: &Paths) -> anyhow::Result<bool> {
+pub fn is_trusted(paths: &Paths) -> anyhow::Result<bool> {
     Ok(load(paths)?.projects.contains(&project(paths)))
 }
 
@@ -229,5 +252,23 @@ mod tests {
         assert!(is_trusted(&paths).unwrap());
         assert!(!is_trusted(&other).unwrap());
         assert_eq!(load(&paths).unwrap().projects.len(), 1);
+    }
+
+    #[test]
+    fn a_projects_agent_files_wait_for_trust_beside_its_settings() {
+        let paths = Paths::at("/home/u/.crowbot".into(), "/work/repo".into());
+        let agent = paths.project_agents().join("sneaky.md");
+        assert!(with_agents(&paths, None, &[]).is_none());
+        let alone = with_agents(&paths, None, std::slice::from_ref(&agent)).unwrap();
+        assert_eq!(alone.file, paths.project_agents());
+        assert_eq!(alone.keys.len(), 1);
+        assert!(alone.keys[0].starts_with("agent file ") && alone.keys[0].ends_with("sneaky.md"));
+        let config = Untrusted {
+            file: paths.project_config(),
+            keys: vec!["mode = \"auto\"".into()],
+        };
+        let both = with_agents(&paths, Some(config), &[agent]).unwrap();
+        assert_eq!(both.file, paths.project_config());
+        assert_eq!(both.keys.len(), 2);
     }
 }

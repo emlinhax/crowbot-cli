@@ -1,6 +1,8 @@
 # A kind of subagent the `task` tool starts. `summary` is what the model is told it is for;
 # `tools` are the parent's tools it gets, by name (never `task`: data/limits.toml
-# subagent.max_depth); `prompt` is added to the parent's system prompt for it.
+# subagent.max_depth); `prompt` is added to the parent's system prompt for it. Optional: `when`
+# (the jobs to pick it for), `model` and `effort` (what it runs on unless the user's settings say
+# otherwise), `base = "replace"` (the prompt stands alone). docs/agents.md explains each.
 id = "explore"
 summary = "Searches and reads: finds where something is in the project or on the web, and reports what it found. Changes nothing."
 tools = ["read", "grep", "glob", "webfetch"]

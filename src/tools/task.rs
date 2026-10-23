@@ -21,10 +21,18 @@ use crate::text::template::fill;
 /// The tool's name, which a subagent at the depth limit is never given.
 pub const NAME: &str = "task";
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
+/// The spec for the kinds there are now; built with the tool, since the user's agent files add
+/// kinds after the built-in ones are known.
+fn spec() -> Spec {
     let agents: Vec<String> = kinds::all()
         .iter()
-        .map(|k| fill(&TEXT.agent, &[("id", &k.id), ("summary", &k.summary)]))
+        .map(|k| match &k.when {
+            Some(when) => fill(
+                &TEXT.agent_when,
+                &[("id", &k.id), ("summary", &k.summary), ("when", when)],
+            ),
+            None => fill(&TEXT.agent, &[("id", &k.id), ("summary", &k.summary)]),
+        })
         .collect();
     let description = fill(
         data::raw!("tools/task.md"),
@@ -34,7 +42,7 @@ static SPEC: LazyLock<Spec> = LazyLock::new(|| {
     let ids: Vec<&str> = kinds::all().iter().map(|k| k.id.as_str()).collect();
     spec.parameters["properties"]["subagent_type"]["enum"] = json!(ids);
     spec
-});
+}
 
 static TEXT: LazyLock<Text> = data::load!("tools/task.toml");
 
@@ -42,6 +50,7 @@ static TEXT: LazyLock<Text> = data::load!("tools/task.toml");
 #[serde(deny_unknown_fields)]
 struct Text {
     agent: String,
+    agent_when: String,
     unknown_agent: String,
     no_answer: String,
     turn_limit: String,
@@ -60,13 +69,21 @@ pub struct Args {
     model: Option<String>,
 }
 
-pub struct Task;
+pub struct Task {
+    spec: Spec,
+}
+
+impl Task {
+    pub fn new() -> Self {
+        Self { spec: spec() }
+    }
+}
 
 impl Tool for Task {
     type Args = Args;
 
     fn spec(&self) -> &Spec {
-        &SPEC
+        &self.spec
     }
 
     /// The subagent stops with its parent, so its last turn and its cost are kept.
@@ -155,7 +172,7 @@ mod tests {
 
     #[test]
     fn the_kinds_fill_the_description_and_the_choices() {
-        let spec = &*SPEC;
+        let spec = &spec();
         assert!(
             spec.description.contains("- `explore`: "),
             "{}",

@@ -234,6 +234,7 @@ fn from(now: &Now<'_>, kind: Option<&str>, source: Source) -> String {
     match own {
         true if now.picked.role(kind).model.is_some() => words.picked.clone(),
         true => words.config.clone(),
+        false if source == Source::Agent => source.label(kind.unwrap_or_default()),
         false => fill(
             &words.inherits,
             &[("from", &source.label(kind.unwrap_or_default()))],

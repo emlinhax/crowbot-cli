@@ -967,12 +967,16 @@ string-free fixes, chosen with the user.
   with auto-verify, and is a foundation a stronger model would batch — but neutral on turns for weak
   models today. Not recommended as a turn lever until a model batches it.
 
-## M20 — Subagent models (2026-10-23)
-Every subagent ran on the chat's model, so cheap searches paid strong-model prices.
+## M20 — Subagent models and agent files (2026-10-23)
+Every subagent ran on the chat's model and only the two built-in kinds existed, so cheap searches
+paid strong-model prices and a kind of one's own meant a rebuild.
 - [x] 20.1 a model and effort per kind: `[subagents]` / `[subagents.kinds.<id>]` in config, picks in
-      prefs.json, one resolver (src/agent/roles.rs: call → kind → every kind → chat), no silent
-      fallback; `RunCtx` carries the catalog and the choices; costs were already per model.
+      prefs.json, one resolver (src/agent/roles.rs: call → kind → agent file → every kind → chat),
+      no silent fallback; `RunCtx` carries the catalog and the choices; costs were already per model.
 - [x] 20.2 `/models` opens a roles card (chat, every kind, each kind) over the existing picker; a
       pick is a model then an effort; `/models <role>`; `/status` and the task card name the model.
 - [x] 20.3 a `task` call may name a `model` (gated by `subagents.choices`); the system prompt lists
       each kind's model and the models a call may name.
+- [x] 20.4 agent files in Claude Code's shape (src/agent/agent_file.rs), user then trusted project,
+      a later kind replacing an earlier one; `when` hints feed the task description; `base: replace`.
+      A project's agent files join its settings in the trust prompt. docs/agents.md and examples.

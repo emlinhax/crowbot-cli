@@ -12,4 +12,6 @@ warning = "{file} changes what crowbot may do without asking:"
 danger = "A malicious repository can use this to run commands without asking."
 question = "Trust this folder and use these settings?"
 declined = "Not trusted; ignoring them."
+# How a project's agent file is named among the settings it would bring.
+agent_file = "agent file {file}"
 ignored = "ignoring {keys} from {file}: the folder isn't trusted. Start crowbot here in a terminal to trust it."
