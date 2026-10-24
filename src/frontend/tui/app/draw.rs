@@ -54,11 +54,12 @@ impl<'a> Tui<'a> {
                 live.extend(self.editor.render(width, rows, &prompt, &ui.placeholder));
             }
         }
+        let model = self.model_label();
         live.push(bar::bottom(
             mode,
             &bar::Info {
-                model: &self.next.model.id,
-                effort: self.next.effort(),
+                model: &model,
+                effort: self.shown_effort(),
                 context_pct: self.context_pct(),
                 cost_micros: self.cost_micros,
                 account: self.account.me.as_ref(),

@@ -14,6 +14,7 @@ pub mod login;
 mod logout;
 mod mode;
 pub mod models;
+mod presets;
 pub mod signup;
 mod spec;
 mod status;
@@ -36,6 +37,8 @@ pub struct Ctx<'a> {
 
 pub struct Session {
     pub model: String,
+    /// The preset's file, when the session runs on one.
+    pub preset: Option<std::path::PathBuf>,
     /// The effort each request carries: none for a model that does not reason.
     pub effort: Option<String>,
     pub mode: String,
@@ -98,6 +101,12 @@ pub enum Effect {
     /// Open the session's model picker, after fetching a fresh list when asked.
     PickModel {
         refresh: bool,
+    },
+    /// Open the session's picker of presets alone, with their rules.
+    PickPreset,
+    /// Write a new preset to edit, named this or the first free `new`.
+    NewPreset {
+        name: Option<String>,
     },
     /// Open the session's account card.
     Account,
@@ -162,6 +171,7 @@ pub static COMMANDS: &[&dyn Command] = &[
     &install::Install,
     &uninstall::Uninstall,
     &models::Models,
+    &presets::Presets,
     &forums::Forums,
     &mode::Mode,
     &effort::Effort,

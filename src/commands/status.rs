@@ -22,6 +22,7 @@ struct Text {
     balance: String,
     balance_failed: String,
     effort: String,
+    preset: String,
     context: String,
     no_context: String,
     undo_files: String,
@@ -86,6 +87,13 @@ fn render(
         ),
         None => session.model.clone(),
     };
+    let model = match &session.preset {
+        Some(path) => fill(
+            &TEXT.preset,
+            &[("model", &model), ("path", &path.display().to_string())],
+        ),
+        None => model,
+    };
     let undo = match &session.snapshots_off {
         None => TEXT.undo_files.clone(),
         Some(why) => fill(&TEXT.undo_conversation, &[("why", why)]),
@@ -142,6 +150,7 @@ mod tests {
     fn session() -> Session {
         Session {
             model: "crow-2".into(),
+            preset: None,
             effort: Some("high".into()),
             mode: "MANUAL".into(),
             context_pct: Some(12),

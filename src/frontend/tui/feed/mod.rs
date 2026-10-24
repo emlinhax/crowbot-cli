@@ -198,7 +198,7 @@ impl Feed {
         }
     }
 
-    /// The window of the model the session uses from now on.
+    /// The window of the model whose reply ends next.
     pub fn set_window(&mut self, window: u64) {
         self.window = window;
     }

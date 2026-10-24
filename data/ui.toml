@@ -47,6 +47,8 @@ context = "ctx {pct}%"
 cost = "{cost} est"
 allowance = "{plan} {pct}%"
 balance = "{balance} left"
+# The model item on a preset, once a request has gone: the preset, then the model it picked.
+preset = "{preset} → {model}"
 
 # The welcome card's lines: the version after the name, then model, effort and mode.
 [welcome]
@@ -103,8 +105,10 @@ gutter = "│ "
 # `/models` inside a session.
 [picker]
 title = "Models"
+presets_title = "Presets"
 hint = "↑↓ move · → or enter select · esc close"
 switched = "Model: {model} for this session."
+preset_written = "Wrote {path}: edit it, then pick it in /models."
 
 # `/resume` inside a session: this project's earlier sessions.
 [resume]

@@ -19,6 +19,7 @@ use crate::io::http::Http;
 use crate::live::event::{AgentEvent, Ended};
 use crate::live::state::Shared;
 use crate::mode;
+use crate::models::preset::Routes;
 use crate::session::transcript::Transcript;
 use crate::snapshot::Shadow;
 use crate::tools::Registry;
@@ -71,6 +72,8 @@ pub struct Harness {
     script: Script,
     in_flight: Arc<InFlight>,
     pub model: Model,
+    /// What picks each request's model instead of `model`, when a test sets one.
+    pub preset: Option<Routes>,
     pub shadow: Shadow,
 }
 
@@ -124,6 +127,7 @@ impl Harness {
             script,
             in_flight,
             model,
+            preset: None,
             shadow: Shadow::none("no git in these tests".into()),
         }
     }
@@ -187,6 +191,8 @@ impl Harness {
             app: &self.app,
             model: &self.model,
             effort: None,
+            preset: self.preset.as_ref(),
+            agent: None,
             system: "sys",
             tools: &registry,
             emit: &emit,

@@ -211,8 +211,10 @@ pub struct ResumeText {
 #[serde(deny_unknown_fields)]
 pub struct PickerText {
     pub title: String,
+    pub presets_title: String,
     pub hint: String,
     pub switched: String,
+    pub preset_written: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -302,6 +304,7 @@ pub struct Footer {
     pub cost: String,
     pub allowance: String,
     pub balance: String,
+    pub preset: String,
 }
 
 #[derive(Debug, Deserialize)]

@@ -92,15 +92,18 @@ pub(crate) async fn run_under(
             }
             turns += 1;
 
-            if let Some(why) = window_full(transcript, cx.model).filter(|_| !summary_failed) {
-                let summarised = compact::compact(cx, transcript, shared, cancel, None, why).await;
+            // A preset may pick another model for this request; its window decides a summary.
+            let now = cx.picked(transcript, shared);
+            if let Some(why) = window_full(transcript, now.model).filter(|_| !summary_failed) {
+                let summarised =
+                    compact::compact(&now, transcript, shared, cancel, None, why).await;
                 summary_failed = !matches!(summarised, Ok(true));
             }
             let (summary, tail) = transcript.context();
             let messages = context::build(summary, tail);
             let turn = Turn {
-                model: cx.model,
-                effort: cx.effort,
+                model: now.model,
+                effort: now.effort,
                 system: cx.system,
                 messages: &messages,
                 tools: &tools,
@@ -121,7 +124,8 @@ pub(crate) async fn run_under(
                     auto: true,
                     overflow: true,
                 };
-                let summarised = compact::compact(cx, transcript, shared, cancel, None, why).await;
+                let summarised =
+                    compact::compact(&now, transcript, shared, cancel, None, why).await;
                 if matches!(summarised, Ok(true)) {
                     continue;
                 }
@@ -231,15 +235,7 @@ pub(crate) async fn run_under(
 /// request since the latest summary nearly filled the window, or its reply was cut off because
 /// the window ran out.
 fn window_full(transcript: &Transcript, model: &Model) -> Option<Why> {
-    let last = transcript
-        .since_summary()
-        .iter()
-        .rev()
-        .find_map(|m| match m {
-            Message::Assistant(reply) => reply.usage.map(|usage| (reply, usage)),
-            _ => None,
-        });
-    let (reply, usage) = last?;
+    let (reply, usage) = transcript.last_used()?;
     let filled = overflow::window_filled(reply, model.context_window);
     (filled || overflow::nearly_full(usage.input, model)).then_some(Why {
         auto: true,
@@ -274,7 +270,7 @@ fn deliver(run: &Run<'_>, transcript: &mut Transcript, parts: Vec<Part>) {
 fn say(run: &Run<'_>, transcript: &mut Transcript, parts: Vec<Part>) {
     let parts = with_reminder(run, parts);
     let state = State {
-        model: run.cx.model.id.clone(),
+        model: run.cx.chosen().to_owned(),
         effort: run.cx.effort.map(str::to_owned),
         mode: Some(run.shared.mode().id.clone()),
     };

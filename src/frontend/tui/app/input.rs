@@ -179,6 +179,10 @@ impl<'a> Tui<'a> {
                 self.panel = None;
                 self.switch_model(&id);
             }
+            Next::NewPreset => {
+                self.panel = None;
+                self.new_preset(None);
+            }
             Next::Resume(path) => {
                 self.panel = None;
                 return Step::Session(Switch::Resume(path));

@@ -51,6 +51,15 @@ pub fn stdout_is_terminal() -> bool {
     io::stdout().is_terminal()
 }
 
+/// The width printed output fits: the terminal's, or no limit when piped, so a table piped on
+/// keeps every column.
+pub fn out_width() -> usize {
+    match stdout_is_terminal() {
+        true => size().0,
+        false => usize::MAX,
+    }
+}
+
 /// Columns and rows; a conventional 80×24 when the size cannot be read.
 pub fn size() -> (usize, usize) {
     crossterm::terminal::size().map_or((80, 24), |(w, h)| (w as usize, h as usize))

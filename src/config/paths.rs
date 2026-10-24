@@ -76,6 +76,11 @@ impl Paths {
         self.home.join("prefs.json")
     }
 
+    /// The user's presets (src/models/preset.rs), one file each.
+    pub fn presets(&self) -> PathBuf {
+        self.home.join("presets")
+    }
+
     /// Whether the user said no to installing, so they are not asked again.
     pub fn install_state(&self) -> PathBuf {
         self.home.join("install.json")

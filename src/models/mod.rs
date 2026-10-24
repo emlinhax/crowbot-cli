@@ -1,6 +1,9 @@
 //! Which models there are: the live list, else a recent cached one, else the list bundled with
 //! this build.
 
+pub mod choice;
+pub mod preset;
+pub mod preset_table;
 pub mod table;
 
 use jiff::Timestamp;

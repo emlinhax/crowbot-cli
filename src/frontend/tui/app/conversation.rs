@@ -36,7 +36,7 @@ impl Tui<'_> {
         );
         self.feed.notice(&text, "muted");
         if let Some(gone) = gone {
-            let text = words::model_gone(gone, &self.next.model.id);
+            let text = words::model_gone(gone, self.next.choice.id());
             self.feed.notice(&text, "warn");
         }
     }
@@ -66,8 +66,9 @@ impl Tui<'_> {
         if let Some(resumed) = &resumed {
             match going_on(self.app, &self.catalog, resumed.state.as_ref(), true) {
                 Ok(going) => {
-                    if going.model.id != self.next.model.id {
-                        self.next.switch(&self.app.paths, going.model);
+                    if going.choice.id() != self.next.choice.id() {
+                        self.next.switch(&self.app.paths, going.choice);
+                        self.served = None;
                     }
                     self.next.asked = going.effort;
                     self.shared.set_mode(going.mode);

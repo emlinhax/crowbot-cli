@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 
 use crate::config::paths::Paths;
-use crate::conversation::message::{Message, Usage};
+use crate::conversation::message::{Assistant, Message, Usage};
 use crate::io;
 use crate::session::entry::{self, Parent, Snap, State, Summary};
 use crate::session::reader;
@@ -166,6 +166,14 @@ impl Transcript {
             Some(c) => &self.messages[c.head + 1..],
             None => &self.messages,
         }
+    }
+
+    /// The last reply since the latest summary that says what it used: how full the context is.
+    pub fn last_used(&self) -> Option<(&Assistant, Usage)> {
+        self.since_summary().iter().rev().find_map(|m| match m {
+            Message::Assistant(reply) => reply.usage.map(|usage| (reply, usage)),
+            _ => None,
+        })
     }
 
     /// Where the messages not yet summarised start.

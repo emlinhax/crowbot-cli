@@ -11,6 +11,7 @@ use anyhow::bail;
 use crate::agent::setup::{Continue, Setup};
 use crate::agent::system_prompt;
 use crate::agent::{RunCtx, run};
+use crate::api::account;
 use crate::api::error::{self, Entry};
 use crate::app::App;
 use crate::config::limits;
@@ -21,6 +22,8 @@ use crate::live::event::{AgentEvent, DeltaKind, Ended, Outcome};
 use crate::live::prompt::{Prompt, Reply};
 use crate::live::state::Shared;
 use crate::mode;
+use crate::models::Catalog;
+use crate::models::preset::Routes;
 use crate::permission::gate;
 use crate::text::shorten;
 use crate::text::template::fill;
@@ -51,7 +54,8 @@ pub async fn run(
     }
     let from = resume.map(|path| Continue { path, mode: false });
     let Setup {
-        model,
+        catalog,
+        choice,
         effort,
         tools,
         shared,
@@ -62,14 +66,20 @@ pub async fn run(
         ..
     } = Setup::load(app, from).await?;
     if let Some(gone) = gone {
-        term::warn(&words::model_gone(&gone, &model.id));
+        term::warn(&words::model_gone(&gone, choice.id()));
     }
-    let system = system_prompt::build(&app.paths, &model.id, &mcp.connected(), true);
+    // Nothing else asks for the account here; only a preset that reads it waits on the request.
+    if choice.preset().is_some_and(Routes::reads_account)
+        && let Ok(me) = account::me(&app.api).await
+    {
+        shared.set_account(me);
+    }
+    let system = system_prompt::build(&app.paths, choice.id(), &mcp.connected(), true);
 
     let out = Printer {
         format,
         shared: &shared,
-        window: model.context_window,
+        catalog: &catalog,
         compacting: Mutex::new((false, false)),
         at_line_start: AtomicBool::new(true),
         last: Mutex::new(None),
@@ -84,8 +94,10 @@ pub async fn run(
     }
     let cx = RunCtx {
         app,
-        model: &model,
+        model: choice.model(),
         effort: effort.as_deref(),
+        preset: choice.preset(),
+        agent: None,
         system: &system,
         tools: &tools,
         emit: &emit,
@@ -109,8 +121,8 @@ pub async fn run(
 struct Printer<'a> {
     format: Format,
     shared: &'a Shared,
-    /// The model's context window, to tell a reply cut off by it from one out of output.
-    window: u64,
+    /// The models' context windows, to tell a reply cut off by one from one out of output.
+    catalog: &'a Catalog,
     /// Why the summary in progress was made, for its end to say.
     compacting: Mutex<(bool, bool)>,
     /// Whether stdout ends at a line start, so stderr notes do not land mid-sentence.
@@ -273,7 +285,8 @@ impl Printer<'_> {
             Outcome::Rejected => ExitCode::FAILURE,
             Outcome::Done => {
                 if let Some(cut) = last.filter(|m| m.finish == Finish::Length) {
-                    term::warn(words::cut_off(&cut, self.window));
+                    let window = self.catalog.get(&cut.model).map_or(0, |m| m.context_window);
+                    term::warn(words::cut_off(&cut, window));
                 }
                 ExitCode::SUCCESS
             }

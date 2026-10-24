@@ -36,7 +36,8 @@ pub async fn run(
         overflow: false,
     };
     let cancel = shared.begin_run();
-    let outcome = match compact(cx, transcript, shared, &cancel, focus, why).await {
+    let cx = cx.picked(transcript, shared);
+    let outcome = match compact(&cx, transcript, shared, &cancel, focus, why).await {
         Ok(_) => Outcome::Done,
         Err(_) => Outcome::Failed,
     };
@@ -107,8 +108,8 @@ pub async fn compact(
     error.map_or(Ok(true), Err)
 }
 
-/// Asks the session's model, with its own system prompt and tools so the request's prefix is
-/// the one it has cached, to summarise `older` after the summary already in force.
+/// Asks the request's model, with the session's system prompt and tools so the request's prefix
+/// is the one it has cached, to summarise `older` after the summary already in force.
 async fn summarise(
     cx: &RunCtx<'_>,
     transcript: &Transcript,

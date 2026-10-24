@@ -171,6 +171,14 @@ pub fn plain(
         .collect()
 }
 
+/// `plain` as text to print: one line per row, its trailing spaces trimmed.
+pub fn plain_text(rows: &[Vec<Line>], aligns: &[Align], drop: &[usize], width: usize) -> String {
+    plain(rows, aligns, drop, width, GAP)
+        .iter()
+        .map(|row| format!("{}\n", row.text().trim_end()))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

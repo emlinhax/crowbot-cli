@@ -33,8 +33,10 @@ pub enum Next {
     Error(String),
     /// Close the card, with what to say when there is something.
     Close(Option<String>),
-    /// Use this model from the next turn on; the card closes.
+    /// Use this model or preset from the next turn on; the card closes.
     UseModel(String),
+    /// Write a new preset to edit; the card closes.
+    NewPreset,
     /// Go on with the session in this file; the card closes.
     Resume(std::path::PathBuf),
 }

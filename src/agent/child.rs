@@ -73,10 +73,13 @@ pub async fn run_child(parent: &Run<'_>, call_id: &str, kind: &Kind, prompt: Str
             event: Box::new(event),
         });
     };
+    // The session's preset picks for it too, by its kind.
     let child = RunCtx {
         app: cx.app,
         model: cx.model,
         effort: cx.effort,
+        preset: cx.preset,
+        agent: Some(&kind.id),
         system: &system,
         tools: &tools,
         emit: &emit,
@@ -126,15 +129,49 @@ mod tests {
     use serde_json::{Value, json};
 
     use crate::agent::testing::{Harness, last_message, reply, shared, text};
+    use crate::api::models::Model;
     use crate::conversation::message::Message;
     use crate::conversation::message::Part;
     use crate::live::event::{AgentEvent, Outcome};
+    use crate::models::{Catalog, Source, preset};
     use crate::session::list;
     use crate::session::transcript::Transcript;
 
     fn task(prompt: &str) -> String {
         let args = json!({"description": "look", "prompt": prompt, "subagent_type": "explore"});
         reply("", &[("c1", "task", args)], "tool_calls")
+    }
+
+    #[tokio::test]
+    async fn a_preset_picks_each_request_by_the_kind_that_sends_it() {
+        let mut h = Harness::new(vec![task("find it"), text("found"), text("done")]).await;
+        let named = |id: &str| Model {
+            id: id.into(),
+            ..crate::testing::model(true)
+        };
+        let catalog = Catalog {
+            models: vec![named("cheap"), named("strong")],
+            source: Source::Snapshot,
+            fetched_at: None,
+            note: None,
+        };
+        let text = "[[rule]]\nwhen = { agent = [\"explore\"] }\nmodel = \"cheap\"\neffort = \"low\"\n\
+                    [[rule]]\nmodel = \"strong\"";
+        h.preset = Some(preset::parsed("p", text).resolve(&catalog).unwrap());
+        let (ended, transcript, _) = h.run(&shared("plan"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let requests = h.requests();
+        let sent: Vec<(&str, Option<&str>)> = requests
+            .iter()
+            .map(|r| (r["model"].as_str().unwrap(), r["reasoning_effort"].as_str()))
+            .collect();
+        assert_eq!(
+            sent,
+            [("strong", None), ("cheap", Some("low")), ("strong", None)]
+        );
+        // The prompt records the preset, so going on with the session picks the same way.
+        let (_, resumed) = Transcript::open(transcript.path().unwrap()).unwrap();
+        assert_eq!(resumed.state.unwrap().model, "p");
     }
 
     fn tool_names(request: &Value) -> Vec<String> {
