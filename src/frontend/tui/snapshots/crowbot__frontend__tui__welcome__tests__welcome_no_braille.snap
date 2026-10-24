@@ -12,6 +12,6 @@ expression: "snapshot(&render(&info(false), 100))"
 [accent]   ..################.[/]    [muted]Shift+Tab cycles MANUAL → PLAN → AUTO[/]
 [accent]     *############' :'[/]    [muted]Enter sends · while working, Enter queues and Tab steers[/]
 [accent]        .*######"'[/]        [muted]Shift+Enter or Ctrl+J starts a new line[/]
-[accent]      .*####*# *..[/]        [muted]Right-click copies a message[/]
+[accent]      .*####*# *..[/]        [muted]Drag or right-click to copy[/]
 [accent]       ' ''   #*'#[/]     
 [accent]              '[/]

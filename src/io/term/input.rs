@@ -13,10 +13,21 @@ pub enum Input {
     Resize(usize, usize),
     /// Wheel notches: negative is up.
     Scroll(isize),
-    /// A press on a screen row, zero-based.
+    /// A press on a screen cell, zero-based.
     Click {
         row: usize,
+        column: usize,
         button: Button,
+    },
+    /// The pointer moved to a cell with the left button held.
+    Drag {
+        row: usize,
+        column: usize,
+    },
+    /// The left button let go over a cell.
+    Release {
+        row: usize,
+        column: usize,
     },
 }
 
@@ -32,22 +43,30 @@ pub fn inputs() -> impl Stream<Item = Input> {
 }
 
 /// Key releases are dropped (Windows reports one for every key, which would otherwise act
-/// twice), and so are mouse moves, drags and the middle button.
+/// twice), and so are bare mouse moves, the right button's release and the middle button.
 fn input(event: Event) -> Option<Input> {
     match event {
         Event::Key(key) if key.kind != KeyEventKind::Release => Some(Input::Key(key)),
         Event::Paste(text) => Some(Input::Paste(text)),
         Event::Resize(w, h) => Some(Input::Resize(w as usize, h as usize)),
         Event::Mouse(mouse) => {
+            let (row, column) = (mouse.row as usize, mouse.column as usize);
             let button = match mouse.kind {
                 MouseEventKind::ScrollUp => return Some(Input::Scroll(-1)),
                 MouseEventKind::ScrollDown => return Some(Input::Scroll(1)),
+                MouseEventKind::Drag(MouseButton::Left) => {
+                    return Some(Input::Drag { row, column });
+                }
+                MouseEventKind::Up(MouseButton::Left) => {
+                    return Some(Input::Release { row, column });
+                }
                 MouseEventKind::Down(MouseButton::Left) => Button::Left,
                 MouseEventKind::Down(MouseButton::Right) => Button::Right,
                 _ => return None,
             };
             Some(Input::Click {
-                row: mouse.row as usize,
+                row,
+                column,
                 button,
             })
         }
@@ -70,8 +89,14 @@ mod tests {
     }
 
     #[test]
-    fn both_buttons_and_the_wheel_arrive_and_the_rest_of_the_mouse_does_not() {
-        let click = |button| Some(Input::Click { row: 4, button });
+    fn both_buttons_the_wheel_and_a_left_drag_arrive_and_the_rest_of_the_mouse_does_not() {
+        let click = |button| {
+            Some(Input::Click {
+                row: 4,
+                column: 3,
+                button,
+            })
+        };
         assert_eq!(
             input(mouse(MouseEventKind::Down(MouseButton::Left), 4)),
             click(Button::Left)
@@ -85,12 +110,20 @@ mod tests {
             Some(Input::Scroll(-1))
         );
         assert_eq!(
-            input(mouse(MouseEventKind::Down(MouseButton::Middle), 4)),
-            None
+            input(mouse(MouseEventKind::Drag(MouseButton::Left), 4)),
+            Some(Input::Drag { row: 4, column: 3 })
         );
         assert_eq!(
-            input(mouse(MouseEventKind::Drag(MouseButton::Left), 4)),
-            None
+            input(mouse(MouseEventKind::Up(MouseButton::Left), 4)),
+            Some(Input::Release { row: 4, column: 3 })
         );
+        for ignored in [
+            MouseEventKind::Down(MouseButton::Middle),
+            MouseEventKind::Drag(MouseButton::Right),
+            MouseEventKind::Up(MouseButton::Right),
+            MouseEventKind::Moved,
+        ] {
+            assert_eq!(input(mouse(ignored, 4)), None, "{ignored:?}");
+        }
     }
 }
