@@ -1,0 +1,30 @@
+# What the claims table (src/agent/claims.rs) says; {placeholders} are filled in. A subagent's
+# scope is the paths it may change, as patterns where `*` matches anything (slashes included) and
+# a plain directory covers everything under it.
+
+# The start of every subagent's first message: who else is at work, and the rules.
+roster = """
+Other subagents started by the same agent may be working at the same time and changing files. Change files only through `edit`, `write` and `fs`, never with the shell, so that what you change is known.
+{scope}
+{others}
+Before changing a file outside your scope, call `claim` with its path: it is granted when no one else holds it, and otherwise says who does, so you can wait for them (`wait: true`), work around the file, or say in your reply what is left for that file."""
+own_scope = "Your scope, the files you may change: {scope}."
+no_scope = "You were given no scope: you may change any file no other subagent holds."
+others = "Working alongside you:\n{list}"
+alone = "No other subagent is working now."
+holder = "- {kind} ({model}), \"{job}\": {scope}"
+nothing_held = "no files held"
+
+# A change refused at the gate.
+outside = "`{path}` is outside your scope ({scope}). Call `claim` with it first."
+held = "`{path}` is held by another subagent: {kind}, \"{job}\" (scope {scope}). Leave it to them, or `claim` it with `wait: true` to change it once they finish."
+
+# The `claim` tool.
+granted = "Granted: you may now change {paths}."
+conflict = "Not granted: {path} is held by {kind}, \"{job}\" (scope {scope}). Wait for it with `wait: true`, or leave that file and say so in your reply."
+deadlock = "Not granted: {kind}, \"{job}\", is itself waiting for files you hold, so waiting would never end. Finish or give up the work on your own files first, or leave {path} and say so in your reply."
+not_subagent = "Only a subagent claims files; the agent the user works with changes any file no subagent holds."
+cancelled = "The wait for {path} was interrupted."
+
+# A task whose scope overlaps a running subagent's.
+launch_conflict = "Not started: its scope {path} overlaps {kind}'s, \"{job}\" (scope {scope}), which is still working. Give it a scope that does not overlap, or wait for that one to finish."

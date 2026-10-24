@@ -4,12 +4,15 @@ use std::sync::LazyLock;
 
 use serde::Deserialize;
 
+use crate::agent::{kinds, roles};
 use crate::config::limits;
 use crate::config::paths::Paths;
+use crate::config::subagents::Subagents;
 use crate::data;
 use crate::io;
 use crate::mcp::Connected;
-use crate::text::template;
+use crate::models::Catalog;
+use crate::text::{template, units};
 
 const BASE: &str = data::raw!("prompts/system.md");
 const ENV: &str = data::raw!("prompts/env.md");
@@ -44,8 +47,30 @@ struct Forums {
 }
 
 /// Reminders a mode can name in data/modes/*.toml; one line per prompt file. `servers` are the
-/// session's MCP servers; `headless` is a run nobody can answer (`-p`, `--json`).
-pub fn build(paths: &Paths, model: &str, servers: &[Connected], headless: bool) -> String {
+/// session's MCP servers; `headless` is a run nobody can answer (`-p`, `--json`); `subagents` is
+/// `subagent_models`' text.
+pub fn build(
+    paths: &Paths,
+    model: &str,
+    servers: &[Connected],
+    headless: bool,
+    subagents: &str,
+) -> String {
+    let env = env(paths, model);
+    let parts = [
+        Some(BASE.trim_end().to_owned()),
+        forums(paths),
+        mcp(servers),
+        project(paths),
+        Some(subagents.to_owned()).filter(|s| !s.is_empty()),
+        headless.then(|| HEADLESS.trim_end().to_owned()),
+        Some(env),
+    ];
+    parts.into_iter().flatten().collect::<Vec<_>>().join("\n\n")
+}
+
+/// The environment block: where, when, and on which model.
+pub fn env(paths: &Paths, model: &str) -> String {
     let cwd = paths.project.display().to_string();
     let date = io::clock::today();
     let env = template::fill(
@@ -57,15 +82,73 @@ pub fn build(paths: &Paths, model: &str, servers: &[Connected], headless: bool) 
             ("model", model),
         ],
     );
-    let parts = [
-        Some(BASE.trim_end().to_owned()),
-        forums(paths),
-        mcp(servers),
-        project(paths),
-        headless.then(|| HEADLESS.trim_end().to_owned()),
-        Some(env.trim_end().to_owned()),
-    ];
-    parts.into_iter().flatten().collect::<Vec<_>>().join("\n\n")
+    env.trim_end().to_owned()
+}
+
+static SUBAGENTS: LazyLock<SubagentModels> = data::load!("prompts/subagents.toml");
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SubagentModels {
+    frame: String,
+    kind: String,
+    model: String,
+}
+
+/// What each kind of subagent runs on and what a `task` call may name instead, for the system
+/// prompt; `chat` is the model the session uses.
+pub fn subagent_models(catalog: &Catalog, subagents: &Subagents, chat: &str) -> String {
+    let words = &*SUBAGENTS;
+    let kinds: Vec<String> = kinds::all()
+        .iter()
+        .map(|k| {
+            let (model, _) = roles::chosen(Some(&k.id), None, subagents, chat);
+            template::fill(&words.kind, &[("kind", &k.id), ("model", model)])
+        })
+        .collect();
+    let allowed = |id: &str| {
+        subagents
+            .choices
+            .as_ref()
+            .is_none_or(|c| c.iter().any(|m| m == id))
+    };
+    let models: Vec<String> = catalog
+        .models
+        .iter()
+        .filter(|m| allowed(&m.id))
+        .map(|m| {
+            template::fill(
+                &words.model,
+                &[
+                    ("id", &m.id),
+                    ("input", &units::usd(m.pricing.input_per_1m_usd)),
+                    ("output", &units::usd(m.pricing.output_per_1m_usd)),
+                    ("context", &units::tokens(m.context_window)),
+                ],
+            )
+        })
+        .collect();
+    template::fill(
+        &words.frame,
+        &[("kinds", &kinds.join("\n")), ("models", &models.join("\n"))],
+    )
+    .trim()
+    .to_owned()
+}
+
+/// `system`, built for `from`, as told to a run on `to`: only the env block's model line changes.
+pub fn retarget(system: &str, from: &str, to: &str) -> String {
+    let Some(line) = ENV.lines().find(|l| l.contains("{model}")) else {
+        return system.to_owned();
+    };
+    let old = template::fill(line, &[("model", from)]);
+    match system.rfind(&old) {
+        Some(at) if from != to => {
+            let new = template::fill(line, &[("model", to)]);
+            format!("{}{new}{}", &system[..at], &system[at + old.len()..])
+        }
+        _ => system.to_owned(),
+    }
 }
 
 /// The forums this machine can browse, each with its hint, so the model knows to look there.
@@ -159,7 +242,7 @@ mod tests {
             server("long", Some("x".repeat(max + 10))),
             server("quiet", None),
         ];
-        let prompt = build(&paths, "m", &servers, false);
+        let prompt = build(&paths, "m", &servers, false, "");
         let named = prompt.find("The user connected these MCP servers: ida, long, quiet.");
         let ida = prompt.find("<mcp-server-instructions server=\"ida\">\nOpen a database first.");
         let project = prompt.find("<project-instructions");
@@ -168,17 +251,17 @@ mod tests {
         assert!(!prompt.contains("server=\"quiet\""), "{prompt}");
         assert!(prompt.contains("they run past"), "{prompt}");
         assert!(!prompt.contains(&"x".repeat(max + 1)));
-        assert!(!build(&paths, "m", &[], false).contains("<mcp-servers>"));
+        assert!(!build(&paths, "m", &[], false, "").contains("<mcp-servers>"));
     }
 
     #[test]
     fn a_headless_run_is_told_nobody_will_answer() {
         let root = tempfile::tempdir().unwrap();
         let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
-        let headless = build(&paths, "m", &[], true);
+        let headless = build(&paths, "m", &[], true, "");
         let at = headless.find("<headless>").unwrap();
         assert!(at < headless.find("<env>").unwrap(), "{headless}");
-        assert!(!build(&paths, "m", &[], false).contains("<headless>"));
+        assert!(!build(&paths, "m", &[], false, "").contains("<headless>"));
     }
 
     #[test]
@@ -193,12 +276,12 @@ mod tests {
             )
             .unwrap();
         };
-        let bare = build(&paths, "m", &[], false);
+        let bare = build(&paths, "m", &[], false, "");
         assert!(!bare.contains("<project-instructions"));
         write("CLAUDE.md", "Use tabs.");
-        assert!(build(&paths, "m", &[], false).contains("file=\"CLAUDE.md\">\nUse tabs."));
+        assert!(build(&paths, "m", &[], false, "").contains("file=\"CLAUDE.md\">\nUse tabs."));
         write("AGENTS.md", "Run make test.");
-        let prompt = build(&paths, "m", &[], false);
+        let prompt = build(&paths, "m", &[], false, "");
         assert!(
             prompt.contains("Run make test.") && !prompt.contains("Use tabs."),
             "{prompt}"
@@ -206,7 +289,7 @@ mod tests {
         assert!(prompt.find("Run make test.") < prompt.find("<env>"));
         let max = limits::get().agent.instructions_bytes.value;
         write("AGENTS.md", &"é".repeat(max));
-        let prompt = build(&paths, "m", &[], false);
+        let prompt = build(&paths, "m", &[], false, "");
         assert!(prompt.contains("is left out"), "the cut is not said");
         assert!(prompt.len() < bare.len() + max + 1000);
     }
@@ -217,7 +300,7 @@ mod tests {
         let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
         // With no store yet, the seed is what there is to browse.
         let seed = &crate::forums::data().seed[0];
-        let prompt = build(&paths, "m", &[], false);
+        let prompt = build(&paths, "m", &[], false, "");
         assert!(
             prompt.contains(&format!(
                 "- {} ({})\n  {}",
@@ -229,6 +312,50 @@ mod tests {
         );
         assert!(prompt.find("<forums>") < prompt.find("<env>"));
         crate::forums::store::remove(&paths, seed).unwrap();
-        assert!(!build(&paths, "m", &[], false).contains("<forums>"));
+        assert!(!build(&paths, "m", &[], false, "").contains("<forums>"));
+    }
+
+    #[test]
+    fn a_subagent_on_another_model_is_told_its_own_and_nothing_else_changes() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = Paths::at(root.path().join("home"), root.path().join("proj"));
+        let prompt = build(&paths, "chat-model", &[], false, "");
+        let child = retarget(&prompt, "chat-model", "cheap-model");
+        assert!(
+            child.contains("Model: cheap-model") && !child.contains("chat-model"),
+            "{child}"
+        );
+        assert_eq!(
+            child.len() + "chat-model".len(),
+            prompt.len() + "cheap-model".len()
+        );
+        assert_eq!(retarget(&prompt, "chat-model", "chat-model"), prompt);
+    }
+
+    #[test]
+    fn the_subagent_models_section_names_each_kinds_model_and_only_the_allowed_choices() {
+        let catalog = Catalog {
+            models: crate::models::snapshot(),
+            source: crate::models::Source::Snapshot,
+            fetched_at: None,
+            note: None,
+        };
+        let (a, b) = (&catalog.models[0].id, &catalog.models[1].id);
+        let mut subagents = Subagents {
+            choices: Some(vec![a.clone()]),
+            ..Subagents::default()
+        };
+        subagents.set(
+            Some("explore"),
+            crate::config::subagents::Role {
+                model: Some(b.clone()),
+                effort: None,
+            },
+        );
+        let text = subagent_models(&catalog, &subagents, "chat-model");
+        assert!(text.contains(&format!("- `explore`: {b}")), "{text}");
+        assert!(text.contains("- `general`: chat-model"), "{text}");
+        assert!(text.contains(&format!("- `{a}`: ")), "{text}");
+        assert!(!text.contains(&format!("- `{b}`: ")), "{text}");
     }
 }

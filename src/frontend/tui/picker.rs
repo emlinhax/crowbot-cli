@@ -1,9 +1,10 @@
-//! A table to pick one row of, in a card in place of the editor: `/models` picks the model for
-//! the rest of the session, `/resume` a session to go on with. ↑↓ move, → or Enter picks, Esc or
-//! ← closes.
+//! A table to pick one row of, in a card in place of the editor: `/models` picks a model (the
+//! roles card in roles.rs drives it for a subagent), `/resume` a session to go on with. ↑↓ move,
+//! → or Enter picks, Esc or ← closes.
 
 use std::path::PathBuf;
 
+use crate::agent::roles::RoleId;
 use crate::frontend::tui::boxed::{self, boxed};
 use crate::frontend::tui::card::{Card, Next};
 use crate::frontend::tui::keymap::Action;
@@ -26,16 +27,99 @@ pub struct Picker {
     drop: Vec<usize>,
     selected: usize,
     note: Option<String>,
-    title: &'static str,
-    hint: &'static str,
+    title: String,
+    hint: String,
 }
 
-enum Pick {
+#[derive(Clone, Debug, PartialEq)]
+pub enum Pick {
     Model(String),
     Session(PathBuf),
+    /// Drop a subagent's own choice and take the one it inherits.
+    Inherit,
+    Role(RoleId),
+    /// An effort level; `None` inherits.
+    Effort(Option<String>),
+}
+
+/// What a key did to the list.
+pub enum Chose {
+    Stay,
+    Back,
+    Picked(Pick),
+}
+
+/// A table's layout, header row first, for `Picker::table`.
+pub struct Table {
+    pub rows: Vec<Vec<Line>>,
+    pub aligns: Vec<Align>,
+    pub drop: Vec<usize>,
 }
 
 impl Picker {
+    /// `picks`, one per row of `table` after its header, opened on `selected`.
+    pub fn table(
+        picks: Vec<Pick>,
+        table: Table,
+        selected: usize,
+        (title, hint): (String, String),
+        note: Option<String>,
+    ) -> Self {
+        Self {
+            picks,
+            rows: table.rows,
+            aligns: table.aligns,
+            drop: table.drop,
+            selected,
+            note,
+            title,
+            hint,
+        }
+    }
+
+    /// The model catalog, opened on `current`; with `inherit`, a first row that inherits, its
+    /// cells those words.
+    pub fn models_for(catalog: &Catalog, current: Option<&str>, inherit: Option<String>) -> Self {
+        let mut picker = Self::models(catalog, current.unwrap_or_default());
+        if let Some(words) = inherit {
+            let columns = picker.rows.first().map_or(1, Vec::len);
+            let mut row = vec![Line::default(); columns];
+            row[columns.min(2) - 1] = Line::styled(&words, Style::fg("muted"));
+            picker.rows.insert(1, row);
+            picker.picks.insert(0, Pick::Inherit);
+            picker.selected = match current {
+                Some(_) => picker.selected + 1,
+                None => 0,
+            };
+        }
+        picker
+    }
+
+    /// The same list under another title and hint.
+    pub fn titled(self, title: String, hint: String) -> Self {
+        Self {
+            title,
+            hint,
+            ..self
+        }
+    }
+
+    /// Moves or picks for `action`.
+    pub fn choose(&mut self, action: Option<Action>) -> Chose {
+        match action {
+            Some(step @ (Action::Up | Action::Down)) => {
+                self.selected = rows::step(self.selected, step, self.picks.len(), false);
+                Chose::Stay
+            }
+            Some(Action::Right | Action::Submit) => match self.picks.get(self.selected) {
+                Some(pick) => Chose::Picked(pick.clone()),
+                None => Chose::Back,
+            },
+            Some(Action::Left | Action::Escape) => Chose::Back,
+            _ => Chose::Stay,
+        }
+    }
+
     /// The model catalog, opened on the model in use.
     pub fn models(catalog: &Catalog, current: &str) -> Self {
         let words = &ui::get().picker;
@@ -54,8 +138,8 @@ impl Picker {
                 .position(|m| m.id == current)
                 .unwrap_or(0),
             note: Some(models::source_note(catalog)),
-            title: &words.title,
-            hint: &words.hint,
+            title: words.title.clone(),
+            hint: words.hint.clone(),
         }
     }
 
@@ -69,29 +153,21 @@ impl Picker {
             drop: sessions::drop_order(),
             selected: 0,
             note: None,
-            title: &words.title,
-            hint: &words.hint,
+            title: words.title.clone(),
+            hint: words.hint.clone(),
         }
     }
 }
 
 impl Card for Picker {
     fn key(&mut self, action: Option<Action>, _key: &KeyEvent) -> Next {
-        match action {
-            Some(step @ (Action::Up | Action::Down)) => {
-                self.selected = rows::step(self.selected, step, self.picks.len(), false);
-            }
-            Some(Action::Right | Action::Submit) => {
-                return match self.picks.get(self.selected) {
-                    Some(Pick::Model(id)) => Next::UseModel(id.clone()),
-                    Some(Pick::Session(path)) => Next::Resume(path.clone()),
-                    None => Next::Close(None),
-                };
-            }
-            Some(Action::Left | Action::Escape) => return Next::Close(None),
-            _ => {}
+        match self.choose(action) {
+            Chose::Stay => Next::Stay,
+            Chose::Picked(Pick::Model(id)) => Next::UseModel(id),
+            Chose::Picked(Pick::Session(path)) => Next::Resume(path),
+            // The rest are the roles card's to act on.
+            Chose::Picked(_) | Chose::Back => Next::Close(None),
         }
-        Next::Stay
     }
 
     fn render(&self, width: usize) -> Vec<Line> {
@@ -108,11 +184,11 @@ impl Card for Picker {
             body.push(Line::default());
             body.push(Line::styled(note, Style::fg("muted")));
         }
-        let title = Line::styled(self.title, Style::default().bold());
+        let title = Line::styled(&self.title, Style::default().bold());
         // As wide as the list needs, not the whole terminal.
         let needed = boxed::outer(body.iter().map(Line::width).max().unwrap_or(0));
         let mut out = boxed(title, &body, needed.min(width));
-        out.push(boxed::hint(self.hint, width));
+        out.push(boxed::hint(&self.hint, width));
         out
     }
 }

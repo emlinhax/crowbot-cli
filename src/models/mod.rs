@@ -24,6 +24,7 @@ pub enum Source {
     Snapshot,
 }
 
+#[derive(Clone)]
 pub struct Catalog {
     pub models: Vec<Model>,
     pub source: Source,

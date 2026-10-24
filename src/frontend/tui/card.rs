@@ -35,6 +35,12 @@ pub enum Next {
     Close(Option<String>),
     /// Use this model from the next turn on; the card closes.
     UseModel(String),
+    /// Subagents of `kind` (every kind when `None`) run on `role` from the next task on; the
+    /// card closes.
+    Assign {
+        kind: Option<String>,
+        role: crate::config::subagents::Role,
+    },
     /// Go on with the session in this file; the card closes.
     Resume(std::path::PathBuf),
 }

@@ -5,6 +5,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
 use super::{Command, Ctx, Effect, Outcome, Scope, Spec};
+use crate::agent::roles::RoleId;
 use crate::data;
 use crate::io::term;
 use crate::models::table::{aligns, drop_order, mark, rows, source_note};
@@ -20,6 +21,7 @@ static TEXT: LazyLock<Text> = data::load!("commands/models.toml", "text");
 struct Text {
     footnote: String,
     missing: String,
+    unknown_role: String,
 }
 
 pub struct Models;
@@ -36,14 +38,19 @@ impl Command for Models {
     ) -> BoxFuture<'a, anyhow::Result<Outcome>> {
         Box::pin(async move {
             let mut refresh = false;
+            let mut role = None;
             for arg in args {
                 match arg.as_str() {
                     "--refresh" => refresh = true,
+                    // A role names what the session's card opens on; the list has none.
+                    named if role.is_none() && cx.scope == Scope::Session => {
+                        role = Some(RoleId::parse(named).ok_or_else(|| unknown_role(named))?);
+                    }
                     _ => return Err(cx.usage(&SPEC)),
                 }
             }
             if cx.scope == Scope::Session {
-                return Ok(Effect::PickModel { refresh }.into());
+                return Ok(Effect::PickModel { refresh, role }.into());
             }
             let catalog = models::load(&cx.app.api, &cx.app.paths, refresh).await;
             // Piped, the table keeps every column; a terminal gets what fits it.
@@ -55,6 +62,17 @@ impl Command for Models {
             Ok(render(&catalog, &cx.app.settings.model, width).into())
         })
     }
+}
+
+fn unknown_role(named: &str) -> anyhow::Error {
+    let roles: Vec<String> = RoleId::all()
+        .iter()
+        .map(|r| format!("`{}`", r.id()))
+        .collect();
+    anyhow::anyhow!(fill(
+        &TEXT.unknown_role,
+        &[("role", named), ("roles", &roles.join(", "))]
+    ))
 }
 
 /// The table laid out in `width` cells, then where the list came from.

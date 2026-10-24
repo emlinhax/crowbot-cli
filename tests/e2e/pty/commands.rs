@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use super::harness::{BACKSPACE, DOWN, ENTER, LEFT, TAB, in_session};
+use super::harness::{BACKSPACE, DOWN, ENTER, ESC, LEFT, TAB, in_session};
 use crate::Sandbox;
 use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
 
@@ -30,7 +30,7 @@ async fn a_slash_opens_the_command_popup_which_completes_and_runs() {
         s.send(DOWN);
         s.send(ENTER);
         s.wait_for("╭ Models");
-        s.wait_for("fake-coder");
+        s.wait_for("subagents (every kind)");
         s.wait_gone("╭ commands");
         let picked = s.contents();
         // ← closes the picker, like Esc.
@@ -140,7 +140,10 @@ async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
     in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.submit("/models");
         s.wait_for("╭ Models");
-        // The list opens on the model in use; the next one down is picked with Enter.
+        // The roles list opens on the chat; its models open on the model in use, and the next
+        // one down is picked with Enter.
+        s.send(ENTER);
+        s.wait_for("chat: model");
         s.send(DOWN);
         s.send(ENTER);
         s.wait_for("Model: fake-coder for this session.");
@@ -150,6 +153,62 @@ async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
     })
     .await;
     assert_eq!(fake.chat_bodies()[0]["model"], "fake-coder");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn slash_models_puts_a_kind_on_its_own_model_kept_in_prefs_and_esc_changes_nothing() {
+    let fake = Fake::start().await;
+    let ended = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.submit("/models");
+        s.wait_for("subagents (every kind)");
+        // Esc steps back from a model list to the roles, then closes them, saving nothing.
+        s.send(ENTER);
+        s.wait_for("chat: model");
+        s.send(ESC);
+        s.wait_for("subagents (every kind)");
+        s.send(ESC);
+        s.wait_gone("╭ Models");
+        // chat, subagents, explore; then inherit, deepseek, fake-coder; then inherit its effort.
+        s.submit("/models");
+        s.wait_for("subagents (every kind)");
+        // Each Enter waits for the cursor to land, so a quick run of keys never reads as a paste.
+        s.send(DOWN);
+        s.send(DOWN);
+        s.wait_for("›   explore");
+        s.send(ENTER);
+        s.wait_for("explore: model");
+        s.send(DOWN);
+        s.send(DOWN);
+        s.wait_for("›   fake-coder");
+        s.send(ENTER);
+        s.wait_for("explore: effort");
+        s.send(ENTER);
+        s.wait_for("explore runs on fake-coder");
+        // The bar's chat model never moved.
+        assert!(
+            s.bottom_row().contains("deepseek-v4.1-flash"),
+            "{}",
+            s.contents()
+        );
+        s.submit("/status");
+        s.wait_for("explore on fake-coder");
+        s.contents()
+    })
+    .await;
+    assert!(
+        ended
+            .out
+            .contains("explore on fake-coder (subagents.kinds.explore)"),
+        "{}",
+        ended.out
+    );
+    let prefs = std::fs::read_to_string(ended.sandbox.home().join("prefs.json")).unwrap();
+    let prefs: serde_json::Value = serde_json::from_str(&prefs).unwrap();
+    assert_eq!(
+        prefs["subagents"]["kinds"]["explore"]["model"], "fake-coder",
+        "{prefs}"
+    );
+    assert!(prefs.get("model").is_none(), "{prefs}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

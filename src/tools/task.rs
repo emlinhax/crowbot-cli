@@ -9,8 +9,10 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::{Check, Output, Refusal, Spec, Tool, ToolCx};
-use crate::agent::child::{self, Done};
+use crate::agent::child::{self, Done, Job};
+use crate::agent::claims;
 use crate::agent::kinds::{self, Kind};
+use crate::agent::roles::Source;
 use crate::data;
 use crate::live::event::Outcome;
 use crate::permission::catalog;
@@ -20,10 +22,18 @@ use crate::text::template::fill;
 /// The tool's name, which a subagent at the depth limit is never given.
 pub const NAME: &str = "task";
 
-static SPEC: LazyLock<Spec> = LazyLock::new(|| {
+/// The spec for the kinds there are now; built with the tool, since the user's agent files add
+/// kinds after the built-in ones are known.
+fn spec() -> Spec {
     let agents: Vec<String> = kinds::all()
         .iter()
-        .map(|k| fill(&TEXT.agent, &[("id", &k.id), ("summary", &k.summary)]))
+        .map(|k| match &k.when {
+            Some(when) => fill(
+                &TEXT.agent_when,
+                &[("id", &k.id), ("summary", &k.summary), ("when", when)],
+            ),
+            None => fill(&TEXT.agent, &[("id", &k.id), ("summary", &k.summary)]),
+        })
         .collect();
     let description = fill(
         data::raw!("tools/task.md"),
@@ -33,7 +43,7 @@ static SPEC: LazyLock<Spec> = LazyLock::new(|| {
     let ids: Vec<&str> = kinds::all().iter().map(|k| k.id.as_str()).collect();
     spec.parameters["properties"]["subagent_type"]["enum"] = json!(ids);
     spec
-});
+}
 
 static TEXT: LazyLock<Text> = data::load!("tools/task.toml");
 
@@ -41,12 +51,14 @@ static TEXT: LazyLock<Text> = data::load!("tools/task.toml");
 #[serde(deny_unknown_fields)]
 struct Text {
     agent: String,
+    agent_when: String,
     unknown_agent: String,
     no_answer: String,
     turn_limit: String,
     failed: String,
     rejected: String,
     no_run: String,
+    runs_on: String,
 }
 
 #[derive(Deserialize)]
@@ -54,15 +66,27 @@ pub struct Args {
     description: String,
     prompt: String,
     subagent_type: String,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    scope: Vec<String>,
 }
 
-pub struct Task;
+pub struct Task {
+    spec: Spec,
+}
+
+impl Task {
+    pub fn new() -> Self {
+        Self { spec: spec() }
+    }
+}
 
 impl Tool for Task {
     type Args = Args;
 
     fn spec(&self) -> &Spec {
-        &SPEC
+        &self.spec
     }
 
     /// The subagent stops with its parent, so its last turn and its cost are kept.
@@ -70,22 +94,42 @@ impl Tool for Task {
         true
     }
 
-    fn check(&self, args: &Args, _cx: &ToolCx<'_>) -> Result<Check, Refusal> {
+    /// A model that cannot be had is refused here, before anyone is asked or anything is sent.
+    fn check(&self, args: &Args, cx: &ToolCx<'_>) -> Result<Check, Refusal> {
         let kind = kind(&args.subagent_type)?;
-        Ok(Check::new(vec![Ask::new(
-            catalog::TASK.name,
-            kind.id.clone(),
-        )]))
+        let check = Check::new(vec![Ask::new(catalog::TASK.name, kind.id.clone())]);
+        let Some(run) = cx.run else {
+            return Ok(check);
+        };
+        let on = run.subagent(kind, args.model.as_deref())?;
+        Ok(match on.source {
+            Source::Chat => check,
+            from => check.with_preview(fill(
+                &TEXT.runs_on,
+                &[("model", &on.model.id), ("from", &from.label(&kind.id))],
+            )),
+        })
     }
 
     fn run<'a>(&'a self, args: Args, cx: &'a ToolCx<'a>) -> BoxFuture<'a, Result<Output, String>> {
         Box::pin(async move {
             let run = cx.run.ok_or_else(|| TEXT.no_run.clone())?;
             let kind = kind(&args.subagent_type).map_err(|e| e.to_string())?;
-            let done = child::run_child(run, cx.call_id, kind, args.prompt).await;
+            let on = run.subagent(kind, args.model.as_deref())?;
+            let scope: Vec<String> = args.scope.iter().map(|p| claims::normalize(p)).collect();
+            let job = Job {
+                description: args.description.clone(),
+                prompt: args.prompt,
+                scope: scope.clone(),
+            };
+            let done = child::run_child(run, cx.call_id, kind, &on, job).await?;
             let out = said(&done).with_usage(done.usage);
             Ok(out.with_details(json!({
                 "agent": kind.id,
+                "model": on.model.id,
+                "effort": on.effort,
+                "model_from": on.source.label(&kind.id),
+                "scope": scope,
                 "description": args.description,
                 "session": done.session.display().to_string(),
                 "outcome": done.ended.outcome,
@@ -138,7 +182,7 @@ mod tests {
 
     #[test]
     fn the_kinds_fill_the_description_and_the_choices() {
-        let spec = &*SPEC;
+        let spec = &spec();
         assert!(
             spec.description.contains("- `explore`: "),
             "{}",

@@ -4,7 +4,7 @@
 {"call_id":"c1","event":{"kind":"text","text":"found it","type":"delta"},"type":"child"}
 {"call_id":"c1","event":{"message":{"effort":null,"error":null,"finish":"done","model":"deepseek-v4.1-flash","parts":[{"text":"found it","type":"text"}],"request_id":"req_fake","usage":{"cached":0,"cost_micros":4,"input":100,"output":10,"reasoning":0}},"type":"message_end"},"type":"child"}
 {"call_id":"c1","event":{"outcome":"done","turns":1,"type":"run_end"},"type":"child"}
-{"result":{"asks":[{"patterns":["explore"],"permission":"task"}],"call_id":"c1","content":"found it","details":{"agent":"explore","calls":0,"description":"look","outcome":"done","session":"{session}","turns":1},"is_error":false,"name":"task","usage":{"cached":0,"cost_micros":4,"input":100,"output":10,"reasoning":0}},"type":"tool_end"}
+{"result":{"asks":[{"patterns":["explore"],"permission":"task"}],"call_id":"c1","content":"found it","details":{"agent":"explore","calls":0,"description":"look","effort":null,"model":"deepseek-v4.1-flash","model_from":"the chat model","outcome":"done","scope":[],"session":"{session}","turns":1},"is_error":false,"name":"task","usage":{"cached":0,"cost_micros":4,"input":100,"output":10,"reasoning":0}},"type":"tool_end"}
 {"kind":"text","text":"It is found.","type":"delta"}
 {"message":{"effort":null,"error":null,"finish":"done","model":"deepseek-v4.1-flash","parts":[{"text":"It is found.","type":"text"}],"request_id":"req_fake","usage":{"cached":0,"cost_micros":4,"input":100,"output":10,"reasoning":0}},"type":"message_end"}
 {"outcome":"done","turns":2,"type":"run_end"}

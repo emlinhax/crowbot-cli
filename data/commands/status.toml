@@ -8,6 +8,7 @@ scope = ["session"]
 body = """
 - Account: {account}
 - Model: {model}
+- Subagents: {subagents}
 - Mode: {mode}
 - Context: {context}
 - This session: about {cost}
@@ -22,6 +23,8 @@ context = "{pct}% of the window, as of the last request"
 no_context = "nothing sent yet"
 undo_files = "takes back a prompt and the files it changed"
 undo_conversation = "takes back a prompt, not its files: {why}"
+subagent = "{kind} on {model} ({from})"
+subagent_effort = "{kind} on {model}, effort {effort} ({from})"
 mcp_none = "no servers in config.toml"
 # `{name}` below is one of these: the server's name, or it and the apps it was found in.
 mcp_name = "`{name}`"

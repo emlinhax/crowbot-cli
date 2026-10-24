@@ -137,10 +137,17 @@ async fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
     if session {
         install::offer(&app.paths)?;
     }
-    if let Some(untrusted) = app.settings.untrusted.take()
+    let agents = crate::agent::kinds::left_out(&app.paths);
+    let untrusted = trust::with_agents(&app.paths, app.settings.untrusted.take(), &agents);
+    if let Some(untrusted) = untrusted
         && trust::settle(&app.paths, &untrusted, session)?
     {
+        // Trusted now: the project's agent files count too.
+        app.agent_notes = crate::agent::kinds::init(&app.paths);
         app.settings = settings::load(&app.paths, &flags)?;
+    }
+    for note in std::mem::take(&mut app.agent_notes) {
+        term::warn(&note);
     }
     // Only a run starts servers, so only a run looks for those other apps list.
     if command.is_none() {

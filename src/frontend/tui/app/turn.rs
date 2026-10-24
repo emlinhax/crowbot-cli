@@ -5,9 +5,11 @@ use super::{Tui, Turn, Turns};
 use crate::agent::{RunCtx, compact, run, system_prompt};
 use crate::api::models::Model;
 use crate::config::paths::Paths;
+use crate::config::subagents::Subagents;
 use crate::conversation::message::Part;
 use crate::frontend::tui::progress::Progress;
 use crate::io::clock;
+use crate::models::Catalog;
 use crate::session::transcript::Transcript;
 
 /// What a turn does with the transcript it is lent.
@@ -32,6 +34,8 @@ impl<'a> Tui<'a> {
                 app,
                 model: &next.model,
                 effort: next.asked.as_deref(),
+                catalog: &next.catalog,
+                subagents: &next.subagents,
                 system: &next.system,
                 tools,
                 emit,
@@ -58,22 +62,29 @@ pub struct NextTurn {
     pub system: String,
     /// What the session's MCP servers said of their tools, kept for each prompt written.
     servers: Vec<crate::mcp::Connected>,
+    /// The models there are, for `/models` and for what a subagent runs on.
+    pub catalog: Catalog,
+    /// What subagents run on: the settings until `/models` changes a role.
+    pub subagents: Subagents,
 }
 
 impl NextTurn {
     pub fn new(
         paths: &Paths,
-        model: Model,
-        asked: Option<String>,
+        (model, asked): (Model, Option<String>),
         servers: Vec<crate::mcp::Connected>,
+        (catalog, subagents): (Catalog, Subagents),
     ) -> Self {
-        let system = system_prompt::build(paths, &model.id, &servers, false);
-        Self {
+        let mut next = Self {
             model,
             asked,
-            system,
+            system: String::new(),
             servers,
-        }
+            catalog,
+            subagents,
+        };
+        next.reload(paths);
+        next
     }
 
     /// The effort the model is sent: the one asked for, when the model takes it.
@@ -83,12 +94,14 @@ impl NextTurn {
 
     /// Uses `model` from the next turn on, with a prompt written for it.
     pub fn switch(&mut self, paths: &Paths, model: Model) {
-        self.system = system_prompt::build(paths, &model.id, &self.servers, false);
         self.model = model;
+        self.reload(paths);
     }
 
-    /// Writes the prompt again, since what it names (AGENTS.md, the forums) may have changed.
+    /// Writes the prompt again, since what it names (AGENTS.md, the forums, what subagents run
+    /// on) may have changed.
     pub fn reload(&mut self, paths: &Paths) {
-        self.system = system_prompt::build(paths, &self.model.id, &self.servers, false);
+        let models = system_prompt::subagent_models(&self.catalog, &self.subagents, &self.model.id);
+        self.system = system_prompt::build(paths, &self.model.id, &self.servers, false, &models);
     }
 }

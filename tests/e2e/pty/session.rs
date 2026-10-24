@@ -73,6 +73,8 @@ async fn the_context_share_follows_a_switch_of_model_at_once() {
         s.wait_bar("ctx 10%");
         s.submit("/models");
         s.wait_for("╭ Models");
+        s.send(ENTER);
+        s.wait_for("chat: model");
         s.send(DOWN);
         s.send(ENTER);
         s.wait_for("Model: fake-coder for this session.");

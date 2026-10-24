@@ -64,7 +64,7 @@ impl Tui<'_> {
         self.shared.start_over();
         let mut gone = None;
         if let Some(resumed) = &resumed {
-            match going_on(self.app, &self.catalog, resumed.state.as_ref(), true) {
+            match going_on(self.app, &self.next.catalog, resumed.state.as_ref(), true) {
                 Ok(going) => {
                     if going.model.id != self.next.model.id {
                         self.next.switch(&self.app.paths, going.model);

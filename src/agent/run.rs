@@ -27,16 +27,17 @@ pub async fn run(
     shared: &Shared,
     prompt: Vec<Part>,
 ) -> Ended {
-    run_under(cx, transcript, shared, prompt, None).await
+    run_under(cx, transcript, shared, prompt, None, None).await
 }
 
-/// `run`, started by `parent`'s `task` call when it is a subagent's.
+/// `run`, started by `parent`'s `task` call `call` when it is a subagent's.
 pub(crate) async fn run_under(
     cx: &RunCtx<'_>,
     transcript: &mut Transcript,
     shared: &Shared,
     prompt: Vec<Part>,
     parent: Option<&Run<'_>>,
+    call: Option<&str>,
 ) -> Ended {
     let run = Run {
         cx,
@@ -50,6 +51,8 @@ pub(crate) async fn run_under(
         session: transcript.file().to_path_buf(),
         parent,
         slots: tokio::sync::Semaphore::new(limits::get().subagent.parallel.value),
+        claims: crate::agent::claims::Table::default(),
+        call: call.map(str::to_owned),
     };
     let cancel = &run.cancel;
     // Hand the model the working directory and repo state on the first turn, so it starts from
@@ -69,7 +72,11 @@ pub(crate) async fn run_under(
     say(&run, transcript, prompt);
     let prompt_id = transcript.last_id().unwrap_or_default().to_owned();
     let mut snapped = false;
-    let tools = cx.tools.wire();
+    // Only a subagent claims files; the frontend's run is never offered the tool.
+    let tools = match parent {
+        Some(_) => cx.tools.wire(),
+        None => cx.tools.wire_except(&[tools::CLAIM]),
+    };
     let max_turns = match parent {
         Some(_) => limits::get().subagent.max_turns.value,
         None => limits::get().agent.max_turns.value,
@@ -353,6 +360,15 @@ mod tests {
             .map(|m| m["role"].as_str().unwrap().to_owned())
             .collect();
         assert_eq!(roles, vec!["system", "user", "assistant", "tool", "tool"]);
+    }
+
+    #[tokio::test]
+    async fn the_agent_the_user_works_with_is_never_offered_claim() {
+        let h = Harness::new(vec![text("done")]).await;
+        h.run(&shared("manual"), |_, _| {}).await;
+        let offered = h.requests()[0]["tools"].to_string();
+        assert!(offered.contains("\"task\""), "{offered}");
+        assert!(!offered.contains("\"claim\""), "{offered}");
     }
 
     #[tokio::test]

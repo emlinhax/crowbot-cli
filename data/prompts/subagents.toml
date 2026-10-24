@@ -1,0 +1,11 @@
+# What the system prompt says of the models subagents run on (src/agent/system_prompt.rs).
+# {kinds} and {models} are lines made from `kind` and `model`.
+frame = """
+<subagent-models>
+Each kind of subagent runs on this model unless a `task` call names another:
+{kinds}
+Models a `task` call may name (USD per 1M tokens in / out, context window):
+{models}
+</subagent-models>"""
+kind = "- `{kind}`: {model}"
+model = "- `{id}`: {input} / {output}, {context}"

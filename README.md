@@ -118,6 +118,41 @@ its latest call while it works), its cost is the session's, and its edits are th
 lists sessions only. `--json` wraps a subagent's events in `{"type":"child","call_id":…}`; add up
 cost from `message_end` events at any depth, or from the task's `tool_end` usage, not both.
 
+Each kind runs on a model and effort of its own, or the chat's when none is set. `/models` lists the
+chat, every kind at once and each kind with what it runs on and where that came from; a pick is a
+model, then an effort, kept in `~/.crowbot/prefs.json` (Inherit removes it). Or set them in
+`config.toml`:
+
+```toml
+[subagents]                    # every kind, unless its own entry says otherwise
+model = "deepseek-v4.1-flash"
+effort = "low"
+choices = ["deepseek-v4.1-flash", "kimi-k3"]   # optional: what a task call may name
+
+[subagents.kinds.explore]
+model = "gemini-3.8-flash"
+```
+
+A `task` call may name a `model` for its one job; then the kind's own, its agent file's, every
+kind's, and last the chat's. A model crowbot does not serve, or one outside `choices`, fails the call
+rather than falling back. The task card, `/status` and `--json` (`details.model`, `model_from`) say
+what each subagent ran on.
+
+Kinds of your own are agent files in Claude Code's shape, in `~/.crowbot/agents/*.md` or a trusted
+project's `.crowbot/agents/*.md`: a `---` header with `name`, `description`, and optionally `when`
+(the jobs to pick it for), `tools` (Claude Code's names are understood; left out, every tool),
+`except`, `model` (`inherit` is none) and `effort`, then the prompt. The prompt follows the
+session's, or with `base: replace` stands alone beside the environment block. A file named like a
+built-in kind replaces it; an untrusted project's files wait for the folder to be trusted, like its
+settings. `docs/agents.md` explains how kinds are put together; `docs/agents/` has examples to copy.
+
+Subagents started together are told of each other. Give one a `scope` (paths it may change; a
+directory covers what is under it, `*` matches anything) and `edit`, `write` and `fs` outside it are
+refused, as is any change to a path a running subagent holds, the session's own included, until it
+ends. A subagent asks for more with `claim`: granted when no one holds the path, otherwise it hears
+who does and may wait for them (a wait on someone waiting on it is refused). A task whose scope
+overlaps a running one's does not start. The shell is not checked; see `src/agent/claims.rs`.
+
 | Key | Does |
 |---|---|
 | Enter | send; while crowbot works, queue the message for when it is done |
@@ -140,7 +175,7 @@ session, `/help` lists the commands:
 | Command | Does |
 |---|---|
 | `/new` (or `/clear`) | a fresh conversation in a new session file; the last one stays saved |
-| `/models`, `/effort [level]`, `/mode [id]` | model, reasoning effort or permission mode for the rest of the session |
+| `/models [role]`, `/effort [level]`, `/mode [id]` | model (the chat's, or a kind of subagent's, with its effort), reasoning effort or permission mode for the rest of the session |
 | `/resume` | go on with an earlier session in this project |
 | `/undo`, `/retry` | take back the last prompt and what followed it, files too; `/retry` then sends it again |
 | `/compact [focus]` | summarise earlier turns now, keeping `focus` in mind |
@@ -261,7 +296,8 @@ and the legacy SSE transport are not supported yet (`grep -rn CEILING: src/mcp s
 
 Settings layer, later wins: `data/defaults.toml`, `~/.crowbot/config.toml`,
 `./.crowbot/config.toml`, flags; `[[permission]]` rules append. A project config may set `model`,
-`effort` and deny rules; anything else needs the folder trusted (a session shows what it asks for
+`effort`, `subagents` and deny rules; anything else, and the project's agent files, needs the folder
+trusted (a session shows what it asks for
 and remembers a yes in `~/.crowbot/trusted.json`; a headless run ignores those settings, with a
 note on stderr). Permanent allowances go in `~/.crowbot/config.toml`, e.g. `permission = "bash"`,
 `pattern = "cargo *"`, `action = "allow"`.

@@ -38,6 +38,16 @@ impl Paths {
         self.project.join(".crowbot").join("config.toml")
     }
 
+    /// The user's own agent files (agent/agent_file.rs).
+    pub fn user_agents(&self) -> PathBuf {
+        self.home.join("agents")
+    }
+
+    /// The project's agent files, read once the folder is trusted.
+    pub fn project_agents(&self) -> PathBuf {
+        self.project.join(".crowbot").join("agents")
+    }
+
     pub fn models_cache(&self) -> PathBuf {
         self.home.join("cache").join("models.json")
     }

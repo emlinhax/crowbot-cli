@@ -128,22 +128,24 @@ fn body(tool: &str, result: &ToolResult, width: usize) -> Vec<Line> {
 /// otherwise a missing one shows as `?`.
 fn summarize(summary: &Summary, result: &ToolResult, strict: bool) -> Option<String> {
     let has = |key: &str| at(result.details.as_ref(), key).is_some_and(|v| !v.is_null());
+    let complete = |text: &str| {
+        let mut complete = true;
+        template::fill_with(text, |key| {
+            complete &= key == "n" || has(key);
+            None
+        });
+        complete
+    };
     match summary {
-        Summary::Text(text) => {
-            let mut complete = true;
-            template::fill_with(text, |key| {
-                complete &= has(key);
-                None
-            });
-            (complete || !strict).then(|| fill(text, result))
-        }
+        Summary::Text(text) => (complete(text) || !strict).then(|| fill(text, result)),
         Summary::Count { count, forms } => {
             if strict && !has(count) {
                 return None;
             }
             let n = lookup(count, result).parse().unwrap_or(0);
             // A form may name other details too: `{agent}: {n} calls`.
-            Some(fill(&forms.of(n), result))
+            let form = forms.of(n);
+            (complete(&form) || !strict).then(|| fill(&form, result))
         }
         Summary::First(list) => list.iter().find_map(|s| summarize(s, result, true)),
     }
@@ -185,6 +187,17 @@ mod tests {
             refused: None,
             usage: None,
         }
+    }
+
+    #[test]
+    fn a_task_card_names_the_model_its_subagent_ran_on_and_an_old_one_goes_without() {
+        let spec = tool_card::spec("task");
+        let summary = spec.summary.unwrap();
+        let line = |details: Value| summarize(&summary, &result("", Some(details), false), true);
+        let now = json!({"agent": "explore", "model": "kimi-k3", "calls": 3});
+        assert_eq!(line(now).as_deref(), Some("explore on kimi-k3: 3 calls"));
+        let old = json!({"agent": "explore", "calls": 1});
+        assert_eq!(line(old).as_deref(), Some("explore: 1 call"));
     }
 
     fn tagged(lines: &[Line]) -> Vec<String> {
