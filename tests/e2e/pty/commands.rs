@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use super::harness::{BACKSPACE, DOWN, ENTER, LEFT, TAB, in_session};
+use super::harness::{BACKSPACE, DOWN, ENTER, ESC, LEFT, TAB, in_session};
 use crate::Sandbox;
 use crate::fake_crowbot::{ENV_KEY, Fake, Reply};
 
@@ -150,6 +150,57 @@ async fn slash_models_picks_the_model_for_the_rest_of_the_session() {
     })
     .await;
     assert_eq!(fake.chat_bodies()[0]["model"], "fake-coder");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_preset_picked_in_slash_models_picks_each_request_and_is_remembered() {
+    let fake = Fake::start().await;
+    fake.script([Reply::sse("hello.sse")]);
+    let sandbox = Sandbox::default();
+    sandbox.write_home(
+        "presets/thrifty.toml",
+        "description = \"cheap\"\n[[rule]]\nwhen = { mode = [\"plan\"] }\nmodel = \"crow-2\"\n\
+         [[rule]]\nmodel = \"fake-coder\"\n",
+    );
+    let ended = in_session(&fake, sandbox, Some(ENV_KEY), |s| {
+        s.submit("/models");
+        s.wait_for("╭ Models");
+        s.wait_for("presets");
+        // Past the four models, the heading is stepped over onto the preset.
+        for _ in 0..4 {
+            s.send(DOWN);
+        }
+        // Keys that close on each other read as a paste; Enter waits for the selection to land.
+        s.wait_for("›    thrifty");
+        s.send(ENTER);
+        s.wait_for("Model: thrifty for this session.");
+        s.submit("hi");
+        s.wait_for("Hello there!");
+        s.wait_bar("thrifty → fake-coder");
+    })
+    .await;
+    assert_eq!(fake.chat_bodies()[0]["model"], "fake-coder");
+    let prefs = std::fs::read_to_string(ended.sandbox.home().join("prefs.json")).unwrap();
+    assert!(prefs.contains("\"thrifty\""), "{prefs}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn slash_presets_new_writes_one_that_slash_models_then_lists() {
+    let fake = Fake::start().await;
+    let ended = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
+        s.submit("/presets new cheap");
+        s.wait_for("cheap.toml: edit it");
+        s.submit("/models");
+        s.wait_for("╭ Models");
+        s.wait_for("cheap");
+        s.wait_for("+ new preset");
+        s.send(ESC);
+        s.wait_gone("╭ Models");
+    })
+    .await;
+    let text = std::fs::read_to_string(ended.sandbox.home().join("presets/cheap.toml")).unwrap();
+    // Its one rule is on the session's model, so it can be picked as written.
+    assert!(text.contains("model = \"deepseek-v4.1-flash\""), "{text}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

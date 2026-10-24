@@ -54,6 +54,9 @@ struct Expect {
     files: BTreeMap<String, String>,
     #[serde(default)]
     requests: Vec<RequestCheck>,
+    /// The model each request was sent to, in order, when given.
+    #[serde(default)]
+    models: Option<Vec<String>>,
     /// The tools a request offered the model, by name.
     #[serde(default)]
     tools: Vec<ToolsCheck>,
@@ -248,6 +251,10 @@ async fn check(name: String, scenario: Scenario) {
         scenario.reply.len(),
         "requests made\n{context}"
     );
+    if let Some(want) = &expect.models {
+        let sent: Vec<&str> = bodies.iter().filter_map(|b| b["model"].as_str()).collect();
+        assert_eq!(&sent, want, "models\n{context}");
+    }
     for (path, want) in &expect.hits {
         assert_eq!(fake.hits(path), *want, "hits on {path}\n{context}");
     }

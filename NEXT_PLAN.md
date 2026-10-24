@@ -966,3 +966,30 @@ string-free fixes, chosen with the user.
 - Both kept (safe): A is a no-downside safety-net against extreme flailing; B is adopted, composes
   with auto-verify, and is a foundation a stronger model would batch — but neutral on turns for weak
   models today. Not recommended as a turn lever until a model batches it.
+
+## M20 — Presets: the model picked per request by rules (2026-10-24)
+Two outside PRs (#2 roles, #4 subagent models, agent files, claims) each added a UI layer so
+subagents could run on cheaper models. Chosen instead, with the user: a preset, picked in `/models`
+like a model, whose ordered rules pick each request's model and effort from the mode, the agent
+(main, subagent, a kind), the context sent, and the plan's allowance or the balance. No new card;
+claims dropped (two subagents at most, and they need a weak model to cooperate). From #4, only its
+fix for a subagent ending with `finish` (cherry-picked).
+- [x] 20.0 cherry-pick #4's `finish` summary fix
+- [x] 20.1 `src/models/preset.rs`: the file, its checks (a catch-all last, no dead rules, known
+      modes, agents, efforts), `resolve` against the catalog, `pick`, `create` from the template
+- [x] 20.2 `src/models/choice.rs`: a model or a preset by one name, everywhere a model id goes
+- [x] 20.3 `RunCtx::picked` per request; the picked model's window decides a summary; subagents
+      pick by kind; prompts record the preset, so resume keeps it
+- [x] 20.4 the account in `Shared`; a headless run asks once, only for a preset that reads it
+- [x] 20.5 `/models` lists presets under a heading, `+ new preset`; `/presets [new <name>]`,
+      `crowbot presets`; the bar shows `preset → model`; `/status` names the file
+- [x] 20.6 README, scenarios (`expect.models`), pty tests
+
+**Learned**
+- The wire layer already took a conversation of mixed models (a reasoning trace is replayed only to
+  the model that wrote it; cost is per reply), because `/models` could always switch mid-session.
+  What assumed one model per run was the window check and what the frontends showed.
+- Rows the selection steps over (a heading, a rule) were the one new picker idea; and a list longer
+  than its window has to say so, or the presets under nine models are never seen.
+- Open: a stale `model` in prefs.json (a model crowbot dropped, a preset deleted) still fails the
+  start rather than giving way to the config's, as a resumed session's does.

@@ -1,0 +1,34 @@
+description = "A preset sends a task's subagent to the model its rule names and the session's requests to the catch-all, and the system prompt names the preset"
+args = ["--model", "thrifty", "-p", "where is the parser?"]
+
+[home_files]
+"presets/thrifty.toml" = '''
+description = "flash for subagents"
+
+[[rule]]
+when = { agent = ["subagent"] }
+model = "glm-5.3-flash-crow"
+
+[[rule]]
+model = "crow-2"
+'''
+
+[[reply]]
+calls = [{ name = "task", arguments = '{"description": "find the parser", "prompt": "Find the parser and reply with its path.", "subagent_type": "explore"}' }]
+
+[[reply]]
+text = "CHILD: it is in src/parse.rs"
+
+[[reply]]
+text = "The parser is in src/parse.rs."
+
+[expect]
+exit = 0
+stdout = "The parser is in src/parse.rs.\n"
+models = ["crow-2", "glm-5.3-flash-crow", "crow-2"]
+
+[[expect.requests]]
+index = 0
+message = 0
+role = "system"
+contains = "Model: thrifty"

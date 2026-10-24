@@ -1,0 +1,30 @@
+description = "`crowbot presets` lists each preset with its rules under it, then where presets live"
+args = ["presets"]
+key = false
+reply = []
+
+[home_files]
+"presets/thrifty.toml" = '''
+description = "flash for subagents"
+
+[[rule]]
+when = { agent = ["subagent"], context_over = 200000 }
+model = "glm-5.3-flash-crow"
+effort = "low"
+
+[[rule]]
+model = "crow-2"
+'''
+
+[expect]
+exit = 0
+stdout_contains = [
+  "thrifty",
+  "flash for subagents",
+  "agent subagent, context over 200K",
+  "→ glm-5.3-flash-crow, effort low",
+  "otherwise",
+  "→ crow-2",
+  "presets new <name>",
+]
+hits = { "/v1/chat/completions" = 0 }
