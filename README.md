@@ -95,10 +95,11 @@ mode's colour, and the bottom one carries the status on its right: the mode, the
 context use, cost, the plan's allowance left and the balance (orange when the account cannot
 spend). The account is asked at the start, on a new key, at the end of each run and at most
 every `tui.account_refresh_secs` mid-run; an idle session never asks. While crowbot works, a murmuration of crows ripples above the bar beside the
-time and tokens so far. Right-click copies a message whole (yours, a reply, a tool's output, the
-pairing code), with a "Copied" note at the top right; Shift+drag selects any text, since the mouse
-otherwise belongs to crowbot. The session file under `~/.crowbot/sessions/` keeps the whole
-conversation, branches taken back included; `--continue` and `/resume` go on with one, with the
+time and tokens so far. Dragging with the left button highlights text and copies it on release;
+right-click copies the highlight, else a message whole (yours, a reply, a tool's output, the
+pairing code), else pastes. Each copy says "Copied" at the top right. Shift+drag still reaches
+the terminal's own selection where it has one. The session file under `~/.crowbot/sessions/`
+keeps the whole conversation, branches taken back included; `--continue` and `/resume` go on with one, with the
 model, effort and mode it last used (a headless run keeps the mode it is given).
 
 In a git work tree, crowbot snapshots the files before a prompt's first change into a shadow git
@@ -126,7 +127,8 @@ cost from `message_end` events at any depth, or from the task's `tool_end` usage
 | Shift+Enter, Ctrl+J, `\` then Enter | new line |
 | Shift+Tab | cycle MANUAL (gray) → PLAN (blue) → AUTO (purple); switching to AUTO approves a waiting permission prompt |
 | Esc | interrupt; queued messages come back to the editor |
-| Ctrl+C | clear the editor, else interrupt, else quit on a second press |
+| Ctrl+C | copy a highlight, else clear the editor, else interrupt, else quit on a second press |
+| Ctrl+V, Ctrl+Shift+V, Shift+Insert | paste the clipboard, where the terminal passes the key on instead of pasting itself |
 | Ctrl+D | quit when the editor is empty |
 | Ctrl+T | open every thinking block, or close them all; clicking one opens or closes just it |
 | PgUp PgDn, mouse wheel | scroll the conversation; scrolling back to the end follows new output again |

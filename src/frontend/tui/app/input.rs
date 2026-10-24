@@ -1,5 +1,5 @@
-//! What a key, a click or a paste does in the session: cards first, then the command popup,
-//! then the editor and its actions.
+//! What a key, a click, a drag or a paste does in the session: cards first, then the command
+//! popup, then the editor and its actions.
 
 use super::{Step, Switch, Tui};
 use crate::commands::{self, Scope};
@@ -8,9 +8,10 @@ use crate::conversation::message::Part;
 use crate::frontend::tui::card::{self, Next};
 use crate::frontend::tui::keymap::{self, Action};
 use crate::frontend::tui::queue::Kind;
-use crate::frontend::tui::{command, forums, palette};
-use crate::io::clock;
+use crate::frontend::tui::select::{Cell, Selection};
+use crate::frontend::tui::{command, forums, layout, palette, ui};
 use crate::io::term::{Button, Input, KeyCode, KeyEvent};
+use crate::io::{clipboard, clock};
 use crate::mode;
 use crate::text::styled::TAB;
 
@@ -27,6 +28,11 @@ impl<'a> Tui<'a> {
             },
             other => other,
         };
+        // A highlight lasts until the next thing done; only the drag making it carries it on.
+        let highlight = match input {
+            Input::Drag { .. } | Input::Release { .. } => None,
+            _ => self.selection.take().filter(Selection::dragged),
+        };
         match input {
             Input::Resize(width, height) => {
                 self.screen.resize(width, height);
@@ -37,46 +43,109 @@ impl<'a> Tui<'a> {
                 self.view.scroll(notches * lines);
                 Step::Continue
             }
+            // A press starts a highlight; letting go where it began is a click.
             Input::Click {
                 row,
+                column,
                 button: Button::Left,
             } => {
-                if let Some(Some(block)) = self.blocks.get(row) {
-                    self.feed.toggle(*block);
+                self.selection = Some(Selection::start(self.cell(row, column)));
+                Step::Continue
+            }
+            Input::Drag { row, column } => {
+                let at = self.cell(row, column);
+                match &mut self.selection {
+                    Some(selection) => selection.extend(at),
+                    None => self.selection = Some(Selection::start(at)),
                 }
                 Step::Continue
             }
-            // What the session card offers (the login code) wherever it is clicked, else the
-            // block under the pointer.
+            Input::Release { row, column } => {
+                let at = self.cell(row, column);
+                let Some(mut selection) = self.selection.take() else {
+                    return Step::Continue;
+                };
+                selection.extend(at);
+                if !selection.dragged() {
+                    if let Some(Some(block)) = self.blocks.get(row) {
+                        self.feed.toggle(*block);
+                    }
+                    return Step::Continue;
+                }
+                let text = selection.text(&self.shown);
+                if !text.trim().is_empty() {
+                    self.copy(&text);
+                }
+                self.selection = Some(selection);
+                Step::Continue
+            }
+            // A highlight, else what the session card offers (the login code) wherever it is
+            // clicked, else the block under the pointer; with none of those, a paste.
             Input::Click {
                 row,
                 button: Button::Right,
+                ..
             } => {
-                let text = self
-                    .panel
-                    .as_ref()
-                    .and_then(|card| card.copied())
-                    .map(str::to_owned)
+                let text = highlight
+                    .map(|selection| selection.text(&self.shown))
+                    .filter(|text| !text.trim().is_empty())
+                    .or_else(|| self.panel.as_ref()?.copied().map(str::to_owned))
                     .or_else(|| {
                         let block = self.blocks.get(row).copied().flatten()?;
                         self.feed.copy_text(block)
                     });
-                if let Some(text) = text {
-                    self.copy(&text);
+                match text {
+                    Some(text) => self.copy(&text),
+                    None => self.paste_clipboard(),
                 }
                 Step::Continue
             }
             Input::Paste(text) => {
-                if let Some(card) = &mut self.panel {
-                    card.insert(&text);
-                } else if let Some((_, card)) = self.cards.front_mut() {
-                    card.insert(&text);
-                } else {
-                    self.editor.insert(&text);
-                }
+                self.paste(&text);
                 Step::Continue
             }
-            Input::Key(key) => self.key(&key, running, busy),
+            Input::Key(key) => match (highlight, keymap::get().action(&key)) {
+                // Ctrl+C on a highlight copies it, as a terminal's selection does, rather than
+                // clearing the editor or stopping the run.
+                (Some(selection), Some(Action::CtrlC)) => {
+                    self.copy(&selection.text(&self.shown));
+                    Step::Continue
+                }
+                (_, Some(Action::Paste)) => {
+                    self.paste_clipboard();
+                    Step::Continue
+                }
+                _ => self.key(&key, running, busy),
+            },
+        }
+    }
+
+    /// The screen cell at `row` and `column`, counted inside the left margin as frames are.
+    fn cell(&self, row: usize, column: usize) -> Cell {
+        let (pad, _) = layout::margins(self.screen.width());
+        Cell {
+            row,
+            column: column.saturating_sub(pad),
+        }
+    }
+
+    /// Hands pasted text to whatever has the keys: the session card, a prompt, else the editor.
+    fn paste(&mut self, text: &str) {
+        if let Some(card) = &mut self.panel {
+            card.insert(text);
+        } else if let Some((_, card)) = self.cards.front_mut() {
+            card.insert(text);
+        } else {
+            self.editor.insert(text);
+        }
+    }
+
+    /// Pastes the clipboard, for the paste keys and a right-click, which the terminal hands
+    /// over instead of pasting itself.
+    fn paste_clipboard(&mut self) {
+        match clipboard::paste() {
+            Some(text) => self.paste(&text),
+            None => self.toast(&ui::get().text.nothing_to_paste),
         }
     }
 

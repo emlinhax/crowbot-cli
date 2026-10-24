@@ -74,11 +74,15 @@ impl<'a> Tui<'a> {
             now,
         );
         self.blocks = frame.blocks;
+        self.shown = frame.rows.clone();
         if self.toast.as_ref().is_some_and(|t| !t.shown(now)) {
             self.toast = None;
         }
         if let Some(toast) = &self.toast {
             toast.overlay(&mut frame.rows, width);
+        }
+        if let Some(selection) = &self.selection {
+            selection.paint(&mut frame.rows);
         }
         layout::inset(&mut frame.rows, pad);
         let bytes = self.screen.frame(&frame.rows);

@@ -1,5 +1,5 @@
-//! The clipboard: the system's, else the terminal's (OSC 52), which also reaches the user's own
-//! machine from a session over SSH.
+//! The clipboard: copying goes to the system's, else the terminal's (OSC 52), which also reaches
+//! the user's own machine from a session over SSH; pasting reads the system's.
 
 use std::sync::{LazyLock, Mutex, PoisonError};
 
@@ -23,6 +23,15 @@ pub fn copy(text: &str) {
         return;
     }
     osc52(text);
+}
+
+/// The system clipboard's text, if it has any.
+/// CEILING: the system's only, so over SSH it is the remote machine's (usually none); the
+/// terminal's own paste key, which arrives as a paste, still reaches the user's clipboard.
+pub fn paste() -> Option<String> {
+    let mut system = SYSTEM.lock().unwrap_or_else(PoisonError::into_inner);
+    let text = system.as_mut()?.get_text().ok()?;
+    (!text.is_empty()).then_some(text)
 }
 
 /// Asks the terminal to set the clipboard, which works across SSH.

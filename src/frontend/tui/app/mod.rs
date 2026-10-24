@@ -35,6 +35,7 @@ use crate::frontend::tui::paste::Burst;
 use crate::frontend::tui::progress::Progress;
 use crate::frontend::tui::queue::Kind;
 use crate::frontend::tui::screen::Screen;
+use crate::frontend::tui::select::Selection;
 use crate::frontend::tui::toast::Toast;
 use crate::frontend::tui::view::View;
 use crate::frontend::tui::{ui, welcome};
@@ -47,6 +48,7 @@ use crate::models::Catalog;
 use crate::release::{self, update};
 use crate::session::transcript::Transcript;
 use crate::snapshot::Shadow;
+use crate::text::styled::Line;
 use crate::text::template;
 use crate::text::theme;
 use crate::text::units;
@@ -174,6 +176,10 @@ struct Tui<'a> {
     view: View,
     /// The transcript block on each screen row of the last frame, for clicks.
     blocks: Vec<Option<usize>>,
+    /// The last frame's rows inside the margins, for what a drag copies.
+    shown: Vec<Line>,
+    /// What the left button is highlighting, or last highlighted.
+    selection: Option<Selection>,
     editor: Editor,
     palette: Palette,
     burst: Burst,
@@ -226,6 +232,8 @@ impl<'a> Tui<'a> {
             feed: Feed::new(),
             view: View::default(),
             blocks: Vec::new(),
+            shown: Vec::new(),
+            selection: None,
             editor,
             palette: Palette::default(),
             burst: Burst::new(limits.paste_gap_ms.ms(), limits.paste_min_keys.value),

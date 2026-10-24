@@ -104,7 +104,12 @@ impl<'a> Tui<'a> {
     /// Puts `text` on the clipboard and says so at the top right.
     pub(super) fn copy(&mut self, text: &str) {
         clipboard::copy(text);
-        self.toast = Some(Toast::new(&ui::get().text.copied, clock::instant()));
+        self.toast(&ui::get().text.copied);
+    }
+
+    /// A short note at the top right.
+    pub(super) fn toast(&mut self, text: &str) {
+        self.toast = Some(Toast::new(text, clock::instant()));
     }
 
     /// Asks for `effort` from the next turn on, and remembers it for the next session.

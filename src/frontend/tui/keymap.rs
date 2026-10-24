@@ -24,6 +24,7 @@ pub enum Action {
     CtrlC,
     Quit,
     ToggleReasoning,
+    Paste,
     PageUp,
     PageDown,
     Up,
@@ -122,6 +123,7 @@ fn chord(spec: &str) -> Result<Chord, String> {
         "esc" => KeyCode::Esc,
         "backspace" => KeyCode::Backspace,
         "delete" => KeyCode::Delete,
+        "insert" => KeyCode::Insert,
         "up" => KeyCode::Up,
         "down" => KeyCode::Down,
         "left" => KeyCode::Left,
@@ -190,6 +192,18 @@ mod tests {
             )),
             Some(Action::CtrlC)
         );
+        // Ctrl+V with or without Shift, and Shift+Insert, as a console that does not paste
+        // itself sends them.
+        for paste in [
+            key(KeyCode::Char('v'), KeyModifiers::CONTROL),
+            key(
+                KeyCode::Char('V'),
+                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            ),
+            key(KeyCode::Insert, KeyModifiers::SHIFT),
+        ] {
+            assert_eq!(map.action(&paste), Some(Action::Paste), "{paste:?}");
+        }
         assert_eq!(
             map.action(&key(KeyCode::Char('x'), KeyModifiers::NONE)),
             None

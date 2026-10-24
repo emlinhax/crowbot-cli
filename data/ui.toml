@@ -12,7 +12,7 @@ tips = [
   "Shift+Tab cycles {modes}",
   "Enter sends · while working, Enter queues and Tab steers",
   "Shift+Enter or Ctrl+J starts a new line",
-  "Right-click copies a message",
+  "Drag or right-click to copy",
 ]
 
 # Marks drawn across the session; each is one cell wide.
@@ -70,6 +70,7 @@ more_below = "↓ {n} more · PgDn"
 saved = "Session saved to {path}"
 spent = "Spent about {cost} this session."
 copied = "✓ Copied"
+nothing_to_paste = "Nothing to paste"
 nothing_to_copy = "Nothing to copy yet: crowbot has not replied."
 busy = "Finish or interrupt the reply first (Esc)."
 effort_set = "Effort: {effort} for this session."

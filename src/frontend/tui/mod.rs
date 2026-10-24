@@ -23,6 +23,7 @@ mod queue;
 mod replace;
 mod rows;
 mod screen;
+mod select;
 mod signup;
 mod toast;
 mod ui;

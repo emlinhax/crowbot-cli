@@ -16,6 +16,9 @@ ctrl_c = ["ctrl+c"]
 quit = ["ctrl+d"]
 # Opens every thinking block, or closes them all when all are open.
 toggle_reasoning = ["ctrl+t"]
+# Pastes the clipboard as text, where the terminal hands these keys over instead of pasting
+# itself (the Windows console). A terminal's own paste arrives as a paste either way.
+paste = ["ctrl+v", "ctrl+shift+v", "shift+insert"]
 # Scroll the transcript; the mouse wheel does too.
 page_up = ["pageup"]
 page_down = ["pagedown"]
