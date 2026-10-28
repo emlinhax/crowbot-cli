@@ -172,6 +172,11 @@ pub fn modified(path: &Path) -> Option<std::time::SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
+/// Size in bytes, or `None` if the file is gone.
+pub fn size(path: &Path) -> Option<u64> {
+    std::fs::metadata(path).map(|m| m.len()).ok()
+}
+
 pub struct Entry {
     pub name: String,
     pub is_dir: bool,

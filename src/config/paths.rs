@@ -42,6 +42,11 @@ impl Paths {
         self.home.join("cache").join("models.json")
     }
 
+    /// kuna's answers, one file each (`tools::decompile::cache`).
+    pub fn decompile_cache(&self) -> PathBuf {
+        self.home.join("cache").join("decompile")
+    }
+
     /// Full tool output too long to show, kept for the model to read.
     pub fn tmp_dir(&self) -> PathBuf {
         self.home.join("tmp")
