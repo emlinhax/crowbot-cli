@@ -993,3 +993,20 @@ fix for a subagent ending with `finish` (cherry-picked).
   than its window has to say so, or the presets under nine models are never seen.
 - Open: a stale `model` in prefs.json (a model crowbot dropped, a preset deleted) still fails the
   start rather than giving way to the config's, as a resumed session's does.
+
+## M21 — PLAN only plans, hands the plan over, and the user reads and edits it (planned 2026-10-28)
+In PLAN, models answered or tried the change and wrote a plan only when told to. The locks already
+refuse every edit but the plan file; what failed is what the model is told and what holds it to it:
+the reminder ends "summarise the plan and say it is ready" and never names `plan_exit`, it is said
+once (when the mode changes), and a run may end on plain text. The card then cuts the plan at 16
+lines, and the only edit is telling crowbot what to change. Chosen with the user: add editing the
+plan in their own editor.
+- [ ] 21.1 the reminder says the job is a plan handed over with `plan_exit`; a short
+      `reminder_again` goes with every later message while PLAN holds (`Reminder::Still`)
+- [ ] 21.2 a main run in PLAN that ends without a successful `plan_exit` since its last call is
+      sent back once per hand-over (no turn limit to stop a loop)
+- [ ] 21.3 the whole plan goes into the transcript and the card names its file; `plan_exit` reads
+      the file again after the answer and tells the model of any edit
+- [ ] 21.4 an "edit in your editor" option: `data/editor.toml` candidates, the terminal handed to
+      the editor and taken back, the card kept open with the edited plan
+- [ ] 21.5 README, scenario and pty tests, and what M21 learned
