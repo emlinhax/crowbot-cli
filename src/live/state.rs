@@ -18,6 +18,8 @@ pub enum Reminder {
     Entered(&'static Mode),
     /// Out of a mode with instructions, into one without, so they no longer hold.
     Left { now: &'static Mode },
+    /// Still in a mode that repeats a line of its instructions with every message.
+    Still(&'static Mode),
 }
 
 pub struct Shared {
@@ -115,12 +117,16 @@ impl Shared {
         *self.account.lock().unwrap() = Some(me);
     }
 
-    /// What to tell the model about the mode now, if it changed since the model was last told.
+    /// What to tell the model about the mode now: all of it when it changed since the model was
+    /// last told, else the line a mode repeats, if it has one.
     pub fn take_reminder(&self) -> Option<Reminder> {
         let mode = self.mode();
         let mut reminded = self.reminded.lock().unwrap();
         if reminded.is_some_and(|m| m.id == mode.id) {
-            return None;
+            return mode
+                .reminder_again
+                .is_some()
+                .then_some(Reminder::Still(mode));
         }
         let left = reminded.replace(mode);
         if mode.reminder.is_some() {

@@ -1001,7 +1001,7 @@ the reminder ends "summarise the plan and say it is ready" and never names `plan
 once (when the mode changes), and a run may end on plain text. The card then cuts the plan at 16
 lines, and the only edit is telling crowbot what to change. Chosen with the user: add editing the
 plan in their own editor.
-- [ ] 21.1 the reminder says the job is a plan handed over with `plan_exit`; a short
+- [x] 21.1 the reminder says the job is a plan handed over with `plan_exit`; a short
       `reminder_again` goes with every later message while PLAN holds (`Reminder::Still`)
 - [ ] 21.2 a main run in PLAN that ends without a successful `plan_exit` since its last call is
       sent back once per hand-over (no turn limit to stop a loop)

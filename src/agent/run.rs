@@ -281,15 +281,17 @@ fn say(run: &Run<'_>, transcript: &mut Transcript, parts: Vec<Part>) {
 /// Mode changes reach the model as a reminder on the next user message, so the system prompt
 /// (and the vendor's cache of it) never changes mid-session.
 fn with_reminder(run: &Run<'_>, mut parts: Vec<Part>) -> Vec<Part> {
+    let plan = |text: &str| fill(text.trim_end(), &[("plan_file", &run.plan_file)]);
     let text = match run.shared.take_reminder() {
-        Some(Reminder::Entered(mode)) => mode
-            .reminder
-            .as_deref()
-            .map(|text| fill(text.trim_end(), &[("plan_file", &run.plan_file)])),
+        Some(Reminder::Entered(mode)) => mode.reminder.as_deref().map(plan),
+        // A subagent is never told its mode (`Shared::child`).
+        Some(Reminder::Still(mode)) if run.parent.is_none() => {
+            mode.reminder_again.as_deref().map(plan)
+        }
         Some(Reminder::Left { now }) => {
             Some(fill(&model_text::get().mode_left, &[("mode", &now.label)]))
         }
-        None => None,
+        Some(Reminder::Still(_)) | None => None,
     };
     if let Some(text) = text {
         parts.insert(0, Part::Reminder { text });
@@ -982,6 +984,18 @@ mod tests {
         assert!(first["content"].as_str().unwrap().contains("PLAN mode"));
         let result = last_message(&h.requests()[1]);
         assert!(result["content"].as_str().unwrap().contains("Not allowed"));
+    }
+
+    #[tokio::test]
+    async fn plan_mode_repeats_its_line_with_each_later_message() {
+        let h = Harness::new(vec![text("one"), text("two")]).await;
+        let state = shared("plan");
+        let (_, transcript, _) = h.run(&state, |_, _| {}).await;
+        h.run_in(transcript, &state, |_, _| {}).await;
+        let second = last_message(&h.requests()[1]);
+        let content = second["content"].as_str().unwrap();
+        assert!(content.contains("Still in PLAN mode"), "{content}");
+        assert!(!content.contains("Your job here"), "{content}");
     }
 
     #[tokio::test]
