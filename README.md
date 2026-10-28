@@ -76,7 +76,7 @@ Flags (`--model`, `--effort`, `--mode`; values in `crowbot --help`) go before th
 command. A first word naming a command runs it, except after `-p`/`--json`, where every word is
 prompt. Otherwise a session opens when stdin and stdout are terminals, else the prompt runs
 headless. Piped stdin is read to its end and appended to the words (`< /dev/null` if the pipe
-never closes). Exit codes: `0` done, `1` error, rejection or turn limit, `2` bad usage, `130`
+never closes). Exit codes: `0` done, `1` error or rejection, `2` bad usage, `130`
 interrupted.
 
 MANUAL asks before edits, commands and fetches; AUTO allows everything, deny rules included.

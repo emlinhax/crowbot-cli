@@ -256,7 +256,7 @@ impl Printer<'_> {
         }
     }
 
-    fn finish(&self, Ended { outcome, turns }: Ended) -> ExitCode {
+    fn finish(&self, Ended { outcome, .. }: Ended) -> ExitCode {
         if self.format == Format::Text && !self.at_line_start.load(Ordering::Relaxed) {
             term::out("\n");
         }
@@ -277,12 +277,8 @@ impl Printer<'_> {
                 }
                 ExitCode::FAILURE
             }
-            Outcome::TurnLimit => {
-                let count = turns.to_string();
-                term::warn(&fill(&words::get().turn_limit, &[("count", &count)]));
-                ExitCode::FAILURE
-            }
-            Outcome::Rejected => ExitCode::FAILURE,
+            // Only a subagent hits a turn limit, and its task reports it.
+            Outcome::Rejected | Outcome::TurnLimit => ExitCode::FAILURE,
             Outcome::Done => {
                 if let Some(cut) = last.filter(|m| m.finish == Finish::Length) {
                     let window = self.catalog.get(&cut.model).map_or(0, |m| m.context_window);

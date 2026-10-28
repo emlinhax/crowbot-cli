@@ -374,7 +374,7 @@ impl Feed {
                 let text = fill(&words::get().unsaved, &[("path", path), ("error", error)]);
                 self.notice(&text, "warn");
             }
-            AgentEvent::RunEnd(Ended { outcome, turns }) => {
+            AgentEvent::RunEnd(Ended { outcome, .. }) => {
                 self.finish_reasoning(now);
                 self.finish_text();
                 self.running.clear();
@@ -382,14 +382,6 @@ impl Feed {
                 let note = match outcome {
                     Outcome::Aborted => Some(words::get().interrupted.clone()),
                     Outcome::Rejected => Some(ui::get().text.declined.clone()),
-                    Outcome::TurnLimit => {
-                        let count = turns.to_string();
-                        let stopped = fill(&words::get().turn_limit, &[("count", &count)]);
-                        Some(fill(
-                            &ui::get().outcome.turn_limit,
-                            &[("stopped", &stopped)],
-                        ))
-                    }
                     _ => None,
                 };
                 if let Some(note) = note {

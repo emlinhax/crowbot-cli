@@ -20,7 +20,7 @@ pub enum Outcome {
     Failed,
     /// The user turned a call down without saying why.
     Rejected,
-    /// The run hit the turn limit in data/limits.toml.
+    /// A subagent hit its turn limit in data/limits.toml.
     TurnLimit,
 }
 

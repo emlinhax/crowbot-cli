@@ -70,10 +70,8 @@ pub(crate) async fn run_under(
     let prompt_id = transcript.last_id().unwrap_or_default().to_owned();
     let mut snapped = false;
     let tools = cx.tools.wire();
-    let max_turns = match parent {
-        Some(_) => limits::get().subagent.max_turns.value,
-        None => limits::get().agent.max_turns.value,
-    };
+    // Only a subagent is capped; the main run goes until it finishes or the user stops it.
+    let max_turns = parent.map(|_| limits::get().subagent.max_turns.value);
     let mut turns = 0;
     // How many times the configured check ran and failed this run; capped so a check the model
     // cannot satisfy ends the run rather than looping it.
@@ -87,7 +85,7 @@ pub(crate) async fn run_under(
 
     let outcome = 'run: loop {
         loop {
-            if turns >= max_turns {
+            if max_turns.is_some_and(|max| turns >= max) {
                 break 'run Outcome::TurnLimit;
             }
             turns += 1;

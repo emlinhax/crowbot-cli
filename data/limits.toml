@@ -168,10 +168,6 @@ reason = "the first snapshot hashes every file git does not ignore; past this th
 value = 24000
 reason = "paths given to one git call, well under Windows' 32,767-character command line"
 
-[agent.max_turns]
-value = 100
-reason = "a runaway loop on crow-2 costs real money; a run that needs more should be continued deliberately"
-
 [agent.doom_loop_repeats]
 value = 3
 reason = "the same call three times in a row is a loop, not persistence (opencode's threshold)"

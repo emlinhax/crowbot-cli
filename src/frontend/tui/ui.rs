@@ -26,7 +26,6 @@ pub struct Ui {
     pub footer: Footer,
     pub welcome: WelcomeText,
     pub text: Text,
-    pub outcome: OutcomeText,
     pub card: CardText,
     pub palette: PaletteText,
     pub thinking: ThinkingText,
@@ -68,14 +67,6 @@ pub struct WelcomeText {
     pub version: String,
     pub separator: String,
     pub modes: String,
-}
-
-/// How a run that ended early is told.
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct OutcomeText {
-    /// `{stopped}` is the shared turn-limit line (data/frontend.toml).
-    pub turn_limit: String,
 }
 
 #[derive(Debug, Deserialize)]
