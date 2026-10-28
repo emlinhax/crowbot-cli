@@ -11,6 +11,10 @@ calls = [
 [[reply]]
 text = "The plan is ready."
 
+# Ended without handing over a plan, it is sent back once (data/model_text.toml plan_unfinished).
+[[reply]]
+text = "The plan is ready."
+
 [expect]
 exit = 0
 

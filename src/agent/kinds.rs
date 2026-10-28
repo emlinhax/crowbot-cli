@@ -87,7 +87,7 @@ mod tests {
         let general = tools(get("general").unwrap(), &registry, 1);
         let want: Vec<&str> = registry
             .each_name()
-            .filter(|n| !["plan_exit", crate::tools::TASK].contains(n))
+            .filter(|n| ![crate::tools::PLAN_EXIT, crate::tools::TASK].contains(n))
             .collect();
         assert_eq!(general.each_name().collect::<Vec<_>>(), want);
     }

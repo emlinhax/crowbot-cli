@@ -15,6 +15,10 @@ model = "glm-5.3-flash-crow"
 [[reply]]
 text = "Here is the plan."
 
+# Ended without handing over a plan, it is sent back once (data/model_text.toml plan_unfinished).
+[[reply]]
+text = "Here is the plan."
+
 [expect]
 exit = 0
-models = ["crow-2"]
+models = ["crow-2", "crow-2"]

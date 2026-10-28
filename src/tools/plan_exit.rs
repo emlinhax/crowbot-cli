@@ -16,6 +16,9 @@ use crate::permission::catalog;
 use crate::permission::gate::Ask;
 use crate::text::template::fill;
 
+/// The name the run loop matches to tell whether a PLAN run handed its plan over.
+pub const NAME: &str = "plan_exit";
+
 static SPEC: LazyLock<Spec> = super::spec!("plan_exit");
 
 static TEXT: LazyLock<Text> = data::load!("tools/plan_exit.toml");

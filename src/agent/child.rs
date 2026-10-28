@@ -158,7 +158,7 @@ mod tests {
         let text = "[[rule]]\nwhen = { agent = [\"explore\"] }\nmodel = \"cheap\"\neffort = \"low\"\n\
                     [[rule]]\nmodel = \"strong\"";
         h.preset = Some(preset::parsed("p", text).resolve(&catalog).unwrap());
-        let (ended, transcript, _) = h.run(&shared("plan"), |_, _| {}).await;
+        let (ended, transcript, _) = h.run(&shared("auto"), |_, _| {}).await;
         assert_eq!(ended.outcome, Outcome::Done);
         let requests = h.requests();
         let sent: Vec<(&str, Option<&str>)> = requests

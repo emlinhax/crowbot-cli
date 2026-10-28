@@ -82,6 +82,9 @@ pub(crate) async fn run_under(
     // Calls written as text are pointed out once per run: a model that keeps writing them would
     // only spend turns.
     let mut told_written = false;
+    // PLAN's job is a plan handed over with plan_exit; a main run that ends without one since its
+    // last calls is sent back, once per run, so a model that will not hand one over never loops.
+    let (mut handed, mut sent_to_plan) = (false, false);
 
     let outcome = 'run: loop {
         loop {
@@ -152,6 +155,9 @@ pub(crate) async fn run_under(
                         .iter()
                         .filter(|r| r.name != tools::FINISH)
                         .all(|r| !r.is_error);
+                handed = results
+                    .iter()
+                    .any(|r| r.name == tools::PLAN_EXIT && !r.is_error);
                 // The snapshot goes in the file before the changes it lets /undo take back; only
                 // the frontend's run writes one, its subagents' changes included.
                 if let Some(before) = run.before.get().filter(|_| !snapped && parent.is_none()) {
@@ -194,6 +200,16 @@ pub(crate) async fn run_under(
         }
         let queued = shared.drain_follow();
         if queued.is_empty() {
+            if parent.is_none() && shared.mode().plan_exit && !handed && !sent_to_plan {
+                sent_to_plan = true;
+                let text = fill(
+                    &model_text::get().plan_unfinished,
+                    &[("plan_file", &run.plan_file)],
+                );
+                let parts = vec![Part::Reminder { text }];
+                record(cx, transcript, Message::User { parts });
+                continue;
+            }
             // Before ending: if a check is configured and this run changed files, run it; a failure
             // is handed back so the model fixes it rather than ending broken (capped, so no loop).
             let changed = run.before.get().is_some();
@@ -655,6 +671,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_plan_run_that_ends_without_a_plan_is_sent_back_once() {
+        let h = Harness::new(vec![text("the answer"), text("the answer again")]).await;
+        let (ended, transcript, _) = h.run(&shared("plan"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let requests = h.requests();
+        assert_eq!(requests.len(), 2);
+        let sent_back = last_message(&requests[1])["content"].to_string();
+        assert!(
+            sent_back.contains("without handing over a plan"),
+            "{sent_back}"
+        );
+        assert!(sent_back.contains(transcript.id()), "{sent_back}");
+    }
+
+    #[tokio::test]
+    async fn a_plan_handed_over_ends_the_run_even_when_planning_goes_on() {
+        let h = Harness::new(vec![
+            reply("", &[("c1", "plan_exit", json!({}))], "tool_calls"),
+            text("what should change?"),
+        ])
+        .await;
+        let transcript = Transcript::create(&h.app.paths);
+        crate::io::fs::write_atomic(
+            &h.app.paths.plan_file(transcript.id()),
+            b"1. do it",
+            crate::io::fs::Access::Shared,
+        )
+        .unwrap();
+        let state = shared("plan");
+        h.run_in(transcript, &state, |event, shared| {
+            if let AgentEvent::Prompt { id, .. } = event {
+                // "Keep planning", the third choice in data/tools/plan_exit.toml.
+                shared.prompts.answer(*id, Reply::Choice(2));
+            }
+        })
+        .await;
+        assert_eq!(state.mode().id, "plan");
+        assert_eq!(h.requests().len(), 2);
+    }
+
+    #[tokio::test]
     async fn switching_to_auto_approves_a_waiting_prompt_and_the_calls_after_it() {
         let h = Harness::new(vec![
             reply(
@@ -988,11 +1045,11 @@ mod tests {
 
     #[tokio::test]
     async fn plan_mode_repeats_its_line_with_each_later_message() {
-        let h = Harness::new(vec![text("one"), text("two")]).await;
+        let h = Harness::new(vec![text("one"), text("sent back"), text("two")]).await;
         let state = shared("plan");
         let (_, transcript, _) = h.run(&state, |_, _| {}).await;
         h.run_in(transcript, &state, |_, _| {}).await;
-        let second = last_message(&h.requests()[1]);
+        let second = last_message(&h.requests()[2]);
         let content = second["content"].as_str().unwrap();
         assert!(content.contains("Still in PLAN mode"), "{content}");
         assert!(!content.contains("Your job here"), "{content}");
@@ -1043,12 +1100,13 @@ mod tests {
         session.set_mode(mode::get("manual").unwrap());
         h.run(&session, |_, _| {}).await;
         h.run(&session, |_, _| {}).await;
-        assert_eq!([told(0), told(1), told(2)], [false, true, false]);
+        // The PLAN run ends without a plan, so it is sent back once: requests 0 and 1.
+        assert_eq!([told(0), told(2), told(3)], [false, true, false]);
 
         let session = shared("manual");
         h.run(&session, |_, _| {}).await;
         session.set_mode(mode::get("auto").unwrap());
         h.run(&session, |_, _| {}).await;
-        assert_eq!([told(3), told(4)], [false, false]);
+        assert_eq!([told(4), told(5)], [false, false]);
     }
 }

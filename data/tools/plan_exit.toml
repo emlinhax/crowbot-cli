@@ -3,8 +3,8 @@
 only = "plan_exit only works in PLAN mode."
 missing = "Write the plan to {plan_file} before calling plan_exit."
 approved = "The user approved the plan and switched to {mode} mode. Implement it now, step by step."
-keep = "The user wants to keep planning. Ask what to change, or refine the plan."
-changes = "The user wants changes to the plan: {feedback}"
+keep = "The user wants to keep planning. Ask what to change, or refine the plan and call plan_exit again."
+changes = "The user wants changes to the plan: {feedback}\nUpdate the plan file and call plan_exit again."
 unavailable = "Nobody can approve the plan in this run. Stop and summarise the plan."
 unknown_mode = "unknown mode `{mode}`"
 

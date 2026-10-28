@@ -1,0 +1,19 @@
+description = "A PLAN run that ends on an answer instead of a plan is sent back, once, to write one and hand it over"
+args = ["--mode", "plan", "-p", "fix the sum"]
+project = "calc"
+
+[[reply]]
+text = "Change the 5 in src/calc.txt to a 4."
+
+[[reply]]
+text = "Change the 5 to a 4."
+
+[expect]
+exit = 0
+files = { "src/calc.txt" = "2 + 2 = 5\n" }
+
+[[expect.requests]]
+index = 1
+message = -1
+role = "user"
+contains = "ended without handing over a plan"
