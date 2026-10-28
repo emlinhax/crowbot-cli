@@ -152,11 +152,15 @@ impl<'a> Tui<'a> {
             let next = card.key(action, key);
             return self.panel_next(next);
         }
-        if let Some((id, card)) = self.cards.front_mut()
-            && let Next::Answer(reply) = card.key(action, key)
-        {
-            self.shared.prompts.answer(*id, reply);
-            self.cards.pop_front();
+        if let Some((id, card)) = self.cards.front_mut() {
+            match card.key(action, key) {
+                Next::Answer(reply) => {
+                    self.shared.prompts.answer(*id, reply);
+                    self.cards.pop_front();
+                }
+                Next::Edit(file) => return Step::Edit(file),
+                _ => {}
+            }
         }
         Step::Continue
     }
@@ -164,8 +168,8 @@ impl<'a> Tui<'a> {
     /// Does what the session card asked for.
     pub(super) fn panel_next(&mut self, next: Next) -> Step<'a> {
         match next {
-            // A session card answers no prompt.
-            Next::Stay | Next::Answer(_) => {}
+            // A session card answers no prompt and opens no plan.
+            Next::Stay | Next::Answer(_) | Next::Edit(_) => {}
             Next::Run(job) => return Step::Job(card::run(self.app, job)),
             Next::Note(text) => self.feed.notice(&text, "done"),
             Next::Error(text) => self.feed.notice(&text, "error"),

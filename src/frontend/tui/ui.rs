@@ -245,7 +245,11 @@ pub struct CardText {
     pub plan_title: String,
     /// `{file}` is the plan's file.
     pub plan_body: String,
+    pub plan_edit: String,
     pub plan_other: String,
+    pub plan_edited: String,
+    /// `{error}` is why no editor opened the plan.
+    pub plan_unedited: String,
     pub questions_title: String,
     pub question_tab: String,
     pub review_tab: String,

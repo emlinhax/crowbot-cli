@@ -25,6 +25,8 @@ pub fn cleared() -> Vec<String> {
         "NO_COLOR",
         "COLORTERM",
         "TERM_PROGRAM",
+        "VISUAL",
+        "EDITOR",
     ]
     .map(str::to_owned)
     .into();

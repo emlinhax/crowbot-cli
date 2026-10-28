@@ -51,7 +51,8 @@ pub enum Reply {
 struct Inner {
     /// This server's address, filled in for `{base}` so a scripted model can fetch from it.
     base: String,
-    /// The sandbox's crowbot home, filled in as `{home}`, with `/` separators.
+    /// The sandbox's crowbot home, filled in as `{home}`, with `/` separators. `{plan_file}` is
+    /// the session's plan, found under it in the request.
     home: String,
     paths: Vec<String>,
     chat_bodies: Vec<Value>,
@@ -350,7 +351,18 @@ async fn chat(State(inner): State<Shared>, headers: HeaderMap, body: String) -> 
             inner.home.clone(),
         )
     };
-    let fill = |text: &str| text.replace("{base}", &base).replace("{home}", &home);
+    // The session's plan file, as the conversation names it: `<home>/plans/<session>.md`.
+    let plans = format!("{home}/plans/");
+    let plan_file = body
+        .find(&plans)
+        .filter(|_| !home.is_empty())
+        .and_then(|at| Some(&body[at..at + body[at..].find(".md")? + 3]))
+        .unwrap_or_default();
+    let fill = |text: &str| {
+        text.replace("{base}", &base)
+            .replace("{home}", &home)
+            .replace("{plan_file}", plan_file)
+    };
     let sse = |text: String| {
         (
             [

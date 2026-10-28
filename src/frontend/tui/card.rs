@@ -40,6 +40,8 @@ pub enum Next {
     NewPreset,
     /// Go on with the session in this file; the card closes.
     Resume(std::path::PathBuf),
+    /// Open this file in the user's editor; the card stays open.
+    Edit(std::path::PathBuf),
 }
 
 /// Network or store work a card waits on, run beside input so the screen stays live.
@@ -134,6 +136,7 @@ fn plan_card(file: &str, choices: &[String], width: usize) -> Choice {
         .enumerate()
         .map(|(i, label)| Opt::index(label.clone(), i))
         .collect();
+    options.push(Opt::edit(text.plan_edit.clone(), file));
     options.push(Opt::text(text.plan_other.clone()));
     Choice::new(text.plan_title.clone(), body, options)
 }
@@ -186,6 +189,15 @@ mod tests {
         );
         assert!(text.iter().any(|l| l.contains("Implement it")), "{text:?}");
         assert!(!text.iter().any(|l| l.contains("first step")), "{text:?}");
+    }
+
+    #[test]
+    fn a_plan_card_opens_the_plan_in_an_editor_and_stays() {
+        let mut card = plan_card("/p/s.md", &["Implement it".into()], 80);
+        match card.key(None, &press(KeyCode::Char('2'))) {
+            Next::Edit(file) => assert_eq!(file, std::path::Path::new("/p/s.md")),
+            _ => panic!("expected the plan's file to edit"),
+        }
     }
 
     #[test]

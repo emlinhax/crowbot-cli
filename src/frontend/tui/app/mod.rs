@@ -11,7 +11,7 @@ mod turn;
 
 use std::collections::VecDeque;
 use std::future::Future;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::ExitCode;
 use std::time::Instant;
@@ -38,8 +38,7 @@ use crate::frontend::tui::screen::Screen;
 use crate::frontend::tui::toast::Toast;
 use crate::frontend::tui::view::View;
 use crate::frontend::tui::{ui, welcome};
-use crate::io::clock;
-use crate::io::term;
+use crate::io::{self, clock, term};
 use crate::live::event::{AgentEvent, Ended};
 use crate::live::prompt::Prompt;
 use crate::live::state::Shared;
@@ -83,6 +82,8 @@ enum Step<'a> {
     Compact(Option<String>),
     /// Run beside input: a session command, or what one of them asked for.
     Work(BoxFuture<'a, Work>),
+    /// Hand the terminal to the user's editor for this file.
+    Edit(PathBuf),
 }
 
 /// The session; going on with the one in `resume` when given, its mode included.
@@ -114,7 +115,7 @@ pub async fn run(
         emit: &emit,
     };
 
-    let raw = term::Raw::fullscreen()?;
+    let mut raw = term::Raw::fullscreen()?;
     let mut tui = Tui::new(
         app,
         catalog,
@@ -132,7 +133,7 @@ pub async fn run(
     for (_, note) in mcp.notes() {
         tui.feed.notice(note, "warn");
     }
-    let (spent, transcript) = tui.run(turns, transcript, rx).await;
+    let (spent, transcript) = tui.run(&mut raw, turns, transcript, rx).await;
     drop(raw);
     // The session is done with its servers; `tui` lends them until here.
     let earlier = std::mem::take(&mut tui.earlier);
@@ -202,6 +203,8 @@ struct Tui<'a> {
     /// The model that answered last and the effort it was sent, which a preset may have picked.
     served: Option<(Model, Option<String>)>,
     account: AccountView,
+    /// The plan last put in the transcript, so an editor closed without a change adds nothing.
+    plan: Option<String>,
 }
 
 impl<'a> Tui<'a> {
@@ -248,6 +251,7 @@ impl<'a> Tui<'a> {
             context_tokens: None,
             served: None,
             account: AccountView::new(),
+            plan: None,
         };
         tui.feed.set_welcome(tui.welcome());
         tui
@@ -320,6 +324,7 @@ impl<'a> Tui<'a> {
     /// transcript unless a turn still held it.
     async fn run(
         &mut self,
+        raw: &mut term::Raw,
         turns: Turns<'a>,
         transcript: Transcript,
         mut events: mpsc::UnboundedReceiver<AgentEvent>,
@@ -371,6 +376,15 @@ impl<'a> Tui<'a> {
                 Step::Quit => break,
                 Step::Job(run) => job = Some(run),
                 Step::Work(run) => work.push(run),
+                // crossterm reads stdin while its stream lives, so the stream goes before the
+                // editor has the terminal and a new one comes after, or keys go astray.
+                Step::Edit(file) => {
+                    drop(inputs);
+                    let edited = raw.lend(io::proc::edit(&file)).await.and_then(|e| e);
+                    inputs = Box::pin(term::inputs());
+                    self.screen.forget();
+                    self.plan_edited(&file, edited);
+                }
                 // Typed text queues while a turn runs; only a command's message gets here.
                 Step::Send(text) => match transcript.take() {
                     Some(owned) => turn = Some(self.start(Job::Prompt(text), owned, &turns)),
@@ -401,6 +415,27 @@ impl<'a> Tui<'a> {
             }
         }
         (self.cost_micros, transcript)
+    }
+
+    /// The plan as the user left it in their editor goes in the transcript above its card;
+    /// `plan_exit` tells the model when the answer comes.
+    fn plan_edited(&mut self, file: &Path, edited: std::io::Result<()>) {
+        let text = &ui::get().card;
+        let plan = edited
+            .and_then(|()| io::fs::read_string(file))
+            .map(Option::unwrap_or_default);
+        match plan {
+            Ok(plan) if self.plan.as_ref() == Some(&plan) => {}
+            Ok(plan) => {
+                self.feed.notice(&text.plan_edited, "done");
+                self.feed.markdown(&plan);
+                self.plan = Some(plan);
+            }
+            Err(e) => {
+                let why = template::fill(&text.plan_unedited, &[("error", &e.to_string())]);
+                self.feed.notice(&why, "error");
+            }
+        }
     }
 
     fn agent(&mut self, event: AgentEvent) {
@@ -445,6 +480,7 @@ impl<'a> Tui<'a> {
                         // The whole plan goes in the transcript, which scrolls; a card would cut it.
                         if let Prompt::PlanExit { plan, .. } = prompt {
                             self.feed.markdown(plan);
+                            self.plan = Some(plan.clone());
                         }
                         let card = card::from_prompt(prompt, self.draw_width());
                         self.cards.push_back((*id, card));

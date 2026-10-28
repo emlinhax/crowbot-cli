@@ -75,6 +75,9 @@ impl Session {
         for (name, value) in launch_env(sandbox.home(), sandbox.user(), Some(api_url), key) {
             cmd.env(name, value);
         }
+        for (name, value) in sandbox.env() {
+            cmd.env(name, value);
+        }
         cmd.env("TERM", "xterm-256color");
         let child = pty.slave.spawn_command(cmd).expect("crowbot starts");
         drop(pty.slave);

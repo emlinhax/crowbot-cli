@@ -1008,6 +1008,6 @@ plan in their own editor.
       without anyone, so a budget per hand-over could cycle)
 - [x] 21.3 the whole plan goes into the transcript and the card names its file; `plan_exit` reads
       the file again after the answer and tells the model of any edit
-- [ ] 21.4 an "edit in your editor" option: `data/editor.toml` candidates, the terminal handed to
+- [x] 21.4 an "edit in your editor" option: `data/editors.toml` candidates, the terminal handed to
       the editor and taken back, the card kept open with the edited plan
 - [ ] 21.5 README, scenario and pty tests, and what M21 learned

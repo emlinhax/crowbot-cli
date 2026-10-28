@@ -1,0 +1,5 @@
+# The program a file opens in when the user asks to edit it (a finished plan): the first candidate
+# found. `{NAME}` is that environment variable, and a candidate naming an unset one is skipped. A
+# value with arguments (`code --wait`) is split on spaces, its first word the program.
+unix = ["{VISUAL}", "{EDITOR}", "nano", "vi"]
+windows = ["{VISUAL}", "{EDITOR}", "notepad"]

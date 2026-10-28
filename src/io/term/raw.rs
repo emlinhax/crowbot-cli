@@ -133,13 +133,28 @@ impl Raw {
     pub fn enhanced(&self) -> bool {
         self.enhanced
     }
+
+    /// The terminal as it was before the guard while `run` goes, for another program to use;
+    /// then the guard's state again. The caller stops reading input first, or it races the
+    /// program for keys.
+    pub async fn lend<T>(&mut self, run: impl Future<Output = T>) -> io::Result<T> {
+        let fullscreen = self.undo.iter().any(|u| matches!(u, Undo::Fullscreen));
+        self.restore();
+        let out = run.await;
+        *self = Self::open(fullscreen)?;
+        Ok(out)
+    }
+
+    fn restore(&mut self) {
+        if let Some(previous) = self.previous_hook.take() {
+            std::panic::set_hook(Box::new(move |info| previous(info)));
+        }
+        undo_all(&std::mem::take(&mut self.undo));
+    }
 }
 
 impl Drop for Raw {
     fn drop(&mut self) {
-        if let Some(previous) = self.previous_hook.take() {
-            std::panic::set_hook(Box::new(move |info| previous(info)));
-        }
-        undo_all(&self.undo);
+        self.restore();
     }
 }

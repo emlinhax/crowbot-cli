@@ -46,8 +46,14 @@ impl Screen {
         if (width, height) != (self.width, self.height) {
             self.width = width;
             self.height = height;
-            self.rows.clear();
+            self.forget();
         }
+    }
+
+    /// What the terminal shows is unknown (another program had it), so the next frame draws
+    /// every row.
+    pub fn forget(&mut self) {
+        self.rows.clear();
     }
 
     /// The bytes that show `lines` as the screen, top row first; missing rows are blank and

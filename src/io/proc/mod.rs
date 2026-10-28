@@ -4,10 +4,12 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 pub mod child;
+mod editor;
 mod exec;
 mod group;
 mod tree;
 
+pub use editor::edit;
 pub use exec::{Captured, Program, exec};
 pub use tree::{Ended, ShellCommand, run};
 
@@ -82,15 +84,17 @@ pub fn after_exit(command: &str) -> io::Result<()> {
 /// The first of `candidates` found, each a name on PATH or a path, with `{NAME}` filled from the
 /// environment; one naming a variable that is not set is skipped.
 pub fn find(candidates: &[String]) -> Option<PathBuf> {
-    candidates.iter().find_map(|candidate| {
-        let path = crate::text::template::fill_with(candidate, |name| {
-            super::env::var(name).map(std::borrow::Cow::Owned)
-        });
-        if path.contains('{') {
-            return None;
-        }
-        which(&path)
-    })
+    candidates
+        .iter()
+        .find_map(|candidate| which(&filled(candidate)?))
+}
+
+/// `candidate` with `{NAME}` filled from the environment; `None` when it names an unset variable.
+fn filled(candidate: &str) -> Option<String> {
+    let filled = crate::text::template::fill_with(candidate, |name| {
+        super::env::var(name).map(std::borrow::Cow::Owned)
+    });
+    (!filled.contains('{')).then_some(filled)
 }
 
 /// The first `name` on PATH (trying PATHEXT extensions on Windows), or `name` itself when it is
