@@ -82,8 +82,9 @@ interrupted.
 MANUAL asks before edits, commands and fetches; AUTO allows everything, deny rules included.
 PLAN edits only its plan file, fetches freely, and runs unasked only the commands in
 `data/modes/plan.toml` (git reads, listings, builds, tests, linters; these run project code, so it
-is not a sandbox) plus trailing pipe filters (`data/filters.toml`). It ends by handing over the
-plan.
+is not a sandbox) plus trailing pipe filters (`data/filters.toml`). Its job is a plan, not an
+answer or the change: every request ends with the plan written to `~/.crowbot/plans/` and handed
+over with `plan_exit`, and a run that ends without one is sent back once to write it.
 A headless run declines every prompt: allow what it needs with `[[permission]]` rules, or use
 `--mode auto`. The key comes from `CROWBOT_API_KEY`, else
 `~/.crowbot/auth.json` (DPAPI-sealed on Windows, 0600 elsewhere).
@@ -136,8 +137,11 @@ cost from `message_end` events at any depth, or from the task's `tool_end` usage
 
 Prompts replace the editor with a numbered card: permission (`1` yes, `2` no, `3` no and say
 why, with a diff or command preview), crowbot's questions (up to four on one card, a tab each,
-some taking several answers, all reviewed before they go back), or a finished plan. Inside the
-session, `/help` lists the commands:
+some taking several answers, all reviewed before they go back), or a finished plan. A plan goes
+into the transcript in full (PageUp scrolls it); its card implements it in MANUAL or AUTO, keeps
+planning, opens it in your editor (`$VISUAL`, `$EDITOR`, else `data/editors.toml`'s fallback),
+or takes what to change. An edit made before the answer reaches the model as the plan to follow.
+Inside the session, `/help` lists the commands:
 
 | Command | Does |
 |---|---|

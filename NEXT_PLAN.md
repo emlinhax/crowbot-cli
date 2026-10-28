@@ -994,7 +994,7 @@ fix for a subagent ending with `finish` (cherry-picked).
 - Open: a stale `model` in prefs.json (a model crowbot dropped, a preset deleted) still fails the
   start rather than giving way to the config's, as a resumed session's does.
 
-## M21 — PLAN only plans, hands the plan over, and the user reads and edits it (planned 2026-10-28)
+## M21 — PLAN only plans, hands the plan over, and the user reads and edits it (2026-10-28)
 In PLAN, models answered or tried the change and wrote a plan only when told to. The locks already
 refuse every edit but the plan file; what failed is what the model is told and what holds it to it:
 the reminder ends "summarise the plan and say it is ready" and never names `plan_exit`, it is said
@@ -1010,4 +1010,18 @@ plan in their own editor.
       the file again after the answer and tells the model of any edit
 - [x] 21.4 an "edit in your editor" option: `data/editors.toml` candidates, the terminal handed to
       the editor and taken back, the card kept open with the edited plan
-- [ ] 21.5 README, scenario and pty tests, and what M21 learned
+- [x] 21.5 README, scenario and pty tests, and what M21 learned
+
+**Learned**
+- The locks were never the problem: nothing PLAN refuses was reached. What failed was what the
+  model was told and what held it to it. The reminder's last line ("summarise and say it is
+  ready") competed with `plan_exit`'s description and won. In the battery's 2026-10-16 run, 5 of
+  18 PLAN sessions never handed a plan over; in the 10-14 run, written before `plan_exit`, none
+  wrote one.
+- A send-back needs a budget per run, not per hand-over: headless `plan_exit` answers without
+  anyone, so resetting on each hand-over could cycle now that the main run has no turn limit.
+- Handing the terminal to another program is two things, not one: the guard's state (`Raw::lend`)
+  and crossterm's reader, whose stream must be dropped first or it races the program for keys. A
+  pty test whose "editor" reads a typed line proves both.
+- Open: "keep planning" counts as a hand-over, so a model that then ends on a question in text is
+  not sent back; the next message's `reminder_again` is what brings it back to the plan.
