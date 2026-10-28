@@ -29,7 +29,12 @@ pub enum Prompt {
     /// The model asks the user to choose; several questions share one card.
     Question { questions: Vec<Question> },
     /// PLAN mode's plan is ready; the user decides what happens next.
-    PlanExit { plan: String, choices: Vec<String> },
+    PlanExit {
+        plan: String,
+        /// Where the plan is, for the user to read or edit.
+        file: String,
+        choices: Vec<String>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

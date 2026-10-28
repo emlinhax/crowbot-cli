@@ -235,6 +235,7 @@ hint = "↑↓ move · enter choose · 1-9 pick · esc no"
 input_hint = "enter send · esc back"
 other = "Other…"
 plan_title = "Plan ready"
+plan_body = "The plan is above (PageUp scrolls). Its file: `{file}`"
 plan_other = "Tell crowbot what to change…"
 # The model's questions: one tab each, then a review before the answers go back.
 questions_title = "crowbot asks"

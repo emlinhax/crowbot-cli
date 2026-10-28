@@ -41,6 +41,7 @@ use crate::frontend::tui::{ui, welcome};
 use crate::io::clock;
 use crate::io::term;
 use crate::live::event::{AgentEvent, Ended};
+use crate::live::prompt::Prompt;
 use crate::live::state::Shared;
 use crate::mcp::Servers;
 use crate::models::Catalog;
@@ -441,6 +442,10 @@ impl<'a> Tui<'a> {
             AgentEvent::Prompt { .. } | AgentEvent::Child { .. } | AgentEvent::Mcp { .. } => {
                 match event.innermost() {
                     AgentEvent::Prompt { id, prompt, .. } => {
+                        // The whole plan goes in the transcript, which scrolls; a card would cut it.
+                        if let Prompt::PlanExit { plan, .. } = prompt {
+                            self.feed.markdown(plan);
+                        }
                         let card = card::from_prompt(prompt, self.draw_width());
                         self.cards.push_back((*id, card));
                     }

@@ -31,6 +31,7 @@ struct Text {
     approved: String,
     keep: String,
     changes: String,
+    edited: String,
     unavailable: String,
     unknown_mode: String,
     choice: Vec<Choice>,
@@ -69,40 +70,47 @@ impl Tool for PlanExit {
         Box::pin(async move {
             // Read where the write tool wrote it: the spelling is project-relative when the
             // plan lives inside the project.
-            let plan = target::resolve(&cx.app.paths, cx.plan_file)
-                .ok()
-                .and_then(|t| io::fs::read_string(&t.path).ok().flatten())
-                .filter(|p| !p.trim().is_empty());
-            let Some(plan) = plan else {
+            let file = target::resolve(&cx.app.paths, cx.plan_file).map(|t| t.path);
+            let read = || {
+                file.as_ref()
+                    .ok()
+                    .and_then(|f| io::fs::read_string(f).ok().flatten())
+                    .filter(|p| !p.trim().is_empty())
+            };
+            let (Some(plan), Ok(path)) = (read(), &file) else {
                 return Err(fill(&TEXT.missing, &[("plan_file", cx.plan_file)]));
             };
             let prompt = Prompt::PlanExit {
-                plan,
+                plan: plan.clone(),
+                file: path.to_string_lossy().into_owned(),
                 choices: TEXT.choice.iter().map(|c| c.label.clone()).collect(),
             };
-            Ok(match cx.ask(prompt).await {
-                Some(Reply::Choice(i)) => {
-                    match TEXT.choice.get(i).and_then(|c| c.mode.as_deref()) {
-                        Some(id) => {
-                            let Some(next) = mode::get(id) else {
-                                return Err(fill(&TEXT.unknown_mode, &[("mode", id)]));
-                            };
-                            cx.shared.set_mode(next);
-                            Output::ok(fill(&TEXT.approved, &[("mode", &next.label)]))
-                        }
-                        None => Output::ok(TEXT.keep.clone()),
+            let Some(reply) = cx.ask(prompt).await else {
+                return Ok(Output::cancelled());
+            };
+            let said = match reply {
+                Reply::Choice(i) => match TEXT.choice.get(i).and_then(|c| c.mode.as_deref()) {
+                    Some(id) => {
+                        let Some(next) = mode::get(id) else {
+                            return Err(fill(&TEXT.unknown_mode, &[("mode", id)]));
+                        };
+                        cx.shared.set_mode(next);
+                        fill(&TEXT.approved, &[("mode", &next.label)])
                     }
-                }
-                Some(
-                    Reply::Text(feedback)
-                    | Reply::No {
-                        feedback: Some(feedback),
-                    },
-                ) => Output::ok(fill(&TEXT.changes, &[("feedback", &feedback)])),
-                Some(Reply::Unavailable) => Output::ok(TEXT.unavailable.clone()),
-                Some(_) => Output::ok(TEXT.keep.clone()),
-                None => Output::cancelled(),
-            })
+                    None => TEXT.keep.clone(),
+                },
+                Reply::Text(feedback)
+                | Reply::No {
+                    feedback: Some(feedback),
+                } => fill(&TEXT.changes, &[("feedback", &feedback)]),
+                Reply::Unavailable => TEXT.unavailable.clone(),
+                _ => TEXT.keep.clone(),
+            };
+            // The user may have changed the file while the card was up, from it or elsewhere.
+            Ok(Output::ok(match read().filter(|now| *now != plan) {
+                Some(now) => fill(&TEXT.edited, &[("plan", &now), ("said", &said)]),
+                None => said,
+            }))
         })
     }
 }

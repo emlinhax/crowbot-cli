@@ -667,7 +667,40 @@ mod tests {
         .await;
         assert_eq!(state.mode().id, "manual");
         let result = last_message(&h.requests()[1]);
-        assert!(result["content"].as_str().unwrap().contains("MANUAL"));
+        let content = result["content"].as_str().unwrap();
+        assert!(content.contains("MANUAL"), "{content}");
+        assert!(!content.contains("edited the plan"), "{content}");
+    }
+
+    #[tokio::test]
+    async fn a_plan_edited_while_its_card_is_up_reaches_the_model_as_edited() {
+        let h = Harness::new(vec![
+            reply("", &[("c1", "plan_exit", json!({}))], "tool_calls"),
+            text("implementing"),
+        ])
+        .await;
+        let transcript = Transcript::create(&h.app.paths);
+        let file = h.app.paths.plan_file(transcript.id());
+        let write = |plan: &str| {
+            crate::io::fs::write_atomic(&file, plan.as_bytes(), crate::io::fs::Access::Shared)
+                .unwrap()
+        };
+        write("1. do it");
+        h.run_in(transcript, &shared("plan"), |event, shared| {
+            if let AgentEvent::Prompt { id, prompt, .. } = event {
+                let Prompt::PlanExit { file: shown, .. } = prompt else {
+                    panic!("{prompt:?}");
+                };
+                assert_eq!(std::path::Path::new(shown), file);
+                write("1. do it\n2. test it");
+                shared.prompts.answer(*id, Reply::Choice(0));
+            }
+        })
+        .await;
+        let result = last_message(&h.requests()[1])["content"].to_string();
+        assert!(result.contains("edited the plan"), "{result}");
+        assert!(result.contains("2. test it"), "{result}");
+        assert!(result.contains("MANUAL"), "{result}");
     }
 
     #[tokio::test]

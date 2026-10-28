@@ -18,6 +18,7 @@ use crate::io::term::KeyEvent;
 use crate::live::prompt::{Prompt, Reply};
 use crate::permission::gate;
 use crate::text::styled::Line;
+use crate::text::template::fill;
 use crate::text::{diff, markdown};
 
 /// What a card wants after a key, or after a job it asked for has finished.
@@ -91,7 +92,7 @@ pub fn from_prompt(prompt: &Prompt, width: usize) -> Box<dyn Card> {
             preview,
             ..
         } => Box::new(permission(tool, asks, preview.as_deref(), width)),
-        Prompt::PlanExit { plan, choices } => Box::new(plan_card(plan, choices, width)),
+        Prompt::PlanExit { file, choices, .. } => Box::new(plan_card(file, choices, width)),
         Prompt::Question { questions } => Box::new(Questions::new(questions.clone())),
     }
 }
@@ -122,11 +123,12 @@ fn permission(tool: &str, asks: &[gate::Ask], preview: Option<&str>, width: usiz
 }
 
 /// PLAN mode's finished plan, and what to do with it.
-fn plan_card(plan: &str, choices: &[String], width: usize) -> Choice {
+/// The plan itself is in the transcript above the card, where it scrolls; the card says where its
+/// file is.
+fn plan_card(file: &str, choices: &[String], width: usize) -> Choice {
     let text = &ui::get().card;
     let inner = boxed::inner(width).max(1);
-    let max = limits::get().tui.prompt_body_lines.value;
-    let body = capped(markdown::render(plan, inner), max);
+    let body = markdown::render(&fill(&text.plan_body, &[("file", file)]), inner);
     let mut options: Vec<Opt> = choices
         .iter()
         .enumerate()
@@ -163,6 +165,27 @@ mod tests {
             card.key(None, &press(KeyCode::Char('1'))),
             Next::Answer(Reply::Yes)
         ));
+    }
+
+    #[test]
+    fn a_plan_card_names_the_file_and_leaves_the_plan_to_the_transcript() {
+        let prompt = Prompt::PlanExit {
+            plan: "1. the first step".into(),
+            file: "/home/u/.crowbot/plans/s.md".into(),
+            choices: vec!["Implement it".into()],
+        };
+        let text: Vec<String> = from_prompt(&prompt, 100)
+            .render(100)
+            .iter()
+            .map(Line::text)
+            .collect();
+        assert!(
+            text.iter()
+                .any(|l| l.contains("/home/u/.crowbot/plans/s.md")),
+            "{text:?}"
+        );
+        assert!(text.iter().any(|l| l.contains("Implement it")), "{text:?}");
+        assert!(!text.iter().any(|l| l.contains("first step")), "{text:?}");
     }
 
     #[test]
