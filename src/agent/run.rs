@@ -691,7 +691,8 @@ mod tests {
                 let Prompt::PlanExit { file: shown, .. } = prompt else {
                     panic!("{prompt:?}");
                 };
-                assert_eq!(std::path::Path::new(shown), file);
+                // Resolved like the tool's: macOS and Windows temp folders have two spellings.
+                assert_eq!(std::path::Path::new(shown), crate::io::fs::canonical(&file));
                 write("1. do it\n2. test it");
                 shared.prompts.answer(*id, Reply::Choice(0));
             }

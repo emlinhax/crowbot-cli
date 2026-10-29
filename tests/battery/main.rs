@@ -241,7 +241,12 @@ async fn an_mcp_task_runs_its_simulated_servers_and_keeps_their_records() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_run_past_its_turn_limit_is_stopped() {
     let fake = Fake::start().await;
-    auto_fix(&fake);
+    // The second reply stalls and no fix follows it: on a loaded CI runner the stop came after
+    // crowbot had already fetched and applied the edit.
+    fake.script([
+        Reply::call("read", r#"{"path": "src/calc.txt"}"#),
+        Reply::Stall { status: 503 },
+    ]);
     let out = tempfile::tempdir().unwrap();
     let battery = against(&fake, out.path());
     let task = Task {
