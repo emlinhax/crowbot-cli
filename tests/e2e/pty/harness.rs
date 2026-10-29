@@ -299,8 +299,8 @@ pub struct Ended<T> {
     pub sandbox: Sandbox,
 }
 
-/// Starts a session (logged out when `key` is `None`), waits for its welcome and its bar, runs
-/// `body`, then quits with Ctrl+D and asserts a clean exit.
+/// Starts a session (logged out when `key` is `None`), waits for its bar, runs `body`, then quits
+/// with Ctrl+D and asserts a clean exit.
 pub async fn in_session<T: Send + 'static>(
     fake: &Fake,
     sandbox: Sandbox,
@@ -321,8 +321,8 @@ pub async fn in_session_with<T: Send + 'static>(
     let url = fake.url.clone();
     tokio::task::spawn_blocking(move || {
         let mut s = Session::start_as(&sandbox, &url, key, args);
-        s.wait_for("crowbot v");
-        // The bar names the mode and the model once the session is ready for keys.
+        // The bar names the mode and the model once the session is ready for keys. Not the
+        // welcome: a reopened conversation can scroll it off the top.
         s.wait_bar(" · ");
         let out = body(&mut s);
         let screen = s.contents();
