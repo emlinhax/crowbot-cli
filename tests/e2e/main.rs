@@ -25,6 +25,8 @@ pub struct Sandbox {
     home: TempDir,
     user: TempDir,
     project: TempDir,
+    /// Variables a session in a pseudo-terminal starts with, beside `launch_env`'s.
+    env: Vec<(String, String)>,
 }
 
 impl Default for Sandbox {
@@ -33,6 +35,7 @@ impl Default for Sandbox {
             home: tempfile::tempdir().unwrap(),
             user: tempfile::tempdir().unwrap(),
             project: tempfile::tempdir().unwrap(),
+            env: Vec::new(),
         }
     }
 }
@@ -49,6 +52,15 @@ impl Sandbox {
 
     pub fn project(&self) -> &Path {
         self.project.path()
+    }
+
+    /// Sets `name` for the sessions started in a pseudo-terminal (`pty::harness`).
+    pub fn set_env(&mut self, name: &str, value: &str) {
+        self.env.push((name.to_owned(), value.to_owned()));
+    }
+
+    pub fn env(&self) -> &[(String, String)] {
+        &self.env
     }
 
     /// Writes `text` at `rel` under the home, making its folders.

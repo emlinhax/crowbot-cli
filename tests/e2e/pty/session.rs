@@ -84,12 +84,19 @@ async fn the_context_share_follows_a_switch_of_model_at_once() {
 #[tokio::test(flavor = "multi_thread")]
 async fn continue_reopens_the_last_conversation_with_its_mode() {
     let fake = Fake::start().await;
-    fake.script([Reply::sse("hello.sse"), Reply::text("The second answer.")]);
+    // Each PLAN run ends without a plan, so each is sent back once for one.
+    fake.script([
+        Reply::sse("hello.sse"),
+        Reply::text("Still no plan."),
+        Reply::text("The second answer."),
+        Reply::text("Still none."),
+    ]);
     let first = in_session(&fake, Sandbox::default(), Some(ENV_KEY), |s| {
         s.send(SHIFT_TAB);
         s.wait_bar("PLAN");
         s.submit("the first question");
         s.wait_for("Hello there!");
+        s.wait_for("Still no plan.");
     })
     .await;
     let ended = in_session_with(&fake, first.sandbox, Some(ENV_KEY), &["--continue"], |s| {
@@ -98,9 +105,10 @@ async fn continue_reopens_the_last_conversation_with_its_mode() {
         s.wait_bar("PLAN");
         s.submit("the second question");
         s.wait_for("The second answer.");
+        s.wait_for("Still none.");
     })
     .await;
-    let second = fake.chat_bodies()[1]["messages"].to_string();
+    let second = fake.chat_bodies()[2]["messages"].to_string();
     assert!(second.contains("the first question"), "{second}");
     assert_eq!(ended.sandbox.sessions().len(), 1);
 }

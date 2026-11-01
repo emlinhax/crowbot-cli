@@ -1,6 +1,8 @@
 //! The numbered card that replaces the editor when crowbot needs an answer (permission, what to
 //! do with a finished plan); the login and forums menus are built from it too.
 
+use std::path::PathBuf;
+
 use crate::frontend::tui::boxed::{self, boxed};
 use crate::frontend::tui::card::{Card, Next};
 use crate::frontend::tui::editor::{Editor, Field};
@@ -20,6 +22,8 @@ enum Pick {
     Reason,
     /// Opens a line whose words answer `Text`; `shown` hides all but that many last characters.
     Text { shown: Option<usize> },
+    /// Opens this file in the user's editor; the card stays.
+    Edit(PathBuf),
 }
 
 pub struct Opt {
@@ -53,6 +57,14 @@ impl Opt {
         Self {
             label: label.into(),
             pick: Pick::Text { shown: Some(shown) },
+        }
+    }
+
+    /// Opens `file` in the user's editor, and the card stays open.
+    pub fn edit(label: impl Into<String>, file: impl Into<PathBuf>) -> Self {
+        Self {
+            label: label.into(),
+            pick: Pick::Edit(file.into()),
         }
     }
 
@@ -103,6 +115,7 @@ impl Choice {
             Pick::Answer(reply) => Next::Answer(reply),
             Pick::Reason => self.open_input(pick, None),
             Pick::Text { shown } => self.open_input(pick, shown),
+            Pick::Edit(file) => Next::Edit(file),
         }
     }
 

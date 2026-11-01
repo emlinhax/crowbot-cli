@@ -1,0 +1,16 @@
+# What crowbot says about presets (~/.crowbot/presets/<name>.toml, src/models/preset.rs);
+# {placeholders} are filled in.
+
+# A preset file that cannot be used, as a choice of it is refused.
+broken = "preset `{id}` ({path}): {problem}"
+unreadable = "it cannot be read: {error}"
+no_rules = "it has no [[rule]]"
+last_has_when = "its last rule has a `when`; the last one must have none, so every request finds a model"
+dead_rule = "rule {n} has no `when`, so the rules after it never apply"
+in_rule = "rule {n}"
+unknown_model = "rule {n} names model `{model}`, which crowbot does not serve; see `crowbot models`"
+shadowed = "a model has the same name; rename the file"
+
+# `/presets new <name>` and the picker's last row.
+bad_name = "a preset's name is letters, digits, `-` and `_`: `{name}` is not"
+exists = "{path} is already there"

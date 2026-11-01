@@ -10,12 +10,13 @@ use crate::frontend::tui::account::Account;
 use crate::frontend::tui::command::{self, Work};
 use crate::frontend::tui::forums::Forums;
 use crate::frontend::tui::login::Login;
-use crate::frontend::tui::picker::Picker;
+use crate::frontend::tui::picker::{Picker, Show};
 use crate::frontend::tui::signup::Signup;
 use crate::frontend::tui::toast::Toast;
 use crate::frontend::tui::ui;
 use crate::io::{clipboard, clock};
 use crate::mode;
+use crate::models::{choice, preset};
 use crate::session;
 use crate::text::template;
 
@@ -25,7 +26,7 @@ impl<'a> Tui<'a> {
         let outcome: CommandOutcome = match done {
             Work::Catalog(catalog) => {
                 self.catalog = catalog;
-                self.panel = Some(Box::new(Picker::models(&self.catalog, &self.next.model.id)));
+                self.open_models(Show::All);
                 return Step::Continue;
             }
             Work::Command(Err(e)) => {
@@ -68,9 +69,9 @@ impl<'a> Tui<'a> {
                 Effect::PickModel { refresh: true } => {
                     return Step::Work(command::refresh_catalog(self.app));
                 }
-                Effect::PickModel { refresh: false } => {
-                    self.panel = Some(Box::new(Picker::models(&self.catalog, &self.next.model.id)));
-                }
+                Effect::PickModel { refresh: false } => self.open_models(Show::All),
+                Effect::PickPreset => self.open_models(Show::Presets),
+                Effect::NewPreset { name } => self.new_preset(name.as_deref()),
                 Effect::Forums { login } => match Forums::open(&self.app.paths, login.as_deref()) {
                     Ok(card) => self.panel = Some(Box::new(card)),
                     Err(e) => self.feed.notice(&format!("{e:#}"), "error"),
@@ -101,6 +102,29 @@ impl<'a> Tui<'a> {
         Step::Continue
     }
 
+    /// The model picker, on what `show` lists; presets are read again, so one just written shows.
+    fn open_models(&mut self, show: Show) {
+        let paths = &self.app.paths;
+        let listed = preset::load(paths);
+        let current = self.next.choice.id();
+        let picker = Picker::models(&self.catalog, &listed, &paths.presets(), current, show);
+        self.panel = Some(Box::new(picker));
+    }
+
+    /// Writes a new preset on the session's model, named `name` or the first free `new`, and
+    /// says where to edit it.
+    pub(super) fn new_preset(&mut self, name: Option<&str>) {
+        let model = &self.next.choice.model().id;
+        match preset::create(&self.app.paths, name, model) {
+            Ok(path) => {
+                let path = path.display().to_string();
+                let text = template::fill(&ui::get().picker.preset_written, &[("path", &path)]);
+                self.feed.notice(&text, "done");
+            }
+            Err(e) => self.feed.notice(&format!("{e:#}"), "error"),
+        }
+    }
+
     /// Puts `text` on the clipboard and says so at the top right.
     pub(super) fn copy(&mut self, text: &str) {
         clipboard::copy(text);
@@ -111,10 +135,11 @@ impl<'a> Tui<'a> {
     pub(super) fn set_effort(&mut self, effort: String) {
         let text = &ui::get().text;
         let mut note = template::fill(&text.effort_set, &[("effort", &effort)]);
-        if self.next.model.effort(Some(&effort)).is_none() {
+        let model = self.next.choice.model();
+        if model.effort(Some(&effort)).is_none() {
             note.push_str(&template::fill(
                 &text.effort_unsent,
-                &[("model", &self.next.model.id)],
+                &[("model", &model.id)],
             ));
         }
         prefs::remember_effort(&self.app.paths, &effort);
@@ -124,11 +149,14 @@ impl<'a> Tui<'a> {
 
     /// Uses `id` from the next turn on, and remembers it for the next session.
     pub(super) fn switch_model(&mut self, id: &str) {
-        let Some(model) = self.catalog.get(id).cloned() else {
-            return;
+        let presets = preset::load(&self.app.paths);
+        let choice = match choice::find(&self.catalog, &presets, id) {
+            Ok(choice) => choice,
+            Err(e) => return self.feed.notice(&format!("{e:#}"), "error"),
         };
         prefs::remember_model(&self.app.paths, id);
-        self.next.switch(&self.app.paths, model);
+        self.next.switch(&self.app.paths, choice);
+        self.served = None;
         let text = template::fill(&ui::get().picker.switched, &[("model", id)]);
         self.feed.notice(&text, "done");
     }

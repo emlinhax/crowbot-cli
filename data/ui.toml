@@ -47,6 +47,8 @@ context = "ctx {pct}%"
 cost = "{cost} est"
 allowance = "{plan} {pct}%"
 balance = "{balance} left"
+# The model item on a preset, once a request has gone: the preset, then the model it picked.
+preset = "{preset} → {model}"
 
 # The welcome card's lines: the version after the name, then model, effort and mode.
 [welcome]
@@ -103,8 +105,10 @@ gutter = "│ "
 # `/models` inside a session.
 [picker]
 title = "Models"
+presets_title = "Presets"
 hint = "↑↓ move · → or enter select · esc close"
 switched = "Model: {model} for this session."
+preset_written = "Wrote {path}: edit it, then pick it in /models."
 
 # `/resume` inside a session: this project's earlier sessions.
 [resume]
@@ -231,7 +235,11 @@ hint = "↑↓ move · enter choose · 1-9 pick · esc no"
 input_hint = "enter send · esc back"
 other = "Other…"
 plan_title = "Plan ready"
+plan_body = "The plan is above (PageUp scrolls). Its file: `{file}`"
+plan_edit = "Edit it in your editor"
 plan_other = "Tell crowbot what to change…"
+plan_edited = "The plan as you left it:"
+plan_unedited = "No editor opened the plan ({error}). Set $VISUAL or $EDITOR to one."
 # The model's questions: one tab each, then a review before the answers go back.
 questions_title = "crowbot asks"
 question_tab = "Question {n}"
@@ -255,7 +263,3 @@ reply = "no"
 [[card.permission]]
 label = "No, and tell crowbot why…"
 reply = "no_why"
-
-# How a run that ended early is told.
-[outcome]
-turn_limit = "{stopped} Send a message to continue."

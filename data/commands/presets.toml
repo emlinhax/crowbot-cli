@@ -1,0 +1,7 @@
+name = "presets"
+summary = "Presets, picked like a model, each choosing the model per request by its rules; `new` writes one to edit"
+usage = "presets [new [<name>]]"
+
+# What `crowbot presets new` says; {placeholders} are filled in.
+[text]
+written = "Wrote {path}: edit it, then use it with `--model {id}` or pick it in /models."

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::agent::kinds::{self, Kind};
 use crate::agent::{Run, RunCtx, run};
-use crate::conversation::message::{Message, Part, Usage};
+use crate::conversation::message::{Assistant, Message, Part, Usage};
 use crate::live::event::{AgentEvent, Ended, Outcome};
 use crate::session::entry::Parent;
 use crate::session::transcript::Transcript;
@@ -73,10 +73,13 @@ pub async fn run_child(parent: &Run<'_>, call_id: &str, kind: &Kind, prompt: Str
             event: Box::new(event),
         });
     };
+    // The session's preset picks for it too, by its kind.
     let child = RunCtx {
         app: cx.app,
         model: cx.model,
         effort: cx.effort,
+        preset: cx.preset,
+        agent: Some(&kind.id),
         system: &system,
         tools: &tools,
         emit: &emit,
@@ -90,9 +93,7 @@ pub async fn run_child(parent: &Run<'_>, call_id: &str, kind: &Kind, prompt: Str
     });
     Done {
         ended,
-        answer: last
-            .map(|reply| Part::text_of(&reply.parts))
-            .filter(|text| !text.trim().is_empty()),
+        answer: last.and_then(answer),
         error: last
             .and_then(|reply| reply.error.as_ref())
             .map(crate::api::error::headline),
@@ -106,6 +107,21 @@ pub async fn run_child(parent: &Run<'_>, call_id: &str, kind: &Kind, prompt: Str
     }
 }
 
+/// What a subagent's last reply says: its words, else the summary it ended with through
+/// `finish`, which a subagent that ends that way often writes instead.
+fn answer(reply: &Assistant) -> Option<String> {
+    let said = Part::text_of(&reply.parts);
+    if !said.trim().is_empty() {
+        return Some(said);
+    }
+    let call = reply
+        .tool_calls()
+        .find(|c| c.name == crate::tools::FINISH)?;
+    let args: serde_json::Value = serde_json::from_str(&call.arguments).ok()?;
+    let summary = args.get("summary")?.as_str()?.trim();
+    (!summary.is_empty()).then(|| summary.to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -113,15 +129,49 @@ mod tests {
     use serde_json::{Value, json};
 
     use crate::agent::testing::{Harness, last_message, reply, shared, text};
+    use crate::api::models::Model;
     use crate::conversation::message::Message;
     use crate::conversation::message::Part;
     use crate::live::event::{AgentEvent, Outcome};
+    use crate::models::{Catalog, Source, preset};
     use crate::session::list;
     use crate::session::transcript::Transcript;
 
     fn task(prompt: &str) -> String {
         let args = json!({"description": "look", "prompt": prompt, "subagent_type": "explore"});
         reply("", &[("c1", "task", args)], "tool_calls")
+    }
+
+    #[tokio::test]
+    async fn a_preset_picks_each_request_by_the_kind_that_sends_it() {
+        let mut h = Harness::new(vec![task("find it"), text("found"), text("done")]).await;
+        let named = |id: &str| Model {
+            id: id.into(),
+            ..crate::testing::model(true)
+        };
+        let catalog = Catalog {
+            models: vec![named("cheap"), named("strong")],
+            source: Source::Snapshot,
+            fetched_at: None,
+            note: None,
+        };
+        let text = "[[rule]]\nwhen = { agent = [\"explore\"] }\nmodel = \"cheap\"\neffort = \"low\"\n\
+                    [[rule]]\nmodel = \"strong\"";
+        h.preset = Some(preset::parsed("p", text).resolve(&catalog).unwrap());
+        let (ended, transcript, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let requests = h.requests();
+        let sent: Vec<(&str, Option<&str>)> = requests
+            .iter()
+            .map(|r| (r["model"].as_str().unwrap(), r["reasoning_effort"].as_str()))
+            .collect();
+        assert_eq!(
+            sent,
+            [("strong", None), ("cheap", Some("low")), ("strong", None)]
+        );
+        // The prompt records the preset, so going on with the session picks the same way.
+        let (_, resumed) = Transcript::open(transcript.path().unwrap()).unwrap();
+        assert_eq!(resumed.state.unwrap().model, "p");
     }
 
     fn tool_names(request: &Value) -> Vec<String> {
@@ -428,5 +478,25 @@ mod tests {
         let (h, outcome) = asked(Reply::Unavailable).await;
         assert_eq!(outcome, Outcome::Done);
         assert_eq!(h.requests().len(), 4);
+    }
+
+    #[tokio::test]
+    async fn a_subagent_that_ends_with_finish_answers_with_its_summary() {
+        let summary = "Typed parser.py; behaviour unchanged.";
+        let finish = reply(
+            "",
+            &[("f1", "finish", json!({ "summary": summary }))],
+            "tool_calls",
+        );
+        let h = Harness::new(vec![task("type it"), finish, text("done")]).await;
+        let (ended, transcript, _) = h.run(&shared("auto"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let result = transcript.messages.iter().find_map(|m| match m {
+            Message::Tool(r) if r.name == "task" => Some(r.clone()),
+            _ => None,
+        });
+        let result = result.unwrap();
+        assert!(!result.is_error);
+        assert_eq!(result.content, summary);
     }
 }

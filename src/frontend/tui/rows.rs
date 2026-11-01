@@ -13,8 +13,7 @@ pub const MARK: usize = 2;
 /// `rows` behind the selection mark, scrolled to keep the selected one in view; the chosen row
 /// takes the accent whole.
 pub fn marked(rows: impl IntoIterator<Item = Line>, selected: usize) -> Vec<Line> {
-    let visible = limits::get().tui.palette_rows.value.get();
-    let start = (selected + 1).saturating_sub(visible);
+    let (start, visible) = window(selected);
     rows.into_iter()
         .enumerate()
         .skip(start)
@@ -33,6 +32,19 @@ pub fn marked(rows: impl IntoIterator<Item = Line>, selected: usize) -> Vec<Line
             }
         })
         .collect()
+}
+
+/// How many of `len` rows `marked` leaves out below its window.
+pub fn below(len: usize, selected: usize) -> usize {
+    let (start, visible) = window(selected);
+    len.saturating_sub(start + visible)
+}
+
+/// The first row `marked` shows and how many it shows: as many as fit, ending at the selection
+/// once it is past them.
+fn window(selected: usize) -> (usize, usize) {
+    let visible = limits::get().tui.palette_rows.value.get();
+    ((selected + 1).saturating_sub(visible), visible)
 }
 
 /// A numbered option, ` › 1 [x] label`: the mark when `chosen`, and `tick` for a multiple choice.

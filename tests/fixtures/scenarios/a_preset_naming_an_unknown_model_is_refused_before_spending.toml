@@ -1,0 +1,14 @@
+description = "A preset whose rule names a model crowbot does not serve is refused before any request, naming its file and the rule"
+args = ["--model", "broken", "-p", "hi"]
+reply = []
+
+[home_files]
+"presets/broken.toml" = '''
+[[rule]]
+model = "nope"
+'''
+
+[expect]
+exit = 1
+stderr_contains = ["preset `broken`", "broken.toml", "rule 1 names model `nope`"]
+hits = { "/v1/chat/completions" = 0 }

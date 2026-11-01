@@ -7,7 +7,6 @@ use std::sync::LazyLock;
 use anyhow::{Context, anyhow, bail};
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use crate::api::endpoints;
 use crate::config::limits;
@@ -16,6 +15,7 @@ use crate::data;
 use crate::io::http::{Http, Method, Request};
 use crate::io::{self, fs::Access};
 use crate::release::{self, Signing, signature};
+use crate::text::digest;
 use crate::text::template::fill;
 
 static TEXT: LazyLock<Text> = data::load!("update.toml", "text");
@@ -264,11 +264,7 @@ fn matches(bytes: &[u8], sums: &str, name: &str) -> bool {
         let (hex, file) = line.split_once(char::is_whitespace)?;
         (file.trim_start().trim_start_matches('*') == name).then(|| hex.to_lowercase())
     });
-    let got: String = Sha256::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    want.is_some_and(|want| want == got)
+    want.is_some_and(|want| want == digest::sha256_hex(bytes))
 }
 
 #[cfg(test)]
@@ -284,11 +280,7 @@ mod tests {
     use crate::release::signature::TestKey;
 
     fn sums_for(bytes: &[u8], name: &str) -> String {
-        let hex: String = Sha256::digest(bytes)
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
-        format!("{hex}  {name}\n")
+        format!("{}  {name}\n", digest::sha256_hex(bytes))
     }
 
     #[test]

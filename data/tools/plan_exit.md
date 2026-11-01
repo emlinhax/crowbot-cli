@@ -1,1 +1,1 @@
-In PLAN mode, once the plan file is complete, call this to show the plan to the user and ask whether to implement it. It takes no arguments. Outside PLAN mode it is refused.
+In PLAN mode every request ends here: once the plan file holds the plan, call this to show it to the user, who approves it (and picks the mode to implement it in), edits it, or asks for changes. It takes no arguments. Outside PLAN mode it is refused.

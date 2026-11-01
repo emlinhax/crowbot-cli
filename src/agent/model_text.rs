@@ -24,6 +24,7 @@ pub struct ModelText {
     pub doom_loop: String,
     pub written_calls: String,
     pub mode_left: String,
+    pub plan_unfinished: String,
     pub verify_failed: String,
     pub compact_focus: String,
     pub compacted: String,

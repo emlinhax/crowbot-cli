@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use tokio_util::sync::CancellationToken;
 
+use crate::api::account::Me;
 use crate::conversation::message::Part;
 use crate::live::files::Files;
 use crate::live::prompt::Prompts;
@@ -17,6 +18,8 @@ pub enum Reminder {
     Entered(&'static Mode),
     /// Out of a mode with instructions, into one without, so they no longer hold.
     Left { now: &'static Mode },
+    /// Still in a mode that repeats a line of its instructions with every message.
+    Still(&'static Mode),
 }
 
 pub struct Shared {
@@ -29,6 +32,9 @@ pub struct Shared {
     pub prompts: Arc<Prompts>,
     /// Shared with subagents, so a switch reaches them mid-run.
     mode: Arc<Mutex<&'static Mode>>,
+    /// Where the account stood when the frontend last asked, for a preset's conditions; shared
+    /// with subagents, as the mode is.
+    account: Arc<Mutex<Option<Me>>>,
     /// The mode the model was last told about.
     reminded: Mutex<Option<&'static Mode>>,
     /// A `cd` the model made that should carry to the next bash call; `None` is the project dir.
@@ -47,6 +53,7 @@ impl Shared {
             follow: Mutex::default(),
             prompts: Arc::default(),
             mode: Arc::new(Mutex::new(mode)),
+            account: Arc::default(),
             reminded: Mutex::default(),
             cwd: Mutex::default(),
             oriented: Mutex::new(false),
@@ -66,6 +73,7 @@ impl Shared {
             follow: Mutex::default(),
             prompts: Arc::clone(&self.prompts),
             mode: Arc::clone(&self.mode),
+            account: Arc::clone(&self.account),
             reminded: Mutex::new(Some(self.mode())),
             cwd: Mutex::new(self.cwd.lock().unwrap().clone()),
             // A subagent gets its own task, not the top-level orientation.
@@ -101,12 +109,24 @@ impl Shared {
         }
     }
 
-    /// What to tell the model about the mode now, if it changed since the model was last told.
+    pub fn account(&self) -> Option<Me> {
+        self.account.lock().unwrap().clone()
+    }
+
+    pub fn set_account(&self, me: Me) {
+        *self.account.lock().unwrap() = Some(me);
+    }
+
+    /// What to tell the model about the mode now: all of it when it changed since the model was
+    /// last told, else the line a mode repeats, if it has one.
     pub fn take_reminder(&self) -> Option<Reminder> {
         let mode = self.mode();
         let mut reminded = self.reminded.lock().unwrap();
         if reminded.is_some_and(|m| m.id == mode.id) {
-            return None;
+            return mode
+                .reminder_again
+                .is_some()
+                .then_some(Reminder::Still(mode));
         }
         let left = reminded.replace(mode);
         if mode.reminder.is_some() {

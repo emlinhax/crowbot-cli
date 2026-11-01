@@ -23,6 +23,7 @@ mod write;
 
 pub use bash::shell;
 pub use finish::NAME as FINISH;
+pub use plan_exit::NAME as PLAN_EXIT;
 pub use target::plan_file;
 pub use task::NAME as TASK;
 

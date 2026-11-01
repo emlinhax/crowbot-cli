@@ -1,0 +1,20 @@
+# Presets as rows (src/models/preset_table.rs): under the models in /models, and with their rules
+# in /presets and `crowbot presets`. {placeholders} are filled in.
+heading = "presets"
+preset = "preset"
+rules = "picks"
+new = "+ new preset"
+# A rule's `when`: its conditions joined, the ids in each joined by `or`.
+always = "always"
+otherwise = "otherwise"
+mode = "mode {ids}"
+agent = "agent {ids}"
+context_over = "context over {tokens}"
+allowance_under = "allowance under {pct}%"
+balance_under = "balance under {usd}"
+joined = ", "
+or = " or "
+picks = "→ {model}"
+picks_effort = "→ {model}, effort {effort}"
+folder = "Presets are files in {dir}; `/presets new <name>` writes one to edit, `crowbot presets` lists them."
+none = "No presets yet."

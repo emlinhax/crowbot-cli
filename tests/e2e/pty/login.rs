@@ -5,6 +5,15 @@ use super::harness::{ENTER, ESC, in_session};
 use crate::Sandbox;
 use crate::fake_crowbot::{ACCOUNT_NUMBER, DEVICE_KEY, ENV_KEY, Fake, Reply};
 
+/// Whether `digits` appears in `text` as a number of its own: a session's timestamps hold any four
+/// digits by chance (`17:24:33.7901278Z` once failed a release on `9012`).
+fn holds(text: &str, digits: &str) -> bool {
+    let digit = |c: Option<char>| c.is_some_and(|c| c.is_ascii_digit());
+    text.match_indices(digits).any(|(i, _)| {
+        !digit(text[..i].chars().next_back()) && !digit(text[i + digits.len()..].chars().next())
+    })
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_command_typed_during_a_run_never_reaches_the_model() {
     let fake = Fake::start().await;
@@ -34,12 +43,12 @@ async fn a_command_typed_during_a_run_never_reaches_the_model() {
         .collect();
     let bodies = serde_json::to_string(&fake.chat_bodies()).unwrap();
     assert_eq!(fake.hits("/v1/chat/completions"), 2);
-    for secret in ["9012", "3456"] {
+    for secret in ["9012", "3456", ACCOUNT_NUMBER] {
         assert!(
-            !bodies.contains(secret),
+            !holds(&bodies, secret),
             "{secret} reached the model: {bodies}"
         );
-        assert!(!sessions.contains(secret), "{secret} was saved: {sessions}");
+        assert!(!holds(&sessions, secret), "{secret} was saved: {sessions}");
     }
 }
 
@@ -238,10 +247,9 @@ async fn slash_signup_creates_an_account_in_a_card_and_the_session_uses_it() {
         .iter()
         .map(|f| std::fs::read_to_string(f).unwrap())
         .collect();
-    assert!(
-        !sessions.contains("9012"),
-        "the number was saved: {sessions}"
-    );
+    for secret in ["9012", ACCOUNT_NUMBER] {
+        assert!(!holds(&sessions, secret), "{secret} was saved: {sessions}");
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

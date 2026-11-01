@@ -1,0 +1,21 @@
+# A preset: pick it in /models (or `--model {id}`) like a model. Each request then runs on the
+# model of the first rule below whose `when` holds; the last rule has no `when` and takes the rest.
+# The file's name is the preset's name. Models: `crowbot models`. Efforts: {efforts}.
+description = "What this preset is for"
+
+# What a `when` may ask; every condition it sets must hold:
+#   mode = ["plan"]              the permission mode: {modes}
+#   agent = ["subagent"]         main (the agent you talk to), subagent, or a kind: {kinds}
+#   context_over = 200000        the last request sent more tokens than this
+#   allowance_under_pct = 20     the plan's allowance left is under this percent
+#   balance_under_usd = 5        the balance is under this many dollars
+# A condition crowbot cannot know yet (nothing sent since a summary, no plan) does not hold.
+# A rule without `effort` uses the session's (/effort).
+
+# [[rule]]
+# when = { agent = ["subagent"] }
+# model = "{model}"
+# effort = "low"
+
+[[rule]]
+model = "{model}"

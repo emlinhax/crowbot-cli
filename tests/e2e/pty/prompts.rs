@@ -183,3 +183,50 @@ async fn turning_down_a_subagents_call_stops_the_run() {
         assert_eq!(fake.hits("/web/ok"), 0);
     }
 }
+
+/// The editor is a script that reads a line from the terminal and adds it to the plan, so what is
+/// typed reaches it only if the session let go of the terminal; then the session takes it back.
+/// Linux only: elsewhere the sandbox's home is reached through a link, and the plan's path with it.
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_plan_edited_in_the_users_editor_is_what_the_model_implements() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fake = Fake::start().await;
+    fake.script([
+        Reply::call(
+            "write",
+            r#"{"path": "{plan_file}", "content": "1. fix the sum\n"}"#,
+        ),
+        Reply::call("plan_exit", "{}"),
+        Reply::text("Implementing."),
+    ]);
+    let mut sandbox = Sandbox::default();
+    fake.set_home(sandbox.home());
+    sandbox.write_home("config.toml", "mode = \"plan\"\n");
+    let editor = sandbox.user().join("editor.sh");
+    let script =
+        "#!/bin/sh\nprintf 'EDITING> '\nIFS= read -r line\nprintf '%s\\n' \"$line\" >> \"$1\"\n";
+    std::fs::write(&editor, script).unwrap();
+    std::fs::set_permissions(&editor, std::fs::Permissions::from_mode(0o755)).unwrap();
+    sandbox.set_env("VISUAL", &editor.display().to_string());
+    in_session(&fake, sandbox, Some(ENV_KEY), |s| {
+        s.wait_bar("PLAN");
+        s.submit("fix the sum");
+        s.wait_for("Plan ready");
+        s.wait_for("1. fix the sum");
+        // After the three choices in data/tools/plan_exit.toml.
+        s.send("4");
+        s.wait_for("EDITING>");
+        s.send("2. and test it\r");
+        s.wait_for("The plan as you left it");
+        s.wait_for("2. and test it");
+        s.send("1");
+        s.wait_for("Implementing.");
+    })
+    .await;
+    let approved = fake.chat_bodies()[2]["messages"].to_string();
+    assert!(approved.contains("edited the plan"), "{approved}");
+    assert!(approved.contains("2. and test it"), "{approved}");
+    assert!(approved.contains("MANUAL"), "{approved}");
+}

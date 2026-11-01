@@ -26,7 +26,6 @@ pub struct Ui {
     pub footer: Footer,
     pub welcome: WelcomeText,
     pub text: Text,
-    pub outcome: OutcomeText,
     pub card: CardText,
     pub palette: PaletteText,
     pub thinking: ThinkingText,
@@ -68,14 +67,6 @@ pub struct WelcomeText {
     pub version: String,
     pub separator: String,
     pub modes: String,
-}
-
-/// How a run that ended early is told.
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct OutcomeText {
-    /// `{stopped}` is the shared turn-limit line (data/frontend.toml).
-    pub turn_limit: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -211,8 +202,10 @@ pub struct ResumeText {
 #[serde(deny_unknown_fields)]
 pub struct PickerText {
     pub title: String,
+    pub presets_title: String,
     pub hint: String,
     pub switched: String,
+    pub preset_written: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -250,7 +243,13 @@ pub struct CardText {
     pub input_hint: String,
     pub other: String,
     pub plan_title: String,
+    /// `{file}` is the plan's file.
+    pub plan_body: String,
+    pub plan_edit: String,
     pub plan_other: String,
+    pub plan_edited: String,
+    /// `{error}` is why no editor opened the plan.
+    pub plan_unedited: String,
     pub questions_title: String,
     pub question_tab: String,
     pub review_tab: String,
@@ -302,6 +301,7 @@ pub struct Footer {
     pub cost: String,
     pub allowance: String,
     pub balance: String,
+    pub preset: String,
 }
 
 #[derive(Debug, Deserialize)]

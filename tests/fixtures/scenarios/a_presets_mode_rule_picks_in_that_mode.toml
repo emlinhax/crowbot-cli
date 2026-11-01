@@ -1,0 +1,24 @@
+description = "A preset's rule for a mode picks the model while the run is in it"
+args = ["--mode", "plan", "--model", "planner", "-p", "plan the change"]
+
+[home_files]
+"presets/planner.toml" = '''
+[[rule]]
+when = { mode = ["plan"] }
+model = "crow-2"
+effort = "high"
+
+[[rule]]
+model = "glm-5.3-flash-crow"
+'''
+
+[[reply]]
+text = "Here is the plan."
+
+# Ended without handing over a plan, it is sent back once (data/model_text.toml plan_unfinished).
+[[reply]]
+text = "Here is the plan."
+
+[expect]
+exit = 0
+models = ["crow-2", "crow-2"]

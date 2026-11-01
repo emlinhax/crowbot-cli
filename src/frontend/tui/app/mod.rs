@@ -11,7 +11,7 @@ mod turn;
 
 use std::collections::VecDeque;
 use std::future::Future;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::ExitCode;
 use std::time::Instant;
@@ -38,12 +38,13 @@ use crate::frontend::tui::screen::Screen;
 use crate::frontend::tui::toast::Toast;
 use crate::frontend::tui::view::View;
 use crate::frontend::tui::{ui, welcome};
-use crate::io::clock;
-use crate::io::term;
+use crate::io::{self, clock, term};
 use crate::live::event::{AgentEvent, Ended};
+use crate::live::prompt::Prompt;
 use crate::live::state::Shared;
 use crate::mcp::Servers;
 use crate::models::Catalog;
+use crate::models::choice::Choice;
 use crate::release::{self, update};
 use crate::session::transcript::Transcript;
 use crate::snapshot::Shadow;
@@ -81,6 +82,8 @@ enum Step<'a> {
     Compact(Option<String>),
     /// Run beside input: a session command, or what one of them asked for.
     Work(BoxFuture<'a, Work>),
+    /// Hand the terminal to the user's editor for this file.
+    Edit(PathBuf),
 }
 
 /// The session; going on with the one in `resume` when given, its mode included.
@@ -92,7 +95,7 @@ pub async fn run(
     let from = resume.map(|path| Continue { path, mode: true });
     let Setup {
         catalog,
-        model,
+        choice,
         effort,
         tools,
         shared,
@@ -112,11 +115,11 @@ pub async fn run(
         emit: &emit,
     };
 
-    let raw = term::Raw::fullscreen()?;
+    let mut raw = term::Raw::fullscreen()?;
     let mut tui = Tui::new(
         app,
         catalog,
-        (model, effort),
+        (choice, effort),
         (&shared, &shadow, &mcp),
         initial,
         session_file,
@@ -130,7 +133,7 @@ pub async fn run(
     for (_, note) in mcp.notes() {
         tui.feed.notice(note, "warn");
     }
-    let (spent, transcript) = tui.run(turns, transcript, rx).await;
+    let (spent, transcript) = tui.run(&mut raw, turns, transcript, rx).await;
     drop(raw);
     // The session is done with its servers; `tui` lends them until here.
     let earlier = std::mem::take(&mut tui.earlier);
@@ -197,14 +200,18 @@ struct Tui<'a> {
     /// Input tokens of the last request; the bar divides by the current model's window, so a
     /// switch of model shows its own share at once.
     context_tokens: Option<u64>,
+    /// The model that answered last and the effort it was sent, which a preset may have picked.
+    served: Option<(Model, Option<String>)>,
     account: AccountView,
+    /// The plan last put in the transcript, so an editor closed without a change adds nothing.
+    plan: Option<String>,
 }
 
 impl<'a> Tui<'a> {
     fn new(
         app: &'a App,
         catalog: Catalog,
-        (model, effort): (Model, Option<String>),
+        (choice, effort): (Choice, Option<String>),
         (shared, shadow, mcp): (&'a Shared, &'a Shadow, &'a Servers),
         initial: Option<String>,
         session_file: String,
@@ -218,7 +225,7 @@ impl<'a> Tui<'a> {
         let mut tui = Self {
             app,
             catalog,
-            next: NextTurn::new(&app.paths, model, effort, mcp.connected()),
+            next: NextTurn::new(&app.paths, choice, effort, mcp.connected()),
             shared,
             shadow,
             mcp,
@@ -242,7 +249,9 @@ impl<'a> Tui<'a> {
             session_file,
             earlier: Vec::new(),
             context_tokens: None,
+            served: None,
             account: AccountView::new(),
+            plan: None,
         };
         tui.feed.set_welcome(tui.welcome());
         tui
@@ -251,14 +260,43 @@ impl<'a> Tui<'a> {
     /// Share of the current model's window the last request used.
     fn context_pct(&self) -> Option<u64> {
         self.context_tokens
-            .map(|tokens| tokens * 100 / self.next.model.context_window.max(1))
+            .map(|tokens| tokens * 100 / self.shown_model().context_window.max(1))
+    }
+
+    /// The model the session speaks of: with a preset, the one that answered last.
+    fn shown_model(&self) -> &Model {
+        match (&self.next.choice, &self.served) {
+            (Choice::Preset(_), Some((model, _))) => model,
+            _ => self.next.choice.model(),
+        }
+    }
+
+    /// What the bar and the commands call the session's model: a preset's name, with the model
+    /// that answered last once one has.
+    fn model_label(&self) -> String {
+        match (&self.next.choice, &self.served) {
+            (Choice::Preset(routes), Some((model, _))) => template::fill(
+                &ui::get().footer.preset,
+                &[("preset", &routes.id), ("model", &model.id)],
+            ),
+            (choice, _) => choice.id().to_owned(),
+        }
+    }
+
+    /// The effort shown beside the model: with a preset, what the last request was sent.
+    fn shown_effort(&self) -> Option<&str> {
+        match (&self.next.choice, &self.served) {
+            (Choice::Preset(_), served) => served.as_ref().and_then(|(_, e)| e.as_deref()),
+            (Choice::Model(_), _) => self.next.effort(),
+        }
     }
 
     /// What this session reports about itself to a command.
     fn session(&self) -> Session {
         Session {
-            model: self.next.model.id.clone(),
-            effort: self.next.effort().map(str::to_owned),
+            model: self.model_label(),
+            preset: self.next.choice.preset().map(|p| p.path.clone()),
+            effort: self.shown_effort().map(str::to_owned),
             mode: self.shared.mode().label.clone(),
             context_pct: self.context_pct(),
             cost_micros: self.cost_micros,
@@ -273,8 +311,8 @@ impl<'a> Tui<'a> {
         welcome::Info {
             version: release::shown(),
             cwd: self.app.paths.project.display().to_string(),
-            model: self.next.model.id.clone(),
-            effort: self.next.effort().map(str::to_owned),
+            model: self.model_label(),
+            effort: self.shown_effort().map(str::to_owned),
             mode_label: mode.label.clone(),
             mode_color: mode.color.clone(),
             warning: self.account_warning(),
@@ -286,6 +324,7 @@ impl<'a> Tui<'a> {
     /// transcript unless a turn still held it.
     async fn run(
         &mut self,
+        raw: &mut term::Raw,
         turns: Turns<'a>,
         transcript: Transcript,
         mut events: mpsc::UnboundedReceiver<AgentEvent>,
@@ -337,6 +376,15 @@ impl<'a> Tui<'a> {
                 Step::Quit => break,
                 Step::Job(run) => job = Some(run),
                 Step::Work(run) => work.push(run),
+                // crossterm reads stdin while its stream lives, so the stream goes before the
+                // editor has the terminal and a new one comes after, or keys go astray.
+                Step::Edit(file) => {
+                    drop(inputs);
+                    let edited = raw.lend(io::proc::edit(&file)).await.and_then(|e| e);
+                    inputs = Box::pin(term::inputs());
+                    self.screen.forget();
+                    self.plan_edited(&file, edited);
+                }
                 // Typed text queues while a turn runs; only a command's message gets here.
                 Step::Send(text) => match transcript.take() {
                     Some(owned) => turn = Some(self.start(Job::Prompt(text), owned, &turns)),
@@ -369,6 +417,27 @@ impl<'a> Tui<'a> {
         (self.cost_micros, transcript)
     }
 
+    /// The plan as the user left it in their editor goes in the transcript above its card;
+    /// `plan_exit` tells the model when the answer comes.
+    fn plan_edited(&mut self, file: &Path, edited: std::io::Result<()>) {
+        let text = &ui::get().card;
+        let plan = edited
+            .and_then(|()| io::fs::read_string(file))
+            .map(Option::unwrap_or_default);
+        match plan {
+            Ok(plan) if self.plan.as_ref() == Some(&plan) => {}
+            Ok(plan) => {
+                self.feed.notice(&text.plan_edited, "done");
+                self.feed.markdown(&plan);
+                self.plan = Some(plan);
+            }
+            Err(e) => {
+                let why = template::fill(&text.plan_unedited, &[("error", &e.to_string())]);
+                self.feed.notice(&why, "error");
+            }
+        }
+    }
+
     fn agent(&mut self, event: AgentEvent) {
         let now = clock::instant();
         match &event {
@@ -377,6 +446,8 @@ impl<'a> Tui<'a> {
                     self.cost_micros += usage.cost_micros;
                     self.context_tokens = Some(usage.input);
                 }
+                self.served = (self.catalog.get(&message.model).cloned())
+                    .map(|model| (model, message.effort.clone()));
                 if let Some(error) = &message.error {
                     self.account_follow(error);
                 }
@@ -406,6 +477,11 @@ impl<'a> Tui<'a> {
             AgentEvent::Prompt { .. } | AgentEvent::Child { .. } | AgentEvent::Mcp { .. } => {
                 match event.innermost() {
                     AgentEvent::Prompt { id, prompt, .. } => {
+                        // The whole plan goes in the transcript, which scrolls; a card would cut it.
+                        if let Prompt::PlanExit { plan, .. } = prompt {
+                            self.feed.markdown(plan);
+                            self.plan = Some(plan.clone());
+                        }
                         let card = card::from_prompt(prompt, self.draw_width());
                         self.cards.push_back((*id, card));
                     }
@@ -424,8 +500,12 @@ impl<'a> Tui<'a> {
         if let Some(progress) = &mut self.progress {
             progress.event(&event, now);
         }
-        // The model can change between turns; the feed reads its window when a reply ends.
-        self.feed.set_window(self.next.model.context_window);
+        // The model can change between requests; the feed reads its window when a reply ends.
+        if let AgentEvent::MessageEnd { message } = event.innermost() {
+            let window = self.catalog.get(&message.model).map(|m| m.context_window);
+            self.feed
+                .set_window(window.unwrap_or(self.next.choice.model().context_window));
+        }
         self.feed.event(&event, now);
     }
 }

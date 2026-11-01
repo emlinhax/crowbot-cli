@@ -198,7 +198,7 @@ impl Feed {
         }
     }
 
-    /// The window of the model the session uses from now on.
+    /// The window of the model whose reply ends next.
     pub fn set_window(&mut self, window: u64) {
         self.window = window;
     }
@@ -374,7 +374,7 @@ impl Feed {
                 let text = fill(&words::get().unsaved, &[("path", path), ("error", error)]);
                 self.notice(&text, "warn");
             }
-            AgentEvent::RunEnd(Ended { outcome, turns }) => {
+            AgentEvent::RunEnd(Ended { outcome, .. }) => {
                 self.finish_reasoning(now);
                 self.finish_text();
                 self.running.clear();
@@ -382,14 +382,6 @@ impl Feed {
                 let note = match outcome {
                     Outcome::Aborted => Some(words::get().interrupted.clone()),
                     Outcome::Rejected => Some(ui::get().text.declined.clone()),
-                    Outcome::TurnLimit => {
-                        let count = turns.to_string();
-                        let stopped = fill(&words::get().turn_limit, &[("count", &count)]);
-                        Some(fill(
-                            &ui::get().outcome.turn_limit,
-                            &[("stopped", &stopped)],
-                        ))
-                    }
                     _ => None,
                 };
                 if let Some(note) = note {

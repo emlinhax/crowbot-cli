@@ -14,13 +14,12 @@ use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 
 use crate::data;
 use crate::io;
 use crate::mcp::config::{self, Reach};
-use crate::text::jsonc;
 use crate::text::template::{fill, fill_with};
+use crate::text::{digest, jsonc};
 
 static SOURCES: LazyLock<Sources> = data::load!("mcp_sources.toml");
 static TEXT: LazyLock<Text> = data::load!("mcp_discover.toml", "text");
@@ -190,11 +189,7 @@ fn fingerprint(reach: &Reach) -> String {
             json!({"url": url, "headers": headers.keys().collect::<Vec<_>>()})
         }
     };
-    Sha256::digest(what.to_string().as_bytes())
-        .iter()
-        .take(16)
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    digest::sha256_hex(what.to_string().as_bytes())[..32].to_owned()
 }
 
 #[cfg(test)]

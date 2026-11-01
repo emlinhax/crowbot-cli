@@ -5,14 +5,17 @@ order = 1
 summary = "Investigates, runs checks and writes a plan; edits nothing else"
 # Told to the model when the mode takes effect; {plan_file} is filled in.
 reminder = '''
-You are in PLAN mode. Investigate and plan; change nothing but the plan file.
+You are in PLAN mode. Your job here is a plan, not an answer and not the change itself: investigate, write the plan, and hand it to the user. Change nothing but the plan file.
 - Read, find and search files with `read`, `glob` and `grep`; they run without asking. In the shell, `cat`, `head`, `tail`, `wc` and non-recursive `grep` on files you name count as reads too; `sed`, `awk`, scripts and recursive greps are refused.
 - The shell runs, without asking, git's read commands (status, log, diff, show, blame, grep, branch), listings (ls, tree, find, wc, du) and checks: builds, tests and linters such as `cargo check`, `cargo test`, `make test` or `npm test`. `head`, `tail`, `grep` and `wc` work at the end of a pipe.
 - `webfetch` runs without asking.
 - Anything that edits files, installs or changes state is refused. Don't retry a refused call; find another way, or put the step in the plan.
-- Write your plan to {plan_file}: the goal, the files involved, the steps in order, and how to verify the result. Keep it concrete enough to execute without re-investigating.
-- Finish by summarising the plan for the user and saying it is ready to implement.
+- When a choice is the user's (two approaches, an unclear request), ask with `question` before writing the plan.
+- Write the plan to {plan_file}: the goal, the files involved, the steps in order, and how to verify the result. Keep it concrete enough to execute without re-investigating.
+- Then call `plan_exit`. It shows the plan to the user, who approves it, edits it or asks for changes; nothing is implemented before they approve. Every request in this mode ends this way, a small one too.
 '''
+# Told with every later message while the mode holds, so a long conversation keeps to it.
+reminder_again = "Still in PLAN mode: plan only. Write the plan to {plan_file} and hand it over with `plan_exit`; change nothing else."
 # This mode writes the session's plan and hands it over with plan_exit.
 plan_exit = true
 

@@ -70,10 +70,8 @@ pub(crate) async fn run_under(
     let prompt_id = transcript.last_id().unwrap_or_default().to_owned();
     let mut snapped = false;
     let tools = cx.tools.wire();
-    let max_turns = match parent {
-        Some(_) => limits::get().subagent.max_turns.value,
-        None => limits::get().agent.max_turns.value,
-    };
+    // Only a subagent is capped; the main run goes until it finishes or the user stops it.
+    let max_turns = parent.map(|_| limits::get().subagent.max_turns.value);
     let mut turns = 0;
     // How many times the configured check ran and failed this run; capped so a check the model
     // cannot satisfy ends the run rather than looping it.
@@ -84,23 +82,29 @@ pub(crate) async fn run_under(
     // Calls written as text are pointed out once per run: a model that keeps writing them would
     // only spend turns.
     let mut told_written = false;
+    // PLAN's job is a plan handed over with plan_exit; a main run that ends without one since its
+    // last calls is sent back, once per run, so a model that will not hand one over never loops.
+    let (mut handed, mut sent_to_plan) = (false, false);
 
     let outcome = 'run: loop {
         loop {
-            if turns >= max_turns {
+            if max_turns.is_some_and(|max| turns >= max) {
                 break 'run Outcome::TurnLimit;
             }
             turns += 1;
 
-            if let Some(why) = window_full(transcript, cx.model).filter(|_| !summary_failed) {
-                let summarised = compact::compact(cx, transcript, shared, cancel, None, why).await;
+            // A preset may pick another model for this request; its window decides a summary.
+            let now = cx.picked(transcript, shared);
+            if let Some(why) = window_full(transcript, now.model).filter(|_| !summary_failed) {
+                let summarised =
+                    compact::compact(&now, transcript, shared, cancel, None, why).await;
                 summary_failed = !matches!(summarised, Ok(true));
             }
             let (summary, tail) = transcript.context();
             let messages = context::build(summary, tail);
             let turn = Turn {
-                model: cx.model,
-                effort: cx.effort,
+                model: now.model,
+                effort: now.effort,
                 system: cx.system,
                 messages: &messages,
                 tools: &tools,
@@ -121,7 +125,8 @@ pub(crate) async fn run_under(
                     auto: true,
                     overflow: true,
                 };
-                let summarised = compact::compact(cx, transcript, shared, cancel, None, why).await;
+                let summarised =
+                    compact::compact(&now, transcript, shared, cancel, None, why).await;
                 if matches!(summarised, Ok(true)) {
                     continue;
                 }
@@ -150,6 +155,9 @@ pub(crate) async fn run_under(
                         .iter()
                         .filter(|r| r.name != tools::FINISH)
                         .all(|r| !r.is_error);
+                handed = results
+                    .iter()
+                    .any(|r| r.name == tools::PLAN_EXIT && !r.is_error);
                 // The snapshot goes in the file before the changes it lets /undo take back; only
                 // the frontend's run writes one, its subagents' changes included.
                 if let Some(before) = run.before.get().filter(|_| !snapped && parent.is_none()) {
@@ -192,6 +200,16 @@ pub(crate) async fn run_under(
         }
         let queued = shared.drain_follow();
         if queued.is_empty() {
+            if parent.is_none() && shared.mode().plan_exit && !handed && !sent_to_plan {
+                sent_to_plan = true;
+                let text = fill(
+                    &model_text::get().plan_unfinished,
+                    &[("plan_file", &run.plan_file)],
+                );
+                let parts = vec![Part::Reminder { text }];
+                record(cx, transcript, Message::User { parts });
+                continue;
+            }
             // Before ending: if a check is configured and this run changed files, run it; a failure
             // is handed back so the model fixes it rather than ending broken (capped, so no loop).
             let changed = run.before.get().is_some();
@@ -231,15 +249,7 @@ pub(crate) async fn run_under(
 /// request since the latest summary nearly filled the window, or its reply was cut off because
 /// the window ran out.
 fn window_full(transcript: &Transcript, model: &Model) -> Option<Why> {
-    let last = transcript
-        .since_summary()
-        .iter()
-        .rev()
-        .find_map(|m| match m {
-            Message::Assistant(reply) => reply.usage.map(|usage| (reply, usage)),
-            _ => None,
-        });
-    let (reply, usage) = last?;
+    let (reply, usage) = transcript.last_used()?;
     let filled = overflow::window_filled(reply, model.context_window);
     (filled || overflow::nearly_full(usage.input, model)).then_some(Why {
         auto: true,
@@ -274,7 +284,7 @@ fn deliver(run: &Run<'_>, transcript: &mut Transcript, parts: Vec<Part>) {
 fn say(run: &Run<'_>, transcript: &mut Transcript, parts: Vec<Part>) {
     let parts = with_reminder(run, parts);
     let state = State {
-        model: run.cx.model.id.clone(),
+        model: run.cx.chosen().to_owned(),
         effort: run.cx.effort.map(str::to_owned),
         mode: Some(run.shared.mode().id.clone()),
     };
@@ -287,15 +297,17 @@ fn say(run: &Run<'_>, transcript: &mut Transcript, parts: Vec<Part>) {
 /// Mode changes reach the model as a reminder on the next user message, so the system prompt
 /// (and the vendor's cache of it) never changes mid-session.
 fn with_reminder(run: &Run<'_>, mut parts: Vec<Part>) -> Vec<Part> {
+    let plan = |text: &str| fill(text.trim_end(), &[("plan_file", &run.plan_file)]);
     let text = match run.shared.take_reminder() {
-        Some(Reminder::Entered(mode)) => mode
-            .reminder
-            .as_deref()
-            .map(|text| fill(text.trim_end(), &[("plan_file", &run.plan_file)])),
+        Some(Reminder::Entered(mode)) => mode.reminder.as_deref().map(plan),
+        // A subagent is never told its mode (`Shared::child`).
+        Some(Reminder::Still(mode)) if run.parent.is_none() => {
+            mode.reminder_again.as_deref().map(plan)
+        }
         Some(Reminder::Left { now }) => {
             Some(fill(&model_text::get().mode_left, &[("mode", &now.label)]))
         }
-        None => None,
+        Some(Reminder::Still(_)) | None => None,
     };
     if let Some(text) = text {
         parts.insert(0, Part::Reminder { text });
@@ -655,7 +667,82 @@ mod tests {
         .await;
         assert_eq!(state.mode().id, "manual");
         let result = last_message(&h.requests()[1]);
-        assert!(result["content"].as_str().unwrap().contains("MANUAL"));
+        let content = result["content"].as_str().unwrap();
+        assert!(content.contains("MANUAL"), "{content}");
+        assert!(!content.contains("edited the plan"), "{content}");
+    }
+
+    #[tokio::test]
+    async fn a_plan_edited_while_its_card_is_up_reaches_the_model_as_edited() {
+        let h = Harness::new(vec![
+            reply("", &[("c1", "plan_exit", json!({}))], "tool_calls"),
+            text("implementing"),
+        ])
+        .await;
+        let transcript = Transcript::create(&h.app.paths);
+        let file = h.app.paths.plan_file(transcript.id());
+        let write = |plan: &str| {
+            crate::io::fs::write_atomic(&file, plan.as_bytes(), crate::io::fs::Access::Shared)
+                .unwrap()
+        };
+        write("1. do it");
+        h.run_in(transcript, &shared("plan"), |event, shared| {
+            if let AgentEvent::Prompt { id, prompt, .. } = event {
+                let Prompt::PlanExit { file: shown, .. } = prompt else {
+                    panic!("{prompt:?}");
+                };
+                // Resolved like the tool's: macOS and Windows temp folders have two spellings.
+                assert_eq!(std::path::Path::new(shown), crate::io::fs::canonical(&file));
+                write("1. do it\n2. test it");
+                shared.prompts.answer(*id, Reply::Choice(0));
+            }
+        })
+        .await;
+        let result = last_message(&h.requests()[1])["content"].to_string();
+        assert!(result.contains("edited the plan"), "{result}");
+        assert!(result.contains("2. test it"), "{result}");
+        assert!(result.contains("MANUAL"), "{result}");
+    }
+
+    #[tokio::test]
+    async fn a_plan_run_that_ends_without_a_plan_is_sent_back_once() {
+        let h = Harness::new(vec![text("the answer"), text("the answer again")]).await;
+        let (ended, transcript, _) = h.run(&shared("plan"), |_, _| {}).await;
+        assert_eq!(ended.outcome, Outcome::Done);
+        let requests = h.requests();
+        assert_eq!(requests.len(), 2);
+        let sent_back = last_message(&requests[1])["content"].to_string();
+        assert!(
+            sent_back.contains("without handing over a plan"),
+            "{sent_back}"
+        );
+        assert!(sent_back.contains(transcript.id()), "{sent_back}");
+    }
+
+    #[tokio::test]
+    async fn a_plan_handed_over_ends_the_run_even_when_planning_goes_on() {
+        let h = Harness::new(vec![
+            reply("", &[("c1", "plan_exit", json!({}))], "tool_calls"),
+            text("what should change?"),
+        ])
+        .await;
+        let transcript = Transcript::create(&h.app.paths);
+        crate::io::fs::write_atomic(
+            &h.app.paths.plan_file(transcript.id()),
+            b"1. do it",
+            crate::io::fs::Access::Shared,
+        )
+        .unwrap();
+        let state = shared("plan");
+        h.run_in(transcript, &state, |event, shared| {
+            if let AgentEvent::Prompt { id, .. } = event {
+                // "Keep planning", the third choice in data/tools/plan_exit.toml.
+                shared.prompts.answer(*id, Reply::Choice(2));
+            }
+        })
+        .await;
+        assert_eq!(state.mode().id, "plan");
+        assert_eq!(h.requests().len(), 2);
     }
 
     #[tokio::test]
@@ -991,6 +1078,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn plan_mode_repeats_its_line_with_each_later_message() {
+        let h = Harness::new(vec![text("one"), text("sent back"), text("two")]).await;
+        let state = shared("plan");
+        let (_, transcript, _) = h.run(&state, |_, _| {}).await;
+        h.run_in(transcript, &state, |_, _| {}).await;
+        let second = last_message(&h.requests()[2]);
+        let content = second["content"].as_str().unwrap();
+        assert!(content.contains("Still in PLAN mode"), "{content}");
+        assert!(!content.contains("Your job here"), "{content}");
+    }
+
+    #[tokio::test]
     async fn a_refusal_reaches_the_model_as_what_it_is() {
         let h = Harness::new(vec![
             reply(
@@ -1035,12 +1134,13 @@ mod tests {
         session.set_mode(mode::get("manual").unwrap());
         h.run(&session, |_, _| {}).await;
         h.run(&session, |_, _| {}).await;
-        assert_eq!([told(0), told(1), told(2)], [false, true, false]);
+        // The PLAN run ends without a plan, so it is sent back once: requests 0 and 1.
+        assert_eq!([told(0), told(2), told(3)], [false, true, false]);
 
         let session = shared("manual");
         h.run(&session, |_, _| {}).await;
         session.set_mode(mode::get("auto").unwrap());
         h.run(&session, |_, _| {}).await;
-        assert_eq!([told(3), told(4)], [false, false]);
+        assert_eq!([told(4), told(5)], [false, false]);
     }
 }

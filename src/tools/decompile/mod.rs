@@ -2,6 +2,8 @@
 //! reverses from pseudocode instead of hand-reading disassembly. kuna is a separate program; when
 //! it is not installed the model is told how to get it (and to fall back to objdump).
 
+mod cache;
+
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -73,6 +75,10 @@ impl Tool for Decompile {
                     vec!["functions".to_owned(), binary],
                 ),
             };
+            let cached = cache::file(&cx.app.paths, &kuna, &target.path, &argv);
+            if let Some(out) = cache::get(&cached) {
+                return Ok(answer(&out, &args));
+            }
             let fail = |error: &str| {
                 fill(
                     &TEXT.failed,
@@ -111,11 +117,16 @@ impl Tool for Decompile {
                     &[("binary", &target.shown)],
                 )));
             }
-            Ok(Output::head(&out).with_details(json!({
-                "mode": if args.function.is_some() { "decompile" } else { "functions" },
-            })))
+            cache::put(&cached, &out);
+            Ok(answer(&out, &args))
         })
     }
+}
+
+fn answer(out: &str, args: &Args) -> Output {
+    Output::head(out).with_details(json!({
+        "mode": if args.function.is_some() { "decompile" } else { "functions" },
+    }))
 }
 
 #[cfg(test)]
@@ -185,5 +196,12 @@ mod tests {
             .await;
         assert!(!out.is_error, "{}", out.content);
         assert!(out.content.contains("main("), "{}", out.content);
+        // Both answers are kept, so asking again does not run kuna again.
+        let kept = crate::io::fs::list_dir(&project.app.paths.decompile_cache()).unwrap();
+        assert_eq!(kept.len(), 2);
+        let again = project
+            .run(&Decompile, json!({ "binary": "vault", "function": "main" }))
+            .await;
+        assert_eq!(again.content, out.content);
     }
 }

@@ -3,11 +3,11 @@
 
 use super::{Tui, Turn, Turns};
 use crate::agent::{RunCtx, compact, run, system_prompt};
-use crate::api::models::Model;
 use crate::config::paths::Paths;
 use crate::conversation::message::Part;
 use crate::frontend::tui::progress::Progress;
 use crate::io::clock;
+use crate::models::choice::Choice;
 use crate::session::transcript::Transcript;
 
 /// What a turn does with the transcript it is lent.
@@ -30,8 +30,10 @@ impl<'a> Tui<'a> {
         Box::pin(async move {
             let cx = RunCtx {
                 app,
-                model: &next.model,
+                model: next.choice.model(),
                 effort: next.asked.as_deref(),
+                preset: next.choice.preset(),
+                agent: None,
                 system: &next.system,
                 tools,
                 emit,
@@ -52,9 +54,10 @@ impl<'a> Tui<'a> {
 
 #[derive(Clone)]
 pub struct NextTurn {
-    pub model: Model,
+    pub choice: Choice,
     /// The effort asked for: the setting until `/effort` changes it.
     pub asked: Option<String>,
+    /// Names the choice, not a preset's pick, so it stays the same for a whole conversation.
     pub system: String,
     /// What the session's MCP servers said of their tools, kept for each prompt written.
     servers: Vec<crate::mcp::Connected>,
@@ -63,13 +66,13 @@ pub struct NextTurn {
 impl NextTurn {
     pub fn new(
         paths: &Paths,
-        model: Model,
+        choice: Choice,
         asked: Option<String>,
         servers: Vec<crate::mcp::Connected>,
     ) -> Self {
-        let system = system_prompt::build(paths, &model.id, &servers, false);
+        let system = system_prompt::build(paths, choice.id(), &servers, false);
         Self {
-            model,
+            choice,
             asked,
             system,
             servers,
@@ -78,17 +81,17 @@ impl NextTurn {
 
     /// The effort the model is sent: the one asked for, when the model takes it.
     pub fn effort(&self) -> Option<&str> {
-        self.model.effort(self.asked.as_deref())
+        self.choice.model().effort(self.asked.as_deref())
     }
 
-    /// Uses `model` from the next turn on, with a prompt written for it.
-    pub fn switch(&mut self, paths: &Paths, model: Model) {
-        self.system = system_prompt::build(paths, &model.id, &self.servers, false);
-        self.model = model;
+    /// Uses `choice` from the next turn on, with a prompt written for it.
+    pub fn switch(&mut self, paths: &Paths, choice: Choice) {
+        self.system = system_prompt::build(paths, choice.id(), &self.servers, false);
+        self.choice = choice;
     }
 
     /// Writes the prompt again, since what it names (AGENTS.md, the forums) may have changed.
     pub fn reload(&mut self, paths: &Paths) {
-        self.system = system_prompt::build(paths, &self.model.id, &self.servers, false);
+        self.system = system_prompt::build(paths, self.choice.id(), &self.servers, false);
     }
 }

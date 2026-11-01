@@ -19,7 +19,6 @@ pub struct Words {
     pub cut_off: String,
     pub window_full: String,
     pub unsaved: String,
-    pub turn_limit: String,
     pub retrying: String,
     pub model_gone: String,
     pub compact: CompactWords,

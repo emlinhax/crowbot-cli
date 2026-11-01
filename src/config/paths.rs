@@ -42,6 +42,11 @@ impl Paths {
         self.home.join("cache").join("models.json")
     }
 
+    /// kuna's answers, one file each (`tools::decompile::cache`).
+    pub fn decompile_cache(&self) -> PathBuf {
+        self.home.join("cache").join("decompile")
+    }
+
     /// Full tool output too long to show, kept for the model to read.
     pub fn tmp_dir(&self) -> PathBuf {
         self.home.join("tmp")
@@ -74,6 +79,11 @@ impl Paths {
     /// The model and effort the user last chose, remembered across sessions.
     pub fn prefs(&self) -> PathBuf {
         self.home.join("prefs.json")
+    }
+
+    /// The user's presets (src/models/preset.rs), one file each.
+    pub fn presets(&self) -> PathBuf {
+        self.home.join("presets")
     }
 
     /// Whether the user said no to installing, so they are not asked again.

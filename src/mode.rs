@@ -39,6 +39,9 @@ pub struct Mode {
     /// Told to the model when the mode takes effect; `{plan_file}` is filled in.
     #[serde(default)]
     pub reminder: Option<String>,
+    /// Told with each later message while the mode holds; `{plan_file}` is filled in.
+    #[serde(default)]
+    pub reminder_again: Option<String>,
     /// Whether the plan_exit tool works here: the mode writes a plan and hands it over.
     #[serde(default)]
     pub plan_exit: bool,

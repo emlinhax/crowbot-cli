@@ -5,13 +5,13 @@ use std::path::Path;
 
 use anyhow::anyhow;
 
-use crate::api::models::Model;
 use crate::app::App;
 use crate::config::settings::{Overrides, Settings};
 use crate::live::state::Shared;
 use crate::mcp::Servers;
 use crate::mode::{self, Mode};
-use crate::models::{self, Catalog};
+use crate::models::choice::{self, Choice};
+use crate::models::{self, Catalog, preset};
 use crate::session::entry::State;
 use crate::session::transcript::{Resumed, Transcript};
 use crate::snapshot::Shadow;
@@ -19,7 +19,7 @@ use crate::tools::Registry;
 
 pub struct Setup {
     pub catalog: Catalog,
-    pub model: Model,
+    pub choice: Choice,
     /// The effort to ask for: the command line's, else the resumed session's, else the setting.
     pub effort: Option<String>,
     pub tools: Registry,
@@ -45,7 +45,7 @@ pub struct Continue<'a> {
 
 /// What a session goes on with.
 pub struct Going {
-    pub model: Model,
+    pub choice: Choice,
     pub effort: Option<String>,
     pub mode: &'static Mode,
     /// The model the session recorded, when crowbot no longer serves it.
@@ -75,7 +75,7 @@ impl Setup {
         crate::tools::mcp::join(&mut mcp, &mut tools);
         Ok(Self {
             catalog,
-            model: going.model,
+            choice: going.choice,
             effort: going.effort,
             tools,
             shared: Shared::new(going.mode),
@@ -97,22 +97,20 @@ pub fn going_on(
     mode_too: bool,
 ) -> anyhow::Result<Going> {
     let mut wanted = chosen(&app.settings, &app.flags, recorded, mode_too);
-    // A recorded model crowbot stopped serving gives way to the setting; a typed one is an error
-    // below.
-    let gone = (recorded.is_some() && catalog.get(&wanted.model).is_none())
+    let presets = preset::load(&app.paths);
+    let find = |id: &str| choice::find(catalog, &presets, id);
+    // A recorded model or preset that can no longer be had gives way to the setting; a typed one
+    // is an error below.
+    let gone = (recorded.is_some() && find(&wanted.model).is_err())
         .then(|| std::mem::replace(&mut wanted.model, app.settings.model.clone()))
         .filter(|_| app.flags.model.is_none());
-    // crowbot silently swaps an unknown model id for its default, so refuse it here instead.
-    let model = catalog
-        .get(&wanted.model)
-        .cloned()
-        .ok_or_else(|| anyhow!("unknown model `{}`; see `crowbot models`", wanted.model))?;
+    let choice = find(&wanted.model)?;
     let mode_id = wanted.mode.as_deref().unwrap_or(&app.settings.mode);
     let mode = mode::get(mode_id)
         .or_else(|| mode::get(&app.settings.mode))
         .ok_or_else(|| anyhow!("mode was validated"))?;
     Ok(Going {
-        model,
+        choice,
         effort: wanted.effort,
         mode,
         gone,

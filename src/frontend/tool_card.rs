@@ -145,7 +145,7 @@ fn arg_text(value: &Value, max_items: usize) -> Option<String> {
             (!line.is_empty()).then(|| line.to_owned())
         }
         Value::Array(items) => {
-            let parts: Vec<&str> = items.iter().filter_map(Value::as_str).collect();
+            let parts: Vec<&str> = items.iter().filter_map(item_text).collect();
             let shown = max_items.saturating_sub(1);
             match parts.len() {
                 0 => None,
@@ -154,6 +154,14 @@ fn arg_text(value: &Value, max_items: usize) -> Option<String> {
             }
         }
         _ => None,
+    }
+}
+
+/// A batch item as text: a string, or an object's first string (read's `{path, offset, limit}`).
+fn item_text(item: &Value) -> Option<&str> {
+    match item {
+        Value::Object(fields) => fields.values().find_map(Value::as_str),
+        other => other.as_str(),
     }
 }
 
@@ -173,6 +181,8 @@ mod tests {
         assert_eq!(forum.as_deref(), Some("uc · aimbot"));
         let batch = title("read", r#"{"path":["a.rs","b.rs"]}"#);
         assert_eq!(batch.as_deref(), Some("a.rs, b.rs"));
+        let ranged = title("read", r#"{"path":[{"path":"a.rs","offset":9},"b.rs"]}"#);
+        assert_eq!(ranged.as_deref(), Some("a.rs, b.rs"));
         // No args at all: still nothing to show.
         assert_eq!(title("frobnicate", "{}"), None);
     }

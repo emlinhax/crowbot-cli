@@ -39,6 +39,7 @@ crowbot signup                   # create an account: no email, no password, no 
 crowbot -p "explain this repo"   # headless: one prompt, reply on stdout (pipe input works too)
 crowbot --json "..."             # headless, one JSON event per line (fields stable; additions only)
 crowbot models [--refresh]       # live models, prices and limits
+crowbot presets [new <name>]     # presets and what each picks; `new` writes one to edit
 crowbot forums                   # forums the agent can browse (add, log in, list)
 crowbot update                   # the newest release, now
 crowbot install / uninstall      # put crowbot on your PATH, or take it off
@@ -75,14 +76,15 @@ Flags (`--model`, `--effort`, `--mode`; values in `crowbot --help`) go before th
 command. A first word naming a command runs it, except after `-p`/`--json`, where every word is
 prompt. Otherwise a session opens when stdin and stdout are terminals, else the prompt runs
 headless. Piped stdin is read to its end and appended to the words (`< /dev/null` if the pipe
-never closes). Exit codes: `0` done, `1` error, rejection or turn limit, `2` bad usage, `130`
+never closes). Exit codes: `0` done, `1` error or rejection, `2` bad usage, `130`
 interrupted.
 
 MANUAL asks before edits, commands and fetches; AUTO allows everything, deny rules included.
 PLAN edits only its plan file, fetches freely, and runs unasked only the commands in
 `data/modes/plan.toml` (git reads, listings, builds, tests, linters; these run project code, so it
-is not a sandbox) plus trailing pipe filters (`data/filters.toml`). It ends by handing over the
-plan.
+is not a sandbox) plus trailing pipe filters (`data/filters.toml`). Its job is a plan, not an
+answer or the change: every request ends with the plan written to `~/.crowbot/plans/` and handed
+over with `plan_exit`, and a run that ends without one is sent back once to write it.
 A headless run declines every prompt: allow what it needs with `[[permission]]` rules, or use
 `--mode auto`. The key comes from `CROWBOT_API_KEY`, else
 `~/.crowbot/auth.json` (DPAPI-sealed on Windows, 0600 elsewhere).
@@ -112,7 +114,8 @@ does it by hand.
 The model can hand a self-contained job to a subagent with the `task` tool: `explore` reads and
 searches and changes nothing, `general` has the same tools as the session. Kinds are files in
 `data/agents/`. A subagent runs under the session's mode and asks through its permission cards; a
-plain No to one of its calls stops the whole run. Its reply is the tool's result (its card shows
+plain No to one of its calls stops the whole run. It runs on the session's model, or on what the
+session's preset picks for its kind (Presets, below). Its reply is the tool's result (its card shows
 its latest call while it works), its cost is the session's, and its edits are the prompt's for
 `/undo`. Its conversation is saved beside the session's, in a folder named for it, so `/resume`
 lists sessions only. `--json` wraps a subagent's events in `{"type":"child","call_id":…}`; add up
@@ -134,13 +137,17 @@ cost from `message_end` events at any depth, or from the task's `tool_end` usage
 
 Prompts replace the editor with a numbered card: permission (`1` yes, `2` no, `3` no and say
 why, with a diff or command preview), crowbot's questions (up to four on one card, a tab each,
-some taking several answers, all reviewed before they go back), or a finished plan. Inside the
-session, `/help` lists the commands:
+some taking several answers, all reviewed before they go back), or a finished plan. A plan goes
+into the transcript in full (PageUp scrolls it); its card implements it in MANUAL or AUTO, keeps
+planning, opens it in your editor (`$VISUAL`, `$EDITOR`, else `data/editors.toml`'s fallback),
+or takes what to change. An edit made before the answer reaches the model as the plan to follow.
+Inside the session, `/help` lists the commands:
 
 | Command | Does |
 |---|---|
 | `/new` (or `/clear`) | a fresh conversation in a new session file; the last one stays saved |
-| `/models`, `/effort [level]`, `/mode [id]` | model, reasoning effort or permission mode for the rest of the session |
+| `/models`, `/effort [level]`, `/mode [id]` | model (or preset), reasoning effort or permission mode for the rest of the session |
+| `/presets [new <name>]` | the presets with their rules, to pick one; `new` writes one to edit |
 | `/resume` | go on with an earlier session in this project |
 | `/undo`, `/retry` | take back the last prompt and what followed it, files too; `/retry` then sends it again |
 | `/compact [focus]` | summarise earlier turns now, keeping `focus` in mind |
@@ -158,6 +165,42 @@ stored account number (signup asks about any stored key). A refused key in a ses
 `/login`; running out of funds or allowance says where the account stands. The project's `AGENTS.md` (else `CLAUDE.md`) joins the
 system prompt at conversation start, up to `agent.instructions_bytes`. On Windows a paste arrives
 as keystrokes; a key burst counts as a paste, so its Enters add lines.
+
+## Presets
+
+A preset is picked like a model (in `/models`, under the models, or with `--model <name>`), but
+each request then runs on the model of the first of its rules that holds. It is a file,
+`~/.crowbot/presets/<name>.toml`:
+
+```toml
+description = "Flash for subagents and when the plan runs low; the big model to plan"
+
+[[rule]]
+when = { agent = ["subagent"] }   # main, subagent, or a kind: explore, general
+model = "glm-5.3-flash-crow"
+effort = "low"                    # optional; else the session's /effort
+
+[[rule]]
+when = { allowance_under_pct = 15 }
+model = "glm-5.3-flash-crow"
+
+[[rule]]
+when = { mode = ["plan"] }
+model = "crow-2"
+
+[[rule]]                          # no `when`: required last, it takes the rest
+model = "deepseek-v4.1-flash"
+```
+
+Every condition a `when` sets must hold: `mode`, `agent`, `context_over` (tokens the last request
+sent), `allowance_under_pct`, `balance_under_usd`. One crowbot cannot know yet (nothing sent since
+a summary, an account not asked, no plan) does not hold. `/presets new <name>` (or the last row of
+`/models`) writes a commented template on the session's model. The bar shows the preset and the
+model that answered last (`thrifty → crow-2`), and the context share against that model's window;
+each reply in the session file records its own model. A preset whose file will not parse, or that
+names a model crowbot does not serve, is listed with why and refused when chosen. The system
+prompt names the preset, so it stays the same across the requests; a model that caches loses its
+cached prefix whenever a rule switches to another.
 
 ## MCP servers
 
@@ -238,7 +281,7 @@ and the legacy SSE transport are not supported yet (`grep -rn CEILING: src/mcp s
 | `src/permission/` | Rules (last match wins), the gate that layers them with the mode, the bash command split. |
 | `src/forums/` | Forums: the directory, the sealed store, accounts and the Tapatalk backend. |
 | `src/mcp/` | MCP servers: their config, JSON-RPC over a pair of line channels filled by a program or by streamable HTTP, the handshake, calls, and `discover/`: the servers other apps list and the choice to use them. Their tools as crowbot's are `src/tools/mcp/`. |
-| `src/models/` | The model catalog (live, cached or bundled) and its table. |
+| `src/models/` | The model catalog (live, cached or bundled) and its table, presets and the rows they show as, and the choice of either by one name (`choice.rs`). |
 | `src/commands/` | One file per command (effect-only ones share `fixed.rs`), registered in `commands/mod.rs`. |
 | `src/frontend/` | What drives a run: `print` (headless) and `tui/` (the session), and the words and tool cards both share. |
 | `src/text/` | Styled lines, theme, markdown, tables, highlighting, diffs. |

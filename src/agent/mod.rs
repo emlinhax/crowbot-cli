@@ -23,19 +23,55 @@ use crate::api::models::Model;
 use crate::app::App;
 use crate::live::event::AgentEvent;
 use crate::live::state::Shared;
+use crate::models::preset::{Routes, Signals};
+use crate::session::transcript::Transcript;
 use crate::snapshot::Shadow;
 use crate::tools::Registry;
 
 /// What the frontend chooses for a run, fixed for its length.
+#[derive(Clone, Copy)]
 pub struct RunCtx<'a> {
     pub app: &'a App,
+    /// Where each request goes, unless `preset` picks another.
     pub model: &'a Model,
     pub effort: Option<&'a str>,
+    /// Picks each request's model and effort, when the session runs on a preset.
+    pub preset: Option<&'a Routes>,
+    /// The kind of subagent this run is; `None` for the run a frontend started.
+    pub agent: Option<&'a str>,
     pub system: &'a str,
     pub tools: &'a Registry,
     pub emit: &'a (dyn Fn(AgentEvent) + Send + Sync),
     /// Keeps the files as they were before the run changed them, for /undo.
     pub shadow: &'a Shadow,
+}
+
+impl<'a> RunCtx<'a> {
+    /// The next request's model and effort: the preset's pick from where the run stands now,
+    /// else the session's.
+    pub fn picked(&self, transcript: &Transcript, shared: &Shared) -> Self {
+        let Some(preset) = self.preset else {
+            return *self;
+        };
+        let account = shared.account();
+        let signals = Signals {
+            mode: &shared.mode().id,
+            agent: self.agent,
+            context: transcript.last_used().map(|(_, usage)| usage.input),
+            account: account.as_ref(),
+        };
+        let (model, effort) = preset.pick(&signals);
+        Self {
+            model,
+            effort: effort.or(self.effort),
+            ..*self
+        }
+    }
+
+    /// What the session chose, as a prompt records it to go on with: the preset, else the model.
+    pub fn chosen(&self) -> &str {
+        self.preset.map_or(&self.model.id, |p| &p.id)
+    }
 }
 
 /// One run under way: the frontend's choices, the session it drives, and what the run derives.

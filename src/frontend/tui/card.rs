@@ -18,6 +18,7 @@ use crate::io::term::KeyEvent;
 use crate::live::prompt::{Prompt, Reply};
 use crate::permission::gate;
 use crate::text::styled::Line;
+use crate::text::template::fill;
 use crate::text::{diff, markdown};
 
 /// What a card wants after a key, or after a job it asked for has finished.
@@ -33,10 +34,14 @@ pub enum Next {
     Error(String),
     /// Close the card, with what to say when there is something.
     Close(Option<String>),
-    /// Use this model from the next turn on; the card closes.
+    /// Use this model or preset from the next turn on; the card closes.
     UseModel(String),
+    /// Write a new preset to edit; the card closes.
+    NewPreset,
     /// Go on with the session in this file; the card closes.
     Resume(std::path::PathBuf),
+    /// Open this file in the user's editor; the card stays open.
+    Edit(std::path::PathBuf),
 }
 
 /// Network or store work a card waits on, run beside input so the screen stays live.
@@ -89,7 +94,7 @@ pub fn from_prompt(prompt: &Prompt, width: usize) -> Box<dyn Card> {
             preview,
             ..
         } => Box::new(permission(tool, asks, preview.as_deref(), width)),
-        Prompt::PlanExit { plan, choices } => Box::new(plan_card(plan, choices, width)),
+        Prompt::PlanExit { file, choices, .. } => Box::new(plan_card(file, choices, width)),
         Prompt::Question { questions } => Box::new(Questions::new(questions.clone())),
     }
 }
@@ -120,16 +125,18 @@ fn permission(tool: &str, asks: &[gate::Ask], preview: Option<&str>, width: usiz
 }
 
 /// PLAN mode's finished plan, and what to do with it.
-fn plan_card(plan: &str, choices: &[String], width: usize) -> Choice {
+/// The plan itself is in the transcript above the card, where it scrolls; the card says where its
+/// file is.
+fn plan_card(file: &str, choices: &[String], width: usize) -> Choice {
     let text = &ui::get().card;
     let inner = boxed::inner(width).max(1);
-    let max = limits::get().tui.prompt_body_lines.value;
-    let body = capped(markdown::render(plan, inner), max);
+    let body = markdown::render(&fill(&text.plan_body, &[("file", file)]), inner);
     let mut options: Vec<Opt> = choices
         .iter()
         .enumerate()
         .map(|(i, label)| Opt::index(label.clone(), i))
         .collect();
+    options.push(Opt::edit(text.plan_edit.clone(), file));
     options.push(Opt::text(text.plan_other.clone()));
     Choice::new(text.plan_title.clone(), body, options)
 }
@@ -161,6 +168,36 @@ mod tests {
             card.key(None, &press(KeyCode::Char('1'))),
             Next::Answer(Reply::Yes)
         ));
+    }
+
+    #[test]
+    fn a_plan_card_names_the_file_and_leaves_the_plan_to_the_transcript() {
+        let prompt = Prompt::PlanExit {
+            plan: "1. the first step".into(),
+            file: "/home/u/.crowbot/plans/s.md".into(),
+            choices: vec!["Implement it".into()],
+        };
+        let text: Vec<String> = from_prompt(&prompt, 100)
+            .render(100)
+            .iter()
+            .map(Line::text)
+            .collect();
+        assert!(
+            text.iter()
+                .any(|l| l.contains("/home/u/.crowbot/plans/s.md")),
+            "{text:?}"
+        );
+        assert!(text.iter().any(|l| l.contains("Implement it")), "{text:?}");
+        assert!(!text.iter().any(|l| l.contains("first step")), "{text:?}");
+    }
+
+    #[test]
+    fn a_plan_card_opens_the_plan_in_an_editor_and_stays() {
+        let mut card = plan_card("/p/s.md", &["Implement it".into()], 80);
+        match card.key(None, &press(KeyCode::Char('2'))) {
+            Next::Edit(file) => assert_eq!(file, std::path::Path::new("/p/s.md")),
+            _ => panic!("expected the plan's file to edit"),
+        }
     }
 
     #[test]
